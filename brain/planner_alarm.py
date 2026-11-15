@@ -41,13 +41,18 @@ from __future__ import annotations
 from planner_core import PLANNER_CONFIG, TICKS_PER_DAY, abs_tick
 
 __all__ = ["ALARM_CONFIG", "alarm_cause", "govern_alarm", "note_alarm_change", "GOVERNED", "REACH_CAP_WHY",
-           "reach_near", "reach_alarm_over", "reach_raise_held"]
+           "reach_near", "reach_alarm_over", "reach_raise_held", "SNATCH_CAP_WHY", "snatch_alarm",
+           "reach_gates_lift"]
 
 ALARM_CONFIG = {
     "alarm_min_on_ticks": TICKS_PER_DAY // 2,       # an AI alarm stays up this long before the AI lowers it
     "alarm_cause_cooldown_ticks": 2 * TICKS_PER_DAY,  # the same cause doesn't raise it again this soon after
     "alarm_month_cap": 4,                           # governed raises a game month at most
     "fire_alarm_near": 8,                           # fire this close (tiles; levels count 3) sounds the alarm
+    # (0.105.48, K16) a snatcher inside or in reach: the alarm (the children in) this long at most
+    "snatcher_alert_ticks": TICKS_PER_DAY // 2,
+    # (0.105.48, K16) after the reach alarm's cap: the gates open again when no enemy is this close to one
+    "reach_gate_clear_tiles": 60,
 }
 PLANNER_CONFIG.update({k: v for k, v in ALARM_CONFIG.items() if k not in PLANNER_CONFIG})
 
@@ -71,6 +76,8 @@ def alarm_cause(reason: str) -> tuple[str, str]:
     r = str(reason or "")
     if "threat(s) can reach the dwarves" in r:
         return "reach", "reach"
+    if "snatcher" in r and "among the dwarves" in r:
+        return "snatcher", "snatcher"
     if r.startswith("DF reports"):
         return "intruder", "intruder"
     if r.startswith("fire ") and "tiles from the dwarves" in r:
@@ -247,3 +254,97 @@ def note_alarm_change(memory, now, on: bool, reason: str) -> None:
     if on:
         g.pop("reach_capped", None)
     memory.alarm_gov = g
+
+
+# --- (0.105.48, K16) a snatcher keeps the civilians in ---------------------------------
+# Round 1's triage took a lone thief out of the alarm, the gates and the
+# defence (planner_core.reachable_threats), snatchers with them. A snatcher
+# takes children: the alarm goes up for one inside the fort or in reach (the
+# civilians in), held `snatcher_alert_ticks` at most; the gates and the
+# sortie stay as for a thief (the thieves rule's one squad goes). Lowered at
+# its cap (or by the player), it is not raised again for the same snatchers,
+# only a new one.
+SNATCH_CAP_WHY = "a snatcher has kept the alarm up"
+
+
+def snatch_alarm(s: dict, memory, cfg: dict) -> dict:
+    """{ids, raise, keep, cap}: the snatchers now, and why the alarm goes up
+    for them, stays up, or comes down for its maximum time ("" each if not).
+    Books the snatchers seen while the alarm is up (memory.alarm_gov)."""
+    from planner_core import snatcher_ids
+    out = {"ids": [], "raise": "", "keep": "", "cap": ""}
+    ids = [i for i in snatcher_ids(s) if _int(i)]
+    g = _gov(memory) if memory is not None else {}
+    if not ids:
+        if memory is not None and "snatch_ids" in g:
+            g = dict(g)
+            g.pop("snatch_ids", None)
+            memory.alarm_gov = g
+        return out
+    out["ids"] = ids
+    names = f"{len(ids)} snatcher(s)"
+    alert_on = s.get("civ_alert") is True
+    seen = [x for x in _l_(g.get("snatch_ids")) if _int(x)]
+    if not alert_on:
+        # the alarm was up for these and came down (its cap, the player, another
+        # rule): not raised again for them, only for a new one
+        new = [i for i in ids if i not in seen]
+        if new:
+            out["raise"] = (f"{names} among the dwarves (a snatcher takes children): the alarm keeps the "
+                            "civilians in; one squad goes after it (no gates, no sortie)")
+        return out
+    if memory is not None:
+        g = dict(g)
+        g["snatch_ids"] = sorted(set(seen) | set(ids))[-20:]
+        memory.alarm_gov = g
+    now, on = abs_tick(s), g.get("on")
+    tick = on.get("tick") if isinstance(on, dict) else None
+    lim = _c(cfg, "snatcher_alert_ticks")
+    if (getattr(memory, "ai_alert_raised", False) and _int(now) and _int(tick)
+            and now - tick >= lim):
+        out["cap"] = (f"{SNATCH_CAP_WHY} {(now - tick) // 50} game hour(s) ({names} still about, a squad on "
+                      f"them): it comes down after {lim // 50} hours at most; a new snatcher sounds it again")
+    else:
+        out["keep"] = f"the alarm stays up: {names} among the dwarves (a snatcher takes children)"
+    return out
+
+
+def _l_(v) -> list:
+    return v if isinstance(v, list) else []
+
+
+def reach_gates_lift(s: dict, memory, cfg: dict, ids) -> str:
+    """(0.105.48, K16) Why the gates the watcher shut open again after the
+    reach alarm came down at its cap ("" if not): the cap holds
+    (reach_raise_held: no new enemy, none near a dwarf), the watcher armed
+    with a gate shut, and no enemy (in reach or held off) within
+    `reach_gate_clear_tiles` of a gate. The watcher's own lift waits for no
+    invader or great danger anywhere on the map, so a siege camped far off
+    kept the gates shut for good after the alarm was lowered. The gates are
+    armed again next cycle (they close when one comes within 12 tiles, or
+    near with every citizen inside)."""
+    ent = s.get("entrances") if isinstance(s.get("entrances"), dict) else {}
+    if not ent.get("armed") or not ids or not reach_raise_held(s, memory, cfg, ids):
+        return ""
+    es = [e for e in _l_(ent.get("entrances")) if isinstance(e, dict) and _l_(e.get("equipment"))]
+    if not any(e.get("closed") for e in es):
+        return ""
+    from planner_core import held_off_threats
+    want = set(ids)
+    o = s.get("others_on_map") if isinstance(s.get("others_on_map"), dict) else {}
+    rows = [t for t in _l_(o.get("threats")) if isinstance(t, dict) and t.get("id") in want]
+    rows += [t for t in held_off_threats(s) if t.get("id") not in want]
+    lim = _c(cfg, "reach_gate_clear_tiles")
+    near = None
+    for t in rows:
+        p = t.get("pos") if isinstance(t.get("pos"), dict) else {}
+        for e in es:
+            if not all(isinstance(v.get(k), (int, float)) for v in (p, e) for k in ("x", "y", "z")):
+                return ""                       # where it is isn't known: the gates stay as they are
+            d = max(abs(p["x"] - e["x"]), abs(p["y"] - e["y"])) + 3 * abs(p["z"] - e["z"])
+            near = d if near is None else min(near, d)
+    if near is not None and near <= lim:
+        return ""
+    return (f"the alarm came down at its maximum time and no enemy is within {lim} tiles of a gate: the gates "
+            "the watcher shut open (armed again, they close when one comes within 12 tiles, or near with "
+            "everyone inside)")

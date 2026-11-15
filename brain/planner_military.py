@@ -251,6 +251,11 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
     return ratio >= bar, words
 
 
+def _players(q: dict) -> bool:
+    """(0.105.48, K16) A squad on the player's own orders (more orders than the AI's)."""
+    return int(q.get("orders") or 0) > int(q.get("ai_orders") or 0)
+
+
 def _note_fight(s: dict, memory, great: list) -> None:
     """A fight against great dangers begins: what it was and how many soldiers went."""
     if isinstance(getattr(memory, "fight", None), dict) and memory.fight:
@@ -745,18 +750,35 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                or (policy == "ordinary" and i not in off and i not in fire
                    and (not threats[i].get("great_danger") or fight))]
     recalled = set()
-    if off:
+    held_back = [i for i in reach if i not in targets and i not in fire]
+    # (0.105.48, K16) a squad out on a great danger the squads can no longer
+    # take (more came, the verdict turned: held back, not a target now) comes
+    # back as a called-off one does, under every policy; a hunt's party is
+    # the hunt rule's (its own retreat)
+    lost = {i for i in held_back if threats[i].get("great_danger")} - off
+    if off or lost:
         # (0.105.26) the squads whose kill order names it come back, whatever
         # else is about (hiding() is false with a goblin in reach, and the
         # order on the titan stayed); free, they are sent at the others
+        # (0.105.48, K16) to the station or the shelter (planner_army.fall_back)
+        from planner_army import fall_back
+        from planner_hunt import hunt_rows
+        hr = hunt_rows(s)
+        hunting = {h.get("squad_id") for h in (hr[2] if hr else [])}
+        hunting |= {q.get("id") for q in (hr[1] if hr else []) if isinstance(q, dict) and q.get("hunting") is not None}
+        back = []
         for q in squads:
             kill = {x for x in _l(q.get("kill_ids")) if isinstance(x, int)}
-            if q.get("ai_orders") and kill & off:
+            if not q.get("ai_orders"):
+                continue
+            if kill & off or (kill & lost and q.get("id") not in hunting and not _players(q)
+                              and not kill & set(targets)):
                 recalled.add(q.get("id"))
-                proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
-                                          f"the fight with the great danger was called off: "
-                                          f"{q.get('name') or 'the squad'} comes back", 0))
-    held_back = [i for i in reach if i not in targets and i not in fire]
+                back.append(q["id"])
+        if back:
+            why = ("the fight with the great danger was called off" if off else
+                   f"the squads are too weak now for the great danger(s) they were sent at ({verdict})")
+            proposals.extend(fall_back(s, cfg, back, why, proposals))
     if great and ((fight and policy == "ordinary") or (policy == "all" and set(great) - off)):
         # (0.104.139) recorded even when the squads were already out at others;
         # (0.105.48 K1b) under `all` too, so its losses are counted and the
@@ -766,9 +788,13 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         # (0.105.3) a lone intruder inside: one armed squad, whatever the policy
         _lone_squad(s, memory, cfg, squads, lone, threats, proposals, notes)
     elif targets:
+        from planner_holdfast import _inside_ids
+        inside_ = _inside_ids(s)
         for q in able:
             if q.get("id") in recalled:
                 continue                 # (0.105.26) called back this cycle: sent again next
+            if _players(q) and not set(targets) & inside_:
+                continue                 # (0.105.48, K16; A6 #17) on the player's own orders: theirs, unless inside
             names = ", ".join(sorted({str(threats[i].get("name") or "?") for i in targets}))[:80]
             # (0.105.0) a squad waiting in the shelter goes out when it's sent
             if not q.get("ai_orders") or q.get("sheltering"):

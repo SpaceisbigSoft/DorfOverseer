@@ -58,7 +58,7 @@ from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import (PLANNER_CONFIG, RECIPE_SHOPS, TICKS_PER_DAY, Proposal, _best_metal, _has_shop, _traits,
-                          can_fight, is_ranged, player_rules, queued, reachable_threats)
+                          abs_tick, can_fight, is_ranged, player_rules, queued, reachable_threats)
 
 __all__ = ["siege_of", "field_of", "_siege_rules", "siege_lean", "engines_wanted", "SIEGE_CONFIG"]
 
@@ -90,6 +90,11 @@ SIEGE_CONFIG = {
     "archer_post_cooldown_ticks": 300,
     "caravan_guard_cooldown_ticks": 100,
     "wild_hunt_cooldown_ticks": 300,
+    # (0.105.48, K16; A6 #16) a squad on a wild animal or a caravan's attacker
+    # stays on it until it is this many times the distance above away, for
+    # this long at most (it was recalled at the edge and sent again)
+    "wild_keep_factor": 2.0,
+    "wild_keep_ticks": TICKS_PER_DAY,
 }
 for _k, _v in SIEGE_CONFIG.items():
     PLANNER_CONFIG.setdefault(_k, _v)
@@ -478,19 +483,58 @@ def _wild_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list
     return [r["id"] for r in ok]
 
 
-def _keep_on(s: dict, guarded: set, proposals: list, notes: list) -> None:
+def _kept_near(s: dict, cfg: dict) -> set:
+    """(0.105.48, K16; A6 #16) The wild animals and the caravan's attackers
+    still within `wild_keep_factor` times their rule's distance (the wildlife
+    rule's ones out of its distance, or with an alarm up: no new squad, but
+    the one on it isn't called back at the edge)."""
+    k = float(_c(cfg, "wild_keep_factor"))
+    near, reach_lim = _c(cfg, "wild_near_tiles") * k, _c(cfg, "wild_reach_tiles") * k
+    car = _c(cfg, "caravan_guard_tiles") * k
+    f = field_of(s)
+    out = set()
+    for r in _l(f.get("wild")):
+        if isinstance(r, dict) and isinstance(r.get("id"), int) and (
+                (_num(r.get("distance_outside")) and r["distance_outside"] <= near)
+                or (_num(r.get("distance")) and r["distance"] <= reach_lim)):
+            out.add(r["id"])
+    for r in _l(f.get("caravan")):
+        if isinstance(r, dict) and isinstance(r.get("id"), int) and _num(r.get("distance")) and r["distance"] <= car:
+            out.add(r["id"])
+    if isinstance(s.get("others_on_map"), dict):
+        from planner_core import wildlife_threats
+        for t in wildlife_threats(s, cfg):
+            d = t.get("distance_to_nearest_dwarf")
+            if isinstance(t.get("id"), int) and _num(d) and d <= reach_lim:
+                out.add(t["id"])
+    return out
+
+
+def _keep_on(s: dict, guarded: set, proposals: list, notes: list, near: set | None = None,
+             memory=None, cfg: dict | None = None) -> None:
     """A squad on a caravan's attacker or a wild animal still listed is not
     called back for "no more threats" (the game doesn't count an animal as a
-    threat, so _military_rules would recall it every cycle)."""
-    if not guarded:
+    threat, so _military_rules would recall it every cycle). (0.105.48, K16)
+    Nor one on such an animal just past the rules' distance (`near`:
+    _kept_near) while its kill order is younger than `wild_keep_ticks`."""
+    near = set(near or ()) - set(guarded)
+    if not guarded and not near:
         return
     squads = {q["id"]: q for q in _squads(s)}
+    from planner_holdfast import holdfast
+    rec = _d(holdfast(memory).get("kill")) if memory is not None else {}
+    now = abs_tick(s)
+    limit = _c(cfg or {}, "wild_keep_ticks")
     kept = []
     for p in proposals:
         a = p.action
         q = squads.get(a.get("squad_id"))
-        if (p.rule == "squad_recall" and a.get("clear") and q is not None and "no more threats" in p.reason
-                and {x for x in _l(q.get("kill_ids")) if isinstance(x, int)} & guarded):
+        if not (p.rule == "squad_recall" and a.get("clear") and q is not None and "no more threats" in p.reason):
+            continue
+        kill = {x for x in _l(q.get("kill_ids")) if isinstance(x, int)}
+        since = _d(rec.get(str(q["id"]))).get("since")
+        young = not isinstance(since, int) or not isinstance(now, int) or 0 <= now - since < limit
+        if kill & guarded or (kill & near and young):
             kept.append(p)
     for p in kept:
         proposals.remove(p)
@@ -506,4 +550,4 @@ def _siege_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
     _post_rule(s, memory, cfg, proposals, notes)
     guarded = set(_caravan_rule(s, memory, cfg, proposals, notes))
     guarded |= set(_wild_rule(s, memory, cfg, proposals, notes))
-    _keep_on(s, guarded, proposals, notes)
+    _keep_on(s, guarded, proposals, notes, _kept_near(s, cfg), memory, cfg)

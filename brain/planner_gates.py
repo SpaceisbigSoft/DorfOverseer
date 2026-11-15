@@ -982,6 +982,9 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
         proposals.append(Proposal("gates", {"type": "arm_gates"},
                                   f"a threat can reach the dwarves: watch the {len(closable)} gate(s); each closes "
                                   "once everyone is inside or the danger is 12 tiles away", 0))
+    elif any_reach and closable and _reach_lift(s, memory, cfg, traits):
+        # (0.105.48, K16) the reach alarm came down at its cap: the lockdown lifts too
+        proposals.append(Proposal("gates", {"type": "open_gates"}, _reach_lift(s, memory, cfg, traits), 0))
     elif ent.get("armed") and (lone or released or hunted):
         proposals.append(Proposal("gates", {"type": "open_gates"},
                                   f"only {len(lone)} enemy/enemies left, inside the fort: open the gates (shut, they "
@@ -1151,6 +1154,13 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
             ask_player(notes, f"{head}: wider than {cfg['fortify_max_width']} tiles, past what the AI can wall, "
                               "and no stair below them for it to cut off with hatches: they stay open; when "
                               "danger comes through them the AI's alarm and squads answer it there, not a gate")
+
+
+def _reach_lift(s: dict, memory, cfg: dict, traits) -> str:
+    """(0.105.48, K16) planner_alarm.reach_gates_lift for the enemies in reach now."""
+    from planner_alarm import reach_gates_lift
+    ids = reachable_threats(s, traits if traits is not None else _traits(s), cfg)
+    return reach_gates_lift(s, memory, cfg, ids)
 
 
 GATE_PART_RECIPES = {"hatch": ("hatch_covers", "stone_hatch_cover", "hatch cover"),

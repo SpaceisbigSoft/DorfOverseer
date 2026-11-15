@@ -369,10 +369,16 @@ end
 
 -- The report's threat row t gets the facts of unit u. Fields already on the
 -- row (flier, abilities, destroyer, size) are left as they are.
+-- (0.105.48, K16; audit A6 #12) `facts = 1` only when the creature's raws
+-- were read (something came back): with `facts` the brain gives an ability
+-- it can't name x1.5 in place of the old x3, so a failed read halved a
+-- breathing titan. Unread, the row says `facts_unread` and the brain judges
+-- it the old way (unknown, not weaker).
 function add_facts(t, u)
     if type(t) ~= 'table' or not u then return t end
     local okr, raw = pcall(raw_facts, u.race, u.caste)
-    if okr and type(raw) == 'table' then
+    local read = okr and type(raw) == 'table' and next(raw) ~= nil
+    if read then
         for k, x in pairs(raw) do
             if k ~= 'flier' and t[k] == nil then t[k] = x end
         end
@@ -381,6 +387,6 @@ function add_facts(t, u)
     if okb and type(body) == 'table' then
         for k, x in pairs(body) do if t[k] == nil then t[k] = x end end
     end
-    t.facts = 1
+    if read then t.facts = 1 else t.facts_unread = true end
     return t
 end

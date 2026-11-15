@@ -150,9 +150,11 @@ def kill(rule, sq, ids, pri):
     return Proposal(rule, {"type": "squad_orders", "squad_id": sq, "kill": ids}, f"{rule} at {ids}", pri)
 
 
-@test("select: four rules at one squad -> one order, the highest priority's, with every target merged into it")
+@test("select: four rules at one squad and no other free -> one order, the highest priority's, with every "
+      "target merged into it")
 def _():
     s = fort()
+    s["military"]["squads"] = []          # (0.105.48, K16) no other squad free
     props = [kill("killer", 185, [5004], 1), kill("squad_attack", 185, [5001], 0),
              kill("squad_attack", 185, [5002], 0), Proposal("killer", {"type": "squad_orders", "squad_id": 185,
                                                                        "kill": [5003]}, "x", 2)]
