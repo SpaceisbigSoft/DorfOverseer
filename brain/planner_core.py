@@ -231,6 +231,7 @@ class Memory:
     well_failure: str = ""                               # why no well could be placed (Needs you)
     extra_well_failure: str = ""                         # (0.104.141) why another well (one exists) couldn't be
     cavern_well_failure: str = ""                        # why no cavern well could be placed either
+    cavern_well_failure_at: int | None = None            # (K48-K4) when: tried again well_retry_days later
     cavern_shaft_stairs: bool = False                     # (0.104.13) the old shaft's give-up was cleared once
     cavern_gallery_retried: bool = False                  # (0.105.4 review) the old cavern refusal cleared once for the gallery
     well_floor_retried: bool = False                      # (0.105.24) the old "would not place the well" cleared once (a floor beside it)
@@ -1941,8 +1942,10 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
                 memory.cavern_gallery_retried = True
             if r.get("ok") is False and not r.get("rejected"):
                 memory.cavern_well_failure = str(r.get("error") or "refused")[:300]
+                memory.cavern_well_failure_at = now       # (K48-K4) not for the fort's life
             elif r.get("ok") is True:
                 memory.cavern_well_failure = ""
+                memory.cavern_well_failure_at = None
         elif r.get("ok") is True:
             memory.well_failure = ""
         elif r.get("ok") is False and not r.get("rejected"):

@@ -342,7 +342,7 @@ if LuaRuntime is not None:
         _, p = project(6)
         assert p.cancelled_tick == tick
 
-    @test("2 bridge: a new cavern shaft is dug from the bottom up: nothing in its column designated, the top last")
+    @test("2 bridge: a new cavern shaft is dug from the bottom up: nothing in its column designated, the top (a hall floor) before the level under it")
     def _():
         cavern_column()
         r = B.place_well(LUA.table_from({"cavern": True}), now(), False)
@@ -350,7 +350,9 @@ if LuaRuntime is not None:
         assert all(not W.get(70, 58, z).designated for z in range(63, 71)), [W.get(70, 58, z).dig_text for z in range(63, 71)]
         assert W.get(71, 58, 70).dig_text == "j" and W.get(71, 58, 64).dig_text == "i" and not W.get(71, 58, 63).designated
         _, p = project(r.project_id)
-        assert list(p.up.zs.values()) == [64, 65, 66, 67, 68, 69, 70], list(p.up.zs.values())
+        # (K48-K4) a hall's floor: the top channelled over rock (69), the ramp it leaves last
+        assert list(p.up.zs.values()) == [64, 65, 66, 67, 68, 70, 69], list(p.up.zs.values())
+        assert p.up.top_first
         d = B.projects_report().open[1].dig
         assert d.total == 16 and d.held == 9 and d.shaft_open is False and d.stuck == 0, (d.total, d.held, d.stuck)
         # the top waits: not "gone" (no renew, no give-up)
@@ -391,12 +393,21 @@ if LuaRuntime is not None:
             cits()
             out = WS.step(False)
             assert out.advanced == 1 and W.get(70, 58, 65).designated
-            for z in range(65, 70):
+            for z in range(65, 69):
                 W.set(70, 58, z, LUA.table_from({"shape": "EMPTY", "designated": False}))
                 WS.step(False)
-            assert W.get(70, 58, 70).designated, "the top channel comes last"
+            # (K48-K4) the top over the rock level 69, never over the open shaft
+            assert W.get(70, 58, 70).designated and not W.get(70, 58, 69).designated, "the top before 69"
+            data, p = project(pid)
+            assert list(p.up.zs.values()) == [69]
+            assert B.well_up_advance(p, True, None)[0] == "below"            # the top not dug yet
+            W.set(70, 58, 70, LUA.table_from({"shape": "RAMP_TOP", "designated": False}))
+            W.set(70, 58, 69, LUA.table_from({"shape": "RAMP", "material": "STONE", "designated": False}))
+            WS.step(False)
+            assert W.get(70, 58, 69).dig_text == "h", "the ramp the top left, channelled last"
             data, p = project(pid)
             assert len(list(p.up.zs.values())) == 0
+            W.set(70, 58, 69, LUA.table_from({"shape": "EMPTY", "designated": False}))
             W.set(70, 58, 70, LUA.table_from({"shape": "EMPTY", "designated": False}))
             for z in range(63, 71):
                 t = W.get(71, 58, z)
@@ -588,5 +599,97 @@ if LuaRuntime is not None:
         W.set(72, 58, 60, LUA.table_from({"shape": "FLOOR", "feature": True}))
         r = WS.rescue(72, 58, 60, 7, False)
         assert r.ok and r.unlocked == 1 and LUA.eval("UNLOCKED[1]") == 77, r.error
+
+if LuaRuntime is not None:
+    @test("K48-K4 bridge: the rescue stair is closed once nobody is on it or under the well: a hatch on its top "
+          "step, locked once built, one of the ways the seal knows")
+    def _():
+        add_project(well_rec(7, phase="done"))
+        for x in range(68, 76):
+            for y in range(56, 62):
+                if not (x == 71 and y == 58):
+                    W.set(x, y, 62, LUA.table_from({"shape": "EMPTY", "feature": True}))
+        W.set(72, 58, 60, LUA.table_from({"shape": "FLOOR", "feature": True}))
+        B.walk_group = LUA.eval("""function(x, y, z)
+            if z == 60 and x == 72 and y == 58 then return 5 end
+            if z >= 63 and z <= 80 then return 1 end
+            return 0 end""")
+        LUA.execute("dfhack.timeout = function() return 1 end")
+        r = WS.rescue(72, 58, 60, None, False)
+        assert r.ok, r.error
+        # still being dug, and the dwarf still down there: nothing
+        assert "rescue_close" not in list(WS.report().todo.values())
+        W.set(71, 58, 63, LUA.table_from({"shape": "STAIR_UPDOWN", "designated": False}))
+        cits({"id": 3, "name": "Nomal", "x": 72, "y": 58, "z": 60})
+        assert "rescue_close" not in list(WS.report().todo.values())
+        cits()
+        assert "rescue_close" in list(WS.report().todo.values())
+        out = WS.step(False)
+        assert out.ok and out.rescue_closed == 1, out.error
+        built = [x for x in W.placed.values() if x.mode == "build"]
+        assert built and (built[-1].x, built[-1].y, built[-1].z, built[-1].text) == (71, 58, 63, "H"), \
+            [(x.x, x.y, x.z, x.text) for x in built]
+        _, p = project(7)
+        assert (p.rescue.hatch.x, p.rescue.hatch.y, p.rescue.hatch.z) == (71, 58, 63)
+        doors = [d for d in WS.fort_doors().values() if d.rescue]
+        assert len(doors) == 1 and doors[0].kind == "hatch"
+        # built: locked (a new rescue unlocks it); not with someone on the stair
+        LUA.execute("""LOCKED = {}; WS.LOCK_FN = function(b) table.insert(LOCKED, b.id); b.locked = true; return true end
+                       RH = {id = 55, type = 'Hatch', built = true, locked = false}
+                       WS.BUILDING_FN = function(x, y, z) if x == 71 and y == 58 and z == 63 then return RH end end""")
+        cits({"id": 3, "name": "Nomal", "x": 71, "y": 58, "z": 62})
+        assert WS.door_blocked(LUA.table_from({"x": 71, "y": 58, "z": 63})) == "Nomal"
+        WS.step(False)
+        assert LUA.eval("#LOCKED") == 0
+        cits()
+        out = WS.step(False)
+        assert out.ok and LUA.eval("LOCKED[1]") == 55, out.error
+        LUA.execute("WS.LOCK_FN = nil; dfhack.timeout = nil")
+
+    @test("K48-K4 bridge: the seal leaves a gallery well's door while its shaft gate is linked; a locked one is said "
+          "in well_lids (the well is cut off)")
+    def _():
+        LUA.execute(GAME_FAKE)
+        try:
+            LUA.execute("df.building_type.Door = 6; df.building_type[6] = 'Door'")
+            add_project(well_rec(9, phase="done", fort_door=LUA.table_from({"x": 72, "y": 61, "z": 70, "kind": "door"}),
+                                 shaft_gate=LUA.table_from({"lever": LUA.table_from({"x": 72, "y": 60, "z": 70})})))
+            for z in range(63, 71):
+                W.set(70, 58, z, LUA.table_from({"shape": "EMPTY"}))
+            LUA.execute("LEV = MKS(72, 60, 70, 8, true, 3); HAT = MKS(70, 58, 63, 7, true)")
+            o = LUA.table_from({"x": 72, "y": 61, "z": 70})
+            assert WS.door_seal_skip(o) is None, "the gate not linked: the door is the guard"
+            LUA.execute("LINKS[HAT.id] = {LEV.id}")
+            why = WS.door_seal_skip(o)
+            assert why and "shaft gate" in why, why
+            assert WS.door_seal_skip(LUA.table_from({"x": 1, "y": 1, "z": 1})) is None
+            rows = B.well_lids(False)
+            assert rows[1].door_locked is None
+            LUA.execute("DOOR = MKS(72, 61, 70, 6, true); DOOR.door_flags.forbidden = true")
+            rows = B.well_lids(False)
+            assert rows[1].door_locked is True and rows[1].gate == "closed"
+            # given up: the seal locks it as before
+            data, p = project(9)
+            p.phase = "cancelled"
+            B.save_projects(data)
+            assert WS.door_seal_skip(o) is None
+        finally:
+            LUA.execute(GAME_CLEAN)
+
+    @test("K48-K4 bridge: without top_first (a gallery's rock top) the levels go strictly bottom-up, the top last")
+    def _():
+        add_project(well_rec(11, phase="dig", up=LUA.table_from({"zs": LUA.table_from([69, 70])})))
+        _, p = project(11)
+        W.set(70, 58, 68, LUA.table_from({"shape": "WALL"}))
+        assert B.well_up_advance(p, True, None)[0] == "below"
+        W.set(70, 58, 68, LUA.table_from({"shape": "EMPTY"}))
+        assert tuple(B.well_up_advance(p, True, None)) == ("next", 69)
+        p.up.top_first = True                    # the top over rock: 69 is the one under it
+        p.up.zs = LUA.table_from([70, 69])
+        W.set(70, 58, 69, LUA.table_from({"shape": "WALL"}))
+        assert tuple(B.well_up_advance(p, True, None)) == ("next", 70)
+        W.set(70, 58, 68, LUA.table_from({"shape": "WALL"}))
+        assert B.well_up_advance(p, True, None)[0] == "below"
+
 
 finish(None if LuaRuntime is not None else "these tests need the lupa package (pip install lupa)")

@@ -1593,10 +1593,10 @@ def _():
         assert h.door_flags.closed is True and LUA.eval("PULLS")[n + 1].instant == "--instant"
         assert B.well_lids(False)[1].watch_last.unit == 9
         wn = B.well_lids(False)[1].watch_near                      # (0.104.165) the watcher's test, said
-        assert wn.id == 9 and wn.d == 15 and wn.mobile is False and wn.reach == 35, dict(wn)
+        assert wn.id == 9 and wn.d == 15 and wn.mobile is False and wn.reach == 30, dict(wn)   # (K48-K4) 20 + 10
         tick()                                                    # shut: nothing more (only the brain opens it)
         assert len(LUA.eval("PULLS")) == n + 1
-        # (group 2) the hysteresis: 30 tiles off is still near a shut gate (20 + 15), and opening is refused
+        # (group 2) the hysteresis: 30 tiles off is still near a shut gate (20 + 10), and opening is refused
         units[1].pos.x = 100
         later(1300)                                               # a day on, still about
         tick()
@@ -1610,9 +1610,9 @@ def _():
         later(300)
         assert B.well_lids(False)[1].shut_hold == 0
         assert B.well_shaft_step(False, False).wells[1].stage == "opened" and h.door_flags.closed is False
-        # a climber 30 off: shut
+        # a climber 25 off: shut (K48-K4: 25, was 60)
         units[1].race = 2
-        units[1].pos.x = 100
+        units[1].pos.x = 95
         n = len(LUA.eval("PULLS"))
         tick()
         assert h.door_flags.closed is True and len(LUA.eval("PULLS")) == n + 1
@@ -1630,15 +1630,22 @@ def _():
         units[1].race, units[1].pos.z, units[1].great, units[1].danger = 1, 55, True, True
         LUA.execute("dfhack.units.isGreatDanger = function(u) return u.great == true end")
         tick()
-        assert h.door_flags.closed is True                        # a great walker 30 off: shut (normally)
+        assert h.door_flags.closed is False                       # (K48-K4) a great walker 30 off: no longer shut
+        units[1].pos.x = 88
+        tick()
+        assert h.door_flags.closed is True                        # 18 off: shut
         assert B.well_lids(False)[1].watch_near.great is True
+        units[1].pos.x = 97                                       # 27 off: still near a shut gate (20 + 10)
+        tick()
+        assert h.door_flags.closed is True
         s = B.well_shaft_step(False, False, True)
         assert s.ok and s.dry and s.wells[1].stage == "opened", (s.error, dict(s.wells[1]))
         assert B.well_lids(False)[1].watch_dry is True
         tick()
-        assert h.door_flags.closed is False                       # dry: a walker only within 20
+        assert h.door_flags.closed is False                       # dry: a walker only within 20 (25 once shut)
         s = B.well_shaft_step(False, False, False)                 # water again: back to the usual watch
         assert s.ok and s.dry is None and s.dry_changed
+        units[1].pos.x = 88
         tick()
         assert h.door_flags.closed is True
     finally:

@@ -93,9 +93,21 @@ def _ice_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     zones = _water_zone_rows(_frost(s))
     if zones:
         where = ", ".join(f"x{z.get('x')} y{z.get('y')}" for z in zones[:3])
-        proposals.append(Proposal("ice_zones", {"type": "retire_water_zones", "outside_only": True},
-                                  f"{why}: the AI's water zone(s) on surface water ({where}) are taken down "
-                                  "before the ice (E: two drowned at one on the first day of winter)", 2))
+        # (K48-K4) only when the water is ice already or another source gives
+        # water now (a well a bucket reaches, a zone not on the surface): the
+        # War-hold test took the only zone down while every cavern well was
+        # shut (they "drew water" past their shut hatches)
+        from planner_wells import usable_wells
+        other = usable_wells(s) > 0 or any(isinstance(z, dict) and z.get("outside") is not True
+                                           and z.get("water") == "water" for z in _l(_frost(s).get("zones")))
+        if other or any(z.get("water") == "ice" for z in zones):
+            proposals.append(Proposal("ice_zones", {"type": "retire_water_zones", "outside_only": True},
+                                      f"{why}: the AI's water zone(s) on surface water ({where}) are taken down "
+                                      "before the ice (E: two drowned at one on the first day of winter)", 2))
+        else:
+            notes.append(f"{why}: the AI's water zone(s) on surface water ({where}) are kept while they are the only "
+                         "water the dwarves can drink (no well draws now); taken down once a well draws or the water "
+                         "is ice, and the traffic over the water is restricted")
     # the traffic over the surface water restricted now, not a month later
     from planner_wells import _water_traffic_rule
     tmp: list = []

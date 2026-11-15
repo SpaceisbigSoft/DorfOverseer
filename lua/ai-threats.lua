@@ -1824,6 +1824,11 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
                 local okb, who = false, nil
                 if type(o.source) == 'string' and o.source:find('^cavern well') then
                     okb, who = pcall(function() return reqscript('ai-well-safety').door_blocked(o) end)
+                    -- (K48-K4) nor a gallery's door while its well's shaft gate is linked:
+                    -- the well beyond it stays the fort's water (the gate keeps the cavern out)
+                    if not (okb and who) then
+                        okb, who = pcall(function() return reqscript('ai-well-safety').door_seal_skip(o) end)
+                    end
                 end
                 if okb and who then
                     well_kept = well_kept + 1

@@ -421,7 +421,10 @@ return e
         E.shaft_watch_start()
         T.timers[len(T.timers)]()
         assert len(T.pulls) == 0 and T.hatch.door_flags.closed is False      # (was: shut, E and F went thirsty)
-        T.units[1].pos.x, T.units[1].pos.y = 80, 80                         # 70 off, may climb: within 80
+        T.units[1].pos.x, T.units[1].pos.y = 80, 80                         # (K48-K4) 70 off: no longer (was 80)
+        T.timers[len(T.timers)]()
+        assert len(T.pulls) == 0
+        T.units[1].pos.x, T.units[1].pos.y = 30, 30                         # 20 off, may climb: within 25
         T.timers[len(T.timers)]()
         assert list(T.pulls.values()) == [8] and T.hatch.door_flags.closed is True
         E.SHAFT_WATCH.on = False
@@ -439,6 +442,47 @@ return e
         assert len(E2.T.pulls) == 0
         E2.SHAFT_WATCH.on = False
 
+    @test("lua wells (K48-K4): a forgotten beast 91 tiles off shuts nothing; the watcher opens what it shut once the "
+          "danger is gone and the hold has run out")
+    def _():
+        E = LUA.execute(WELLS_GAME, (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8"))
+        T = E.T
+        LUA.execute("""function K4_fix(E)
+            local data = E.load_projects()
+            E.load_projects = function() return data end
+            E.pull = function(id) table.insert(E.T.pulls, id)
+                E.T.hatch.door_flags.closed = not E.T.hatch.door_flags.closed; return true end
+            return data end""")
+        data = LUA.globals().K4_fix(E)
+        # War-hold: "The Abyssal Squid" 91 tiles off in the shaft's cavern, a great climber: was shut (80/95)
+        T.units[1] = LUA.table_from({"id": 9, "danger": True, "great": True, "flags1": LUA.table_from({}),
+                                     "pos": LUA.table_from({"x": 101, "y": 10, "z": 30})})
+        E.shaft_watch_start()
+        T.timers[len(T.timers)]()
+        assert len(T.pulls) == 0 and T.hatch.door_flags.closed is False
+        T.units[1].pos.x = 25                                               # 15 off: shut
+        T.timers[len(T.timers)]()
+        assert len(T.pulls) == 1 and T.hatch.door_flags.closed is True
+        assert data.list[1].shaft_gate.auto_shut is True
+        T.units[1].pos.x = 101                                              # away again: the hold first
+        T.timers[len(T.timers)]()
+        assert len(T.pulls) == 1, "held a day at least"
+        E.df["global"].cur_year_tick = 1300
+        T.timers[len(T.timers)]()
+        assert len(T.pulls) == 2 and T.hatch.door_flags.closed is False, "opened by the watcher itself"
+        assert data.list[1].shaft_gate.auto_shut is None
+        # dead now: the same; and a gate the brain shut for its own reason (no auto_shut) stays shut
+        T.hatch.door_flags.closed = True
+        E.df["global"].cur_year_tick = 5000
+        T.timers[len(T.timers)]()
+        assert len(T.pulls) == 2 and T.hatch.door_flags.closed is True
+        # a given-up shaft never
+        data.list[1].shaft_gate.auto_shut = True
+        data.list[1].phase = "cancelled"
+        T.timers[len(T.timers)]()
+        assert len(T.pulls) == 2
+        E.SHAFT_WATCH.on = False
+
     @test("lua wells (group 2): shaft_judge, the verdict the watcher, well_shaft and the brain share")
     def _():
         E = LUA.execute(WELLS_GAME, (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8"))
@@ -446,16 +490,19 @@ return e
         w = t(x=100, y=100, z=150, hz=140)
         J = lambda c, **o: E.shaft_judge(t(**c), w, t(**o))
         base = dict(x=130, y=100, z=135, layer_match=True)                  # 30 tiles off, in the shaft's cavern
-        assert J(dict(base, flier=True)).reach == 60                        # a flier: within 60
+        # (K48-K4) the great ranges (80, 95 shut) are gone: a flier 40, a climber 25, a walker 20
+        assert J(dict(base, flier=True)).reach == 40                        # a flier: within 40
+        assert J(dict(base, flier=True, x=150)) is None                     # 50 off: no
         assert J(dict(base, climber=False)) is None                         # a walker: 20 only
         assert J(dict(base, climber=False, x=115)).d == 15
-        assert J(dict(base)).mobile is True                                 # unknown: taken as a climber
-        assert J(dict(base, climber=False, great=True)).reach == 60          # a great walker: 60...
-        assert J(dict(base, climber=False, great=True), dry=True) is None   # ...but 20 while short of water
-        assert J(dict(base, x=170, great=True)).reach == 80                 # a great climber: 80
+        assert J(dict(base)) is None                                        # unknown (a climber): 25, 30 off
+        assert J(dict(base, x=120)).mobile is True                          # unknown: taken as a climber
+        assert J(dict(base, climber=False, great=True)) is None             # a great walker: 20 too
+        assert J(dict(base, x=170, great=True)) is None                     # a great climber 70 off (was 80)
+        assert J(dict(base, x=120, great=True)).reach == 25
         assert J(dict(base, flier=True, layer_match=False)) is None         # another cavern: walled off by rock
         assert J(dict(base, flier=True, layer_match=None, z=100)) is None   # unknown cavern, 40 levels down
-        assert J(dict(base, climber=False), shut=True).reach == 35   # shut: 15 further (no flapping)
+        assert J(dict(base, climber=False), shut=True).reach == 30   # shut: 10 further (no flapping)
         assert J(dict(base, climber=False), shut=True, dry=True) is None   # short of water: 5 only
         assert J(dict(x=101, y=100, z=145, climber=False)).in_shaft          # in the shaft: always
         assert J(dict(x=110, y=100, z=145, flier=True)) is None              # above the cavern, not in it
