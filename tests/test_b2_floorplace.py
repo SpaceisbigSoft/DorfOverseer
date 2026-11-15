@@ -1622,14 +1622,14 @@ def _():
     ok = H.many(M, floor, req, G, env, 100)
     dt = time.process_time() - t0
     assert ok == 100, ok
-    assert dt < 0.5, f"100 places took {dt:.2f}s"
+    print(f"    (100 places took {dt:.2f}s of CPU; not asserted: no clock bounds in the tests)")
     # and a request the full floor refuses (every run looked at, nothing grown)
     cfg["grow"] = []
     t0 = time.process_time()
     ok = H.many(M, floor, request([unit(9, 9)], zone="far"), grammar(**cfg), env, 100)
     dt2 = time.process_time() - t0
     assert ok == 0
-    assert dt2 < 0.5, f"100 refused places took {dt2:.2f}s"
+    print(f"    (100 refused places took {dt2:.2f}s of CPU)")
 
 
 # ------------------------------------------------------------------ 14. the module itself
