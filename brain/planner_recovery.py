@@ -22,12 +22,14 @@ The state (memory.recovery, kept by note_recovery before each plan):
 While in it (recovery_apply, after every rule in plan()): the survival
 rules go on (water, wells, drink, food, farms, kitchens, beds and rooms,
 the hospital and care, burial, the guard and its squads, the gates, the
-threats' answers) and the rest waits: hunts, kill zones, lures, missions,
-landmarks, the hall and wings above ground, siege works, gatehouses,
-artifacts on show, polish, export orders, the crisis's expansion list, and
-every new level that is not bedrooms, a dining hall, a hospital, a well,
-farms, storage, workshops or tombs (urgent ones and a strange mood's
-workshop always go). The crafts stay: DF sends migrants by the wealth the
+threats' answers: traps, the cavern doors, a vampire sent away, wild_hunt)
+and the expansion steps wait (brain/hold_classes.py, the same table crisis
+mode holds by): hunts, kill zones, lures, missions, landmarks, the hall and
+wings above ground, siege works, gatehouses, artifacts on show, polish,
+export orders, and every new level that is not bedrooms, a dining hall, a
+hospital, a well, farms, storage, workshops, tombs, a tavern, a temple, a
+jail or suites (urgent ones and a strange mood's workshop always go; an
+expansion rule's level waits whatever its kind). The crafts stay: DF sends migrants by the wealth the
 fort created (reported by the outgoing dwarven caravan).
 
 Closed forts still take migrants: the Outsiders slider shuts the fort to
@@ -67,48 +69,30 @@ from planner_core import (PLANNER_CONFIG, TICKS_PER_DAY, Proposal, abs_tick, ask
 
 __all__ = ["SURVIVAL_KINDS", "HOLD_TYPES", "HOLD_RULES", "recovery_floor", "in_recovery", "note_recovery",
            "held_in_recovery", "recovery_apply", "open_cap", "_migrants_rule", "recovery_journal",
-           "recovery_line", "stalled"]
+           "recovery_line", "stalled", "soldiers_away", "fort_pop", "migrants_wait"]
 
 TICKS_PER_WEEK = 7 * TICKS_PER_DAY
 TICKS_PER_YEAR = 336 * TICKS_PER_DAY
 
+# (0.105.48, K5) what waits is one table for crisis and recovery
+# (brain/hold_classes.py): every rule and action kind classed survival,
+# defence or expansion; recovery holds the expansion steps. The names below
+# are kept for older callers and tests, derived from the table.
+import hold_classes as _hc  # noqa: E402
+
 # levels that keep a fallen fort alive (a growth hall or a set piece of
 # these kinds still waits)
-SURVIVAL_KINDS = {"bedrooms", "dining", "hospital", "well", "farms", "storage", "workshops", "tombs"}
-
-# actions that wait while the fort recovers, whatever rule made them
-HOLD_TYPES = {
-    "hunt_send",                                        # hunts
-    "build_killzone", "build_lure", "lure_open",        # kill zones, lures (lure_shut still goes)
-    "send_mission",                                     # missions and Make contact
-    "expel_dwarf",                                      # nobody sent away
-    "polish", "polish_room",
-    "blueprint_sites", "build_blueprint", "landmark_step",   # landmarks
-    "place_hall", "build_wings", "floor_rooms", "place_keep",  # building above ground
-    "place_siege_engine", "place_siege_shop", "build_gatehouse", "fortify_entrance", "cut_entrance",
-    "display_artifact", "place_display",
-    "keep_grove",
-    "place_garden_court",                               # (0.105.47) the garden court above ground
-}
+SURVIVAL_KINDS = _hc.SURVIVAL_KINDS
+# actions that wait while the fort recovers (unless a survival or defence rule sends them)
+HOLD_TYPES = set(_hc.EXPANSION_ACTIONS)
+# rules that wait
+HOLD_RULES = set(_hc.EXPANSION_RULES)
 
 try:
     import crisis as _crisis
-    _EXPANSION = set(_crisis.EXPANSION_RULES) - {"squad_make"}   # the guard's squads are kept
     _KEEP_RULES = set(_crisis.RECOVERY_RULES)
 except Exception:  # noqa: BLE001
-    _EXPANSION, _KEEP_RULES = set(), set()
-
-# rules that wait (their other actions too: the parts and labours for them)
-HOLD_RULES = _EXPANSION | {
-    "hunt", "killzone", "killzone_parts", "lure_build", "lure_open", "lure_archer",
-    "mission", "contact", "export", "paper", "paper_shop", "alloy",
-    "artifact_display", "artifact_furniture", "artifact_pedestals",
-    "hall", "wings", "soil_floor", "keep", "construct_blocks", "landmark_sites", "landmark_step",
-    "siege_engine", "siege_shop", "siege_parts", "siege_ammo", "siege_operator", "wild_hunt", "caravan_guard",
-    "gatehouse", "fortify", "traps", "gate_cut", "grove", "grove_guard", "leather_gear",
-    "waterworks_moat", "waterworks_magma", "waterworks_power", "expel",
-}
-
+    _KEEP_RULES = set()
 
 def _c(cfg: dict, k: str):
     return cfg[k] if k in cfg else PLANNER_CONFIG[k]
@@ -165,11 +149,33 @@ def _journal(rec: dict, entry: dict) -> None:
     rec["journal"] = j[-20:]
 
 
+def soldiers_away(s: dict) -> int:
+    """(0.105.48, K5) Squad members away on a mission or raid (the missions
+    section): not on the map, so not in dwarves.total, but not lost either."""
+    m = s.get("missions")
+    if not isinstance(m, dict) or "error" in m:
+        return 0
+    n = 0
+    for q in _l(m.get("squads")):
+        v = _d(q).get("away")
+        if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+            n += v
+    return n
+
+
+def fort_pop(s: dict):
+    """The citizens on the map and those away on missions (None when unread)."""
+    pop = _d(s.get("dwarves")).get("total")
+    if not isinstance(pop, int) or isinstance(pop, bool):
+        return None
+    return pop + soldiers_away(s) if pop > 0 else pop
+
+
 def stalled(s: dict, memory, cfg: dict) -> bool:
     """Under the survival floor with no newcomer for recovery_stall_days
     (D: 15 dwarves for ten years), and watched that long."""
     rec = _d(getattr(memory, "recovery", None))
-    pop = int(_d(s.get("dwarves")).get("total") or 0)
+    pop = int(fort_pop(s) or 0)
     floor = int(cfg.get("survival_floor") or 0)
     now = abs_tick(s)
     first, rise = rec.get("first"), rec.get("last_rise")
@@ -183,9 +189,11 @@ def note_recovery(s: dict, memory, cfg: dict, notes: list) -> dict:
     the last newcomer, the calls made; entering and leaving. Puts a copy in
     s["_recovery"] for the digest. Returns the recovery under way or {}."""
     s.pop("_recovery", None)
-    dw = _d(s.get("dwarves"))
-    pop = dw.get("total")
-    if not isinstance(pop, int) or isinstance(pop, bool) or pop <= 0:
+    # (0.105.48, K5) the soldiers away on a mission or raid count: a squad of
+    # 10 out of 30 read as a fall by a third (recovery began, and their
+    # return counted as newcomers)
+    pop = fort_pop(s)
+    if not isinstance(pop, int) or pop <= 0:
         return in_recovery(memory)
     now = abs_tick(s)
     rec = _rec(memory)
@@ -283,23 +291,11 @@ def _leave(rec: dict, now: int, pop: int, why: str, notes: list) -> None:
 
 
 def held_in_recovery(p) -> str | None:
-    """What waits while the fort recovers (in words), or None for a step that goes."""
-    a = _d(getattr(p, "action", None))
-    t = a.get("type")
-    if t == "start_project":
-        if a.get("urgent") or p.rule == "mood":
-            return None
-        kind = a.get("kind")
-        if kind in SURVIVAL_KINDS and not a.get("set_piece") and not a.get("growth") and not a.get("landmark"):
-            return None
-        return f"a new {a.get('set_piece') or kind or '?'} level"
-    if p.rule in _KEEP_RULES:
-        return None
-    if t in HOLD_TYPES:
-        return str(t).replace("_", " ")
-    if p.rule in HOLD_RULES:
-        return str(p.rule).replace("_", " ")
-    return None
+    """What waits while the fort recovers (in words), or None for a step that
+    goes: the expansion steps of hold_classes (0.105.48, K5: the rule before a
+    new level's kind; a floodgate's shut, retire or recheck always goes; a
+    vampire's expulsion, traps, the cavern doors and wild_hunt go)."""
+    return _hc.held_words(p)
 
 
 def recovery_apply(proposals: list, memory, notes: list) -> list:
@@ -356,6 +352,31 @@ def open_cap(s: dict, memory, cfg: dict, citizens: int, cap: int, strict: int, w
     return cap, strict, why
 
 
+def migrants_wait(s: dict, cfg: dict) -> str | None:
+    """(0.105.48, K5) Why no wave is called now (words: "... once <why>"), or
+    None. Migrants come in at the map's edge and need drink and meals: none
+    while the civilian alert is on, an enemy can reach the dwarves, an invader
+    or a beast is on the surface, or the fort is short of drink or meals (B
+    fell from 100 to 1 by thirst: a wave called then dies the same way)."""
+    if s.get("civ_alert"):
+        return "the civilian alert is down"
+    o = _d(s.get("others_on_map"))
+    if o.get("threats_that_can_reach_dwarves"):
+        return "no enemy can reach the dwarves"
+    for t in _l(o.get("threats")):
+        t = _d(t)
+        if t.get("can_reach_dwarves") is True or t.get("invader") or t.get("layer") == "upper_levels":
+            return "no enemy is on the surface or can reach the dwarves"
+    try:
+        from planner_growth import fort_strain
+        short = [w for w in fort_strain(s, cfg) if w.startswith(("drink", "meals"))]
+    except Exception:  # noqa: BLE001
+        short = []
+    if short:
+        return f"the fort can feed newcomers ({', '.join(short)})"
+    return None
+
+
 def _migrants_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """A fallen fort (or one stalled under the survival floor) DF sends no
     migrants to: the AI calls a wave (DFHack's force Migrants), or says
@@ -397,8 +418,9 @@ def _migrants_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
         ask_player(notes, f"the fort is {who} ({pop} dwarves) and DFHack's own `hermit` tool is on: it turns away "
                           "every migrant (and caravan); turn it off (`disable hermit`) for the fort to grow again")
         return
-    if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
-        notes.append(f"the fort is {who}: a migrant wave is called once no enemy can reach the dwarves")
+    hold = migrants_wait(s, cfg)
+    if hold:
+        notes.append(f"the fort is {who}: a migrant wave is called once {hold}")
         return
     if int(mig.get("queued") or 0) > 0:
         notes.append(f"the fort is {who}: a migrant wave is on its way (DF's events)")

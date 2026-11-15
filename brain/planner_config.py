@@ -296,6 +296,7 @@ PLANNER_CONFIG = {
     "crisis_tantrums": 10, "crisis_tantrums_clear": 4,
     "crisis_min_days": 14,                 # ...lasting at least this long
     "crisis_extra_actions": 5,             # ...recovery's extra action slots a cycle
+    "crisis_hold_table": True,             # (0.105.48, K5) crisis holds by brain/hold_classes.py (False: the old 14 names; tests compare main's)
     "convict_per_cycle": 3,            # (0.104.131) solved cases convicted a cycle...
     "near_threat_tiles": 30,
     "depot_guard_tiles": 15,           # (0.104.140) an invader this near the depot while a caravan is in reaches

@@ -176,7 +176,7 @@ def _():
             P("ladder", type="start_project", kind="library"), P("growth", type="start_project", kind="bedrooms",
                                                                   growth=True),
             P("killzone_parts", type="work_order", recipe="mechanisms"), P("expel", type="expel_dwarf"),
-            P("wild_hunt", type="squad_orders"), P("gems", type="work_order")]
+            P("gems", type="work_order")]   # (0.105.48, K5) wild_hunt is defence: it goes
     for p in held:
         assert R.held_in_recovery(p), (p.rule, p.action)
 
@@ -190,7 +190,8 @@ def _():
             P("gates", type="close_threatened_gates"), P("gate_doors", type="build_gate_doors"),
             P("squad_make", type="make_squad"), P("fill", type="fill_squads"), P("pop_cap", type="set_population_cap"),
             P("lure_shut", type="lure_shut"), P("crafts", type="work_order"), P("burial", type="coffins"),
-            P("infected_rest", type="rest_infected"), P("recovery_migrants", type="call_migrants")]
+            P("infected_rest", type="rest_infected"), P("recovery_migrants", type="call_migrants"),
+            P("wild_hunt", type="squad_orders")]
     for p in kept:
         assert not R.held_in_recovery(p), (p.rule, p.action)
 
