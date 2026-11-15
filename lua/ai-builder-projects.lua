@@ -620,7 +620,8 @@ function join_workshop_level(params, data, now, dry_run, open, ceil_z)
     local any_group = next(groups) == nil
     local cands = {}
     for _, p in ipairs(data.list) do
-        if p.kind == 'workshops' and p.parent == nil and JOIN_PHASES[p.phase] and not p.unreached
+        if p.kind == 'workshops' and p.parent == nil and p.floor == nil   -- (layout B) a floor's shops are no classic level
+                and JOIN_PHASES[p.phase] and not p.unreached
                 and type(p.params) == 'table' and type(p.params.shops) == 'table' and #p.params.shops > 0
                 and type(p.cells) == 'table' and type(anchor_of(p)) == 'table' and math.tointeger(p.z)
                 and (not ceil_z or p.z <= ceil_z)
@@ -647,7 +648,8 @@ function join_workshop_level(params, data, now, dry_run, open, ceil_z)
         return made[p.id] or nil
     end
     for _, same in ipairs({true, false}) do
-        for _, step in ipairs({'free', 'extend'}) do
+        -- (layout B) start_project asks for the free rooms alone first (join_steps), the floor next
+        for _, step in ipairs(type(params.join_steps) == 'table' and params.join_steps or {'free', 'extend'}) do
             for _, p in ipairs(cands) do
                 if (level_group(p) == group) == same then
                     local m = layout_of(p)
@@ -690,8 +692,17 @@ function start_project(params, now, dry_run)
         return {ok = false, rejected = true,
                 error = ('already %d unfinished building projects'):format(#open)}
     end
+    -- (layout B) hallway-first floors: a new level is offered to its floor's main hall first
+    -- (floor_site, ai-builder-floors.lua), and placed as before when the floor says no. Off
+    -- (the Rules switch at classic, a kind that stays classic, the floor parts absent, the
+    -- settings unreadable) nothing below runs differently.
+    local floors_on = type(floor_site) == 'function' and type(floor_mode) == 'function'
+        and FLOOR_KINDS and FLOOR_KINDS[kind] and params.floor ~= false and params.join ~= false
+        and floor_mode() == 'hallway'
     -- (0.105.54) a workshop goes into a standing workshops level first (join_workshop_level)
+    -- (layout B) with the floors on only into a free room now; the level is extended after the floor refused
     local join_why
+    if floors_on and kind == 'workshops' then params.join_steps = {'free'} end
     if kind == 'workshops' then
         local ceil0 = math.tointeger(params.max_elev)
         local okj, jr, jwhy = pcall(join_workshop_level, params, data, now, dry_run, open,
@@ -699,6 +710,7 @@ function start_project(params, now, dry_run)
         if okj and jr then return jr end
         if okj then join_why = jwhy else join_why = 'failed: ' .. tostring(jr) end
     end
+    params.join_steps = nil
     local stairs, why = find_stairs(STAIRS_TO_TRY)
     if not stairs then return {ok = false, error = why} end
     local reserved = {}
@@ -735,8 +747,24 @@ function start_project(params, now, dry_run)
     local plan = type(params.plan) == 'table' and params.plan or nil
     -- (0.105.23, 14.1 step 4c) max_elev: no level above it (the Deep mine keeps under the surface)
     local ceil = math.tointeger(params.max_elev)
-    local site, why2 = choose_site(L, stairs, reserved, plan, ceil and (ceil - OFFSET) or nil)
-    if not site then return {ok = false, error = why2} end
+    local site, why2, floor_why, floor_marks
+    if floors_on then
+        local okf, s2, L2, marks = pcall(floor_site, params, stairs, reserved, data, ceil and (ceil - OFFSET) or nil)
+        if okf and s2 then
+            site, L = s2, L2      -- everything below reads the floor's composed layout
+        else
+            floor_why = tostring(okf and L2 or s2):sub(1, 300)      -- (nil, why, marks) or the error
+            floor_marks = okf and marks or nil
+        end
+    end
+    if not site and floors_on and kind == 'workshops' then          -- the classic way: a standing level extended
+        params.join_steps = nil
+        local okj, jr, jwhy = pcall(join_workshop_level, params, data, now, dry_run, open, ceil and (ceil - OFFSET) or nil)
+        if okj and jr then jr.not_on_floor = floor_why; return jr end
+        if okj then join_why = jwhy or join_why else join_why = 'failed: ' .. tostring(jr) end
+    end
+    if not site then site, why2 = choose_site(L, stairs, reserved, plan, ceil and (ceil - OFFSET) or nil) end
+    if not site then return {ok = false, error = why2, not_on_floor = floor_why} end
 
     -- Dry run: Quickfort must agree that every tile can be designated.
     local dig = site_dig_cells(L, site.extra)
@@ -772,7 +800,8 @@ function start_project(params, now, dry_run)
                 stair = where.stair, anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,
                 area = site.area, tiles = expected, summary = L.summary, furniture = furniture,
                 decoration = {smooth = #decor.smooth, engrave = #decor.engrave},
-                ground_z = ground.ground_z, ground_elevation = ground.ground_elevation, cover = ground.cover}
+                ground_z = ground.ground_z, ground_elevation = ground.ground_elevation, cover = ground.cover,
+                floor = site.floor_result, not_on_floor = floor_why}     -- (layout B)
     end
 
     -- The level first, then the stairs; if anything goes wrong part-way,
@@ -806,6 +835,8 @@ function start_project(params, now, dry_run)
         z = site.z, area = site.area, corridor = site.corridor, new_corridor = site.new_corridor,
         stairs = stairs_cells, summary = L.summary, furniture = furniture,
         links = extra_list(site.extra),   -- (0.105.41) the corridor to the level: ai-traffic's High tiles
+        areas = site.areas,               -- (layout B) the new hall's box, kept beside the rooms' (project_areas)
+        floor = site.floor,               -- (layout B) {id, slots, hall, piles}: the floor this level is part of
         -- the exact cells, so later steps never depend on regenerating the layout
         cells = {dig = dig, build = build, place = L.place, zone = L.zone,
                  smooth = decor.smooth, engrave = decor.engrave},
@@ -813,6 +844,8 @@ function start_project(params, now, dry_run)
         plan = plan, in_district = site.in_district,   -- the overseer's hint, and whether it was met
         free_left = (kind == 'workshops' and (params.spare or 0) > 0) and params.spare or nil,   -- (0.105.54)
     }
+    -- (layout B) a floor's level: its new hall tiles are its links (links = site.links or extra_list(site.extra))
+    if site.links then p.links = site.links end
     data.next_id = data.next_id + 1
     table.insert(data.list, p)
     local saved = save_projects(data)
@@ -820,7 +853,14 @@ function start_project(params, now, dry_run)
         undo_dig(dig, stairs_cells, site.z, a, stair)
         return {ok = false, error = 'could not save the project with the fort, so it was undone'}
     end
+    -- (layout B) the floor's record: the level booked on it, or why it went the classic way
+    if site.floor and type(floor_commit) == 'function' then
+        pcall(floor_commit, site, p.id)
+    elseif floors_on and floor_why and type(floor_fallback) == 'function' then
+        pcall(floor_fallback, kind, floor_why, ez(site.z), floor_marks)
+    end
     return {ok = true, project_id = p.id, kind = kind, z = site.z, elevation = ez(site.z),
+            floor = site.floor_result, not_on_floor = floor_why,     -- (layout B)
             extends_stairs = site.extend, in_district = site.in_district,
             stair = {x = stair.x, y = stair.y},
             anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,   -- (0.105.33) Spacing
@@ -1725,6 +1765,8 @@ function finish_project(id, decor_only, stalled, give_up)
     if p.kind == 'tombs' then
         pcall(function() burial = reqscript('ai-welfare').open_tombs(project_areas(p)).opened end)
     end
+    -- (layout B) a floor level's pile rooms are booked for their shops (ai-builder-floorpiles.lua)
+    if p.floor and type(floor_book_piles) == 'function' then pcall(floor_book_piles, p) end
     return {ok = true, project_id = id, phase = p.phase, burial = burial, dropped = dropped}
 end
 
@@ -2020,6 +2062,8 @@ function cancel_project(id, unreached)
         p.cancelled_year = df.global.cur_year
     end
     save_projects(data)
+    -- (layout B) a floor level's slots and hall are taken out of its floor (ai-builder-floorstore.lua)
+    if p.floor and type(floor_release) == 'function' then pcall(floor_release, p) end
     return {ok = true, project_id = id}
 end
 
