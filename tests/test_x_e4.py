@@ -7,25 +7,25 @@ brain/design_rules.py's taste inputs, the digest default).
     python tests/test_x_e4.py
 
 At Design = Scripts, and with no citizens_taste section, behaviour is
-byte-identical to merged0: proved here by running merged0's own sources
-(git show merged0:...) beside these on the same inputs.
+byte-identical to merged0: proved by running merged0's own sources (git
+show 4b0de9a:...) beside these on the same inputs; since 0.105.48 (that
+commit is not in every clone) against the answers of 0.105.47, which
+matched merged0's, committed in tests/fixtures/snapshots/x_e4_*.json.
 """
 
 from __future__ import annotations
 
 import copy
-import importlib.util
 import json
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from lua_modules_util import module_src, with_util  # noqa: E402
+from lua_modules_util import module_src  # noqa: E402
 from harness import test, finish  # noqa: E402
+from snapshots import snapshot  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -34,15 +34,6 @@ except ImportError:
     sys.exit(0)
 
 SRC = module_src("ai-homes.lua")
-
-
-def merged0(path: str) -> str | None:
-    """A file as it stands on merged0 (None when git or the branch is missing)."""
-    try:
-        return subprocess.run(["git", "show", f"4b0de9a:{path}"], cwd=ROOT, capture_output=True, text=True,
-                              check=True, encoding="utf-8").stdout
-    except Exception:  # noqa: BLE001
-        return None
 
 
 # --- the fake game ----------------------------------------------------------------------
@@ -438,9 +429,6 @@ def _():
 
 @test("byte-identical: census() and house() without place give merged0's answers on test_homes' households")
 def _():
-    old = merged0("lua/ai-homes.lua")
-    assert old is not None, "merged0 not reachable"
-    old_src = with_util(old, "ai-homes.lua")
     specs = [
         {"units": [{"id": 1, "spouse": 2}, {"id": 2, "spouse": 1}, {"id": 3, "spouse": 4, "thoughts": ["SleptGrass"]},
                    {"id": 4, "spouse": 3}, {"id": 5, "child": True, "mother": 1}, {"id": 6, "child": True},
@@ -454,22 +442,20 @@ def _():
         {"units": [dict(ARTIST, cat=0), dict(LONER, cat=1), dict(SOCIAL, cat=2), {"id": 9, "spouse": 10}, {"id": 10, "spouse": 9}],
          "zones": rooms_at(3, 30, 52, 70) + [{"id": 20, "owner": 9, "items": [{"v": 3}]}, {"id": 21, "owner": 10, "items": [{"v": 9}]}]},
     ]
+    got = []
     for spec in specs:
         for call in ("census", "house_a", "house_b", "house_dry"):
-            outs = []
-            for src in (old_src, SRC):
-                env, owner_of, _, _ = game(copy.deepcopy(spec), src)
-                if call == "census":
-                    o = env.census()
-                elif call == "house_a":
-                    o = env.house(10, 0, False)
-                elif call == "house_b":
-                    o = env.house(0, 5, False)
-                else:
-                    o = env.house(10, 5, True)
-                outs.append((json.dumps(py(o), sort_keys=True),
-                             [owner_of(z["id"]) for z in spec["zones"]]))
-            assert outs[0] == outs[1], (call, outs)
+            env, owner_of, _, _ = game(copy.deepcopy(spec), SRC)
+            if call == "census":
+                o = env.census()
+            elif call == "house_a":
+                o = env.house(10, 0, False)
+            elif call == "house_b":
+                o = env.house(0, 5, False)
+            else:
+                o = env.house(10, 5, True)
+            got.append([call, json.dumps(py(o), sort_keys=True), [owner_of(z["id"]) for z in spec["zones"]]])
+    snapshot("x_e4_homes", got)
 
 
 # --- furnishing ---------------------------------------------------------------------------
@@ -624,17 +610,6 @@ import design  # noqa: E402
 import design_rules as R  # noqa: E402
 
 
-def old_rules():
-    src = merged0("brain/design_rules.py")
-    assert src is not None, "merged0 not reachable"
-    d = Path(tempfile.mkdtemp(prefix="e4-old-"))
-    (d / "design_rules_m0.py").write_text(src, encoding="utf-8")
-    spec = importlib.util.spec_from_file_location("design_rules_m0", d / "design_rules_m0.py")
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
-
-
 def site(**kw):
     s = {"stone_types": [{"token": "GRANITE", "name": "granite", "count": 80, "value": 3, "rgb": [0.3, 0.3, 0.3]},
                          {"token": "MICROCLINE", "name": "microcline", "count": 40, "value": 3, "rgb": [0.2, 0.4, 0.9]}],
@@ -650,20 +625,19 @@ SLIDERS = [{}, R.PRESET_SLIDERS["War-hold"], R.PRESET_SLIDERS["Garden fort"], R.
 
 @test("byte-identical: with no citizens_taste section, world_facts, rule_language, revise_for_era, the brief are merged0's")
 def _():
-    M0 = old_rules()
     hist = {"seed": "Tst", "sieges": 1, "beasts_slain": ["Og"]}
+    got = []
     for tr in SLIDERS:
         for st in (site(), site(river=True)):
             for h in ({"seed": "A"}, hist):
-                assert json.dumps(R.world_facts(st, h), sort_keys=True) == json.dumps(M0.world_facts(st, h), sort_keys=True)
-                a, b = R.rule_language(tr, h, st), M0.rule_language(tr, h, st)
-                assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True), (tr, a, b)
-                assert R.brief_text(R.world_facts(st, h)) == M0.brief_text(M0.world_facts(st, h))
-                assert R.revise_for_era(a, {"smooth": 1, "statues": 1}, h) == M0.revise_for_era(b, {"smooth": 1, "statues": 1}, h)
+                a = R.rule_language(tr, h, st)
+                got.append({"facts": R.world_facts(st, h), "language": a, "brief": R.brief_text(R.world_facts(st, h)),
+                            "era": R.revise_for_era(a, {"smooth": 1, "statues": 1}, h)})
+    snapshot("x_e4_design_rules", got)
     # a section counting nobody (or failed) is no taste either
     for t in ({}, {"adults": 0}, {"error": "x", "adults": 9}):
         st = site(citizens_taste=t)
-        assert R.rule_language({}, {"seed": "A"}, st) == M0.rule_language({}, {"seed": "A"}, site())
+        assert R.rule_language({}, {"seed": "A"}, st) == R.rule_language({}, {"seed": "A"}, site())
 
 
 def taste(adults, **lean):

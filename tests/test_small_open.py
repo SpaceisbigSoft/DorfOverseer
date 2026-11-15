@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, skip  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import planner  # noqa: E402
@@ -312,6 +312,10 @@ if LuaRuntime is not None:
     def _():
         src = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))   # (13c) with its parts
         assert code_has(src, "traction_rest = act_traction_rest") and code_has(src, "int_in(a.max or 1, 1, 3)")
+else:
+    @test("the 4 Lua test(s) of the block at line 270: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 # --- the mayor's meetings ---------------------------------------------------------

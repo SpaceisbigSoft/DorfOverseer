@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+from snapshots import snapshot  # noqa: E402
 from harness import test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
@@ -462,25 +463,12 @@ def _():
         assert not [p for p in props if p.action.get("kind") == "power"]
 
 
-def merged0(path: str) -> str | None:
-    import subprocess
-    try:
-        return subprocess.run(["git", "-C", str(ROOT), "show", f"4b0de9a:{path}"], capture_output=True, text=True,
-                              check=True).stdout
-    except Exception:  # noqa: BLE001
-        return None
-
-
 @test("planner: at Scripts (and with no power work) the proposals and notes are byte-identical to merged0's rule")
 def _():
-    import types
+    # (0.105.48) was run beside merged0's (4b0de9a) planner_water.py, a commit not in every
+    # clone (then "skipped" and counted as passed); now against 0.105.47's answers, which
+    # matched merged0's, in tests/fixtures/snapshots/x_e3_water_rule.json
     from unittest import mock
-    old_src = merged0("brain/planner_water.py")
-    if old_src is None:
-        print("        (merged0 not reachable: skipped)")
-        return
-    old = types.ModuleType("planner_water_merged0")
-    exec(compile(old_src, "planner_water_merged0", "exec"), old.__dict__)
     rows = [None,
             {"kind": "moat", "stage": "filling", "gate": "open", "depth": 2},
             {"kind": "irrigation", "stage": "held", "why": "water is still getting in", "gate": "shut"},
@@ -488,6 +476,7 @@ def _():
             {"kind": "moat", "stage": "held", "why": "liquid got out"},
             {"kind": "moat", "stage": "done", "gate": "open", "shut": "dwarves in deep water"}]
     n = 0
+    got = []
     for design in (None, "scripts"):
         for pump_stage in ("done", "filling", "held", "retired"):
             for river in (True, False):
@@ -498,23 +487,19 @@ def _():
                             st["waterworks"]["works"][extra["kind"]] = dict(extra)
                         if wet:
                             st["hazards"] = {"wet": [{"id": i} for i in range(wet)]}
-                        outs = []
-                        for mod in (planner_water, old):
-                            with mock.patch.object(mod, "young_fort", lambda s, c: False):
-                                props, notes = [], []
-                                mod._waterworks_rule(copy.deepcopy(st), None, dict(PLANNER_CONFIG), props, notes)
-                                outs.append((summary(props), notes))
-                        assert outs[0] == outs[1], (st, outs)
+                        with mock.patch.object(planner_water, "young_fort", lambda s, c: False):
+                            props, notes = [], []
+                            planner_water._waterworks_rule(copy.deepcopy(st), None, dict(PLANNER_CONFIG), props, notes)
+                        got.append([design, pump_stage, river, extra and extra["kind"], wet, summary(props), notes])
                         n += 1
     assert n == 2 * 4 * 2 * len(rows) * 2
+    snapshot("x_e3_water_rule", got)
 
 
 @test("the other kinds' steps are byte-identical to merged0's ai-waterworks.lua (a moat and a pump stack run through)")
 def _():
-    old_src = merged0("lua/ai-waterworks.lua")
-    if old_src is None:
-        print("        (merged0 not reachable: skipped)")
-        return
+    # (0.105.48) was traced beside merged0's ai-waterworks.lua (see above); now against
+    # 0.105.47's trace in tests/fixtures/snapshots/x_e3_pump_trace.json
 
     def trace(src):
         env = LUA.execute(FAKE, src)
@@ -541,7 +526,7 @@ def _():
         rep = env.report()
         out.append(json.dumps(sorted((k, v) for k, v in rep.works.pump.items() if not hasattr(v, "items"))))
         return out
-    assert trace(SRC) == trace(old_src)
+    snapshot("x_e3_pump_trace", trace(SRC))
 
 
 @test("planner: a running power is stepped each cycle (not busy), switched off in a flood, retired when held")

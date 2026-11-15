@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan, note_cycle  # noqa: E402
 from planner_core import Proposal, player_rules  # noqa: E402
@@ -417,8 +417,7 @@ return env, W
 
 @test("lua: the migration report (force script, waves queued, DFHack's hermit, the civ)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     env, w = lua.execute(FAKE, module_src("ai-recovery.lua"))
     r = env.report()
@@ -434,8 +433,7 @@ def _():
 
 @test("lua: call_migrants: a dry run queues nothing; it runs force Migrants once; refused with a wave queued")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     env, w = lua.execute(FAKE, module_src("ai-recovery.lua"))
     r = env.call_migrants(True)

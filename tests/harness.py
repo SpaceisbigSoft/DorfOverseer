@@ -33,6 +33,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS: list[tuple[str, bool, str]] = []
+SKIPS: list[tuple[str, str]] = []        # (name, why): tests that did not run (counted, never passes)
 TIMES: list[tuple[float, str]] = []      # (seconds, name): DFAI_TEST_TIMES=1 prints the slowest
 
 # DFAI_TEST_SHARD="i/n": run only every n-th test from the i-th (run_all splits
@@ -46,15 +47,42 @@ if not os.environ.get("DFAI_LOG_DIR"):
     atexit.register(shutil.rmtree, _TMP, True)
 
 
+class Skip(Exception):
+    """Raised by skip(): the test did not run (it neither passes nor fails)."""
+
+
+def skip(why: str):
+    """Stop this test here and count it as skipped, with the reason."""
+    raise Skip(why)
+
+
+def have_lua() -> bool:
+    """lupa (the Lua engine the bridge tests run on) can be imported."""
+    try:
+        from lupa.lua53 import LuaRuntime  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def need_lua() -> None:
+    """At the top of a test that runs Lua: without lupa it is skipped and
+    counted as skipped (run_all names it), never passed."""
+    if not have_lua():
+        skip("needs the lupa package (pip install lupa)")
+
+
 def run(name, fn, before=None) -> None:
     """Run one test now and keep its result. A failed assert keeps its
-    message; any other error keeps the traceback."""
+    message; any other error keeps the traceback; skip() counts as skipped."""
     t0 = time.perf_counter()
     try:
         if before is not None:
             before()
         fn()
         RESULTS.append((name, True, ""))
+    except Skip as e:
+        SKIPS.append((name, str(e)))
     except AssertionError as e:
         msg = str(e) or traceback.format_exc(limit=-1).strip()
         RESULTS.append((name, False, msg))
@@ -90,9 +118,12 @@ def code_has(src: str, snippet: str) -> bool:
 
 
 def finish(skipped: str | None = None) -> None:
-    """Print the results and exit (1 if any failed)."""
+    """Print the results and exit (1 if any failed). Skipped tests are
+    listed and counted on the totals line ("3 passed, 0 failed, 2 skipped")."""
     if skipped and not RESULTS:
         print(f"SKIPPED: {skipped}")
+    for name, why in SKIPS:
+        print(f"[SKIP] {name}: {why}")
     for name, ok, msg in RESULTS:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + ("" if ok or not msg else
                                                        "\n" + "\n".join("        " + x for x in msg.splitlines())))
@@ -101,5 +132,5 @@ def finish(skipped: str | None = None) -> None:
         for sec, name in sorted(TIMES, reverse=True)[:int(os.environ["DFAI_TEST_TIMES"]) or 10]:
             print(f"  {sec:6.2f}s  {name}")
     failed = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
+    print(f"\n{len(RESULTS) - failed} passed, {failed} failed" + (f", {len(SKIPS)} skipped" if SKIPS else ""))
     sys.exit(1 if failed else 0)

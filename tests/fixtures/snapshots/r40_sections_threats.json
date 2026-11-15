@@ -1,0 +1,145 @@
+{
+ "cavern_citizens": {
+  "list": {},
+  "n": 0
+ },
+ "fire": {
+  "fires": 1,
+  "guarded_tiles": 0,
+  "jobs_near": 1,
+  "spots": {
+   "1": {
+    "n": 1,
+    "near": 1,
+    "x": 12,
+    "y": 20,
+    "z": 120
+   }
+  }
+ },
+ "interrupters": {
+  "by_who": {},
+  "cancels": 0,
+  "list": {},
+  "reasons": {},
+  "window_days": 2
+ },
+ "openings": {
+  "list": {},
+  "n": 0
+ },
+ "prisoners": {
+  "cage_rooms": 0,
+  "caged": 1,
+  "in_traps": 0,
+  "inside": 0,
+  "kill_supported": false,
+  "list": {
+   "1": {
+    "id": 20,
+    "name": "Unit 20",
+    "race": "GOBLIN"
+   }
+  },
+  "outside": 0,
+  "outside_piles": 0,
+  "pit_zones": 0,
+  "release_supported": false
+ },
+ "rescue": {
+  "down": 1,
+  "holders": 1
+ },
+ "sealed": {},
+ "surface": {
+  "list": {
+   "1": {
+    "distance": 66,
+    "distance_outside": 66,
+    "great": true,
+    "id": 23,
+    "kind": "Titan",
+    "name": "Unit 23",
+    "size": 5000
+   }
+  },
+  "outside_dwarves": 1
+ },
+ "thieves": {
+  "evil_civ": true,
+  "kinds_seen": {
+   "snatcher": true,
+   "thief": true
+  },
+  "last_seen_days": 0,
+  "list": {
+   "1": {
+    "can_reach_dwarves": true,
+    "distance": 15,
+    "id": 21,
+    "inside": true,
+    "kind": "thief",
+    "name": "Unit 21",
+    "pos": {
+     "x": 31,
+     "y": 20,
+     "z": 120
+    },
+    "profession": "THIEF"
+   },
+   "2": {
+    "can_reach_dwarves": true,
+    "distance": 21,
+    "goal": "SeekKidnapVictim",
+    "id": 27,
+    "inside": true,
+    "kind": "snatcher",
+    "name": "Unit 27",
+    "pos": {
+     "x": 37,
+     "y": 20,
+     "z": 120
+    }
+   }
+  },
+  "now": 2,
+  "seen_total": 2
+ },
+ "undead": {
+  "cloud_material": "dust",
+  "cloud_near": 1,
+  "cloud_outside_near": 1,
+  "clouds": 1,
+  "evil": true,
+  "evilness": 40,
+  "list": {
+   "1": {
+    "can_reach_dwarves": true,
+    "distance": 65,
+    "id": 22,
+    "name": "Unit 22",
+    "outside": true
+   }
+  },
+  "reanimating": true,
+  "surface_corpses": 1,
+  "undead": 1
+ },
+ "were": {
+  "cells": {},
+  "changes": {
+   "1": {
+    "phase": 3,
+    "tick": 48389000
+   }
+  },
+  "list": {
+   "1": {
+    "changed": true,
+    "id": 7,
+    "name": "Unit 7"
+   }
+  },
+  "moon_phase": 3
+ }
+}

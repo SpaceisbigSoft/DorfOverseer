@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -364,9 +364,7 @@ def py(v):
 
 @test("ai-training-squad: make marks the squad (a dry run marks nothing), fill takes volunteers only, forget unmarks")
 def _():
-    if LuaRuntime is None:
-        print("  (lupa missing: Lua part skipped)")
-        return
+    need_lua()
     lua, env, w = world()
     r = py(env.make(True, None))
     assert r["dry_run"] and not py(env.marks())

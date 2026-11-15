@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 from planner import Memory, PLANNER_CONFIG, plan  # noqa: E402
@@ -111,8 +111,7 @@ def facts_env():
 
 @test("bridge: the pure helpers: breath kinds, an attack's kind, the attacks summed up, the armour hint, the flags")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env = facts_env()
     assert lua_list(env.breath_kinds("DRAGONFIRE")) == ["dragonfire"]
     assert lua_list(env.breath_kinds("FIREBALL")) == ["fire"]
@@ -142,8 +141,7 @@ def _():
 @test("bridge: add_facts reads a dragon (dragonfire, bite, scales, flier), an iron beast (deadly dust, deadly "
       "sting, no pain, metal), a raiser of the dead, a web sprayer; its wounds, blood and speed; once per caste")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env = facts_env()
 
     def unit(race, **kw):
@@ -177,8 +175,7 @@ def _():
     src = (ROOT / "lua" / "ai-bridge-report.lua").read_text(encoding="utf-8")
     assert "pcall(reqscript, 'ai-threat-facts')" in src
     assert "pcall(TF.add_facts, out.threats[#out.threats], u)" in src
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute("local s = ...; assert(load(s, 'x', 't', {}))", (ROOT / "lua" / "ai-threat-facts.lua").read_text())
 
@@ -199,8 +196,7 @@ return env
 @test("bridge: squad power by soldier: skill, coverage, the weapon's class, ranged with and without bolts, "
       "wounded and tired; melee and ranged apart")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     env = lua.execute(MIL_FAKE, module_src("ai-military.lua"))
     assert env.weapon_class("inorganic", "STEEL", True) == "steel"

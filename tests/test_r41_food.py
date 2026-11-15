@@ -24,7 +24,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, need_lua  # noqa: E402
+from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -165,6 +166,7 @@ def py(v):
 @test("report: food piles with box, tiles, used, barrels, open sky, distance to the kitchen; the AI's own by its "
       "registry and its levels' place cells; the player's not")
 def _():
+    need_lua()
     lua, env, w = world()
     k = w.shop(T(lua, {"type": "Kitchen", "x1": 20, "y1": 20}))
     mine = w.pile(T(lua, {"x1": 25, "y1": 20, "x2": 27, "y2": 22, "barrels": 3}))
@@ -190,6 +192,7 @@ def _():
 
 @test("report: a kitchen with no food pile near says whether a roofed pile would fit (room)")
 def _():
+    need_lua()
     lua, env, w = world()
     w.shop(T(lua, {"type": "Still", "x1": 20, "y1": 20}))
     r = py(env.report())
@@ -202,6 +205,7 @@ def _():
 
 @test("report: food items lying outside a pile, in a pile out of a container, in barrels and pots, rotten")
 def _():
+    need_lua()
     lua, env, w = world()
     w.pile(T(lua, {"x1": 30, "y1": 30, "x2": 32, "y2": 32}))
     barrel = T(lua, {"kind": "BARREL", "getType": None})
@@ -221,6 +225,7 @@ def _():
 @test("food_pile: a missing pile is placed on roofed floor near the kitchen, sized as asked, its max barrels set, "
       "remembered as the AI's own")
 def _():
+    need_lua()
     lua, env, w = world()
     k = w.shop(T(lua, {"type": "Kitchen", "x1": 20, "y1": 20}))
     for x in range(0, 60):                      # the rows just round the kitchen are open to the sky
@@ -240,6 +245,7 @@ def _():
 
 @test("food_pile: refused while a food pile is near (anyone's), unless more; a dry run places nothing")
 def _():
+    need_lua()
     lua, env, w = world()
     k = w.shop(T(lua, {"type": "Kitchen", "x1": 20, "y1": 20}))
     w.pile(T(lua, {"x1": 30, "y1": 20, "x2": 31, "y2": 21}))
@@ -254,6 +260,7 @@ def _():
 
 @test("food_pile: no roofed floor in reach: not placed, says so")
 def _():
+    need_lua()
     lua, env, w = world()
     k = w.shop(T(lua, {"type": "Kitchen", "x1": 20, "y1": 20}))
     for x in range(0, 60):
@@ -265,6 +272,7 @@ def _():
 
 @test("food_barrels: the AI's pile takes the barrels; the player's pile is refused and left exactly as it was")
 def _():
+    need_lua()
     lua, env, w = world()
     mine = w.pile(T(lua, {"x1": 30, "y1": 30, "x2": 32, "y2": 32}))
     theirs = w.pile(T(lua, {"x1": 40, "y1": 40, "x2": 42, "y2": 42, "barrels": 2}))
@@ -286,6 +294,7 @@ ACTS = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
 @test("bridge: food_pile and food_barrels in ACTIONS and DRY_OK, the food_store section (cached a day, cleared by "
       "the actions), ai-food-store in BRIDGE_MODULES; the kitchen's feeder pile remembered as the AI's")
 def _():
+    need_lua()
     dry = BRIDGE[BRIDGE.index("DRY_OK = {}"):BRIDGE.index("}) do DRY_OK[name] = true end")]
     for a in ("food_pile", "food_barrels"):
         assert code_has(BRIDGE, f"{a} = act_{a},"), a
@@ -306,6 +315,7 @@ def _():
 
 @test("bridge: the handlers check their numbers and pass dry_run on")
 def _():
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     f = lua.eval("""function(src)
         local seen = {}
@@ -496,10 +506,7 @@ brain = Path(sys.argv[1]); sys.path.insert(0, str(brain))
 fixtures = Path(sys.argv[2])
 from digest import normalize, digest
 from planner import Memory, plan, record, select, note_cycle, TICKS_PER_DAY
-from planner import PLANNER_CONFIG as _PC
-_PC.update({"survival_floor": 0, "mandate_shields": False, "mandates_low_deference": False})  # (item5) its floor and mandate changes off: main's behaviour compared
-_PC.update({"recreation_min_citizens": 30, "meals_cap_skip_share": 99, "stress_need_care": False})  # (0.105.47, I7b) the small-fort welfare changes off: main's behaviour compared
-_PC.update({"crisis_hold_table": False})  # (0.105.48, K5) crisis holds by the old 14 names: main's behaviour compared
+# (0.105.48) no rule switched off: the plan as the game runs it, against the snapshot
 out = {}
 for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.json")):
     base = json.loads(path.read_text(encoding="utf-8"))
@@ -523,20 +530,6 @@ for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.j
 print(json.dumps(out, sort_keys=True))
 '''
 
-_MAIN = {}
-
-
-def main_brain() -> Path | None:
-    if "dir" not in _MAIN:
-        tmp = tempfile.mkdtemp(prefix="r41-food-main-")
-        arch = subprocess.run(["git", "-C", str(ROOT), "archive", "main", "brain"], capture_output=True)
-        if arch.returncode != 0:
-            _MAIN["dir"] = None
-        else:
-            subprocess.run(["tar", "-x", "-C", tmp], input=arch.stdout, check=True)
-            _MAIN["dir"] = Path(tmp) / "brain"
-            atexit.register(shutil.rmtree, tmp, True)
-    return _MAIN["dir"]
 
 
 def probe(brain: Path) -> str:
@@ -552,13 +545,12 @@ def probe(brain: Path) -> str:
 @test("no food_store section in the report: plan(), note_cycle() and the digest are main's, byte for byte "
       "(every fixture, slow and not, 3 cycles)")
 def _():
-    main = main_brain()
-    assert main is not None, "no main branch to compare with"
-    a, b = probe(main), probe(ROOT / "brain")
-    if a != b:
-        ja, jb = json.loads(a), json.loads(b)
-        bad = [k for k in ja if ja[k] != jb.get(k)]
-        raise AssertionError(f"differs from main at {bad[:3]}")
+    # (0.105.48) was compared with `git archive main`: main moves (and in a clone where
+    # it is HEAD this compared the tree with itself), and without it the test passed.
+    # Now with the plan of 0.105.47 (main then) under the same switches, committed in
+    # tests/fixtures/snapshots/r41_food_main_plan.json. A change of the plan on purpose: record
+    # it again (DFAI_SNAPSHOT_WRITE=1) and say so.
+    snapshot("r41_food_main_plan", plan_cases(probe(ROOT / "brain")))
 
 
 if LuaRuntime is None:

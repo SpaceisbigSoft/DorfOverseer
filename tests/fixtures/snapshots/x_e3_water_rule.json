@@ -1,0 +1,4970 @@
+[
+ [
+  null,
+  "done",
+  true,
+  null,
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  null,
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "done",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  null,
+  0,
+  [
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  null,
+  0,
+  [
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "filling",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  null,
+  0,
+  [
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  null,
+  0,
+  [
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "held",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  null,
+  0,
+  [],
+  [
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  null,
+  10,
+  [],
+  [
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  null,
+  0,
+  [],
+  [
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  null,
+  10,
+  [],
+  [
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  null,
+  "retired",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  null,
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  null,
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "done",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: done, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  null,
+  0,
+  [
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  null,
+  0,
+  [
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "filling",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"type\": \"water_work\"}",
+    "the pump stack: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: filling, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  null,
+  0,
+  [
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  null,
+  0,
+  [
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  null,
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "held",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"pump\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the pump stack's floodgate",
+    0
+   ],
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_pump",
+    "{\"kind\": \"pump\", \"retire\": true, \"type\": \"water_work\", \"why\": \"held\"}",
+    "the pump stack is held (None): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: held, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  null,
+  0,
+  [],
+  [
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  null,
+  10,
+  [],
+  [
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  true,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  null,
+  0,
+  [],
+  [
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  null,
+  10,
+  [],
+  [
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ],
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"type\": \"water_work\"}",
+    "the moat: filling: the next step",
+    5
+   ]
+  ],
+  [
+   "the moat: filling, 2/7 deep, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "irrigation",
+  0,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "irrigation",
+  10,
+  [
+   [
+    "waterworks_irrigation",
+    "{\"kind\": \"irrigation\", \"recheck\": true, \"type\": \"water_work\", \"why\": \"recheck: the leak watch\"}",
+    "the muddied farm level is held (water is still getting in): look again: un-held once it is dry",
+    6
+   ]
+  ],
+  [
+   "the muddied farm level: held, floodgate shut (water is still getting in)",
+   "the muddied farm level is held (water is still getting in): the AI keeps it watched and doesn't retire it while water may still get in",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "magma",
+  0,
+  [
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "magma",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the magma workshop's floodgate",
+    0
+   ],
+   [
+    "waterworks_check",
+    "{\"kind\": \"magma\", \"shop\": \"MagmaForge\", \"type\": \"water_work\"}",
+    "the MagmaForge over the magma: done: the leak check",
+    7
+   ]
+  ],
+  [
+   "the MagmaForge over the magma: done, floodgate open",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"retire\": true, \"type\": \"water_work\", \"why\": \"liquid got out\"}",
+    "the moat is held (liquid got out): retire it, its floodgate shut for good (planned afresh after a while, at most twice; the old site only if its dry run passes again)",
+    4
+   ]
+  ],
+  [
+   "the moat: held (liquid got out)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "moat",
+  0,
+  [
+   [
+    "waterworks_moat",
+    "{\"kind\": \"moat\", \"reopen\": true, \"type\": \"water_work\", \"why\": \"reopen: no dwarves in deep water now\"}",
+    "the moat: the flood is over: open its floodgate again",
+    5
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ],
+ [
+  "scripts",
+  "retired",
+  false,
+  "moat",
+  10,
+  [
+   [
+    "waterworks_shut",
+    "{\"kind\": \"moat\", \"shut\": true, \"type\": \"water_work\", \"why\": \"dwarves in deep water\"}",
+    "10 dwarves in deep water: shut the moat's floodgate",
+    0
+   ]
+  ],
+  [
+   "the moat: done, floodgate open",
+   "the moat: its floodgate was shut (dwarves in deep water)",
+   "the pump stack: retired, floodgate open"
+  ]
+ ]
+]

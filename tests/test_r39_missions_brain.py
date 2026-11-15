@@ -22,6 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
+from snapshots import plan_cases, snapshot  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 from planner import Memory, PLANNER_CONFIG, TICKS_PER_YEAR, abs_tick, note_cycle, plan, player_rules  # noqa: E402
@@ -35,8 +36,6 @@ CFG = PLANNER_CONFIG
 def target(goal="rescue", site_id=101, dist=5, **kw) -> dict:
     t = {"goal": goal, "site_id": site_id, "site": f"Site{site_id}", "dist": dist, "civ_id": 7, "civ": "The Goblins",
          "why": "held there", "hostile": False, "at_war": False}
-    if goal in ("raid", "pillage", "tribute", "conquer"):
-        t["type"] = "Town"          # (0.105.48, K9) only sites people live in are attacked
     if goal == "rescue":
         t.update(hf_id=900 + site_id, hf="Urist McHeld")
     if goal == "recover_artifact":
@@ -48,7 +47,6 @@ def target(goal="rescue", site_id=101, dist=5, **kw) -> dict:
 def fort(targets=None, militarism=0, send=None, **rules) -> dict:
     s = copy.deepcopy(BASE)
     s["settings"]["traits"] = {"militarism": militarism}
-    s["settings"]["raid_policy"] = "ai"      # (0.105.48, K9) 'off' by default now: these tests had 'ai'
     s["settings"].update(rules)
     for q in s["military"]["squads"]:
         q["power"] = {"power": 10.0, "armed": q["members"], "armored": 0}
@@ -563,10 +561,7 @@ brain = Path(sys.argv[1]); sys.path.insert(0, str(brain))
 fixtures = Path(sys.argv[2])
 from digest import normalize
 from planner import Memory, plan, record, select, note_cycle, TICKS_PER_DAY
-from planner import PLANNER_CONFIG as _PC
-_PC.update({"survival_floor": 0, "mandate_shields": False, "mandates_low_deference": False})  # (item5) its floor and mandate changes off: main's behaviour compared
-_PC.update({"recreation_min_citizens": 30, "meals_cap_skip_share": 99, "stress_need_care": False})  # (0.105.47, I7b) the small-fort welfare changes off: main's behaviour compared
-_PC.update({"crisis_hold_table": False})  # (0.105.48, K5) crisis holds by the old 14 names: main's behaviour compared
+# (0.105.48) no rule switched off: the plan as the game runs it, against the snapshot
 out = {}
 for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.json")):
     base = json.loads(path.read_text(encoding="utf-8"))
@@ -594,20 +589,6 @@ for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.j
 print(json.dumps(out, sort_keys=True))
 '''
 
-_MAIN = {}
-
-
-def main_brain() -> Path | None:
-    if "dir" not in _MAIN:
-        tmp = tempfile.mkdtemp(prefix="r39-main-")
-        arch = subprocess.run(["git", "-C", str(ROOT), "archive", "main", "brain"], capture_output=True)
-        if arch.returncode != 0:
-            _MAIN["dir"] = None
-        else:
-            subprocess.run(["tar", "-x", "-C", tmp], input=arch.stdout, check=True)
-            _MAIN["dir"] = Path(tmp) / "brain"
-            atexit.register(shutil.rmtree, tmp, True)
-    return _MAIN["dir"]
 
 
 def probe(brain: Path) -> str:
@@ -623,13 +604,12 @@ def probe(brain: Path) -> str:
 @test("no missions.targets in the report: plan() and note_cycle() are main's, byte for byte (7 fixtures, with and "
       "without a missions section, 3 cycles)")
 def _():
-    main = main_brain()
-    assert main is not None, "no main branch to compare with"
-    a, b = probe(main), probe(ROOT / "brain")
-    if a != b:
-        ja, jb = json.loads(a), json.loads(b)
-        bad = [k for k in ja if ja[k] != jb.get(k)]
-        raise AssertionError(f"differs from main at {bad[:3]}")
+    # (0.105.48) was compared with `git archive main`: main moves (and in a clone where
+    # it is HEAD this compared the tree with itself), and without it the test passed.
+    # Now with the plan of 0.105.47 (main then) under the same switches, committed in
+    # tests/fixtures/snapshots/r39_missions_brain_main_plan.json. A change of the plan on purpose: record
+    # it again (DFAI_SNAPSHOT_WRITE=1) and say so.
+    snapshot("r39_missions_brain_main_plan", plan_cases(probe(ROOT / "brain")))
 
 
 finish()

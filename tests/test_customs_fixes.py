@@ -31,7 +31,11 @@ import planner as pl  # noqa: E402
 import planner_building as pb  # noqa: E402
 from planner import Memory, Proposal, plan  # noqa: E402
 from planner_industry import _deep_surface_filter  # noqa: E402
-from lupa.lua53 import LuaRuntime  # noqa: E402
+try:
+    from lupa.lua53 import LuaRuntime  # noqa: E402
+except ImportError:
+    print("SKIPPED: these tests need the lupa package (pip install lupa)")
+    sys.exit(0)
 
 test = make_test()
 

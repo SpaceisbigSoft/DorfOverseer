@@ -24,7 +24,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
+from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -268,6 +269,7 @@ def labors(env, u):
 @test("lua pure: an item's hauling labour (stone, wood, food, refuse, furniture, a caged animal, the rest items); "
       "a job's own labour and the stockpile job's subtype first")
 def _():
+    need_lua()
     lua, env, w = world()
     for kind, want in (("BOULDER", "HAUL_STONE"), ("WOOD", "HAUL_WOOD"), ("MEAT", "HAUL_FOOD"),
                        ("REMAINS", "HAUL_REFUSE"), ("CORPSE", "HAUL_BODY"), ("BED", "HAUL_FURNITURE"),
@@ -283,6 +285,7 @@ def _():
 @test("lua pure: haulers picked least-skilled first (ties to the lower id); key workers relieved in order "
       "(the chief medical dwarf, doctors, offices, posts, the legendary)")
 def _():
+    need_lua()
     lua, env, w = world()
     got = py(env.pick_haulers(T(lua, [{"id": 9, "best": 5}, {"id": 4, "best": 0}, {"id": 2, "best": 0},
                                       {"id": 7, "best": 2}]), 3))
@@ -298,6 +301,7 @@ def _():
 @test("lua report: haul jobs by labour (the job's own, the stockpile subtype, the item), waiting and taken, "
       "suspended and other jobs left out; the waiting age follows the item across a re-made job")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     w.job(T(lua, {"item": {"id": 501, "kind": "BOULDER"}}))
@@ -326,6 +330,7 @@ def _():
 @test("lua report: haulers (soldiers and children not counted), idle ones, the idle who don't haul (no "
       "specialist you made, no key worker), the key workers who haul and through what; the details")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     r = py(env.report())
@@ -346,6 +351,7 @@ def _():
 @test("lua add_haulers: idle civilians who don't haul put on the AI's own detail (made once, only selected, "
       "the ten labours), least skilled first; the game's Haulers and your own detail untouched; a dry run changes nothing")
 def _():
+    need_lua()
     lua, env, w = world()
     game, yours = fort(lua, w)
     before = (members(game), members(yours), int(game.flags.mode), int(yours.flags.mode))
@@ -376,6 +382,7 @@ def _():
 @test("lua add_haulers: a Haulers detail at nobody (your choice) refused; the AI's detail removed or set to "
       "everybody by you: yours, never made again")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w, mode="NobodyDoesThis")
     r = py(env.add_haulers(2, False))
@@ -400,6 +407,7 @@ def _():
 @test("lua relieve_haulers: at 'everybody', key workers made specialists (remembered) and off hauling, labours "
       "given straight to a post kept; one you set back is yours; back gives hauling back")
 def _():
+    need_lua()
     lua, env, w = world()
     game, yours = fort(lua, w, mode="EverybodyDoesThis")
     doc = env.df.unit.find(6)
@@ -439,6 +447,7 @@ def _():
 @test("lua relieve_haulers: a key worker on the AI's own detail taken off it; one hauling through your own "
       "detail left alone")
 def _():
+    need_lua()
     lua, env, w = world()
     game, yours = fort(lua, w, members=(1,))
     assert py(env.add_haulers(2, False))["ok"]           # 4 and 3 on the AI's detail
@@ -577,6 +586,7 @@ def _():
 @test("fix 7: a key worker given labour by another 'everybody' detail too is yours: never relieved by the "
       "specialist mark (it would strip that detail as well)")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w, mode="EverybodyDoesThis")
     w.detail(T(lua, {"name": "Everyone plants", "mode": "EverybodyDoesThis", "icon": "CUSTOM_1", "labors": ["PLANT"]}))
@@ -597,6 +607,7 @@ def _():
 
 @test("fix 8: the AI's detail is never made while a labor screen is open (later, once it is closed)")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     lua.execute("""local env = ...
@@ -616,6 +627,7 @@ def _():
 @test("fix 9: the AI's detail has its own icon (CUSTOM_8, never Haulers); find_details never takes it (or an "
       "older one with the Haulers icon) for the game's; an older one gets its own icon")
 def _():
+    need_lua()
     lua, env, w = world()
     game, _ = fort(lua, w)
     assert py(env.add_haulers(1, False))["ok"]
@@ -637,6 +649,7 @@ def _():
 
 @test("fix 10: a dwarf in a strange mood is neither relieved nor made a hauler")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w, mode="EverybodyDoesThis")
     u = w.unit(T(lua, {"id": 11, "mood": 0, "busy": True}))          # Fey, on the everybody Haulers
@@ -656,6 +669,7 @@ def _():
 @test("fix 11 (lua): the dwarves the AI added remembered; shrink takes off its detail only those on it a week "
       "or more, the most skilled first; one you took off is forgotten; a Haulers detail at only selected: none added")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     assert py(env.add_haulers(3, False))["ok"]                # 4, 3, 5
@@ -725,6 +739,7 @@ def _():
 
 @test("fix 12: the waiting items' first-seen ticks cleared when the map unloads")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     w.job(T(lua, {"item": {"id": 501, "kind": "BOULDER"}}))
@@ -760,10 +775,7 @@ brain = Path(sys.argv[1]); sys.path.insert(0, str(brain))
 fixtures = Path(sys.argv[2])
 from digest import normalize
 from planner import Memory, plan, record, select, note_cycle, TICKS_PER_DAY
-from planner import PLANNER_CONFIG as _PC
-_PC.update({"survival_floor": 0, "mandate_shields": False, "mandates_low_deference": False})  # (item5) its floor and mandate changes off: main's behaviour compared
-_PC.update({"recreation_min_citizens": 30, "meals_cap_skip_share": 99, "stress_need_care": False})  # (0.105.47, I7b) the small-fort welfare changes off: main's behaviour compared
-_PC.update({"crisis_hold_table": False})  # (0.105.48, K5) crisis holds by the old 14 names: main's behaviour compared
+# (0.105.48) no rule switched off: the plan as the game runs it, against the snapshot
 out = {}
 for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.json")):
     base = json.loads(path.read_text(encoding="utf-8"))
@@ -786,20 +798,6 @@ for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.j
 print(json.dumps(out, sort_keys=True))
 '''
 
-_MAIN = {}
-
-
-def main_brain() -> Path | None:
-    if "dir" not in _MAIN:
-        tmp = tempfile.mkdtemp(prefix="r41-main-")
-        arch = subprocess.run(["git", "-C", str(ROOT), "archive", "main", "brain"], capture_output=True)
-        if arch.returncode != 0:
-            _MAIN["dir"] = None
-        else:
-            subprocess.run(["tar", "-x", "-C", tmp], input=arch.stdout, check=True)
-            _MAIN["dir"] = Path(tmp) / "brain"
-            atexit.register(shutil.rmtree, tmp, True)
-    return _MAIN["dir"]
 
 
 def probe(brain: Path) -> str:
@@ -815,13 +813,12 @@ def probe(brain: Path) -> str:
 @test("no hauling section in the report: plan() and note_cycle() are main's, byte for byte (every fixture, "
       "slow and not, 3 cycles)")
 def _():
-    main = main_brain()
-    assert main is not None, "no main branch to compare with"
-    a, b = probe(main), probe(ROOT / "brain")
-    if a != b:
-        ja, jb = json.loads(a), json.loads(b)
-        bad = [k for k in ja if ja[k] != jb.get(k)]
-        raise AssertionError(f"differs from main at {bad[:3]}")
+    # (0.105.48) was compared with `git archive main`: main moves (and in a clone where
+    # it is HEAD this compared the tree with itself), and without it the test passed.
+    # Now with the plan of 0.105.47 (main then) under the same switches, committed in
+    # tests/fixtures/snapshots/r41_hauling_main_plan.json. A change of the plan on purpose: record
+    # it again (DFAI_SNAPSHOT_WRITE=1) and say so.
+    snapshot("r41_hauling_main_plan", plan_cases(probe(ROOT / "brain")))
 
 
 if LuaRuntime is None:

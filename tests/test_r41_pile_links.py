@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, skip  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -338,6 +338,10 @@ if LuaRuntime is not None:
         env.remember_feeder(25, 20, 100, shop.id, "Masons", "stone")
         assert len(py(env.registry())["feeders"]) == 1
         assert env.remember_feeder(1, 1, 100, shop.id, "Masons", "stone") is False
+else:
+    @test("the 10 Lua test(s) of the block at line 168: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 # --- 3. the bridge, the switch ------------------------------------------------------------

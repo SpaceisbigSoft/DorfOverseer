@@ -1,0 +1,147 @@
+{
+ "caverns": {
+  "1": {
+   "discovered": false,
+   "name": "Cavern3",
+   "open": false,
+   "seen": 0,
+   "z_bottom": 44,
+   "z_top": 44
+  },
+  "2": {
+   "column": {
+    "1": {
+     "cavern": true,
+     "shape": "?",
+     "z": 35
+    },
+    "2": {
+     "cavern": true,
+     "shape": "?",
+     "z": 36
+    },
+    "3": {
+     "cavern": true,
+     "shape": "?",
+     "z": 37
+    },
+    "4": {
+     "cavern": true,
+     "shape": "?",
+     "z": 38
+    },
+    "5": {
+     "cavern": true,
+     "shape": "?",
+     "z": 39
+    },
+    "6": {
+     "cavern": true,
+     "shape": "?",
+     "z": 40
+    },
+    "7": {
+     "cavern": true,
+     "shape": "?",
+     "z": 41
+    }
+   },
+   "discovered": true,
+   "junctions": {},
+   "name": "Cavern2",
+   "open": true,
+   "open_at": {
+    "x": 0,
+    "y": 0,
+    "z": 35
+   },
+   "seen": 11,
+   "z_bottom": 35,
+   "z_top": 39
+  },
+  "3": {
+   "column": {
+    "1": {
+     "cavern": true,
+     "shape": "?",
+     "z": 30
+    },
+    "2": {
+     "cavern": true,
+     "shape": "?",
+     "z": 31
+    },
+    "3": {
+     "cavern": true,
+     "shape": "?",
+     "z": 32
+    },
+    "4": {
+     "cavern": true,
+     "shape": "?",
+     "z": 33
+    },
+    "5": {
+     "cavern": true,
+     "shape": "?",
+     "z": 34
+    },
+    "6": {
+     "cavern": true,
+     "shape": "?",
+     "z": 35
+    },
+    "7": {
+     "cavern": true,
+     "shape": "?",
+     "z": 36
+    }
+   },
+   "discovered": true,
+   "junctions": {},
+   "name": "Cavern1",
+   "open": true,
+   "open_at": {
+    "x": 0,
+    "y": 5,
+    "z": 30
+   },
+   "seen": 10,
+   "z_bottom": 30,
+   "z_top": 34
+  }
+ },
+ "cursed": {
+  "1": {
+   "id": 5,
+   "kind": "vampire",
+   "name": "Unit 5"
+  },
+  "2": {
+   "id": 7,
+   "kind": "werebeast",
+   "name": "Unit 7"
+  }
+ },
+ "dangers": {
+  "1": {
+   "can_reach_dwarves": true,
+   "id": 22,
+   "kind": "undead",
+   "name": "Unit 22"
+  },
+  "2": {
+   "can_reach_dwarves": true,
+   "id": 23,
+   "kind": "titan",
+   "name": "Unit 23"
+  },
+  "3": {
+   "id": 25,
+   "kind": "forgotten beast",
+   "layer": "between_layers",
+   "name": "Unit 25"
+  }
+ },
+ "dangers_total": 3
+}

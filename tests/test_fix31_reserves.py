@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan, select  # noqa: E402
 from planner_core import NEEDS_YOU, Proposal  # noqa: E402
@@ -235,6 +235,10 @@ if LuaRuntime is not None:
         assert r.ok and len(fibre()) == 1, (dict(r), fibre())
         r = B.set_farm_crops(lua.table_from({"thread": True}), False)   # one grows: no second
         assert len(fibre()) == 1 and r.changed == 0, dict(r)
+else:
+    @test("the 2 Lua test(s) of the block at line 192: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 if __name__ == "__main__":

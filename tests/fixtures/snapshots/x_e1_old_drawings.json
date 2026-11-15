@@ -1,0 +1,1211 @@
+{
+ "bad_door_in_air": {
+  "cost": {
+   "built": 5,
+   "doors": 1,
+   "dug": 0,
+   "items": 0,
+   "jobs": 20,
+   "stairs": 1,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SUPPORT",
+    "level": 2,
+    "words": "L2 x0 y1: nothing to stand on: open air ('_') below",
+    "x": 0,
+    "y": 1
+   }
+  ]
+ },
+ "bad_doors": {
+  "cost": {
+   "built": 0,
+   "doors": 9,
+   "dug": 20,
+   "items": 0,
+   "jobs": 20,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "LIMIT",
+    "words": "9 doors; at most 8"
+   }
+  ]
+ },
+ "bad_empty_lower": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "REACH",
+    "level": 2,
+    "words": "L2: nothing drawn on this level"
+   }
+  ]
+ },
+ "bad_finish": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "FORMAT",
+    "words": "finish smooth must be 0 to 3"
+   }
+  ]
+ },
+ "bad_floating": {
+  "cost": {
+   "built": 3,
+   "doors": 0,
+   "dug": 0,
+   "items": 0,
+   "jobs": 12,
+   "stairs": 1,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SUPPORT",
+    "level": 2,
+    "words": "L2 x0 y0: nothing to stand on: open air ('_') below",
+    "x": 0,
+    "y": 0
+   }
+  ]
+ },
+ "bad_floor_on_wall": {
+  "cost": {
+   "built": 7,
+   "doors": 0,
+   "dug": 0,
+   "items": 0,
+   "jobs": 28,
+   "stairs": 1,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SUPPORT",
+    "level": 2,
+    "words": "L2 x0 y0: the wall below already makes a floor here; use '.'",
+    "x": 0,
+    "y": 0
+   }
+  ]
+ },
+ "bad_ground": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 1,
+   "items": 0,
+   "jobs": 1,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "FORMAT",
+    "words": "ground must be 'rock' or 'surface'"
+   }
+  ]
+ },
+ "bad_island": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 3,
+   "items": 0,
+   "jobs": 3,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "REACH",
+    "level": 1,
+    "words": "L1 x1 y3: not reached from '@'",
+    "x": 1,
+    "y": 3
+   }
+  ]
+ },
+ "bad_join_row": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "JOIN",
+    "level": 1,
+    "words": "L1 x1 y1: '@' must be in row 0 of level 1",
+    "x": 1,
+    "y": 1
+   }
+  ]
+ },
+ "bad_legend_count": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 14,
+   "items": 13,
+   "jobs": 144,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "LEGEND",
+    "words": "13 legend entries; at most 12"
+   }
+  ]
+ },
+ "bad_legend_item": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "LEGEND",
+    "words": "legend 'a': 'Throne' is not an item"
+   }
+  ]
+ },
+ "bad_legend_missing": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "LEGEND",
+    "level": 1,
+    "words": "L1 x1 y1: 'a' is not in the legend",
+    "x": 1,
+    "y": 1
+   }
+  ]
+ },
+ "bad_level_size": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 3,
+   "items": 0,
+   "jobs": 3,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SIZE",
+    "level": 2,
+    "words": "L2: 1 rows; level 1 has 2"
+   }
+  ]
+ },
+ "bad_name": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "FORMAT",
+    "words": "name: letters, spaces and apostrophes, up to 40"
+   }
+  ]
+ },
+ "bad_no_join": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 1,
+   "items": 0,
+   "jobs": 1,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "JOIN",
+    "words": "no '@' (the join, in row 0 of level 1)"
+   }
+  ]
+ },
+ "bad_no_levels": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 0,
+   "items": 0,
+   "jobs": 0,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "FORMAT",
+    "words": "levels must be a list of 1 to 5 levels"
+   }
+  ]
+ },
+ "bad_purpose": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "FORMAT",
+    "words": "purpose must be a landmark kind"
+   }
+  ]
+ },
+ "bad_ragged": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 3,
+   "items": 0,
+   "jobs": 3,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SIZE",
+    "level": 1,
+    "words": "L1 y1: 4 tiles wide; row 0 of level 1 has 3",
+    "y": 1
+   }
+  ]
+ },
+ "bad_ramp_under_rock": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 4,
+   "items": 0,
+   "jobs": 4,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "STAIRS",
+    "level": 2,
+    "words": "L2 x1 y2: a ramp needs dug floor ('.' or ',') above it",
+    "x": 1,
+    "y": 2
+   }
+  ]
+ },
+ "bad_rock_in_surface": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 0,
+   "items": 0,
+   "jobs": 0,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SYMBOL",
+    "level": 1,
+    "words": "L1 x0 y0: '#' is not in the surface alphabet",
+    "x": 0,
+    "y": 0
+   },
+   {
+    "code": "SYMBOL",
+    "level": 1,
+    "words": "L1 x2 y0: '#' is not in the surface alphabet",
+    "x": 2,
+    "y": 0
+   }
+  ]
+ },
+ "bad_row_type": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 1,
+   "items": 0,
+   "jobs": 1,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "FORMAT",
+    "level": 1,
+    "words": "L1 y1: a row must be a string",
+    "y": 1
+   }
+  ]
+ },
+ "bad_six_levels": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 6,
+   "items": 0,
+   "jobs": 6,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SIZE",
+    "words": "6 levels; at most 5"
+   }
+  ]
+ },
+ "bad_stair_below_rock": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 3,
+   "items": 0,
+   "jobs": 3,
+   "stairs": 1,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "STAIRS",
+    "level": 1,
+    "words": "L1 x1 y1: a down stair needs '<' or 'X' below it",
+    "x": 1,
+    "y": 1
+   },
+   {
+    "code": "REACH",
+    "level": 2,
+    "words": "L2 x1 y1: not reached from '@'",
+    "x": 1,
+    "y": 1
+   }
+  ]
+ },
+ "bad_stair_columns": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 13,
+   "items": 0,
+   "jobs": 13,
+   "stairs": 5,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "LIMIT",
+    "words": "5 stair columns; at most 4"
+   }
+  ]
+ },
+ "bad_stair_into_nothing": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 3,
+   "items": 0,
+   "jobs": 3,
+   "stairs": 1,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "STAIRS",
+    "level": 2,
+    "words": "L2 x1 y1: 'X' needs '<' or 'X' below it",
+    "x": 1,
+    "y": 1
+   },
+   {
+    "code": "REACH",
+    "level": 3,
+    "words": "L3: nothing drawn on this level"
+   }
+  ]
+ },
+ "bad_statue_blocks": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 6,
+   "items": 1,
+   "jobs": 16,
+   "stairs": 0,
+   "statues": 1
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "REACH",
+    "level": 1,
+    "words": "L1 x1 y2: not reached from '@'",
+    "x": 1,
+    "y": 2
+   },
+   {
+    "code": "REACH",
+    "level": 1,
+    "words": "L1 x1 y3: not reached from '@'",
+    "x": 1,
+    "y": 3
+   },
+   {
+    "code": "REACH",
+    "level": 1,
+    "words": "L1 x2 y3: not reached from '@'",
+    "x": 2,
+    "y": 3
+   },
+   {
+    "code": "REACH",
+    "level": 1,
+    "words": "L1 x3 y3: not reached from '@'",
+    "x": 3,
+    "y": 3
+   }
+  ]
+ },
+ "bad_statues": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 36,
+   "items": 17,
+   "jobs": 206,
+   "stairs": 0,
+   "statues": 17
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "LIMIT",
+    "words": "17 statues; at most 16"
+   }
+  ]
+ },
+ "bad_surface_in_rock": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 1,
+   "items": 0,
+   "jobs": 1,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SYMBOL",
+    "level": 1,
+    "words": "L1 x1 y1: 'W' is not in the rock alphabet",
+    "x": 1,
+    "y": 1
+   }
+  ]
+ },
+ "bad_surface_up_top": {
+  "cost": {
+   "built": 5,
+   "doors": 0,
+   "dug": 0,
+   "items": 0,
+   "jobs": 20,
+   "stairs": 1,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "STAIRS",
+    "level": 1,
+    "words": "L1 x1 y1: an up stair on the top level",
+    "x": 1,
+    "y": 1
+   }
+  ]
+ },
+ "bad_symbol": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 1,
+   "items": 0,
+   "jobs": 1,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SYMBOL",
+    "level": 1,
+    "words": "L1 x1 y1: 'Q' is not in the rock alphabet",
+    "x": 1,
+    "y": 1
+   }
+  ]
+ },
+ "bad_too_much_digging": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 961,
+   "items": 0,
+   "jobs": 961,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "LIMIT",
+    "words": "961 dug tiles; at most 700"
+   }
+  ]
+ },
+ "bad_too_wide": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 32,
+   "items": 0,
+   "jobs": 32,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SIZE",
+    "level": 1,
+    "words": "L1: 32 tiles wide; 1 to 31"
+   }
+  ]
+ },
+ "bad_two_joins": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 4,
+   "items": 0,
+   "jobs": 4,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "JOIN",
+    "level": 1,
+    "words": "L1 x2 y0: a second '@'; the join is one tile",
+    "x": 2,
+    "y": 0
+   }
+  ]
+ },
+ "bad_unicode": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 1,
+   "items": 0,
+   "jobs": 1,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "SYMBOL",
+    "level": 1,
+    "words": "L1 x1 y1: character code 195 is not in the rock alphabet",
+    "x": 1,
+    "y": 1
+   },
+   {
+    "code": "SYMBOL",
+    "level": 1,
+    "words": "L1 x2 y1: character code 169 is not in the rock alphabet",
+    "x": 2,
+    "y": 1
+   }
+  ]
+ },
+ "bad_up_on_first": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 1,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "STAIRS",
+    "level": 1,
+    "words": "L1 x1 y1: an up stair on level 1 leads out of the blueprint",
+    "x": 1,
+    "y": 1
+   }
+  ]
+ },
+ "bad_version": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "FORMAT",
+    "words": "v must be 1"
+   }
+  ]
+ },
+ "bad_workshop_cramped": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 7,
+   "items": 1,
+   "jobs": 17,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "LEGEND",
+    "level": 1,
+    "words": "L1 x2 y1: a workshop (Masons) needs the 8 tiles around it as plain floor, not shared",
+    "x": 2,
+    "y": 1
+   }
+  ]
+ },
+ "bad_zone_kind": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "FORMAT",
+    "words": "zone must be {\"kind\": temple, tomb, dining, meeting, library or none, \"level\"}"
+   }
+  ]
+ },
+ "bad_zone_level": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 2,
+   "items": 0,
+   "jobs": 2,
+   "stairs": 0,
+   "statues": 0
+  },
+  "ok": false,
+  "reasons": [
+   {
+    "code": "FORMAT",
+    "words": "zone level must be one of the levels"
+   }
+  ]
+ },
+ "good_cross_hall": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 46,
+   "items": 4,
+   "jobs": 86,
+   "stairs": 0,
+   "statues": 4
+  },
+  "layouts": [
+   "sha256:88428b88261db54fe96a785c",
+   "sha256:e3d9da32218a51811c2a6777",
+   "sha256:c17ab17b6054001a49580e66",
+   "sha256:00d25fff25c8debd642d97fe"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_doors": {
+  "cost": {
+   "built": 0,
+   "doors": 1,
+   "dug": 24,
+   "items": 0,
+   "jobs": 24,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:278ffeaaa15097f8e69ec84d",
+   "sha256:ffd93ae5b354e3ac47660f3c",
+   "sha256:ad2e81d58e8a2478724293f4",
+   "sha256:4ed7dc67374ab096718d5af9"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_engraved": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 36,
+   "items": 0,
+   "jobs": 36,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:9e1499fb3fb27b638e565592",
+   "sha256:b6632bbe0ba1e3d3eb383848",
+   "sha256:027f177384c74692ece6171b",
+   "sha256:379b5d3c84ba66d0e8a953b1"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_gate_hall": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 26,
+   "items": 4,
+   "jobs": 66,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:16a53b47e19f3bd1f499d18c",
+   "sha256:3b2df6ff899c7e6fcc365c31",
+   "sha256:00008a098a568feb0327652a",
+   "sha256:eb0ce771457ea509510aa691"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_library": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 36,
+   "items": 5,
+   "jobs": 86,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:0643568f6802159aa84f797f",
+   "sha256:77cf48221b49a977870c4d86",
+   "sha256:ff95d571a5e53025f7141b1a",
+   "sha256:7d82ef4e6cac096656e79750"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_meeting": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 36,
+   "items": 3,
+   "jobs": 66,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:242048f30dfeb59a4945b74f",
+   "sha256:fa01ca04a46f78f35548b79e",
+   "sha256:cf78313e40220be868161fc4",
+   "sha256:6f9ad39eea036cdd11bfca73"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_necropolis": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 71,
+   "items": 6,
+   "jobs": 131,
+   "stairs": 1,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:7860b6caa7aa0703f3eb7c31",
+   "sha256:550d61c78c50786317e50fc7",
+   "sha256:bc71e2cc4fc6009ff40c05df",
+   "sha256:a19056d3694cde44d9c18c56"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_ramp": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 31,
+   "items": 0,
+   "jobs": 31,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:f3b0810b148a14cfde04c707",
+   "sha256:fc224dae4e3bd7cc3437e0b4",
+   "sha256:dcf3047ddfd9c95e2f60a5aa",
+   "sha256:0ffa341db0b0d56b6ee2ef7b"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_small_room": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 10,
+   "items": 0,
+   "jobs": 10,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:4514f66eed65621a5609f6fd",
+   "sha256:bb1dae77e992cab740063c91",
+   "sha256:d8865929f1a8cfc628227174",
+   "sha256:eccf744413b20ad1a136cdd1"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_spiral_descent": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 197,
+   "items": 3,
+   "jobs": 227,
+   "stairs": 1,
+   "statues": 3
+  },
+  "layouts": [
+   "sha256:f5f0125c74185985825f4384",
+   "sha256:8f0fcfc6d3e3a6ee8039474f",
+   "sha256:af2bd3b7a2b9b106a5b4326e",
+   "sha256:29a23868d7db738b9a4a5b12"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_surface_room": {
+  "cost": {
+   "built": 8,
+   "doors": 1,
+   "dug": 0,
+   "items": 0,
+   "jobs": 32,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:5afe18637fb1f53329923051",
+   "sha256:b4e7714a7bf27dfdba152ad3",
+   "sha256:006cecef8f9952af1ea0292e",
+   "sha256:359c72723d0819624e7ca440"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_tower": {
+  "cost": {
+   "built": 112,
+   "doors": 0,
+   "dug": 0,
+   "items": 1,
+   "jobs": 458,
+   "stairs": 1,
+   "statues": 1
+  },
+  "layouts": [
+   "sha256:1a642c6d8071e5fb6cebeee5",
+   "sha256:94e7f71a2fd03b4ea83963f6",
+   "sha256:e4e181e6f64fe8709489560f",
+   "sha256:53048b5a9f0c65eb42297a3b"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_wide_hall": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 507,
+   "items": 0,
+   "jobs": 507,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:e5359270ac00bb621c22934a",
+   "sha256:b677e5337dec8c97bd8049da",
+   "sha256:3657f30680bac50b15fcfe1a",
+   "sha256:59bc802e7422207f53d6f485"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_workshop_hall": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 56,
+   "items": 2,
+   "jobs": 76,
+   "stairs": 0,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:ec2c3ce4186dff64808be942",
+   "sha256:aeb75e6eb59de8fba291e619",
+   "sha256:c0b9db33bfb6db983f39a413",
+   "sha256:0336648aa526a5bf16dba7f1"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "good_ziggurat": {
+  "cost": {
+   "built": 132,
+   "doors": 0,
+   "dug": 0,
+   "items": 1,
+   "jobs": 538,
+   "stairs": 1,
+   "statues": 1
+  },
+  "layouts": [
+   "sha256:4a81790cf48d93448d41de13",
+   "sha256:214cd423e67ce8b9853653a3",
+   "sha256:90ffc6af928389b6aef3f5fa",
+   "sha256:bf6be087e208af45d47fb5d1"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "lib_descent": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 217,
+   "items": 5,
+   "jobs": 267,
+   "stairs": 3,
+   "statues": 5
+  },
+  "layouts": [
+   "sha256:97f00bb9c78d7102ca718fcc",
+   "sha256:6405237a62e1d17fbe89649a",
+   "sha256:68de85e4435c8a407173ae35",
+   "sha256:6d1c3982962b0aae3e06985c"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "lib_gate_hall": {
+  "cost": {
+   "built": 0,
+   "doors": 1,
+   "dug": 106,
+   "items": 9,
+   "jobs": 196,
+   "stairs": 0,
+   "statues": 3
+  },
+  "layouts": [
+   "sha256:3fe40be1ef401c0cdabebbad",
+   "sha256:2341ba30db046311bf0da6e6",
+   "sha256:ffe4be593f36353134a9234e",
+   "sha256:66d47c7b4efe6f2b81d25d9f"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "lib_god_hall": {
+  "cost": {
+   "built": 0,
+   "doors": 1,
+   "dug": 230,
+   "items": 18,
+   "jobs": 410,
+   "stairs": 0,
+   "statues": 10
+  },
+  "layouts": [
+   "sha256:c500c307e472d023ae6961e3",
+   "sha256:6cfb42c557a6cacbc86d6087",
+   "sha256:ff85ffa143a891fed46a2bd4",
+   "sha256:67cfe7ed94ac181aba88e02c"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "lib_great_hall": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 530,
+   "items": 24,
+   "jobs": 770,
+   "stairs": 0,
+   "statues": 8
+  },
+  "layouts": [
+   "sha256:9fa529fac9a747863a12d5a6",
+   "sha256:7d42d6809f728d2e5fb8cfb4",
+   "sha256:c7f746dad2d78514061528f1",
+   "sha256:b3bf6052e47a85439796056f"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "lib_necropolis": {
+  "cost": {
+   "built": 0,
+   "doors": 0,
+   "dug": 291,
+   "items": 36,
+   "jobs": 651,
+   "stairs": 1,
+   "statues": 4
+  },
+  "layouts": [
+   "sha256:9e817ed718e2a529c81a3f25",
+   "sha256:f1edf1e13dc2c51e3168ddd8",
+   "sha256:134257bc864a5408f6c40d88",
+   "sha256:af24048f42b0e5ba93273c84"
+  ],
+  "ok": true,
+  "reasons": {}
+ },
+ "lib_ziggurat": {
+  "cost": {
+   "built": 177,
+   "doors": 1,
+   "dug": 0,
+   "items": 0,
+   "jobs": 708,
+   "stairs": 2,
+   "statues": 0
+  },
+  "layouts": [
+   "sha256:ef8c39510169af5a7146763d",
+   "sha256:f5f42fa1c26d1345ba065dc7",
+   "sha256:034606a8a952c6c54e24a979",
+   "sha256:fe519ea1455b574e0a3e9e89"
+  ],
+  "ok": true,
+  "reasons": {}
+ }
+}

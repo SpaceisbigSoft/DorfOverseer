@@ -33,7 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 from planner_core import Proposal  # noqa: E402
@@ -292,9 +292,10 @@ def _harness() -> str:
 
 def lua_test(name):
     def deco(fn):
-        if LuaRuntime is None:
-            return fn
-        return test(name)(fn)
+        def run():
+            need_lua()          # (0.105.48) counted as skipped without lupa, not left out
+            fn()
+        return test(name)(run)
     return deco
 
 

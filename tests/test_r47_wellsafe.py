@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import make_test, test as plain_test, finish  # noqa: E402
+from harness import make_test, test as plain_test, finish, need_lua, skip  # noqa: E402
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, abs_tick, plan  # noqa: E402
 import planner_wells  # noqa: E402
 import planner_wellsafe  # noqa: E402
@@ -229,8 +229,7 @@ if LuaRuntime is not None:
 
 
 def _reset():
-    if LuaRuntime is None:
-        return
+    need_lua()
     W.reset()
     B.CAVERN_NO_SPOT = None
     B.SHAFT_WATCH = LUA.table_from({"on": False})
@@ -599,6 +598,10 @@ if LuaRuntime is not None:
         W.set(72, 58, 60, LUA.table_from({"shape": "FLOOR", "feature": True}))
         r = WS.rescue(72, 58, 60, 7, False)
         assert r.ok and r.unlocked == 1 and LUA.eval("UNLOCKED[1]") == 77, r.error
+else:
+    @test("the 11 Lua test(s) of the block at line 301: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 if LuaRuntime is not None:
     @test("K48-K4 bridge: the rescue stair is closed once nobody is on it or under the well: a hatch on its top "

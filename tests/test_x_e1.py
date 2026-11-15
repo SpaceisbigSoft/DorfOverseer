@@ -16,7 +16,6 @@ import ast
 import copy
 import json
 import random
-import subprocess
 import sys
 from pathlib import Path
 
@@ -24,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import make_test, finish  # noqa: E402
+from snapshots import digest, snapshot  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -70,17 +70,10 @@ def boot():
       df.global.world = df.global.world or {}
       df.global.world.buildings = {other = {TRADE_DEPOT = {}}, all = {}}
     """)
-    # merged0's ai-blueprints.lua, for the byte-identity proof
-    try:
-        old_src = subprocess.run(["git", "-C", str(ROOT), "show", "4b0de9a:lua/ai-blueprints.lua"],
-                                 capture_output=True, text=True, check=True).stdout
-    except (OSError, subprocess.CalledProcessError):
-        old_src = None
-    OLD = load(old_src, lay) if old_src else None
-    return lua, B, W, BPM, OLD, lay
+    return lua, B, W, BPM, lay
 
 
-LUA, B, W, BP, OLD, LAY = boot()
+LUA, B, W, BP, LAY = boot()
 T = LUA.table_from
 REAL = {k: B[k] for k in ("landmark_stock", "landmark_times", "furnish_progress", "stone_at", "hall_planned_at")}
 
@@ -348,22 +341,23 @@ def strip(v):
 @test("no openings, no change: every older fixture and library drawing checks, costs and translates as merged0's "
       "ai-blueprints.lua does (byte for byte, but the empty 'open' list and the 'open' count 0)")
 def _():
-    assert OLD is not None, "git show merged0:lua/ai-blueprints.lua failed"
+    # (0.105.48) proved against merged0 (4b0de9a), a commit not in every clone; now
+    # against 0.105.47's answers (which matched it) in tests/fixtures/snapshots/x_e1_old_drawings.json
+    # (and merged0 refused every drawing with '*' or 'O' in the rock with SYMBOL:
+    # E1_FIX are the only drawings that read those)
     old_ones = {k: v for k, v in FIX.items() if k not in E1_FIX}
     old_ones.update({"lib_" + k: v for k, v in LIB.items() if k != "chronicle_hall"})
     assert len(old_ones) >= 60, len(old_ones)
+    got = {}
     for name, bp in old_ones.items():
-        a, b = BP.check_format(lt(bp)), OLD.check_format(lt(bp))
-        assert py(a[1]) == py(b[1]) and bool(a[0]) == bool(b[0]), name
-        ca, cb = py(BP.cost(lt(bp))), py(OLD.cost(lt(bp)))
-        assert ca.pop("open") == 0 and ca == cb, (name, ca, cb)
+        a = BP.check_format(lt(bp))
+        ca = py(BP.cost(lt(bp)))
+        assert ca.pop("open") == 0, name
+        row = {"ok": bool(a[0]), "reasons": py(a[1]), "cost": ca}
         if a[0]:
-            for q in range(4):
-                assert strip(BP.to_layouts(lt(bp), q)) == py(OLD.to_layouts(lt(bp), q)), (name, q)
-    # and the old checker refused every drawing with '*' or 'O' in the rock (nothing it took reads otherwise)
-    for name, bp in E1_FIX.items():
-        ok, r = OLD.check_format(lt(bp))
-        assert not ok and r[1].code == "SYMBOL", name
+            row["layouts"] = [digest(strip(BP.to_layouts(lt(bp), q))) for q in range(4)]
+        got[name] = row
+    snapshot("x_e1_old_drawings", got)
 
 
 # --- the bridge: the map, the stages ----------------------------------------------------

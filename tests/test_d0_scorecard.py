@@ -2,16 +2,16 @@
 the journal's start_project and build_blueprint decisions (level signatures,
 the share in the language, hall shapes and arms, landmarks by library and AI,
 refusals a landmark), distinct() and judge_distinct(); and the old lines'
-output unchanged (against main's brain/scorecard.py, on the existing fixture).
+output unchanged (on the existing fixture). That was proved against the
+scorecard.py of 8a13655, a commit not in every clone; since 0.105.48 against
+the committed snapshot tests/fixtures/snapshots/d0_scorecard_*.json.
 
     python tests/test_d0_scorecard.py
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -19,29 +19,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from snapshots import snapshot  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import scorecard  # noqa: E402
 import test_scorecard as TS  # noqa: E402  (the existing fixture: make_fort, state)
-
-
-def main_scorecard():
-    """brain/scorecard.py as it is on main (None outside a git checkout)."""
-    try:
-        # (0.105.38) pinned to main before the Design round (8a13655): main itself now holds the Design block
-        src = subprocess.run(["git", "show", "8a13655:brain/scorecard.py"], cwd=str(ROOT), capture_output=True,
-                             text=True, encoding="utf-8", check=True).stdout
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    d = Path(tempfile.mkdtemp())
-    (d / "scorecard_main.py").write_text(src, encoding="utf-8")
-    spec = importlib.util.spec_from_file_location("scorecard_main", d / "scorecard_main.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-MAIN = main_scorecard()
 
 
 def dec(t, year, tick, action=None, result=None):
@@ -192,37 +174,33 @@ def _():
     assert "| Design setting | guided | guided |" in md
 
 
-@test("old lines unchanged: the existing fixture's report is byte-identical to main's (no Design block)")
+@test("old lines unchanged: the existing fixture's report is byte-identical to the snapshot (no Design block)")
 def _():
-    assert MAIN is not None, "main's scorecard.py (git show main:...) is needed"
     root = Path(tempfile.mkdtemp())
     pa = TS.make_fort(root, "DF-AI", "War-hold", 10, 40, extra_season=True)
     pb = TS.make_fort(root, "DF-AI-B", "Monastery", 1, 60)
+    got = {}
     for now in (False, True):
         new = scorecard.score_full([scorecard.Fort("A", pa), scorecard.Fort("B", pb)], None, now)
-        old = MAIN.score_full([MAIN.Fort("A", pa), MAIN.Fort("B", pb)], None, now)
-        assert new[0] == old[0], now
-        assert new[1] == old[1], now
-        assert new[2] == old[2] and "design" not in new[2], now
-    assert len(scorecard.LINES) == len(MAIN.LINES) and scorecard.LINES == MAIN.LINES
+        assert "design" not in new[2], now
+        got[str(now)] = list(new)
+    got["LINES"] = scorecard.LINES
+    snapshot("d0_scorecard_plain", got)
 
 
-@test("old lines unchanged with a design: the rows equal main's, the Design block only appended")
+@test("old lines unchanged with a design: the rows equal the snapshot's, the Design block only appended")
 def _():
-    assert MAIN is not None
     root = Path(tempfile.mkdtemp())
     pa = make_design_fort(root, "DF-AI", "War-hold", "a")
     pb = make_design_fort(root, "DF-AI-B", "Garden fort", "b")
     new = scorecard.score_full([scorecard.Fort("A", pa), scorecard.Fort("B", pb)], None, False)
-    old = MAIN.score_full([MAIN.Fort("A", pa), MAIN.Fort("B", pb)], None, False)
-    assert new[1] == old[1]
-    assert new[0].startswith(old[0].rstrip("\n")) and "## Design" in new[0][len(old[0]) - 1:]
-    assert {k: v for k, v in new[2].items() if k != "design"} == old[2]
-    # the measures dict the lines read is main's too
+    head, sep, _ = new[0].partition("## Design")
+    assert sep, "no Design block"
     s = json.loads((pa / "logs" / "forts" / "region4-1430" / "states" / "250-summer.json").read_text())
     jn = scorecard.journal_counts(design_journal("a"), s["date"])
-    jo = MAIN.journal_counts(design_journal("a"), s["date"])
-    assert scorecard.measures(s, jn) == MAIN.measures(s, jo)
+    snapshot("d0_scorecard_design", {"rows": new[1], "head": head,
+                                     "summary": {k: v for k, v in new[2].items() if k != "design"},
+                                     "measures": scorecard.measures(s, jn)})
 
 
 @test("a Scripts fort with today's styles gets no Design block; one at Guided does")

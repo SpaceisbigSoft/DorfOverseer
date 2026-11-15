@@ -10,13 +10,13 @@ its version mark. Needs lupa.
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LUA_DIR = ROOT / "lua"
-from lua_modules_util import module_src, split_parts, with_util  # noqa: E402
+from lua_modules_util import module_src, split_parts  # noqa: E402
+from snapshots import recorded  # noqa: E402
 from harness import test, finish  # noqa: E402
 
 try:
@@ -24,19 +24,6 @@ try:
 except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
-
-BASE = "b1fa58f"      # the round's base: ai-gates.lua still one file
-
-
-def base_src() -> str | None:
-    try:
-        return subprocess.run(["git", "show", f"{BASE}:lua/ai-gates.lua"], cwd=ROOT, check=True,
-                              capture_output=True, text=True, encoding="utf-8").stdout
-    except (OSError, subprocess.CalledProcessError):
-        return None
-
-
-BASE_SRC = base_src()
 
 # the module loaded from text (as the tests do), its names listed
 LOAD = r"""
@@ -81,29 +68,26 @@ def _():
 
 @test("split: every name the one-file ai-gates had is still the module's (and the parts' marks)")
 def _():
-    if BASE_SRC is None:
-        return          # no git history here (a copy): nothing to compare with
+    # (0.105.48) the one-file ai-gates.lua was read from b1fa58f, a commit not in every
+    # clone (without it the test returned and counted as passed). Its names, with their
+    # kinds, are now committed: tests/fixtures/snapshots/r40_gates_one_file_names.json
+    # (recorded from 0.105.47's module, which then held every one of them, plus the
+    # names the split itself added, listed in the test as it was)
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env_old, old = names_of(with_util(BASE_SRC, "ai-gates.lua"), lua)
     env, new = names_of(module_src("ai-gates.lua"), lua)
-    assert old <= new, sorted(old - new)
-    extra = new - old
-    # the locals the parts share, the list of parts and their marks, the parts' texts (a test's)
-    allowed = {"U", "key", "unkey", "STAIR_UP", "STAIR_DOWN", "ref_ids", "T", "interior", "moves", "treetop",
-               "inside_or_courtyard", "seals", "ORTHO", "DOOR_GROUND", "WALL_GROUND", "open_ground",
-               "citizen_starts", "gate_name", "pull", "set_entrance", "place", "entrance", "DAY_TICKS", "wgroup",
-               "on_cavern_tile", "PARTS", "PART_VERSIONS", "PART_SOURCES",
-               # (13e scan) the cheaper scan's helpers (tests/test_r40_gates_scan.py)
-               "TK", "moves_k", "tile_is_ramp", "GAME_TILE", "porch_walk", "scan_map",
-               # (fix41) the enemies at the fort's walls (tests/test_r41_weather_fix.py)
-               "AT_GATE_REACH", "at_fort_walls", "intruders_at_walls"}
-    assert extra <= allowed, sorted(extra - allowed)
+    kind = lua.eval("function(e, k) return type(e[k]) end")
+    split_added = {"U", "key", "unkey", "STAIR_UP", "STAIR_DOWN", "ref_ids", "T", "interior", "moves", "treetop",
+                   "inside_or_courtyard", "seals", "ORTHO", "DOOR_GROUND", "WALL_GROUND", "open_ground",
+                   "citizen_starts", "gate_name", "pull", "set_entrance", "place", "entrance", "DAY_TICKS", "wgroup",
+                   "on_cavern_tile", "PARTS", "PART_VERSIONS", "PART_SOURCES",
+                   "TK", "moves_k", "tile_is_ramp", "GAME_TILE", "porch_walk", "scan_map",
+                   "AT_GATE_REACH", "at_fort_walls", "intruders_at_walls"}
+    old = recorded("r40_gates_one_file_names", {k: kind(env, k) for k in sorted(new - split_added)})
+    assert set(old) <= new, sorted(set(old) - new)
+    for k, t in old.items():
+        assert kind(env, k) == t, (k, t, kind(env, k))
     marks = env.PART_VERSIONS
     assert {k for k in marks} == {"ai-gates", *PARTS}, list(marks)
-    # the same kinds of value under every old name
-    kind = lua.eval("function(e, k) return type(e[k]) end")
-    for k in old:
-        assert kind(env_old, k) == kind(env, k), k
 
 
 @test("split: a swap on the hub (as the tests do) reaches the code in a part")

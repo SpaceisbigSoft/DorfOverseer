@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import make_test, test as plain_test, finish  # noqa: E402
+from harness import make_test, test as plain_test, finish, skip  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 import planner_wells  # noqa: E402
 import planner_water  # noqa: E402
@@ -367,5 +367,9 @@ if LuaRuntime is not None:
         for f in ("ai-builder-cistern.lua", "ai-bridge-actions.lua", "ai-waterworks.lua", "ai-bridge.lua"):
             text = (ROOT / "lua" / f).read_text(encoding="utf-8")
             assert LUA.eval("function(s, n) local f, e = load(s, n, 't', {}); return e end")(text, f) is None, f
+else:
+    @plain_test("the 4 Lua test(s) of the block at line 249: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 finish(None if LuaRuntime is not None else "these tests need the lupa package (pip install lupa)")

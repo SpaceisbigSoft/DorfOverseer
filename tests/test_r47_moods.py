@@ -32,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 import planner_core  # noqa: E402
@@ -138,6 +138,7 @@ def recipes(acts):
 
 @test("1: a plant-cloth request counts the fort's plant cloth (and not its silk), DFHack's test refusing all cloth")
 def _():
+    need_lua()
     L, W = lua_world()
     env = W.env
     j = W.job(req(L, {"t": 1, "kind": 0, "q": 20000, "flags": ["plant"]}), L.table_from([]))
@@ -152,6 +153,7 @@ def _():
 
 @test("1: a silk request counts silk only; any-cloth counts every fibre; a web is no thread")
 def _():
+    need_lua()
     L, W = lua_world()
     env = W.env
     j = W.job(req(L, {"t": 1, "kind": 0, "q": 30000, "flags": ["silk"]}), L.table_from([]))
@@ -176,6 +178,7 @@ def _():
 
 @test("1: cloth_kind is the one fibre test the bridge's cloth and thread counts use")
 def _():
+    need_lua()
     L, W = lua_world()
     env = W.env
     assert env.cloth_kind(W.cloth(1, "YARN", 1)) == "yarn"
@@ -189,6 +192,7 @@ def _():
 
 @test("6: one rough gem meets the first of four rough-gem requests, not all four (cached too)")
 def _():
+    need_lua()
     L, W = lua_world()
     env = W.env
     rows = [{"t": 2, "kind": 5, "q": 1}] * 4
@@ -209,6 +213,7 @@ def _():
 
 @test("7: a request's counted items carry their spots (place, standing, in walk)")
 def _():
+    need_lua()
     L, W = lua_world()
     env = W.env
     j = W.job(req(L, {"t": 3, "kind": 0, "q": 1, "flags": ["bone"]}), L.table_from([]))
@@ -416,6 +421,7 @@ def help_world():
 
 @test("3: add_mood_spots puts the mood's tiles in the burrow once; the action rejects with nothing to add")
 def _():
+    need_lua()
     L, W = help_world()
     env = W.env
     W.tiles = L.table_from([L.table_from({"x": 1, "y": 2, "z": 3}), L.table_from({"x": 4, "y": 5, "z": 6}),
@@ -435,6 +441,7 @@ def _():
 
 @test("4: job_cancels tallies DF's cancels by job and reason (drink left out)")
 def _():
+    need_lua()
     L, W = help_world()
     env = W.env
     W.rows = L.table_from([L.table_from({"text": t, "n": n}) for t, n in (

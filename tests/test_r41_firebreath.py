@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 from planner import Memory, plan, PLANNER_CONFIG  # noqa: E402
@@ -133,8 +133,7 @@ def lua_env():
 @test("bridge: fire_breath_of reads the caste's abilities (DRAGONFIRE, FIREBALL, an interaction's FIREJET, "
       "IMMOLATE), not webs or nothing; one read per race and caste; a missing race is false")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     _, env = lua_env()
     f = env.fire_breath_of
     assert f(1, 0) == "breath" and f(2, 0) == "fireball" and f(4, 0) == "jet" and f(6, 0) == "burns"
@@ -150,8 +149,7 @@ def _():
     assert code_has(bridge, "pcall(function() return reqscript('ai-threats').mark_fire_breathers(o) end)")
     assert code_has(bridge, "others_on_map = function() return safe(function() local o = get_others_on_map()")
     assert "fire_breath" not in (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env = lua_env()
     o = lua.execute("return {threats = {{id = 5000}, {id = 6000}, {id = 7000}, {id = 8000}, {name = 'x'}}}")
     assert env.mark_fire_breathers(o) == 2

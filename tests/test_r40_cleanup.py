@@ -24,7 +24,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, need_lua  # noqa: E402
+from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -229,6 +230,7 @@ class SP:    # the fake's spatter maker, from Python
 
 @test("items: counted by state; one in a cavern no citizen reaches is followed from the first pass, a reachable one not")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     w.mk(T(lua, {"kind": "BAR", "flags": {"forbid": True}}))
@@ -249,6 +251,7 @@ def _():
 
 @test("items: a tile in no walk group next to a reachable one counts as reachable; an item reached again is no longer followed")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     w.tiles["90,90,100"] = 0            # a wall-side tile; its neighbours are group 1
@@ -287,6 +290,7 @@ NEVER = [
 @test("items: never deleted, each case alone (artifact, named, owned, held, built, a container, a job's, a trader's, "
       "evidence, a web, the fort's dead, the player's forbidden, a stockpile's, a building's tile, the squads' gear)")
 def _():
+    need_lua()
     for why, extra in NEVER:
         lua, env, w = world()
         fort(lua, w)
@@ -317,6 +321,7 @@ def _():
 
 @test("items: a strange mood's kind stays while the mood waits; a request of any kind keeps every kind")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     p = cavern(lua, w, 20, 20)
@@ -336,6 +341,7 @@ def _():
 
 @test("items: a job's listed item stays (job.items), though its flag isn't set")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     it = w.mk(T(lua, {"id": 77, "kind": "BOULDER", "pos": cavern(lua, w, 20, 20)}))
@@ -348,6 +354,7 @@ def _():
 
 @test("cleanup_items: only after a year unreachable, oldest first, max a call; a dry run counts and removes nothing (boulders: level full)")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     lost_items(lua, w, 3, start=1000)
@@ -375,6 +382,7 @@ def _():
 
 @test("cleanup_items: re-checks at the time: an item reached again (or now kept) is not deleted")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     items = lost_items(lua, w, 2)
@@ -390,6 +398,7 @@ def _():
 @test("cleanup_items: no citizen in a readable walk group: refused, nothing known to be unreachable; a blind pass "
       "forgets nothing it follows")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     lost_items(lua, w, 2)
@@ -407,6 +416,7 @@ def _():
 
 @test("followed items survive a reload (site data), and another fort starts afresh")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     lost_items(lua, w, 2)
@@ -447,6 +457,7 @@ UNIT_NEVER = [
 @test("creatures: never removed, each case alone (citizens, residents, the fort's, pets, tame, domestic, visitors, "
       "merchants, diplomats, prisoners, historical figures, riders, the dead, neither hostile nor wild)")
 def _():
+    need_lua()
     for why, extra in UNIT_NEVER:
         lua, env, w = world()
         fort(lua, w)
@@ -464,6 +475,7 @@ def _():
 @test("cleanup_units: a hostile or wild non-historical creature out of reach a season is vaporized (exterminate's "
       "way), the kinds asked only; a dry run lists them and changes nothing")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     gob = w.unit(T(lua, {"id": 7001, "danger": True, "race": 4, "pos": cavern(lua, w, 30, 30)}))
@@ -490,6 +502,7 @@ def _():
       "race, a named merchant or diplomat, a ghost, a squad's or a burrow's, nor one whose death can't be read); "
       "units.all keeps every one")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     now = 200 * YEAR
@@ -525,6 +538,7 @@ def _():
 @test("spatter: counted (outside the fort's areas apart, mud and snow not), cleaned outside first, 'all' inside too; "
       "a dry run removes nothing")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     inside = w.block(T(lua, {"x": 64, "y": 64, "z": 100}))
@@ -553,6 +567,7 @@ def _():
 
 @test("budget: a report's walk stops at BUDGET_MS and goes on where it stopped; a full pass is a day apart at most")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     lost_items(lua, w, 3)
@@ -578,6 +593,7 @@ def _():
 
 @test("budget: cleanup_spatter walks the blocks within budget_ms and the next call goes on from there")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     for i in range(10):
@@ -597,6 +613,7 @@ def _():
 
 @test("budget: cleanup_items' look over the followed items stops at ACTION_BUDGET_MS (cut_short)")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     lost_items(lua, w, 30)
@@ -633,6 +650,7 @@ def _():
 
 @test("bridge: the handlers check their numbers and pass dry_run on")
 def _():
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     f = lua.eval("""function(src)
         local seen = {}
@@ -718,6 +736,7 @@ def _():
 
 @test("Lua: ai-cleanup compiles (Lua 5.3) and is a module")
 def _():
+    need_lua()
     src = (LUA_DIR / "ai-cleanup.lua").read_text(encoding="utf-8")
     lua = LuaRuntime(unpack_returned_tuples=True)
     assert lua.eval("function(s) local f, e = load(s, 'c', 't', {}); return e end")(src) is None
@@ -883,6 +902,7 @@ def year_on(lua, env):
 @test("review 1: an item on a tile no one has seen is not followed (not counted toward the thresholds), nor deleted "
       "at any level; a creature there stays")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     p = cavern(lua, w, 20, 20)
@@ -921,6 +941,7 @@ ITEM_FLAG_KEEPS = [
 @test("review 1-2: kept at every level: flags hidden, from_worldgen, might_contain_artifact, location_reserved, "
       "has_rider; a minecart; a cage or trap holding a creature; anything holding an item; no flags2 at all is no error")
 def _():
+    need_lua()
     for why, extra in ITEM_FLAG_KEEPS:
         lua, env, w = world()
         fort(lua, w)
@@ -948,6 +969,7 @@ def _():
 @test("review 3: at 'safe' only the low-value kinds go (remains, body parts, unnamed corpses, vermin, rotten, rags); "
       "goods and a named corpse stay, still followed for 'full'; the report counts unreachable_old_safe")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     cheap = [("REMAINS", {"race": 9}), ("CORPSEPIECE", {"race": 9}), ("CORPSE", {"race": 9}), ("VERMIN", {}),
@@ -978,6 +1000,7 @@ def _():
 @test("review 3: anything in a cavern the AI's seal shut off stays at every level (all caverns, or the layer sealed; "
       "another layer's not); a creature there too")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     a, b = cavern(lua, w, 20, 20), cavern(lua, w, 21, 20, z=30)
@@ -1013,6 +1036,7 @@ def _():
 @test("review 5: a walk resumes after the id it stopped at, not an index (items removed in front between reports); "
       "resume_at's fast path and binary search")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     for i in range(1, 1501):
@@ -1038,6 +1062,7 @@ def _():
 
 @test("review 5: a pass that doesn't see a followed item keeps following it unless it is gone")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     items = lost_items(lua, w, 3)
@@ -1055,6 +1080,7 @@ def _():
 
 @test("review 6: a spatter event is freed only when it came off the block's list")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     b = w.block(T(lua, {"x": 0, "y": 0, "z": 100}))
@@ -1085,6 +1111,7 @@ def _():
 @test("review 3: the bridge's cleanup_items: level safe or full (else refused), safe by default; full only while "
       "the Rules say full")
 def _():
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     f = lua.eval("""function(src, setting)
         local seen = {}
@@ -1127,6 +1154,7 @@ def _():
 
 @test("last review 4: the goods are followed in a map of their own (capped apart): they never fill the junk's room")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     env.VALUE_TRACK_MAX = 2
@@ -1168,6 +1196,7 @@ def _():
 
 @test("last review 1-3: safe_kind: a named body stays even rotten; a body of the fort's civ stays; rotten food goes")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     named = w.mk(T(lua, {"id": 1, "kind": "CORPSEPIECE", "race": 9, "hist_figure_id": 4, "flags": {"rotten": True}}))
@@ -1179,6 +1208,7 @@ def _():
 
 @test("last review 7: the bridge refuses every cleanup action at off (or settings unread), cleanup_units unless full")
 def _():
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     f = lua.eval("""function(src, setting)
         local seen = {}
@@ -1223,10 +1253,7 @@ brain = Path(sys.argv[1]); sys.path.insert(0, str(brain))
 fixtures = Path(sys.argv[2])
 from digest import normalize
 from planner import Memory, plan, record, select, note_cycle, TICKS_PER_DAY
-from planner import PLANNER_CONFIG as _PC
-_PC.update({"survival_floor": 0, "mandate_shields": False, "mandates_low_deference": False})  # (item5) its floor and mandate changes off: main's behaviour compared
-_PC.update({"recreation_min_citizens": 30, "meals_cap_skip_share": 99, "stress_need_care": False})  # (0.105.47, I7b) the small-fort welfare changes off: main's behaviour compared
-_PC.update({"crisis_hold_table": False})  # (0.105.48, K5) crisis holds by the old 14 names: main's behaviour compared
+# (0.105.48) no rule switched off: the plan as the game runs it, against the snapshot
 out = {}
 for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.json")):
     base = json.loads(path.read_text(encoding="utf-8"))
@@ -1249,20 +1276,6 @@ for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.j
 print(json.dumps(out, sort_keys=True))
 '''
 
-_MAIN = {}
-
-
-def main_brain() -> Path | None:
-    if "dir" not in _MAIN:
-        tmp = tempfile.mkdtemp(prefix="r40-main-")
-        arch = subprocess.run(["git", "-C", str(ROOT), "archive", "main", "brain"], capture_output=True)
-        if arch.returncode != 0:
-            _MAIN["dir"] = None
-        else:
-            subprocess.run(["tar", "-x", "-C", tmp], input=arch.stdout, check=True)
-            _MAIN["dir"] = Path(tmp) / "brain"
-            atexit.register(shutil.rmtree, tmp, True)
-    return _MAIN["dir"]
 
 
 def probe(brain: Path) -> str:
@@ -1278,13 +1291,12 @@ def probe(brain: Path) -> str:
 @test("no cleanup section in the report (world_cleanup at its default, safe): plan() and note_cycle() are main's, "
       "byte for byte (every fixture, slow and not, 3 cycles)")
 def _():
-    main = main_brain()
-    assert main is not None, "no main branch to compare with"
-    a, b = probe(main), probe(ROOT / "brain")
-    if a != b:
-        ja, jb = json.loads(a), json.loads(b)
-        bad = [k for k in ja if ja[k] != jb.get(k)]
-        raise AssertionError(f"differs from main at {bad[:3]}")
+    # (0.105.48) was compared with `git archive main`: main moves (and in a clone where
+    # it is HEAD this compared the tree with itself), and without it the test passed.
+    # Now with the plan of 0.105.47 (main then) under the same switches, committed in
+    # tests/fixtures/snapshots/r40_cleanup_main_plan.json. A change of the plan on purpose: record
+    # it again (DFAI_SNAPSHOT_WRITE=1) and say so.
+    snapshot("r40_cleanup_main_plan", plan_cases(probe(ROOT / "brain")))
 
 
 if LuaRuntime is None:

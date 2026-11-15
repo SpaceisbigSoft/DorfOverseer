@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -128,8 +128,7 @@ def set_tick(env, ticks):
 
 @test("lua track: a new thing gets its own start or now; progress moves `moved`; a new state starts again; gone dropped")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     rows = T(lua, [{"kind": "order", "id": 5, "state": "open", "progress": 10},
                    {"kind": "project", "id": 3, "state": "dig", "since": 1000}])
@@ -156,8 +155,7 @@ def _():
 
 @test("lua rank: oldest first, capped, with the total; lever names: the AI's yes, the player's 'AI gate' no")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     rows = T(lua, [{"key": "a", "since": 30}, {"key": "b", "since": 10}, {"key": "c", "since": 20}])
     out, total = env.rank(rows, 2)
@@ -172,8 +170,7 @@ def _():
 
 @test("lua report: an AI lever's pull job (worker or not), the player's 'AI gate' left out; since kept in the save")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     w.lever(10, "AI gate lever", T(lua, [{"id": 900, "job_type": 77, "flags": {}}]))
     w.lever(11, "AI gate", T(lua, [{"id": 901, "job_type": 77, "flags": {}}]))
@@ -190,8 +187,7 @@ def _():
 
 @test("lua report: kill orders on targets all dead/gone/caged are kill_done; a live one is kill; not the AI's: none")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     w.units[1] = T(lua, {"dead": True, "flags1": {}})
     w.units[3] = T(lua, {"flags1": {"caged": True}})
@@ -209,8 +205,7 @@ def _():
 
 @test("lua report: the AI's one-time orders (amount left as progress), the cistern, a waterwork, projects, a gate")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     w.site["ai-overseer/orders"] = T(lua, {"ids": {"5": True, "6": True}})
     w.orders[1] = T(lua, {"id": 5, "frequency": 0, "amount_left": 3, "amount_total": 5, "job_type": 12,
@@ -243,8 +238,7 @@ def _():
 
 @test("lua report: a collector that fails is said in errors, the others still listed, its old rows kept")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     w.site["ai-overseer/cistern"] = T(lua, {"stage": "digging"})
     w.site["ai-overseer/stuck"] = T(lua, {"items": {"project:9": {"s": "dig", "p": "", "since": 5, "moved": 5}}})
@@ -258,8 +252,7 @@ def _():
 
 @test("lua stuck_reset: the AI's lever only; dry run counts; reissue takes the job off and pulls afresh; drop only takes it off")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     w.lever(10, "AI gate lever", T(lua, [{"id": 900, "job_type": 77, "flags": {}}]))
     w.lever(11, "AI gate", T(lua, [{"id": 901, "job_type": 77, "flags": {}}]))
@@ -296,8 +289,7 @@ def _():
     assert SECTION_DEFAULTS["stuck"] == {}
     import overseer
     assert "stuck_reset" in overseer.SHORT_WORDS
-    if LuaRuntime is None:
-        return
+    need_lua()
     i = src.index("    stuck_reset = function(a)")
     j = src.index("    end,\n", i) + len("    end,\n")
     fn = src[i:j].strip().rstrip(",").replace("stuck_reset = function(a)", "return function(a)", 1)

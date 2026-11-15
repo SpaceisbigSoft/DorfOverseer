@@ -26,7 +26,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
+from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -186,6 +187,7 @@ def guard(lua, env, units=None, dry=False):
 
 @test("report: a melancholy dwarf: kind, where, the deep water near them, the AI's door between that the guard would lock")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     w.zones["50,50,100"] = T(lua, [{"type": "DiningHall"}])
@@ -199,6 +201,7 @@ def _():
 
 @test("report: raving near magma is guarded too; catatonic and berserk are listed without a scan or doors")
 def _():
+    need_lua()
     lua, env, w = world()
     w.unit(T(lua, {"id": 1, "mood": w.MOOD["Raving"], "own": True, "pos": {"x": 50, "y": 50, "z": 100}}))
     w.unit(T(lua, {"id": 2, "mood": w.MOOD["Traumatized"], "own": True, "pos": {"x": 20, "y": 20, "z": 100}}))
@@ -213,6 +216,7 @@ def _():
 
 @test("report: only the fort's own, alive, insane; a strange mood or a baby is no insanity")
 def _():
+    need_lua()
     lua, env, w = world()
     w.unit(T(lua, {"id": 1, "mood": w.MOOD["Melancholy"], "civ_id": 99}))          # a visitor
     w.unit(T(lua, {"id": 2, "mood": w.MOOD["Melancholy"], "own": True, "dead": True}))
@@ -225,6 +229,7 @@ def _():
 
 @test("report: deadly ground: shallow or unseen water is none, a drop is open space over open space, magma at any depth")
 def _():
+    need_lua()
     lua, env, w = world()
     w.unit(T(lua, {"id": 1, "mood": w.MOOD["Melancholy"], "own": True, "pos": {"x": 50, "y": 50, "z": 100}}))
     w.tile(51, 50, 100, T(lua, {"flow_size": 3}))                    # shallow
@@ -240,6 +245,7 @@ def _():
 
 @test("guard: the AI's door between a melancholy dwarf and deep water is locked and recorded; a dry run changes nothing")
 def _():
+    need_lua()
     lua, env, w = world()
     _, d = fort(lua, w)
     r = guard(lua, env, dry=True)
@@ -255,6 +261,7 @@ def _():
 
 @test("guard: opened again as soon as the dwarf moves off, and when they die")
 def _():
+    need_lua()
     lua, env, w = world()
     u, d = fort(lua, w)
     guard(lua, env, [7])
@@ -271,6 +278,7 @@ def _():
 
 @test("guard: a lock is held two days at most, then left open half a day before it may be locked again")
 def _():
+    need_lua()
     lua, env, w = world()
     _, d = fort(lua, w)
     guard(lua, env, [7])
@@ -288,6 +296,7 @@ def _():
 
 @test("guard: never the player's door (outside the AI's levels), a lever's, a gate's, a well's, one unbuilt or already locked")
 def _():
+    need_lua()
     cases = {
         "player": lambda lua, w, d: setattr(w.projects[1], "areas", T(lua, [{"x1": 0, "y1": 0, "x2": 10, "y2": 10, "z": 100}])),
         "lever": lambda lua, w, d: setattr(d.door_flags, "operated_by_mechanisms", True),
@@ -320,6 +329,7 @@ def _():
 
 @test("guard: a door not in the way (behind the dwarf, or far from the water) is left open")
 def _():
+    need_lua()
     lua, env, w = world()
     u, d = fort(lua, w, pos=(58, 47, 100))     # by the water already, the door behind
     d.x = d.centerx = 52
@@ -333,6 +343,7 @@ def _():
 @test("guard: a hatch is never locked (a way between levels); a raving dwarf is guarded; a catatonic, a berserk "
       "or one not asked for is not")
 def _():
+    need_lua()
     lua, env, w = world()
     _, d = fort(lua, w, kind="Raving")
     assert guard(lua, env, [7])["locked"] == 1 and d.door_flags.forbidden is True
@@ -353,6 +364,7 @@ def _():
 
 @test("guard: a lock someone else opened is forgotten and not locked again for a week")
 def _():
+    need_lua()
     lua, env, w = world()
     _, d = fort(lua, w)
     guard(lua, env, [7])
@@ -367,6 +379,7 @@ def _():
 
 @test("guard: never more than 12 locks held")
 def _():
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     for x in (57, 58, 59):
@@ -386,6 +399,7 @@ def _():
 
 @test("at risk: long-term stress 25000+ while unhappy or worse, the most first, with their room and squad; read once a day")
 def _():
+    need_lua()
     lua, env, w = world()
     def cit(i, lt, cat, **kw):
         t = {"id": i, "citizen": True, "cat": cat, "own": True,
@@ -430,8 +444,7 @@ def _():
 
 @test("bridge: insane_guard's validator refuses a units value that isn't a list of ids, and passes ids on")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     i = src.index("    insane_guard = function(a)")
     j = src.index("    end,\n", i) + len("    end,\n")
@@ -579,6 +592,7 @@ def _():
 @test("fix 1: only a door that truly separates: none in an open room, none with another way round, none with a "
       "sane citizen on the deadly side; a locked door elsewhere in the wall closes the other way")
 def _():
+    need_lua()
     lua, env, w = world()
     _, d = fort(lua, w, wall=False)                       # an open room: the water is reached round the door
     assert guard(lua, env, [7])["locked"] == 0 and py(env.report())["list"][0]["doors"] == 0
@@ -619,6 +633,7 @@ def _():
 
 @test("fix 2: never a door the threats rules hold or could need; a held lock claimed since is dropped and left locked")
 def _():
+    need_lua()
     lua, env, w = world()
     _, d = fort(lua, w)
     w.claimed[300] = True
@@ -638,6 +653,7 @@ def _():
 @test("fix 2: the cavern seal adopts a door ai-insane holds locked (on its record, opened with the seal); "
       "claimed_doors lists the cells', the seal's and the openings' doors")
 def _():
+    need_lua()
     src = (ROOT / "tests" / "test_fix26_seal.py").read_text(encoding="utf-8")
     game = re.search(r'THREATS_GAME = r"""(.*?)"""', src, re.S).group(1)
     lua = LuaRuntime(unpack_returned_tuples=True)
@@ -670,6 +686,7 @@ def _():
 @test("fix 3: the report frees a lock held too long or with nobody near (the guard may not run); while halted "
       "the guard only frees (release_only), and the bridge lets it through halted")
 def _():
+    need_lua()
     lua, env, w = world()
     u, d = fort(lua, w)
     guard(lua, env, [7])
@@ -714,6 +731,7 @@ def _():
 
 @test("fix 4: a dropped well's outline (marked by the builder) is not the AI's for the guard; the builder marks it")
 def _():
+    need_lua()
     lua, env, w = world()
     _, d = fort(lua, w)
     w.projects[1] = None
@@ -726,6 +744,7 @@ def _():
 @test("fix 5: each lock records the door's state just before (unlocked); a record saying it was locked before "
       "is dropped without opening the door")
 def _():
+    need_lua()
     lua, env, w = world()
     u, d = fort(lua, w)
     guard(lua, env, [7])
@@ -741,6 +760,7 @@ def _():
       "record) is never locked, but one locked before it became so is freed as usual; one a cell took over "
       "(its c.doors) is dropped and left locked")
 def _():
+    need_lua()
     src = (ROOT / "tests" / "test_fix26_seal.py").read_text(encoding="utf-8")
     game = re.search(r'THREATS_GAME = r"""(.*?)"""', src, re.S).group(1)
 
@@ -784,6 +804,7 @@ def _():
 @test("fix 3 (re-review): the ground's side is judged only by reaching the dwarf's side or a sane citizen; the "
       "walks are capped at the box's volume (a big room on the far side still locks)")
 def _():
+    need_lua()
     lua, env, w = world()
     _, d = fort(lua, w)
     src = (LUA_DIR / "ai-insane.lua").read_text(encoding="utf-8")
@@ -800,10 +821,7 @@ brain = Path(sys.argv[1]); sys.path.insert(0, str(brain))
 fixtures = Path(sys.argv[2])
 from digest import normalize
 from planner import Memory, plan, record, select, note_cycle, TICKS_PER_DAY
-from planner import PLANNER_CONFIG as _PC
-_PC.update({"survival_floor": 0, "mandate_shields": False, "mandates_low_deference": False})  # (item5) its floor and mandate changes off: main's behaviour compared
-_PC.update({"recreation_min_citizens": 30, "meals_cap_skip_share": 99, "stress_need_care": False})  # (0.105.47, I7b) the small-fort welfare changes off: main's behaviour compared
-_PC.update({"crisis_hold_table": False})  # (0.105.48, K5) crisis holds by the old 14 names: main's behaviour compared
+# (0.105.48) no rule switched off: the plan as the game runs it, against the snapshot
 out = {}
 for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.json")):
     base = json.loads(path.read_text(encoding="utf-8"))
@@ -826,20 +844,6 @@ for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.j
 print(json.dumps(out, sort_keys=True))
 '''
 
-_MAIN = {}
-
-
-def main_brain() -> Path | None:
-    if "dir" not in _MAIN:
-        tmp = tempfile.mkdtemp(prefix="r41-main-")
-        arch = subprocess.run(["git", "-C", str(ROOT), "archive", "main", "brain"], capture_output=True)
-        if arch.returncode != 0:
-            _MAIN["dir"] = None
-        else:
-            subprocess.run(["tar", "-x", "-C", tmp], input=arch.stdout, check=True)
-            _MAIN["dir"] = Path(tmp) / "brain"
-            atexit.register(shutil.rmtree, tmp, True)
-    return _MAIN["dir"]
 
 
 def probe(brain: Path) -> str:
@@ -854,13 +858,12 @@ def probe(brain: Path) -> str:
 
 @test("no insane section in the report (every fixture, slow and not, 3 cycles): plan() and note_cycle() are main's, byte for byte")
 def _():
-    main = main_brain()
-    assert main is not None, "no main branch to compare with"
-    a, b = probe(main), probe(ROOT / "brain")
-    if a != b:
-        ja, jb = json.loads(a), json.loads(b)
-        bad = [k for k in ja if ja[k] != jb.get(k)]
-        raise AssertionError(f"differs from main at {bad[:3]}")
+    # (0.105.48) was compared with `git archive main`: main moves (and in a clone where
+    # it is HEAD this compared the tree with itself), and without it the test passed.
+    # Now with the plan of 0.105.47 (main then) under the same switches, committed in
+    # tests/fixtures/snapshots/r41_insane_main_plan.json. A change of the plan on purpose: record
+    # it again (DFAI_SNAPSHOT_WRITE=1) and say so.
+    snapshot("r41_insane_main_plan", plan_cases(probe(ROOT / "brain")))
 
 
 @test("fixtures hold no insane section and no insane dwarf the new rule would act on")

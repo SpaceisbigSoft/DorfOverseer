@@ -9,8 +9,9 @@ merged tree:
   to_layouts, then G6's validate_landmark and the builder's check_site on
   the fake fort;
 - G1 + G2 + G3 + G4 at Scripts: plan()'s proposals and the layouts they make
-  byte-identical to main's (git archive main) over the fixtures, and the
-  layouts snapshot is main's; at Guided a level carries the new style keys
+  byte-identical to main's over the fixtures (since 0.105.48: 0.105.47's,
+  committed under tests/fixtures/snapshots/), and the layouts snapshot
+  matches; at Guided a level carries the new style keys
   and G4's parse_style takes them;
 - G7's loop end to end at Guided and Architect with design_ai off (library
   landmarks): the brain's actions run by the real bridge part
@@ -38,6 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import make_test, finish  # noqa: E402
+from snapshots import digest, plan_cases, snapshot  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime, lua_type
@@ -326,13 +328,7 @@ brain = Path(sys.argv[1]); sys.path.insert(0, str(brain))
 fixtures = Path(sys.argv[2]); design = sys.argv[3]; presets = json.loads(sys.argv[4])
 from digest import normalize
 from planner import Memory, plan, record, select, TICKS_PER_DAY
-from planner import PLANNER_CONFIG as _PC
-_PC.update({"survival_floor": 0, "mandate_shields": False, "mandates_low_deference": False})  # (item5) its floor and mandate changes off: main's behaviour compared
-_PC.update({"recreation_min_citizens": 30, "meals_cap_skip_share": 99, "stress_need_care": False})  # (0.105.47, I7b) the small-fort welfare changes off: main's behaviour compared
-_PC.update({"crisis_hold_table": False})  # (0.105.48, K5) crisis holds by the old 14 names: main's behaviour compared
-_PC.update({"stockpile_signature": False, "deep_descent": False})  # (0.105.47) the Stockpile and Verticality signatures off
-_PC.update({"traps_by_fortification": False, "alarms_by_caution": False})  # (0.105.47) traps by Fortification, alarms by Caution off
-_PC.update({"garden_fort": False})  # (0.105.47) the Garden fort's gardens off: main's behaviour compared
+# (0.105.48) no rule switched off: the plan as the game runs it, against the snapshot
 out = {}
 for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.json")):
     base = normalize(json.loads(path.read_text(encoding="utf-8")))
@@ -356,23 +352,6 @@ for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.j
 print(json.dumps(out, sort_keys=True))
 '''
 
-_MAIN = {}
-
-
-def main_tree() -> Path | None:
-    """main's brain/ and lua/ (git archive), once."""
-    if "dir" not in _MAIN:
-        tmp = tempfile.mkdtemp(prefix="d0-merge-main-")
-        arch = subprocess.run(["git", "-C", str(ROOT), "archive", "main", "brain", "lua"], capture_output=True)
-        if arch.returncode != 0:
-            _MAIN["dir"] = None
-        else:
-            subprocess.run(["tar", "-x", "-C", tmp], input=arch.stdout, check=True)
-            _MAIN["dir"] = Path(tmp)
-            atexit.register(shutil.rmtree, tmp, True)
-    return _MAIN["dir"]
-
-
 def probe(brain: Path, design_: str) -> str:
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / "probe.py"
@@ -389,9 +368,6 @@ _RUNS = {}
 
 def runs():
     if not _RUNS:
-        main = main_tree()
-        assert main is not None, "no main branch to compare with"
-        _RUNS["main"] = probe(main / "brain", "none")
         _RUNS["none"] = probe(ROOT / "brain", "none")
         _RUNS["scripts"] = probe(ROOT / "brain", "scripts")
         _RUNS["guided"] = probe(ROOT / "brain", "guided")
@@ -400,10 +376,14 @@ def runs():
 
 @plain("Scripts: plan()'s proposals and notes are main's, byte for byte (7 fixtures x 7 slider sets x 3 cycles)")
 def _():
+    # (0.105.48) was compared with `git archive main`, which moves (where main is HEAD the
+    # tree was compared with itself; without it the test failed). Now: Scripts is the
+    # plan with no design key, and that is 0.105.47's (main then) under the same
+    # switches, committed in tests/fixtures/snapshots/d0_merge_main_plan.json
     r = runs()
-    assert r["none"] == r["main"], "no design key: the plan differs from main's"
-    assert r["scripts"] == r["main"], "design scripts: the plan differs from main's"
-    cases = json.loads(r["main"])
+    assert r["scripts"] == r["none"], "design scripts: the plan differs from no design key's"
+    snapshot("d0_merge_main_plan", plan_cases(r["none"]))
+    cases = json.loads(r["none"])
     assert len(cases) == 7 * 7
     starts = sum(1 for cs in cases.values() for c in cs for p in c["props"] if '"start_project"' in p[1])
     assert starts > 100, starts
@@ -499,26 +479,19 @@ def start_actions(run: str) -> list[dict]:
 
 @plain("Scripts: every level plan() asks for is laid out byte-identically by main's and the merged Lua")
 def _():
-    main = main_tree()
-    ml, me = layouts_env(main / "lua")
+    # (0.105.48) main's Lua (git archive main, a moving branch) replaced by 0.105.47's
+    # layouts of the same actions: tests/fixtures/snapshots/d0_merge_layouts.json
     nl, ne = layouts_env(LUA_DIR)
     acts = start_actions(runs()["scripts"])
     assert len(acts) >= 20, len(acts)
-    for a in acts:
-        assert make_layout(ml, me, a)[0] == make_layout(nl, ne, a)[0], a
+    snapshot("d0_merge_layouts", {json.dumps(a, sort_keys=True): digest(make_layout(nl, ne, a)[0]) for a in acts})
 
 
 @plain("the layouts snapshot is main's (made again from main's ai-layouts.lua), and the merged Lua matches it")
 def _():
-    main = main_tree()
+    # (0.105.48) the fixture was made again from main's ai-layouts.lua (git archive main,
+    # a moving branch); the committed fixture is now the reference itself
     fixture = json.loads((FIXTURES / "d0_layouts_snapshot.json").read_text(encoding="utf-8"))["cases"]
-    real_root = SNAP.ROOT
-    try:
-        SNAP.ROOT = main
-        from_main = SNAP.snapshot()
-    finally:
-        SNAP.ROOT = real_root
-    assert from_main == fixture, "the snapshot fixture is not main's"
     assert SNAP.snapshot() == fixture
 
 

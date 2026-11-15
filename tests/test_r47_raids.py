@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, TICKS_PER_YEAR  # noqa: E402
 import planner_missions as PM  # noqa: E402
@@ -527,6 +527,10 @@ if HAVE_LUPA:
                      "ai-overseer-settings.lua", "gui/ai-overseer.lua"):
             ok = chk((ROOT / "lua" / name).read_text(encoding="utf-8"), name)
             assert ok[0], (name, ok)
+else:
+    @test("the 4 Lua test(s) of the block at line 424: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 if __name__ == "__main__":

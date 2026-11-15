@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import make_test, test as plain_test, finish  # noqa: E402
+from harness import make_test, test as plain_test, finish, need_lua, skip  # noqa: E402
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, abs_tick, plan  # noqa: E402
 import planner_wells  # noqa: E402
 import planner_farms  # noqa: E402
@@ -231,8 +231,7 @@ if LuaRuntime is not None:
 
 
 def _reset():
-    if LuaRuntime is None:
-        return
+    need_lua()
     W.reset()
     B.SHAFT_WATCH = LUA.table_from({"on": False})
     LUA.execute("df.global = df.global or {cur_year = 148, cur_year_tick = 100}")
@@ -431,6 +430,10 @@ if LuaRuntime is not None:
         ok = LUA.eval("function(B) return pcall(B.farm_plots, {tiles = 4}, nil, false) end")(B)
         assert LUA.eval("CALLED")
         assert not B.PASS_OUTSIDE
+else:
+    @test("the 7 Lua test(s) of the block at line 263: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 finish(None if LuaRuntime is not None else "these tests need the lupa package (pip install lupa)")

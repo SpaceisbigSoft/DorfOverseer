@@ -1,0 +1,2980 @@
+{
+ "bridge-0.4.1-y148-winter.json:Deep mine": [
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  }
+ ],
+ "bridge-0.4.1-y148-winter.json:Garden fort": [
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  }
+ ],
+ "bridge-0.4.1-y148-winter.json:Hermit hold": [
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:5d7c937c73823025a14da672",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow",
+    "reserve_storage"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:5d7c937c73823025a14da672",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow",
+    "reserve_storage"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:5d7c937c73823025a14da672",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow",
+    "reserve_storage"
+   ]
+  }
+ ],
+ "bridge-0.4.1-y148-winter.json:Merchant city": [
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:c3622c559ce0e4f5eaf7f747",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow",
+    "reserve_storage"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:c3622c559ce0e4f5eaf7f747",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow",
+    "reserve_storage"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:c3622c559ce0e4f5eaf7f747",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow",
+    "reserve_storage"
+   ]
+  }
+ ],
+ "bridge-0.4.1-y148-winter.json:Monastery": [
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  }
+ ],
+ "bridge-0.4.1-y148-winter.json:War-hold": [
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  }
+ ],
+ "bridge-0.4.1-y148-winter.json:own": [
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  },
+  {
+   "notes": "sha256:25584f8d065b33a741be6097",
+   "props": "sha256:d233287f6653c9599eea7ca7",
+   "rules": [
+    "hospital_burrow",
+    "calm_burrow"
+   ]
+  }
+ ],
+ "enxah-0.104.52-y73-winter.json:Deep mine": [
+  {
+   "notes": "sha256:5f8c7b456ea058dee6f17598",
+   "props": "sha256:7df5700dd98047998baff2f3",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:353e5270aaf493f0cb1f45ec",
+   "props": "sha256:b8ec629057d0b023a0003d45",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:353e5270aaf493f0cb1f45ec",
+   "props": "sha256:7df5700dd98047998baff2f3",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "enxah-0.104.52-y73-winter.json:Garden fort": [
+  {
+   "notes": "sha256:1d54210acc6c22f89675941f",
+   "props": "sha256:98fb645f3ab5118014cf0475",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "keep",
+    "garden_court",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:6cd672ca69e0da191931269e",
+   "props": "sha256:c8c9043ac2b6b56b0c20f614",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "keep",
+    "garden_court",
+    "alerts",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:6cd672ca69e0da191931269e",
+   "props": "sha256:98fb645f3ab5118014cf0475",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "keep",
+    "garden_court",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "enxah-0.104.52-y73-winter.json:Hermit hold": [
+  {
+   "notes": "sha256:5be4acac9a384b7d19be1473",
+   "props": "sha256:23460d402e066c4697f63cf6",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:bbc792a778d1f3156b729033",
+   "props": "sha256:9ffa423bf4353b7d3c487bf2",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts"
+   ]
+  },
+  {
+   "notes": "sha256:bbc792a778d1f3156b729033",
+   "props": "sha256:23460d402e066c4697f63cf6",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "join_levels"
+   ]
+  }
+ ],
+ "enxah-0.104.52-y73-winter.json:Merchant city": [
+  {
+   "notes": "sha256:36235bef882a31a511bc55d7",
+   "props": "sha256:8529256e3b756d8e9eb207db",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "reserve_storage",
+    "hall",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:c8364cfaf1e0104c68033af9",
+   "props": "sha256:7818d1f0530d96fa103605e3",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "reserve_storage",
+    "hall",
+    "alerts",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:c8364cfaf1e0104c68033af9",
+   "props": "sha256:8529256e3b756d8e9eb207db",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "reserve_storage",
+    "hall",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "enxah-0.104.52-y73-winter.json:Monastery": [
+  {
+   "notes": "sha256:b3659376a5096c0fc1f0c179",
+   "props": "sha256:5e57ee51b0233df507f15f04",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "grandeur",
+    "build",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:8009b418ced407d9afbc6d62",
+   "props": "sha256:05639a3379d147cce2622009",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "grandeur",
+    "build",
+    "alerts",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:8009b418ced407d9afbc6d62",
+   "props": "sha256:5e57ee51b0233df507f15f04",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "grandeur",
+    "build",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "enxah-0.104.52-y73-winter.json:War-hold": [
+  {
+   "notes": "sha256:5f8c7b456ea058dee6f17598",
+   "props": "sha256:b9f5f5611c0f4d79eb049099",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "squad_fill",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:353e5270aaf493f0cb1f45ec",
+   "props": "sha256:b1ecfe86f219c94320fe2bfc",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "squad_fill",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts"
+   ]
+  },
+  {
+   "notes": "sha256:353e5270aaf493f0cb1f45ec",
+   "props": "sha256:b9f5f5611c0f4d79eb049099",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "squad_fill",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "join_levels"
+   ]
+  }
+ ],
+ "enxah-0.104.52-y73-winter.json:own": [
+  {
+   "notes": "sha256:5f8c7b456ea058dee6f17598",
+   "props": "sha256:27374bdfab84853f088742ec",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:353e5270aaf493f0cb1f45ec",
+   "props": "sha256:bccfc3e4e5ab718f61047e2e",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:353e5270aaf493f0cb1f45ec",
+   "props": "sha256:27374bdfab84853f088742ec",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "region2-0.42-y51-winter.json:Deep mine": [
+  {
+   "notes": "sha256:6304c4ec3036dc5e3a0851c2",
+   "props": "sha256:2e27afd9479a009218e1f191",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "bags",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "mechanisms",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:6304c4ec3036dc5e3a0851c2",
+   "props": "sha256:85b9543307e1dca788dea920",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "bags",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "mechanisms",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:6304c4ec3036dc5e3a0851c2",
+   "props": "sha256:2e27afd9479a009218e1f191",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "bags",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "mechanisms",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.42-y51-winter.json:Garden fort": [
+  {
+   "notes": "sha256:17b7f69b116f5415cbc15037",
+   "props": "sha256:3fcf6641101b49f2ec78586b",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "labor",
+    "bins",
+    "farms",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "depot",
+    "cloth",
+    "build",
+    "keep",
+    "polish",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:17b7f69b116f5415cbc15037",
+   "props": "sha256:e334853221caacc4ea2070c8",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "labor",
+    "bins",
+    "farms",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "depot",
+    "cloth",
+    "build",
+    "keep",
+    "polish"
+   ]
+  },
+  {
+   "notes": "sha256:17b7f69b116f5415cbc15037",
+   "props": "sha256:3fcf6641101b49f2ec78586b",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "labor",
+    "bins",
+    "farms",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "depot",
+    "cloth",
+    "build",
+    "keep",
+    "polish",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.42-y51-winter.json:Hermit hold": [
+  {
+   "notes": "sha256:6304c4ec3036dc5e3a0851c2",
+   "props": "sha256:1eb4dfdfa273643926e96857",
+   "rules": [
+    "food",
+    "appoint",
+    "squad_fill",
+    "pop_cap",
+    "bins",
+    "bags",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:6304c4ec3036dc5e3a0851c2",
+   "props": "sha256:3223f9cdf258a0b9f05e0879",
+   "rules": [
+    "food",
+    "appoint",
+    "squad_fill",
+    "pop_cap",
+    "bins",
+    "bags",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "reserve_storage",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:6304c4ec3036dc5e3a0851c2",
+   "props": "sha256:1eb4dfdfa273643926e96857",
+   "rules": [
+    "food",
+    "appoint",
+    "squad_fill",
+    "pop_cap",
+    "bins",
+    "bags",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.42-y51-winter.json:Merchant city": [
+  {
+   "notes": "sha256:6bd279ffdf284f3360a05dfa",
+   "props": "sha256:40e2ff7f9f701c0066301aa9",
+   "rules": [
+    "food",
+    "appoint",
+    "squad_fill",
+    "pop_cap",
+    "bins",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "build",
+    "reserve_storage",
+    "polish",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:6bd279ffdf284f3360a05dfa",
+   "props": "sha256:812401f5b0febb8973cb037e",
+   "rules": [
+    "food",
+    "appoint",
+    "squad_fill",
+    "pop_cap",
+    "bins",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "build",
+    "reserve_storage",
+    "polish"
+   ]
+  },
+  {
+   "notes": "sha256:6bd279ffdf284f3360a05dfa",
+   "props": "sha256:40e2ff7f9f701c0066301aa9",
+   "rules": [
+    "food",
+    "appoint",
+    "squad_fill",
+    "pop_cap",
+    "bins",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "build",
+    "reserve_storage",
+    "polish",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.42-y51-winter.json:Monastery": [
+  {
+   "notes": "sha256:6bd279ffdf284f3360a05dfa",
+   "props": "sha256:2943b9f29252e350d7f63760",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "build",
+    "polish",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:6bd279ffdf284f3360a05dfa",
+   "props": "sha256:f94206c49a9763914d8f7e66",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "build",
+    "polish"
+   ]
+  },
+  {
+   "notes": "sha256:6bd279ffdf284f3360a05dfa",
+   "props": "sha256:2943b9f29252e350d7f63760",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "build",
+    "polish",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.42-y51-winter.json:War-hold": [
+  {
+   "notes": "sha256:34a71178a376b6887443bb72",
+   "props": "sha256:5546d0cd30113cf9a782711b",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "build",
+    "mechanisms",
+    "polish",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:34a71178a376b6887443bb72",
+   "props": "sha256:8b817b9b6397c520651e9109",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "build",
+    "mechanisms",
+    "polish"
+   ]
+  },
+  {
+   "notes": "sha256:34a71178a376b6887443bb72",
+   "props": "sha256:5546d0cd30113cf9a782711b",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "build",
+    "mechanisms",
+    "polish",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.42-y51-winter.json:own": [
+  {
+   "notes": "sha256:6304c4ec3036dc5e3a0851c2",
+   "props": "sha256:794a5fd6a44cf8e616b0da87",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "bags",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:6304c4ec3036dc5e3a0851c2",
+   "props": "sha256:6579d202feabe624be01f2c8",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "bags",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:6304c4ec3036dc5e3a0851c2",
+   "props": "sha256:794a5fd6a44cf8e616b0da87",
+   "rules": [
+    "appoint",
+    "squad_fill",
+    "bins",
+    "bags",
+    "smelting",
+    "entrances",
+    "gather_trim",
+    "refuse",
+    "ore",
+    "depot",
+    "cloth",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.48-y52-spring.json:Deep mine": [
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:23757ab132d9e73479002ef2",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:b754476edcb22e94597b4ac6",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:23757ab132d9e73479002ef2",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.48-y52-spring.json:Garden fort": [
+  {
+   "notes": "sha256:8f4dcfd50f0a230925a7293a",
+   "props": "sha256:af1be4e514b0ac515b647a91",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "labor",
+    "bags",
+    "farms",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "keep",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:8f4dcfd50f0a230925a7293a",
+   "props": "sha256:d13055a2e035c5b94ad9fba8",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "labor",
+    "bags",
+    "farms",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "keep",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:8f4dcfd50f0a230925a7293a",
+   "props": "sha256:af1be4e514b0ac515b647a91",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "labor",
+    "bags",
+    "farms",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "keep",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.48-y52-spring.json:Hermit hold": [
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:07aafd729c8f23fb5433fba5",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "pop_cap",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:02be09dc99043dbef9efdafa",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "pop_cap",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "reserve_storage",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:07aafd729c8f23fb5433fba5",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "pop_cap",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.48-y52-spring.json:Merchant city": [
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:815d02b3c1d78c2fdc258a50",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "pop_cap",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:fc81d9429e773c027e3cb1b8",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "pop_cap",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "reserve_storage",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:815d02b3c1d78c2fdc258a50",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "pop_cap",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.48-y52-spring.json:Monastery": [
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:ebc0dc8709bfb0a92a944d4f",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:39f508278ada3ddaa5c28fe8",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:ebc0dc8709bfb0a92a944d4f",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.48-y52-spring.json:War-hold": [
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:b4290bdc27ccc776ed69ecce",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:958cb5c7b705871a9b70cb41",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:b4290bdc27ccc776ed69ecce",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.48-y52-spring.json:own": [
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:ebc0dc8709bfb0a92a944d4f",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:39f508278ada3ddaa5c28fe8",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:4f8353b498ec20dc54f6cd08",
+   "props": "sha256:ebc0dc8709bfb0a92a944d4f",
+   "rules": [
+    "build",
+    "appoint",
+    "furniture",
+    "furniture",
+    "bags",
+    "smelting",
+    "cloth",
+    "bottleneck",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.50-y52-summer.json:Deep mine": [
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:4c7797b774ceaf6cb8f965e8",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "mechanisms",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:1894ea1a5d534a2dfeb6e55b",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "mechanisms",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:4c7797b774ceaf6cb8f965e8",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "mechanisms",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.50-y52-summer.json:Garden fort": [
+  {
+   "notes": "sha256:c688abdf864b03e17e1b64f9",
+   "props": "sha256:ed46946fb2162096a7f0390c",
+   "rules": [
+    "appoint",
+    "bags",
+    "labor",
+    "smelt",
+    "farms",
+    "cloth",
+    "bottleneck",
+    "build",
+    "keep",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:c688abdf864b03e17e1b64f9",
+   "props": "sha256:15040d091555331d3021e1c1",
+   "rules": [
+    "appoint",
+    "bags",
+    "labor",
+    "smelt",
+    "farms",
+    "cloth",
+    "bottleneck",
+    "build",
+    "keep",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:c688abdf864b03e17e1b64f9",
+   "props": "sha256:ed46946fb2162096a7f0390c",
+   "rules": [
+    "appoint",
+    "bags",
+    "labor",
+    "smelt",
+    "farms",
+    "cloth",
+    "bottleneck",
+    "build",
+    "keep",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.50-y52-summer.json:Hermit hold": [
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:8a67a6e9b6460a9385cbfa61",
+   "rules": [
+    "food",
+    "appoint",
+    "bags",
+    "pop_cap",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:0f5fe8dbd533843d42307eb9",
+   "rules": [
+    "food",
+    "appoint",
+    "bags",
+    "pop_cap",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "reserve_storage",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:8a67a6e9b6460a9385cbfa61",
+   "rules": [
+    "food",
+    "appoint",
+    "bags",
+    "pop_cap",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.50-y52-summer.json:Merchant city": [
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:8ab2800989086257e37c5dcb",
+   "rules": [
+    "appoint",
+    "bags",
+    "pop_cap",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:f44c20b111ff049d0451ecad",
+   "rules": [
+    "appoint",
+    "bags",
+    "pop_cap",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "reserve_storage",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:8ab2800989086257e37c5dcb",
+   "rules": [
+    "appoint",
+    "bags",
+    "pop_cap",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "reserve_storage",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.50-y52-summer.json:Monastery": [
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:cbf914d2ee376698c8bbb3e8",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:ac2f0b0fcf2b41b28192fd39",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:cbf914d2ee376698c8bbb3e8",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.50-y52-summer.json:War-hold": [
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:7970778fa5a99bb0c03ee42e",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "mechanisms",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:8b59026ab107cbe4ba8de2b4",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "mechanisms",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:7970778fa5a99bb0c03ee42e",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "mechanisms",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.50-y52-summer.json:own": [
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:f9863ddbb68f255435aa1756",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:86798606f5887c0b9a6288d9",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "polish",
+    "gems"
+   ]
+  },
+  {
+   "notes": "sha256:70e14defccb62b8f7bdeee54",
+   "props": "sha256:f9863ddbb68f255435aa1756",
+   "rules": [
+    "appoint",
+    "bags",
+    "smelt",
+    "cloth",
+    "bottleneck",
+    "build",
+    "polish",
+    "gems",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.83-y62-spring.json:Deep mine": [
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:75ed33a092267d581c809015",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "mechanisms",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:989e5ff0094c831433ddc0ac",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "mechanisms",
+    "polish",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:75ed33a092267d581c809015",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "mechanisms",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "region2-0.83-y62-spring.json:Garden fort": [
+  {
+   "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
+   "props": "sha256:5c45cd475276062009e577bb",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "keep",
+    "garden_court",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
+   "props": "sha256:f75ee5a519e03f3ad6b7f524",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "keep",
+    "garden_court",
+    "polish",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
+   "props": "sha256:5c45cd475276062009e577bb",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "keep",
+    "garden_court",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "region2-0.83-y62-spring.json:Hermit hold": [
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:5d06475b60092854f3e75a28",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "pop_cap",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:21acf253cc7375cbd6cb1d87",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "pop_cap",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:5d06475b60092854f3e75a28",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "pop_cap",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.83-y62-spring.json:Merchant city": [
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:64213b5c9419522a6abd7122",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "pop_cap",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "reserve_storage",
+    "hall",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:df57ffd7271e3d1aac7f4422",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "pop_cap",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "reserve_storage",
+    "hall",
+    "polish",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:64213b5c9419522a6abd7122",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "pop_cap",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "reserve_storage",
+    "hall",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "region2-0.83-y62-spring.json:Monastery": [
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:384c7274a863e6e27e3fbf07",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "unstick_uniforms",
+    "unload_depot",
+    "stress_care",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:6b85527a3d69ff1b61d2109a",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "unstick_uniforms",
+    "unload_depot",
+    "stress_care",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:384c7274a863e6e27e3fbf07",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "unstick_uniforms",
+    "unload_depot",
+    "stress_care",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "region2-0.83-y62-spring.json:War-hold": [
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:499dc3957b4e4e4caa4d9c9e",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "squad_make",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "mechanisms",
+    "polish",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:aead5446441b4a81e180358d",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "squad_make",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "mechanisms",
+    "polish"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:499dc3957b4e4e4caa4d9c9e",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "squad_make",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "mechanisms",
+    "polish",
+    "join_levels"
+   ]
+  }
+ ],
+ "region2-0.83-y62-spring.json:own": [
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:5d915c30ba2a95b22e1eb764",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:29af92c143036ef810d97bb8",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:5d915c30ba2a95b22e1eb764",
+   "rules": [
+    "hospital",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "test_fort.json:Deep mine": [
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:d2196657eef94721ef5056d5",
+   "rules": [
+    "mandate",
+    "tools",
+    "traps",
+    "mechanisms",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:07300a5f89ba1fc3fccf0ef2",
+   "rules": [
+    "mandate",
+    "tools",
+    "mechanisms",
+    "polish",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:d33ad931bb7090a0ada102b3",
+   "rules": [
+    "mandate",
+    "tools",
+    "mechanisms",
+    "polish",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "test_fort.json:Garden fort": [
+  {
+   "notes": "sha256:d0d1ecd1ff5cf40af873fa19",
+   "props": "sha256:57003dde76d0b8da02e0ece8",
+   "rules": [
+    "mandate",
+    "tools",
+    "farms",
+    "build",
+    "keep",
+    "garden_court",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:71cca1d2ee4fa9edd3580f0e",
+   "props": "sha256:cbd4c0eef9af001ea6890785",
+   "rules": [
+    "mandate",
+    "tools",
+    "waterworks_irrigation",
+    "build",
+    "keep",
+    "garden_court",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:71cca1d2ee4fa9edd3580f0e",
+   "props": "sha256:6cdb31f4beb95aa3b2c1a6d2",
+   "rules": [
+    "mandate",
+    "tools",
+    "waterworks_irrigation",
+    "build",
+    "keep",
+    "garden_court",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "test_fort.json:Hermit hold": [
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:f4ad297945f256664cba72b8",
+   "rules": [
+    "tools",
+    "traps",
+    "reserve_storage",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:6bb1db5c34ce9ee26013027c",
+   "rules": [
+    "tools",
+    "reserve_storage"
+   ]
+  },
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:ab6c6409877a369f9202a46c",
+   "rules": [
+    "tools",
+    "reserve_storage",
+    "join_levels"
+   ]
+  }
+ ],
+ "test_fort.json:Merchant city": [
+  {
+   "notes": "sha256:4df1404b9100aec8a1da9695",
+   "props": "sha256:c3205c4c64ba6c57f73f8532",
+   "rules": [
+    "mandate",
+    "tools",
+    "build",
+    "reserve_storage",
+    "hall",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:4df1404b9100aec8a1da9695",
+   "props": "sha256:66d9a483f08c28b519594345",
+   "rules": [
+    "mandate",
+    "tools",
+    "build",
+    "reserve_storage",
+    "hall",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:4df1404b9100aec8a1da9695",
+   "props": "sha256:c3205c4c64ba6c57f73f8532",
+   "rules": [
+    "mandate",
+    "tools",
+    "build",
+    "reserve_storage",
+    "hall",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "test_fort.json:Monastery": [
+  {
+   "notes": "sha256:97cd24fed560913515ebe9cd",
+   "props": "sha256:3d3d526958426c3ff0731726",
+   "rules": [
+    "mandate",
+    "tools",
+    "squad_trim",
+    "build",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:97cd24fed560913515ebe9cd",
+   "props": "sha256:a8b7d5f3991bfb94688b9c76",
+   "rules": [
+    "mandate",
+    "tools",
+    "squad_trim",
+    "build",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:97cd24fed560913515ebe9cd",
+   "props": "sha256:3d3d526958426c3ff0731726",
+   "rules": [
+    "mandate",
+    "tools",
+    "squad_trim",
+    "build",
+    "join_levels",
+    "second_way"
+   ]
+  }
+ ],
+ "test_fort.json:War-hold": [
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:75c974e364640ab751c5fb9d",
+   "rules": [
+    "mandate",
+    "squad_make",
+    "tools",
+    "traps",
+    "mechanisms",
+    "join_levels"
+   ]
+  },
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:0968ff2f7a452908c734c3f2",
+   "rules": [
+    "mandate",
+    "squad_make",
+    "tools",
+    "traps",
+    "mechanisms"
+   ]
+  },
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:75c974e364640ab751c5fb9d",
+   "rules": [
+    "mandate",
+    "squad_make",
+    "tools",
+    "traps",
+    "mechanisms",
+    "join_levels"
+   ]
+  }
+ ],
+ "test_fort.json:own": [
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:6e899bd5b50691d9cee3fb0a",
+   "rules": [
+    "mandate",
+    "tools",
+    "join_levels",
+    "second_way"
+   ]
+  },
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:78ab2256022707e88cf5fff2",
+   "rules": [
+    "mandate",
+    "tools"
+   ]
+  },
+  {
+   "notes": "sha256:4f53cda18c2baa0c0354bb5f",
+   "props": "sha256:d1df0b3dcde8c2425b2bb03d",
+   "rules": [
+    "mandate",
+    "tools",
+    "join_levels"
+   ]
+  }
+ ]
+}

@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -189,8 +189,7 @@ def spat(lua, mt, mi):
 
 @test("syndromes: each one named, its days, routes, deadly effects and source (learned from the material seen)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fb_fort(lua, w)
     w.unit(T(lua, {"id": 1, "name": "Urist", "body": {"spatters": [spat(lua, 200, 1)]},
@@ -211,8 +210,7 @@ def _():
 
 @test("syndromes: a source not met on the fort is found in the raws (walked once, in slices)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fb_fort(lua, w)
     mat = T(lua, {"syndrome": {"syndrome": [w.syns[6]]}, "state_name": {"Liquid": "venom", "Solid": "venom"}})
@@ -228,8 +226,7 @@ def _():
 
 @test("source_kind: forgotten beast, cave spider, evil weather, plant, mineral")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     sk = env.source_kind
     assert sk("creature", "FORGOTTEN_BEAST_12") == "forgotten_beast"
@@ -244,8 +241,7 @@ def _():
 
 @test("floors: only blocks in the fort's areas walked; syndrome spatter counted, plain blood not; a pass a day")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fb_fort(lua, w)
     b = w.block(0, 0, 100)
@@ -265,8 +261,7 @@ def _():
 
 @test("clean: the syndrome spatter off the citizens, their things and the fort's floors; blood left; dry run counts only")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fb_fort(lua, w)
     item = T(lua, {"contaminants": [spat(lua, 200, 1), spat(lua, 3, 0)]})
@@ -294,8 +289,7 @@ def _():
 
 @test("quarantine: carriers kept, held days after last seen carrying, then let out; release empties; dry run saves nothing")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fb_fort(lua, w)
     u = w.unit(T(lua, {"id": 1, "name": "Urist", "body": {"spatters": [spat(lua, 200, 1)]}}))
@@ -325,8 +319,7 @@ def _():
     src = (LUA_DIR / "ai-society-burrows.lua").read_text(encoding="utf-8")
     i = src.index("function is_patient(u)")
     j = src.index("\nend\n", src.index("function in_quarantine(u)")) + 5
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute("HOSP_RQ = {'rq_diagnosis'}; Q = {}\n"
                 "function reqscript(n) if n == 'ai-syndromes' then return {quarantined = function(id) "
@@ -362,8 +355,7 @@ def miasma_fort(lua, w):
 
 @test("miasma: the tiles indoors and near the living; what rots near the worst; the fort's own dead apart; dumps outside")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     miasma_fort(lua, w)
     r = py(env.miasma_report())
@@ -378,8 +370,7 @@ def _():
 
 @test("clear_miasma: refused without a dump under the sky; marks the rest, unforbids another's body; never the own dead")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     miasma_fort(lua, w)
     r = py(env.clear_miasma(None, False))
@@ -402,8 +393,7 @@ def _():
 @test("(fix5) clear_miasma: no spot in the caverns or off the living areas; nothing marked near a danger, on a cavern "
       "tile, out of the citizens' reach, or a whole corpse for the butcher while there is a butcher's shop")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     miasma_fort(lua, w)
     w.dump(60, 60, 62, 62, 110, True)
@@ -461,8 +451,7 @@ def _():
 @test("(fix5) quarantine: a squad member who carries is left out (the burrow doesn't hold soldiers) and counted; "
       "one drafted since is let out; the report doesn't count him kept apart")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fb_fort(lua, w)
     w.unit(T(lua, {"id": 1, "body": {"spatters": [spat(lua, 200, 1)]}}))
@@ -498,8 +487,7 @@ def _():
     import overseer
     for a in ("clean_contaminants", "quarantine_syndromes", "clear_miasma"):
         assert a in overseer.SHORT_WORDS and a in overseer.CAMERA_QUIET, a
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute("""
         GOT = nil

@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -221,6 +221,7 @@ def citizens(lua, w, n, start=1):
 @test("report hunting: wild animals on the surface (game; dangerous ones apart), not tame, caged or in a "
       "cavern; hunters outside the squads, the AI's own")
 def _():
+    need_lua()
     lua, env, w = world()
     w.unit(T(lua, {"id": 50, "animal": True}))                                   # game
     w.unit(T(lua, {"id": 51, "animal": True}))
@@ -239,6 +240,7 @@ def _():
 
 @test("(fix3) report hunting: a large predator not (yet) a danger to DF counts as danger, not game")
 def _():
+    need_lua()
     lua, env, w = world()
     w.unit(T(lua, {"id": 50, "animal": True}))                                   # game
     w.unit(T(lua, {"id": 56, "animal": True, "hostile_wild": True}))             # a bear, not agitated
@@ -249,6 +251,7 @@ def _():
 @test("report butchery: unbutchered bodies of beasts (forbidden apart; a sapient's never), raw hides that tan, "
       "the standing orders as 0/1, butchers and tanners")
 def _():
+    need_lua()
     lua, env, w = world()
     w.creatures[1] = T(lua, {"caste": [{"flags": {}}]})
     w.creatures[2] = T(lua, {"caste": [{"flags": {"CAN_SPEAK": True}}]})
@@ -274,6 +277,7 @@ def _():
 
 @test("(fix3) report butchery: a hide flag where the game names one decides; the walk capped at CORPSE_READ_MAX")
 def _():
+    need_lua()
     lua, env, w = world()
     tan = {"reaction_product": {"id": ["TAN_MAT"]}}
     w.item(T(lua, {"kind": "CORPSEPIECE", "mat": tan, "corpse_flags": {"leather": True}}))
@@ -289,6 +293,7 @@ def _():
 
 @test("report meals: servings by kind (biscuits, stew, roast), rotten left out")
 def _():
+    need_lua()
     lua, env, w = world()
     w.item(T(lua, {"kind": "FOOD", "n": 10, "subtype": {"id": "ITEM_FOOD_BISCUITS"}}))
     w.item(T(lua, {"kind": "FOOD", "n": 5, "subtype": {"id": "ITEM_FOOD_ROAST"}}))
@@ -312,6 +317,7 @@ def tree(lua, w, x, y, z=100, mat=0):
 @test("report fruit: fruit trees near the fort (a growth to eat or brew; none far, none fruitless), the fruit "
       "zones and the AI's own")
 def _():
+    need_lua()
     lua, env, w = world()
     fruit_raws(lua, w)
     for x in range(40, 46):
@@ -342,6 +348,7 @@ def _():
 
 @test("hunters: more through ai-labor, the new ones remembered as the AI's; a dry run remembers nothing")
 def _():
+    need_lua()
     lua, env, w = world()
     citizens(lua, w, 3)
     w.detail = T(lua, {"name": "Hunters"})
@@ -357,6 +364,7 @@ def _():
 @test("hunters stop: only the AI's hunters off the detail and the hunt dropped; the player's hunter kept; "
       "a detail set to everybody is left alone")
 def _():
+    need_lua()
     lua, env, w = world()
     us = citizens(lua, w, 3)
     w.detail = T(lua, {"name": "Hunters"})
@@ -382,6 +390,7 @@ def _():
 @test("food_standing: butchering and tanning orders turned on and remembered; any other order refused; one "
       "the AI set and the player turned off is left off")
 def _():
+    need_lua()
     lua, env, w = world()
     w.standing["auto_butcher"] = 0
     w.standing["auto_tan"] = 0
@@ -399,6 +408,7 @@ def _():
 
 @test("best_stand: the densest stand of trees, boxed with a tile round it, clamped to the side")
 def _():
+    need_lua()
     lua, env, w = world()
     trees = T(lua, [{"x": 10, "y": 10, "z": 1}, {"x": 12, "y": 11, "z": 1}, {"x": 11, "y": 13, "z": 1},
                     {"x": 60, "y": 60, "z": 1}, {"x": 11, "y": 12, "z": 2}])
@@ -414,6 +424,7 @@ def _():
 @test("fruit_zone: a 'g' zone over the stand by quickfort (dry run first), remembered; trees already zoned "
       "don't count; no stand: refused")
 def _():
+    need_lua()
     lua, env, w = world()
     fruit_raws(lua, w)
     for x, y in ((40, 50), (42, 51), (41, 53), (44, 52)):
@@ -439,6 +450,7 @@ def cave_floor(w, x1, y1, x2, y2, z=80, mat="SOIL"):
 @test("cavern_farm: plots on the cavern's soil nearest where the fort meets it, by quickfort 'p', remembered "
       "and reported; stone floor and other walk groups never")
 def _():
+    need_lua()
     lua, env, w = world()
     cave_floor(w, 20, 20, 23, 25)                 # soil 4x6 by the way in
     cave_floor(w, 24, 20, 30, 25, mat="STONE")    # stone beside it
@@ -459,6 +471,7 @@ def _():
 
 @test("cavern_farm: refused off a cavern, with a danger near, without soil, or with bad numbers")
 def _():
+    need_lua()
     lua, env, w = world()
     cave_floor(w, 20, 20, 25, 25)
     assert py(env.cavern_farm(T(lua, {"at": {"x": 5, "y": 5, "z": 100}, "tiles": 12}), False))["rejected"]
@@ -475,6 +488,7 @@ def _():
 
 @test("cavern_spots: rectangles nearest the way in first, never overlapping, at least 2x2")
 def _():
+    need_lua()
     lua, env, w = world()
     good = lua.eval("function(x, y, z) return x >= 0 and x < 10 and y >= 0 and y < 10 and z == 0 end")
     spots, total = env.cavern_spots(good, T(lua, {"x": 0, "y": 0, "z": 0}), 30, 12, 0, 6, 2)
@@ -498,6 +512,7 @@ NAMES = ("hunters", "food_standing", "fruit_zone", "cavern_farm")
 
 @test("bridge: the four actions in ACTIONS and DRY_OK, the provisions section, ai-provisions in BRIDGE_MODULES")
 def _():
+    need_lua()
     dry = BRIDGE[BRIDGE.index("DRY_OK = {}"):BRIDGE.index("}) do DRY_OK[name] = true end")]
     for a in NAMES:
         assert code_has(BRIDGE, f"{a} = act_{a},"), a
@@ -514,6 +529,7 @@ def _():
 
 @test("bridge: the handlers check their numbers and pass dry_run on")
 def _():
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     f = lua.eval("""function(src)
         local seen = {}

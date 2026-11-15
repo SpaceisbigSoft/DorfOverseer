@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -190,8 +190,7 @@ def goblin(lua, w, uid=1, **kw):
 
 @test("report: each caged prisoner with its facts; the fort's own animals, citizens, merchants and the dead aren't prisoners")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     goblin(lua, w, 1)
     w.unit(T(lua, {"id": 2, "caged": True, "danger": True, "race": 2}))                       # a wild badger
@@ -212,8 +211,7 @@ def _():
 
 @test("report: the AI's pit with its drop and assigned count; a player's pit only counted")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     dwarves(lua, w)
     w.shaft(60, 50, 100, 8)
@@ -227,8 +225,7 @@ def _():
 
 @test("find_drop: open space beside a walked floor with a deep clean fall; nearest inside first")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     dwarves(lua, w)
     w.shaft(60, 50, 100, 8)
@@ -240,8 +237,7 @@ def _():
 @test("find_drop: refused: too shallow, water at the bottom, a cavern below, a landing in the dwarves' walk group, "
       "a cistern tile, no floor beside it (each alone)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
 
     def one(build):
         lua, env, w = world()
@@ -279,8 +275,7 @@ def _():
 
 @test("make_pit: the dry run changes nothing; for real a pit/pond zone named AI pit; an AI pit there is kept; no drop refused")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     dwarves(lua, w)
     r = py(env.make_pit(T(lua, {"min_drop": 7}), False))
@@ -304,8 +299,7 @@ def _():
 
 @test("pit_prisoners: links made both ways (zone lists, unit points); the dry run changes nothing; checks each one")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     dwarves(lua, w)
     w.shaft(60, 50, 100, 8)
@@ -326,8 +320,7 @@ def _():
 
 @test("pit_prisoners: refused with no AI pit, or a pit whose drop is too short; never more than the batch cap")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     dwarves(lua, w)
     goblin(lua, w, 1)
@@ -351,8 +344,7 @@ def _():
 @test("necro: the dead counted (invaders apart), a raiser found by its animating interaction, bodies outside counted "
       "only while the dead are about, towers near listed nearest first")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     w.interactions[5] = T(lua, {"effects": [{"getType": lua.eval("function() return 'ANIMATE' end")}]})
     w.interactions[6] = T(lua, {"effects": [{"getType": lua.eval("function() return 'ADD_SYNDROME' end")}]})
@@ -378,8 +370,7 @@ def _():
 
 @test("(fix3) necro: a visiting or resident necromancer is no raiser of a siege; an uninvited hostile one is")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     w.interactions[5] = T(lua, {"effects": [{"getType": lua.eval("function() return 'ANIMATE' end")}]})
     w.unit(T(lua, {"id": 6, "name": "Guest", "visitor": True, "curse": {"own_interaction": [5]}}))
@@ -409,8 +400,7 @@ def _():
     assert SECTION_DEFAULTS["captives"] == {} and SECTION_DEFAULTS["necro"] == {}
     import overseer
     assert "make_pit" in overseer.SHORT_WORDS and "pit_prisoners" in overseer.SHORT_WORDS
-    if LuaRuntime is None:
-        return
+    need_lua()
     i = actions.index("    pit_prisoners = function(a)")
     j = actions.index("    end,\n", i) + len("    end,\n")
     fn = actions[i:j].strip().rstrip(",").replace("pit_prisoners = function(a)", "return function(a)", 1)

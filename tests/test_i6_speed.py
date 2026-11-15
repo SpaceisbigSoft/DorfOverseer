@@ -30,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 from lua_modules_util import module_src, UTIL_SRC  # noqa: E402
 
@@ -58,9 +58,7 @@ def lua_const(test_file: str, name: str) -> str:
 def lua_test(name):
     def deco(fn):
         def run():
-            if LuaRuntime is None:
-                print("  (no lupa: skipped)")
-                return
+            need_lua()
             fn()
         return test(name)(run)
     return deco

@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -232,8 +232,7 @@ def fort(lua, w):
 
 @test("target_ok: threats, thieves, ambushers, wild hostiles and a wounded interrupting visitor yes; the rest no")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     ok = lambda **f: env.target_ok(T(lua, f))[0]  # noqa: E731
     assert ok(danger=True) and ok(invader=True) and ok(thief=True) and ok(ambush=True) and ok(hostile_wild=True)
@@ -246,8 +245,7 @@ def _():
 
 @test("classify_route: same group ok (length rounded); a seal blocks a cavern target; a shut gate; no path")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     r = lambda **t: py(env.classify_route(T(lua, t)))  # noqa: E731
     assert r(group=1, main=1, region="surface", dist=12.4) == {"ok": True, "length": 12, "blocked_by": "none"}
@@ -261,8 +259,7 @@ def _():
 
 @test("pure helpers: the history capped (newest kept), the main group, region, workers near, targets ordered and capped")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     h = None
     for i in range(25):
@@ -282,8 +279,7 @@ def _():
 
 @test("report: the contract's shape; every target and no forbidden one; route, region, layer, fire, flags")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     w.sealed = T(lua, {})
@@ -312,8 +308,7 @@ def _():
 
 @test("report: the seal and a shut gate block the way; seen_ticks grows; a target gone is forgotten")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     w.sealed["all caverns"] = T(lua, {"ids": [1]})
@@ -332,8 +327,7 @@ def _():
 
 @test("report: the squads: soldiers, power, armed, ranged (bow and bolts), at home, sheltering, hunting")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     a = [armed_soldier(lua, w, 300 + i, bow=i < 2) for i in range(3)]
@@ -362,8 +356,7 @@ def two_squads(lua, w):
 
 @test("hunt_send: the rejects (no target, dead, caged, not a threat, no squad, the player's, under 2 armed); a dry run gives no order")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     two_squads(lua, w)
@@ -381,8 +374,7 @@ def _():
 
 @test("hunt_send: kill orders through ai-military orders(), the hunt kept; the report shows it and the squad hunting")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     two_squads(lua, w)
@@ -405,8 +397,7 @@ def _():
 
 @test("the report closes hunts: target dead (won, soldiers lost counted), left the map (gone), order dropped")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     two_squads(lua, w)
@@ -429,8 +420,7 @@ def _():
 
 @test("hunt_recall: by squads or by target, orders cleared, outcome and reason kept; dry run changes nothing; history capped at 20")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     two_squads(lua, w)
@@ -456,8 +446,7 @@ def _():
 
 @test("hunt_send at another target: the old hunt closed (recalled), the new one kept")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     two_squads(lua, w)
@@ -495,8 +484,7 @@ def _():
 
 @test("bridge: the handlers check their arguments (ids whole numbers, 1-10 squads, squads or a target)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute("""

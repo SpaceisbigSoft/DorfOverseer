@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -179,8 +179,7 @@ def farm(lua, w):
 
 @test("report: the herd by kind, wool grown and milk ready now, grass need, tameable, protected and marked")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     farm(lua, w)
     r = py(env.report())
@@ -199,8 +198,7 @@ def _():
 
 @test("keep_breeders: a male and n females a kind, the youngest first, unmarked; f=0 lets them go; a dry run changes nothing")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     farm(lua, w)
     dry = py(env.keep_breeders(2, True))
@@ -220,8 +218,7 @@ def _():
 
 @test("tame: a training assignment (any trainer, no war or hunting flag) for the caged bear only; counted in the save")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     farm(lua, w)
     assert py(env.tame(2, True))["assigned"] == 1 and len(w.training) == 0
@@ -235,8 +232,7 @@ def _():
 
 @test("train_hunt: plain adult dogs get hunting training; breeders, pets, the war dog left")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     farm(lua, w)
     r = py(env.train_hunt(4, False))
@@ -246,8 +242,7 @@ def _():
 
 @test("set_targets: autobutcher target for all kinds and new ones, kept in the save; bad numbers refused")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     assert py(env.set_targets(T(lua, {"fk": 1, "mk": 1, "fa": 3, "ma": 1}), True))["command"] == \
         "autobutcher target 1 1 3 1 all"
@@ -281,8 +276,7 @@ def _():
     soc = (LUA_DIR / "ai-society.lua").read_text(encoding="utf-8")
     j = soc.index("function pasture_report()")
     assert "GATE_DOGS_NAME" in soc[j:j + 1400] and "count = #list - dogs" in soc[j:j + 1400]
-    if LuaRuntime is None:
-        return
+    need_lua()
     k = src.index("    herd_breeders = function(a)")
     m = src.index("    end,\n}\n", k)
     body = src[k:m + len("    end,\n")]

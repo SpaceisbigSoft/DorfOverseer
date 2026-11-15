@@ -1,0 +1,138 @@
+[
+ [
+  "census",
+  "{\"adults\": 6, \"adults_roomless\": 3, \"children\": 2, \"children_roomless\": 1, \"citizens\": 8, \"couples\": 2, \"couples_apart\": 1, \"couples_none\": 1, \"couples_shared\": 0, \"couples_unlinked\": 0, \"free_bedless\": 1, \"free_bedrooms\": 1, \"free_suites\": 1, \"hoarders\": 0, \"lack_room\": 1, \"rooms_reachable\": 3, \"rooms_unreachable\": 0, \"rooms_wanted\": 3, \"rough\": 3, \"rough_children\": 0, \"rough_housed\": 1, \"rough_unreachable\": 1, \"samples\": [\"two rooms: dwarf 1 and dwarf 2\", \"no room: dwarf 3 and dwarf 4\", \"no room: dwarf 7\"]}",
+  [
+   1,
+   2,
+   8,
+   -1,
+   -1,
+   -1
+  ]
+ ],
+ [
+  "house_a",
+  "{\"free_after\": 0, \"free_before\": 1, \"freed\": 1, \"housed\": 1, \"lines\": [\"dwarf 1 and dwarf 2 share one room (1 freed)\", \"dwarf 3 and dwarf 4 get a bedroom\"], \"merged\": 1, \"ok\": true, \"upgraded\": 0}",
+  [
+   1,
+   -1,
+   8,
+   3,
+   -1,
+   -1
+  ]
+ ],
+ [
+  "house_b",
+  "{\"error\": \"every household has one room, and no free room is much better for the stressed\", \"free_after\": 1, \"free_before\": 1, \"freed\": 0, \"housed\": 0, \"lines\": {}, \"merged\": 0, \"ok\": false, \"rejected\": true, \"upgraded\": 0}",
+  [
+   1,
+   2,
+   8,
+   -1,
+   -1,
+   -1
+  ]
+ ],
+ [
+  "house_dry",
+  "{\"dry_run\": true, \"free_after\": 0, \"free_before\": 1, \"freed\": 1, \"housed\": 1, \"lines\": [\"dwarf 1 and dwarf 2 share one room (1 freed)\", \"dwarf 3 and dwarf 4 get a bedroom\"], \"merged\": 1, \"ok\": true, \"upgraded\": 0}",
+  [
+   1,
+   2,
+   8,
+   -1,
+   -1,
+   -1
+  ]
+ ],
+ [
+  "census",
+  "{\"adults\": 3, \"adults_roomless\": 0, \"children\": 0, \"children_roomless\": 0, \"citizens\": 3, \"couples\": 0, \"couples_apart\": 0, \"couples_none\": 0, \"couples_shared\": 0, \"couples_unlinked\": 0, \"free_bedless\": 0, \"free_bedrooms\": 1, \"free_suites\": 0, \"hoarders\": 0, \"lack_room\": 0, \"rooms_reachable\": 0, \"rooms_unreachable\": 0, \"rooms_wanted\": 0, \"rough\": 0, \"rough_children\": 0, \"rough_housed\": 0, \"rough_unreachable\": 0, \"samples\": {}}",
+  [
+   1,
+   2,
+   3,
+   -1
+  ]
+ ],
+ [
+  "house_a",
+  "{\"error\": \"every household has one room, and no free room is much better for the stressed\", \"free_after\": 1, \"free_before\": 1, \"freed\": 0, \"housed\": 0, \"lines\": {}, \"merged\": 0, \"ok\": false, \"rejected\": true, \"upgraded\": 0}",
+  [
+   1,
+   2,
+   3,
+   -1
+  ]
+ ],
+ [
+  "house_b",
+  "{\"free_after\": 0, \"free_before\": 1, \"freed\": 0, \"housed\": 0, \"lines\": [\"dwarf 1 moves to a better room for them (20 -> 50)\"], \"merged\": 0, \"ok\": true, \"upgraded\": 1}",
+  [
+   -1,
+   2,
+   3,
+   1
+  ]
+ ],
+ [
+  "house_dry",
+  "{\"dry_run\": true, \"free_after\": 0, \"free_before\": 1, \"freed\": 0, \"housed\": 0, \"lines\": [\"dwarf 1 moves to a better room for them (20 -> 50)\"], \"merged\": 0, \"ok\": true, \"upgraded\": 1}",
+  [
+   1,
+   2,
+   3,
+   -1
+  ]
+ ],
+ [
+  "census",
+  "{\"adults\": 5, \"adults_roomless\": 3, \"children\": 0, \"children_roomless\": 0, \"citizens\": 5, \"couples\": 1, \"couples_apart\": 1, \"couples_none\": 0, \"couples_shared\": 0, \"couples_unlinked\": 0, \"free_bedless\": 0, \"free_bedrooms\": 4, \"free_suites\": 0, \"hoarders\": 0, \"lack_room\": 0, \"rooms_reachable\": 3, \"rooms_unreachable\": 0, \"rooms_wanted\": 3, \"rough\": 0, \"rough_children\": 0, \"rough_housed\": 0, \"rough_unreachable\": 0, \"samples\": [\"no room: dwarf 1\", \"no room: dwarf 2\", \"no room: dwarf 3\", \"two rooms: dwarf 9 and dwarf 10\"]}",
+  [
+   -1,
+   -1,
+   -1,
+   -1,
+   9,
+   10
+  ]
+ ],
+ [
+  "house_a",
+  "{\"free_after\": 1, \"free_before\": 4, \"freed\": 1, \"housed\": 3, \"lines\": [\"dwarf 9 and dwarf 10 share one room (1 freed)\", \"dwarf 1 get a bedroom\", \"dwarf 2 get a bedroom\", \"dwarf 3 get a bedroom\"], \"merged\": 1, \"ok\": true, \"upgraded\": 0}",
+  [
+   1,
+   2,
+   3,
+   -1,
+   -1,
+   10
+  ]
+ ],
+ [
+  "house_b",
+  "{\"error\": \"every household has one room, and no free room is much better for the stressed\", \"free_after\": 4, \"free_before\": 4, \"freed\": 0, \"housed\": 0, \"lines\": {}, \"merged\": 0, \"ok\": false, \"rejected\": true, \"upgraded\": 0}",
+  [
+   -1,
+   -1,
+   -1,
+   -1,
+   9,
+   10
+  ]
+ ],
+ [
+  "house_dry",
+  "{\"dry_run\": true, \"free_after\": 1, \"free_before\": 4, \"freed\": 1, \"housed\": 3, \"lines\": [\"dwarf 9 and dwarf 10 share one room (1 freed)\", \"dwarf 1 get a bedroom\", \"dwarf 2 get a bedroom\", \"dwarf 3 get a bedroom\"], \"merged\": 1, \"ok\": true, \"upgraded\": 0}",
+  [
+   -1,
+   -1,
+   -1,
+   -1,
+   9,
+   10
+  ]
+ ]
+]

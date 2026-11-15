@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import code_has, finish, test  # noqa: E402
+from harness import code_has, finish, test, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -222,8 +222,7 @@ SKIP = LuaRuntime is None
 
 @test("plan_pocket: a long 1-wide way behind the door: 6 tiles of cage traps, the inner door on the 7th")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     corridor(w, 8)
     p, why = plan(lua, env, w)
@@ -235,8 +234,7 @@ def _():
 
 @test("plan_pocket: a way of 4 then a room: a pocket of 3, its inner door on the last 1-wide tile")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     corridor(w, 4)
     p, why = plan(lua, env, w)
@@ -246,8 +244,7 @@ def _():
 
 @test("plan_pocket: too short, wider than one tile, no cavern beside it, a cavern leak: no pocket, and why")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     corridor(w, 3)                                  # 3 tiles 1-wide: 2 pocket + gate
     p, why = plan(lua, env, w)
@@ -273,8 +270,7 @@ def _():
 
 @test("plan_pocket: a trap-immune beast: drawbridges at the mouth and as the inner gate, no traps")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     corridor(w, 8)
     p, why = plan(lua, env, w, immune=True)
@@ -287,8 +283,7 @@ def _():
 
 @test("plan_pocket: not on a level without the AI's projects; never over the depot road or anyone's building")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     corridor(w, 8)
     p, why = plan(lua, env, w, levels={5: True})
@@ -313,8 +308,7 @@ def _():
 
 @test("phase_of: idle, building, ready, open, caught, shut_in, done")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     f = lambda **r: env.phase_of(T(lua, r))  # noqa: E731
     assert f() == "idle" and f(planned=True) == "building" and f(planned=True, built=True) == "ready"
@@ -351,8 +345,7 @@ def built_pocket(lua, env, w, immune=False):
 
 @test("build_lure: only behind a door the AI holds; a dry run plans and places nothing; too few mechanisms wait")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     corridor(w, 8)
     w.beast(50, 13, 5, 0)
@@ -369,8 +362,7 @@ def _():
 
 @test("build_lure: cage traps and the inner door placed; the report's row: building, then ready once built")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     corridor(w, 8)
     held_door(lua, w)
@@ -392,8 +384,7 @@ def _():
 
 @test("build_lure for a trap-immune beast: two drawbridges, a lever each (named), linked once built")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     r = built_pocket(lua, env, w, immune=True)
     rec = py(env.load_state())["lures"]["10,5,0"]
@@ -406,8 +397,7 @@ def _():
 
 @test("lure_open refuses: unfinished, a citizen in the caverns, one beside the pocket, the inner gate open")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     corridor(w, 8)
     held_door(lua, w)
@@ -441,8 +431,7 @@ def _():
 
 @test("lure_open: a door on a lever is refused (the lure works only a locked door)")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     built_pocket(lua, env, w)
     env.lure_shut("10,5,0", False)
@@ -453,8 +442,7 @@ def _():
 
 @test("lure_shut: a caged beast noted caught (done); the seal locked; the pocket's pieces released")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     built_pocket(lua, env, w)
     env.lure_shut("10,5,0", False)
@@ -477,8 +465,7 @@ def _():
 
 @test("lure_shut, trap-immune: the mouth raised behind the beast in the pocket: shut in, held")
 def _():
-    if SKIP:
-        return
+    need_lua()
     lua, env, w = world()
     built_pocket(lua, env, w, immune=True)
     assert py(env.lure_shut("10,5,0", False))["ok"]           # both bridges raised
@@ -587,8 +574,7 @@ def _():
 
 @test("ai-lure.lua compiles under Lua 5.3")
 def _():
-    if SKIP:
-        return
+    need_lua()
     ok = LuaRuntime(unpack_returned_tuples=True).eval(
         "function(src) local f, e = load(src, 'ai-lure', 't', {}); return f ~= nil, e end")(
         (LUA_DIR / "ai-lure.lua").read_text(encoding="utf-8"))

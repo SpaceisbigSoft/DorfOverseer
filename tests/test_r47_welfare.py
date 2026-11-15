@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 from planner_core import Proposal, AGENDA_THEMES  # noqa: E402
@@ -538,9 +538,9 @@ def py(v):
 
 
 def need_lua():
+    """(0.105.48) without lupa the test is skipped (and counted so), not passed."""
     if LuaRuntime is None:
-        print("  (lupa missing: Lua part skipped)")
-        return False
+        skip("needs the lupa package (pip install lupa)")
     return True
 
 

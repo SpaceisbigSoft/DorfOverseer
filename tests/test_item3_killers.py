@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -204,6 +204,7 @@ def big_fort(lua, w):
 
 @test("report: each suspect with its kind and confidence; the lawful, old, outsider and foreign killings left out")
 def _():
+    need_lua()
     lua, env, w = world()
     big_fort(lua, w)
     r = py(env.report())
@@ -227,6 +228,7 @@ def _():
 
 @test("report: the first sighting is kept in the save (seen_ticks grows); one no longer suspected is forgotten")
 def _():
+    need_lua()
     lua, env, w = world()
     unit(lua, w, id=3, name="Murd", citizen=True)
     for v in (20, 21):
@@ -243,6 +245,7 @@ def _():
 
 @test("report: a quiet fort (F after the titan: no curse, nobody living with a killing) lists nobody")
 def _():
+    need_lua()
     lua, env, w = world()
     for i in range(1, 6):
         unit(lua, w, id=i, citizen=True)
@@ -290,6 +293,7 @@ def cell(lua, env, ids, dry=False, release_only=False):
 
 @test("cell: placed (burrow on the jail zone), locked once inside, let out thirsty, back once fed, released when not listed")
 def _():
+    need_lua()
     lua, env, w = world()
     u, z, d = cell_fort(lua, w)
     r = cell(lua, env, [3])
@@ -321,6 +325,7 @@ def _():
 
 @test("cell: a dry run changes nothing; release_only locks nobody; no room is said; a moon cell's room is never taken")
 def _():
+    need_lua()
     lua, env, w = world()
     u, z, d = cell_fort(lua, w, kind="bedroom")
     r = cell(lua, env, [3], dry=True)
@@ -343,6 +348,7 @@ def _():
 
 @test("cell: nobody else in the room when the doors lock; a dead prisoner's cell is cleared")
 def _():
+    need_lua()
     lua, env, w = world()
     u, z, d = cell_fort(lua, w)
     cell(lua, env, [3])
@@ -374,8 +380,7 @@ def _():
     import strategist
     assert "killer_cell" in overseer.SHORT_WORDS
     assert "killer" in planner_core.STEER_PROTECTED and "killer" in strategist.RAISE_FORBIDDEN
-    if LuaRuntime is None:
-        return
+    need_lua()
     i = src.index("    killer_cell = function(a)")
     j = src.index("    end,\n", i) + len("    end,\n")
     fn = src[i:j].strip().rstrip(",").replace("killer_cell = function(a)", "return function(a)", 1)
@@ -395,8 +400,7 @@ def _():
 
 @test("death_details: a death more than a day old when told is `again` (F: ghosts laid to rest after a restart)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     src = (ROOT / "tests" / "test_bridge_memory.py").read_text(encoding="utf-8")
     harness = re.search(r'HARNESS = r"""(.*?)"""', src, re.S).group(1)
     L = LuaRuntime(unpack_returned_tuples=True)

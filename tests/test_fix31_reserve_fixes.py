@@ -33,7 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan, select, record  # noqa: E402
 from planner_core import Proposal, TICKS_PER_YEAR  # noqa: E402
@@ -455,6 +455,10 @@ if LuaRuntime is not None:
         n0 = M.mood_report(j2, u2)[1].avail.reach
         W.item(1, 1, 1)
         assert M.mood_report(j2, u2)[1].avail.reach == n0 + 1
+else:
+    @test("the 7 Lua test(s) of the block at line 286: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 if __name__ == "__main__":

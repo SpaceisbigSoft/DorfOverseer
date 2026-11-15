@@ -35,7 +35,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LUA_DIR = ROOT / "lua"
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
+from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src, UTIL_SRC  # noqa: E402
 
 try:
@@ -210,8 +211,7 @@ def adamantine(x, y, z, **kw):
 def util_test(name):
     def deco(fn):
         def run():
-            if LuaRuntime is None:
-                return
+            need_lua()
             reset()
             fn()
         return test(name)(run)
@@ -374,8 +374,7 @@ def two(r):
 def path_test(name):
     def deco(fn):
         def run():
-            if LuaRuntime is None:
-                return
+            need_lua()
             fn()
         return test(name)(run)
     return deco
@@ -615,8 +614,7 @@ def _():
 
 @test("Rules: mine_adamantine is an on/off switch, off by default, kept by sanitize and for_ai; set_rules takes it")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     import test_preset as TP      # the bridge and the settings with a stub DFHack
     TP.reset()
     S = TP.H.settings()
@@ -724,10 +722,7 @@ brain = Path(sys.argv[1]); sys.path.insert(0, str(brain))
 fixtures = Path(sys.argv[2]); with_hazard = sys.argv[3] == "1"
 from digest import normalize, digest
 from planner import Memory, plan, record, select, note_cycle, TICKS_PER_DAY
-from planner import PLANNER_CONFIG as _PC
-_PC.update({"survival_floor": 0, "mandate_shields": False, "mandates_low_deference": False})  # (item5) its floor and mandate changes off: main's behaviour compared
-_PC.update({"recreation_min_citizens": 30, "meals_cap_skip_share": 99, "stress_need_care": False})  # (0.105.47, I7b) the small-fort welfare changes off: main's behaviour compared
-_PC.update({"crisis_hold_table": False})  # (0.105.48, K5) crisis holds by the old 14 names: main's behaviour compared
+# (0.105.48) no rule switched off: the plan as the game runs it, against the snapshot
 out = {}
 for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.json")):
     base = json.loads(path.read_text(encoding="utf-8"))
@@ -750,20 +745,6 @@ for path in [fixtures / "test_fort.json"] + sorted((fixtures / "real").glob("*.j
 print(json.dumps(out, sort_keys=True))
 '''
 
-_MAIN = {}
-
-
-def main_brain():
-    if "dir" not in _MAIN:
-        tmp = tempfile.mkdtemp(prefix="r41-main-")
-        arch = subprocess.run(["git", "-C", str(ROOT), "archive", "main", "brain"], capture_output=True)
-        if arch.returncode != 0:
-            _MAIN["dir"] = None
-        else:
-            subprocess.run(["tar", "-x", "-C", tmp], input=arch.stdout, check=True)
-            _MAIN["dir"] = Path(tmp) / "brain"
-            atexit.register(shutil.rmtree, tmp, True)
-    return _MAIN["dir"]
 
 
 def probe(brain: Path, with_hazard: bool) -> str:
@@ -780,15 +761,13 @@ def probe(brain: Path, with_hazard: bool) -> str:
 @test("identity: on every fixture (no adamantine), plan(), note_cycle() and the digest are main's, with or "
       "without an empty deep_hazard")
 def _():
-    main = main_brain()
-    assert main is not None, "no main branch to compare with"
-    a = probe(main, False)
-    for with_hazard in (False, True):
-        b = probe(ROOT / "brain", with_hazard)
-        if a != b:
-            ja, jb = json.loads(a), json.loads(b)
-            bad = [k for k in ja if ja[k] != jb.get(k)]
-            raise AssertionError(f"differs from main at {bad[:3]} (deep_hazard {with_hazard})")
+    # (0.105.48) was compared with `git archive main`: main moves (and in a clone where
+    # it is HEAD this compared the tree with itself), and without it the test passed.
+    # Now with the plan of 0.105.47 (main then) under the same switches, committed in
+    # tests/fixtures/snapshots/r41_dig_guard_main_plan.json; an empty deep_hazard the same.
+    a = probe(ROOT / "brain", False)
+    snapshot("r41_dig_guard_main_plan", plan_cases(a))
+    assert probe(ROOT / "brain", True) == a, "an empty deep_hazard section changes the plan"
 
 
 if LuaRuntime is None:

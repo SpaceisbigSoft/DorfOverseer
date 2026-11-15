@@ -1,0 +1,206 @@
+{
+ "barracks": {},
+ "gates": {},
+ "gear": {
+  "all_bars": {
+   "GOLD": 3,
+   "IRON": 3,
+   "PIG_IRON": 3
+  },
+  "armed": 1,
+  "armored": 1,
+  "bars": {
+   "IRON": 3
+  },
+  "bolts": 3,
+  "booted": 0,
+  "crossbows_total": 2,
+  "flask_places": 3,
+  "flasks_assigned": 0,
+  "flasks_free": 1,
+  "forges": 0,
+  "gloved": 0,
+  "helmed": 0,
+  "kit": {
+   "body": {
+    "entries": 1,
+    "given": 1,
+    "no_entry": 2
+   },
+   "boots": {
+    "entries": 0,
+    "given": 0,
+    "no_entry": 3
+   },
+   "fillable": 2,
+   "gloves": {
+    "detail": {
+     "1": "squad 1 place 1 wants any melee: fillable"
+    },
+    "entries": 1,
+    "free_sides": {
+     "left": 1,
+     "right": 1
+    },
+    "given": 0,
+    "no_entry": 2,
+    "per_entry": {
+     "0": 1
+    },
+    "why": {
+     "fillable": 1
+    }
+   },
+   "helms": {
+    "entries": 0,
+    "given": 0,
+    "no_entry": 3
+   },
+   "pants": {
+    "entries": 0,
+    "given": 0,
+    "no_entry": 3
+   }
+  },
+  "legged": 0,
+  "melee_given": 1,
+  "on_duty": 2,
+  "pig_iron": 3,
+  "quivers_assigned": 0,
+  "quivers_carried": 0,
+  "quivers_free": 1,
+  "ranged_armed": 0,
+  "ranged_places": 1,
+  "shielded": 0,
+  "shields": {
+   "detail": {
+    "1": "squad 1 place 1 wants any melee: fillable"
+   },
+   "entries": 1,
+   "given": 0,
+   "no_entry": 2,
+   "no_entry_squads": {
+    "1": 1,
+    "2": 1
+   },
+   "places": 3,
+   "why": {
+    "fillable": 1
+   }
+  },
+  "soldiers": 3,
+  "spare": {
+   "body": 1,
+   "boots": 1,
+   "gloves": 2,
+   "helms": 1,
+   "pants": 1,
+   "shields": 0,
+   "weapons": 5
+  },
+  "spare_crossbows": 2,
+  "spare_weapons": {
+   "ITEM_WEAPON_AXE_BATTLE": 4,
+   "ITEM_WEAPON_CROSSBOW": 1
+  },
+  "squads": 2,
+  "squads_with_uniform": 2,
+  "stray": {
+   "n": 0,
+   "orphan": {},
+   "unlisted": {}
+  },
+  "weapon_gaps": 2,
+  "weapon_gaps_detail": {
+   "1": "squad 1 place 1 wants ITEM_WEAPON_AXE_BATTLE WeaponMelee: fillable",
+   "2": "squad 2 place 0 wants ITEM_WEAPON_CROSSBOW: fillable"
+  },
+  "weapon_gaps_fillable": 2,
+  "weapon_gaps_ranged": 1,
+  "weapon_gaps_why": {
+   "fillable": 2
+  }
+ },
+ "ranges": {},
+ "routines": {
+  "1": "Off duty",
+  "2": "Staggered training"
+ },
+ "soldier_mothers": {
+  "1": {
+   "id": 3,
+   "leader": true,
+   "name": "Unit 3"
+  }
+ },
+ "soldiers": 3,
+ "squads": {
+  "1": {
+   "ai_orders": 0,
+   "id": 1,
+   "leader": true,
+   "members": 2,
+   "name": "Squad 1",
+   "orders": 0,
+   "power": {
+    "armed": 1,
+    "armored": 1,
+    "coverage": 0.2,
+    "melee_power": 4.8,
+    "power": 4.8,
+    "ranged": 0,
+    "ranged_power": [
+     "float",
+     0.0
+    ],
+    "skill": 7.5,
+    "weapons": {
+     "iron": 1
+    },
+    "wounded": 1
+   },
+   "routine": "Staggered training",
+   "size": 3,
+   "uniform": true
+  },
+  "2": {
+   "ai_orders": 0,
+   "ammo": {
+    "assigned": 1,
+    "items": 1,
+    "specs": 1,
+    "wanted": 50
+   },
+   "id": 2,
+   "leader": true,
+   "members": 1,
+   "name": "Squad 2",
+   "orders": 0,
+   "power": {
+    "armed": 0,
+    "armored": 0,
+    "coverage": [
+     "float",
+     0.0
+    ],
+    "melee_power": 1.6,
+    "power": 1.6,
+    "ranged": 0,
+    "ranged_power": [
+     "float",
+     0.0
+    ],
+    "skill": [
+     "float",
+     11.0
+    ]
+   },
+   "routine": "Off duty",
+   "size": 1,
+   "uniform": true
+  }
+ },
+ "uniform_templates": {
+  "1": "Metal"
+ }
+}

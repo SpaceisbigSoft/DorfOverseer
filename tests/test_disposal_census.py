@@ -7,7 +7,11 @@ import re
 import sys
 from pathlib import Path
 
-from lupa.lua53 import LuaRuntime
+try:
+    from lupa.lua53 import LuaRuntime  # noqa: E402
+except ImportError:
+    print("SKIPPED: these tests need the lupa package (pip install lupa)")
+    sys.exit(0)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))

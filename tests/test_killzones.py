@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -161,8 +161,7 @@ def entrance(lua, w, eid=1, kind="surface", x=5, y=10):
 
 @test("corridor: the 1-wide approach is found: the bridge on its first straight tile, raising outward, traps behind")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     e = entrance(lua, w)
@@ -177,8 +176,7 @@ def _():
 
 @test("corridor: a 3-wide way in has no 1-wide stretch; a short one is too short; a dead end isn't a way in")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w, width=3)
     e = entrance(lua, w)
@@ -205,8 +203,7 @@ def _():
 
 @test("corridor: no trap on the depot's wagon road, a building or water; stairs are walked over, not trapped")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     w.tiles[f"8,10,{Z}"] = T(lua, floor(occupied=True))
@@ -227,8 +224,7 @@ def drop(env, *a):
 
 @test("drop: natural rock below and under: yes; water, an aquifer, a cavern, a level below, the dig guard: no")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     M = w.M()
@@ -256,8 +252,7 @@ def _():
 
 @test("bypass: the only surface way in gets no channel and a lever; another way in or a cavern opening may")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     only = T(lua, {"id": 1, "kind": "surface"})
     b = py(env.bypass(only, T(lua, [{"id": 1, "kind": "surface"}, {"id": 2, "kind": "cavern"}])))
@@ -278,8 +273,7 @@ def placed(w):
 
 @test("build: the only way in: traps and a flat drawbridge with its lever, no channel; the dry run places nothing")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     entrance(lua, w)
@@ -299,8 +293,7 @@ def _():
 
 @test("build: the only way in with no floor for a lever: no drawbridge at all, the traps still go in")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     entrance(lua, w)
@@ -313,8 +306,7 @@ def _():
 @test("build: another way in and rock below: channel -> bridge over it, a step a call; (0.105.48, K2) the "
       "channel's ramp is left (no miner shut in the pit), never marked for removal")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     entrance(lua, w)
@@ -361,8 +353,7 @@ def _():
 
 @test("build: water under the bridge (an aquifer): no channel, the bridge flat with its lever")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w, below={f"7,10,{Z - 1}": rock(aquifer=True)})
     entrance(lua, w)
@@ -374,8 +365,7 @@ def _():
 
 @test("build: a cavern opening may take a channel; an AI lever already waiting works the bridge (none placed)")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     entrance(lua, w, kind="cavern")
@@ -390,8 +380,7 @@ def _():
 
 @test("build: refused: no such entrance, a gatehouse there, nothing asked, a bad kind")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     e = entrance(lua, w)
@@ -406,8 +395,7 @@ def _():
 
 @test("report: a possible zone (its stretch, the drawbridge's drop), and the AI's zone with built and full cages")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     fort(lua, w)
     entrance(lua, w)
@@ -435,8 +423,7 @@ def _():
 
 @test("TRAPAVOID: read from the unit's caste flags, else the caste raws; nil when neither reads")
 def _():
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua, env, w = world()
     u = T(lua, {"enemy": {"caste_flags": {"TRAPAVOID": True}}, "race": 1, "caste": 0})
     assert env.trap_avoid(u) is True
@@ -466,8 +453,7 @@ def _():
     assert "build_killzone" in overseer.SHORT_WORDS and "reset_cage_traps" in overseer.SHORT_WORDS
     orders = (LUA_DIR / "ai-bridge-orders.lua").read_text(encoding="utf-8")
     assert "ORDER_RECIPES.metal_trap_blades = {job = 'MakeTrapComponent'" in orders
-    if LuaRuntime is None:
-        return
+    need_lua()
     i = src.index("    build_killzone = function(a)")
     j = src.index("    reset_cage_traps = function(a)")
     fn = src[i:j].strip().rstrip(",").replace("build_killzone = function(a)", "return function(a)", 1)
@@ -503,8 +489,7 @@ def _():
     assert "view_id = 'killzones',\n        frame = {t = t + 18, l = 76, w = 40}," in gui
     assert "self.subviews.killzones:setOption(s.killzones ~= false, false)" in gui
     assert len("Kill zones at the gates:") <= 28 and 76 + 40 <= 118
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     chk = lua.eval("function(src, n) local f, e = load(src, n, 't', {}); return f ~= nil, e end")
     for name in ("ai-killzone.lua", "ai-bridge.lua", "ai-overseer-settings.lua", "gui/ai-overseer.lua",

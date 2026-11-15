@@ -8,12 +8,12 @@ saves, the Army tab), the title screen's revive, and Lows.
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import with_util  # noqa: E402
+from snapshots import snapshot  # noqa: E402
 from harness import test, finish  # noqa: E402
 
 try:
@@ -152,20 +152,6 @@ def _():
 
 # --- L7 industry 577-622: the quarry's scan ---------------------------------------------------
 
-OLD_INDUSTRY = None
-
-
-def old_industry_src():
-    global OLD_INDUSTRY
-    if OLD_INDUSTRY is None:
-        try:
-            OLD_INDUSTRY = subprocess.run(["git", "show", "53d5066:lua/ai-industry.lua"], cwd=ROOT,
-                                          capture_output=True, text=True, check=True).stdout
-        except Exception:  # noqa: BLE001
-            OLD_INDUSTRY = ""
-    return OLD_INDUSTRY
-
-
 def quarry_run(src, rows, cz=10, margin=None):
     L = LuaRuntime(unpack_returned_tuples=True)
     env, dig = L.execute(TI.FAKE, src, L.table_from(rows))
@@ -186,12 +172,10 @@ def _():
     new, n_new = quarry_run(with_util((LUA_DIR / "ai-industry.lua").read_text(encoding="utf-8"), "ai-industry.lua"),
                             rows)
     assert new.ok, dict(new)
-    d_new = abs(new.x - 2) + abs(new.y - 2)
-    old = old_industry_src()
-    if old:
-        prev, n_old = quarry_run(with_util(old, "ai-industry.lua"), rows)
-        assert prev.ok and abs(prev.x - 2) + abs(prev.y - 2) == d_new, (dict(prev), dict(new))
-        assert n_new * 10 < n_old, (n_new, n_old)
+    # (0.105.48) was compared with 53d5066's ai-industry.lua (not in every clone, so
+    # it passed unchecked); now with the wall and read count of 0.105.47 (its reads
+    # were under a tenth of 53d5066's), committed as a snapshot
+    snapshot("r33_quarry_scan", {"x": new.x, "y": new.y, "z": new.z, "reads": n_new})
 
 
 @test("L7 industry quarry: no wall to be had -> refused, and the scan stops at QUARRY_SCAN_MAX")

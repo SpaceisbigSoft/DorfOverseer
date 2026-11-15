@@ -28,7 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -319,6 +319,10 @@ if LuaRuntime is not None:
         r = py(env.status(None))
         assert r["on"] is False and r["outside"] == 2 and r["far_total"] == 1 and r["gates"] == 1, r
         assert r["far"][0]["name"] == "Rovod" and r["far"][0]["d"] == 107 + 3
+else:
+    @test("the 5 Lua test(s) of the block at line 252: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 # --- 2. wild animals at grips with a dwarf ---------------------------------------------------
@@ -398,6 +402,10 @@ if LuaRuntime is not None:
         a.opponent = None
         assert env.wild_attacking(a, cits) is False
         assert env.wild_attacking(a, None) is False
+else:
+    @test("the 2 Lua test(s) of the block at line 369: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 def fw_state(rows, squads=None, **extra):
@@ -583,6 +591,10 @@ if LuaRuntime is not None:
         assert py(w.site["ai-overseer/water_zones"]) == [{"x": 90, "y": 90, "z": 120}]
         r = py(env.retire(True, False))
         assert r["rejected"] and r["nothing_to_do"], r
+else:
+    @test("the 1 Lua test(s) of the block at line 567: not run")
+    def _():
+        skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
 # --- 4. the wiring -----------------------------------------------------------------------------

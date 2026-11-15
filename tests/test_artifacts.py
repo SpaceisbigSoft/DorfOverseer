@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -221,6 +221,7 @@ def first(env, w, lua, n=5):
 @test("report: the first id is set once (the next id at the AI's first look) and kept; the AI's artifacts are the ones "
       "at or past it, the player's older ones reported but not the AI's")
 def _():
+    need_lua()
     lua, env, w = world()
     assert first(env, w, lua, 5) == 5
     old = w.art(T(lua, {"id": 3}))
@@ -239,6 +240,7 @@ def _():
 
 @test("report: each artifact's state: carried, in a job, forbidden, owned, a squad's gear, a book, displayed")
 def _():
+    need_lua()
     lua, env, w = world()
     first(env, w, lua, 0)
     z = temple(lua, w)
@@ -267,6 +269,7 @@ def _():
 
 @test("report: artifacts other civs claim (the fort's own civ and group left out), by name")
 def _():
+    need_lua()
     lua, env, w = world()
     first(env, w, lua, 0)
     w.art(T(lua, {"id": 1, "claims": [1, 2, 77]}))
@@ -280,6 +283,7 @@ def _():
 @test("report: the AI's rooms only (zone centre in a level the AI dug): doors and open ways out, secure, visitors; "
       "the player's room and its furniture not the AI's; free pedestals and cases counted")
 def _():
+    need_lua()
     lua, env, w = world()
     first(env, w, lua, 0)
     shut = temple(lua, w, 10, 10)
@@ -305,6 +309,7 @@ def _():
 @test("place_display: a free pedestal built in the AI's room, remembered as the AI's; a dry run builds nothing; "
       "the player's room refused, untouched")
 def _():
+    need_lua()
     lua, env, w = world()
     first(env, w, lua, 0)
     z = temple(lua, w)
@@ -328,6 +333,7 @@ def _():
 @test("display_artifact: the AI's loose artifact onto the AI's built furniture with room: a put-on-display job "
       "(the artifact hauled, the furniture its holder)")
 def _():
+    need_lua()
     lua, env, w = world()
     first(env, w, lua, 0)
     temple(lua, w)
@@ -355,6 +361,7 @@ def _():
 @test("display_artifact: refused for the player's artifact, the player's furniture, unbuilt furniture, a carried, "
       "forbidden or busy artifact, a plain item, a DF without the job")
 def _():
+    need_lua()
     lua, env, w = world()
     first(env, w, lua, 2)
     temple(lua, w)
@@ -390,6 +397,7 @@ def _():
 @test("(fix5) display_artifact: no hauler sent for an artifact near a danger or out of the citizens' reach "
       "(or to a display out of reach); the game unable to say: as before")
 def _():
+    need_lua()
     lua, env, w = world()
     first(env, w, lua, 0)
     temple(lua, w)
@@ -424,6 +432,7 @@ def _():
 @test("(fix5) the display list is buildings.other.DISPLAY_CASE (df-structures' name), every building the fallback; "
       "the display_artifacts switch on the Rules tab, set on refresh, clear of the other controls")
 def _():
+    need_lua()
     src = (LUA_DIR / "ai-artifacts.lua").read_text(encoding="utf-8")
     assert "buildings.other.DISPLAY_CASE end" in src and "DISPLAY_FURNITURE end" not in src
     lua, env, w = world()
@@ -461,6 +470,7 @@ def _():
 @test("bridge: place_display and display_artifact in ACTIONS and DRY_OK, the artifacts section (cached a day, "
       "cleared by the actions), ai-artifacts in BRIDGE_MODULES; the handlers check their arguments")
 def _():
+    need_lua()
     dry = BRIDGE[BRIDGE.index("DRY_OK = {}"):BRIDGE.index("}) do DRY_OK[name] = true end")]
     for a in ("place_display", "display_artifact"):
         assert code_has(BRIDGE, f"{a} = act_{a},"), a
@@ -504,6 +514,7 @@ def _():
 @test("guards: an artifact is never sold (ai-trade), melted, dumped or removed from the dump (ai-disposal), deleted "
       "(ai-cleanup), nor free for a job (ai-util)")
 def _():
+    need_lua()
     trade = (LUA_DIR / "ai-trade.lua").read_text(encoding="utf-8")
     assert "local function unsellable(item) return not U.item_free(item, HELD_OK) end" in trade
     assert "and not banned(item) and not is_artifact(item) then" in trade
