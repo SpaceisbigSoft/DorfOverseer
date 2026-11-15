@@ -205,9 +205,11 @@ def _():
     assert r.open is True and r.sealed_by_locks is True       # every surface entrance shut by a piece still
 
 
-@test("ai-way-out: the edge groups are cached: read again only every EDGE_EVERY reports or after a repath")
+@test("ai-way-out: the edge groups are cached (a fort reading open): read again only every EDGE_EVERY reports "
+      "or after a repath")
 def _():
     L, env = way_world()
+    L.execute("INSIDE = 1")                       # (0.105.51) open: a closed verdict is always read fresh
     env.report()
     first = L.eval("READS")
     env.report()
@@ -411,7 +413,7 @@ def _():
 def _s(**kw):
     s = {"date": {"year": 120, "tick": 5000}, "missions": {}, "others_on_map": {"threats_that_can_reach_dwarves": 0},
          "settings": {"traits": {}}, "entrances": {"entrances": []},
-         "way_out": {"known": True, "open": False, "inside_group": 6712, "edge_groups": 1,
+         "way_out": {"known": True, "open": False, "fresh": True, "inside_group": 6712, "edge_groups": 1,
                      "shut_by": [{"entrance": 1, "id": 9, "kind": "hatch", "x": 108, "y": 149, "closed": True,
                                   "lever": 145, "ai": True, "name": "AI gate 1 (surface)"},
                                  {"entrance": 3, "id": 99, "kind": "door", "x": 99, "y": 151, "locked": True,
@@ -499,6 +501,7 @@ def _():
     pw.note_way_out(props[0], {"ok": True}, _s(), m, NOW + 400)
     m.way_out["digs"] = 2
     m.way_out["dig_tick"] = NOW - 10 * 1200
+    m.way_out["since"] = NOW - 2 * 1200          # (0.105.51) sealed long enough to ask
     props, notes = _run(_s(date={"year": 120, "tick": 5400}), m)
     assert props == [] and any(n.startswith("NEEDS YOU") or "open a way by hand" in n for n in notes), notes
     s = _s()

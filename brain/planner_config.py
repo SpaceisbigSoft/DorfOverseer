@@ -1247,6 +1247,11 @@ PLANNER_CONFIG.update({
     "way_out_retry_ticks": 150,           # between two openings (the walk map redone, a bridge's pull walked)
     "way_out_dig_tries": 2,               # digs asked for before Needs you
     "way_out_dig_retry_days": 4,
+    # (0.105.51) a refused dig: asked again after way_out_dig_retry_days, doubled with each refusal in a
+    # row, this many days at most; the refusal remembered this long past the way reading open again
+    "way_out_dig_backoff_max_days": 32,
+    "way_out_dig_refusal_keep_days": 32,
+    "way_out_ask_after_ticks": 600,       # sealed this long (read fresh) before the player is asked
 })
 # (0.105.47, J17) the raid policy by the fort's character (brain/planner_raids.py)
 PLANNER_CONFIG.update({

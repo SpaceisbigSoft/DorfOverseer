@@ -12,7 +12,8 @@
 --                     citizens, edge_groups (how many), shut_by = the surface
 --                     entrances' shut pieces with their state (the AI's and
 --                     the player's), sealed_by_locks, cause = the dangers in
---                     sight, armed, closed (the watcher's), repaths}
+--                     sight, armed, closed (the watcher's), repaths, fresh =
+--                     the edge groups read this report (always so when closed)}
 --   open_way(id, o)   one surface entrance opened by what DF honours: a hatch
 --                     or door on an "AI gate" lever by its lever (pulled at
 --                     once), a bridge on one by its lever (a dwarf's pull; at
@@ -27,7 +28,8 @@
 --
 -- The map's edge groups (the walk groups of the walkable tiles on the map's
 -- border, over the surface's levels) are cached per map and read again
--- every EDGE_EVERY reports or after the walk map was redone (ai-util repath).
+-- every EDGE_EVERY reports or after the walk map was redone (ai-util repath),
+-- and always before a "closed" verdict is reported (report: `fresh`).
 --@ module = true
 
 EDGE_EVERY = 10          -- reports between two reads of the edge groups
@@ -316,6 +318,17 @@ function report()
     local spots = citizen_spots()
     local inside, n, at = main_group(spots, group_at)
     local open = judge(inside, edges)
+    -- (0.105.51) DF renumbers its walk groups as the map changes (5166-5173
+    -- within minutes live): the cached edge groups miss the citizens' new
+    -- number and read "sealed" for a fort that is open. A closed verdict is
+    -- never reported from the cache: the edges read again first.
+    local fresh = EDGE.report == WAY.reports
+    if open == false and not fresh then
+        edges = edge_groups(true)
+        open = judge(inside, edges)
+        fresh = true
+    end
+    out.fresh = fresh or nil
     out.known = open ~= nil
     out.open = open
     out.inside_group = inside

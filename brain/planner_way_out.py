@@ -27,6 +27,13 @@ _way_out_rule, each cycle the fort is sealed in:
     out (dig_way_in second, the 0.105.32 way in), `way_out_dig_tries` times;
   * Needs you only when nothing the AI owns can open a way (no AI gate, the
     digs refused).
+(0.105.51) The R3 run's loop (~1,280 refused digs, 42 false Needs you): the
+game's cached map edges missed DF's renumbered walk groups. Now no dig and
+no Needs you without a fresh read (`fresh`, the game re-reads before it says
+closed); a refused dig is handled by what it said (refusal_kind): the
+watcher armed: soon again, not a try; "the fort already has its ways": no
+more digs; no safe spot: again after 4, 8, 16... days, remembered past an
+open reading; the player asked only once sealed `way_out_ask_after_ticks`.
 sealed() is the one check the mission rules (planner_missions) and the
 gate_stuck rule (planner_gates) read too.
 """
@@ -123,6 +130,29 @@ def _since(rec: dict, k: str, now: int):
     return now - t if isinstance(t, int) and now >= t else None
 
 
+def refusal_kind(why: str) -> str:
+    """(0.105.51) What a refused dig_way_in said (lua/ai-builder-projects.lua):
+    "pointless" (the fort already has its ways to the surface: a stair more
+    won't open it), "wait" (the watcher armed, a way already being dug, the
+    entrances not mapped yet: nothing wrong with the dig, asked again soon),
+    else "refused" (no safe spot found: asked again later and later)."""
+    w = str(why or "")
+    if "ways to the surface: no second one is needed" in w:
+        return "pointless"
+    if ("gate watcher is armed" in w or "already being dug" in w or "not mapped yet" in w
+            or "search failed" in w):
+        return "wait"
+    return "refused"
+
+
+def _refusal_wait(ref: dict, cfg: dict) -> int:
+    """Ticks after a refused dig before the next: way_out_dig_retry_days,
+    doubled with each refusal in a row, way_out_dig_backoff_max_days at most."""
+    n = max(1, int(ref.get("n") or 1))
+    days = int(_cfg(cfg, "way_out_dig_retry_days")) * (2 ** min(n - 1, 8))
+    return min(days, int(_cfg(cfg, "way_out_dig_backoff_max_days"))) * 1200
+
+
 def _way_out_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     if memory is None or sealed(s) is not True:
         return
@@ -187,6 +217,20 @@ def _way_out_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     if doing:
         notes.append(f"{head}; a way out is being dug ({doing})")
         return
+    # (0.105.51) no dig asked, and never the player, on a verdict read from the
+    # cached map edges (DF renumbers its walk groups: a stale cache reads an
+    # open fort as sealed); the game re-reads them before it says "closed"
+    if wo.get("fresh") is not True:
+        notes.append(f"{head}; waiting for a fresh read of the map's edges before a way is dug")
+        return
+    ref = _d(rec.get("refused"))
+    rkind = ref.get("kind")
+    rwait = _refusal_wait(ref, cfg)
+    rsince = _since(ref, "tick", now)
+    if rkind == "refused" and rsince is not None and rsince < rwait:
+        notes.append(f"{head}; the last stair asked for was refused ({str(ref.get('why') or '?')[:100]}): "
+                     f"asked again in {(rwait - rsince) // 1200 + 1} day(s)")
+        return
     digs = int(rec.get("digs") or 0)
     dug = _since(rec, "dig_tick", now)
     if dug is not None and dug < int(_cfg(cfg, "way_out_dig_retry_days")) * 1200:
@@ -194,6 +238,19 @@ def _way_out_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         return
     pl = (f"; shut by the player's own {', '.join(_piece_words(p) for p in players[:3])} (the AI doesn't open "
           "them)") if players else ""
+    ask_wait = int(_cfg(cfg, "way_out_ask_after_ticks"))
+    if (rkind == "pointless" or digs >= int(_cfg(cfg, "way_out_dig_tries"))) and sealed_for < ask_wait:
+        notes.append(f"{head}{pl}; the AI has tried what it can: it asks the player if the fort is still shut in "
+                     f"{(ask_wait - sealed_for) // hour + 1} hour(s) from now")
+        return
+    if rkind == "pointless":
+        # the game says the fort already has its ways to the surface: a stair
+        # more won't help; something on them holds the fort shut
+        ask_player(notes, f"{head}{pl}. The AI opened what it owns ({tries} time(s)); the game says "
+                          f"{str(ref.get('why') or 'the fort has its ways to the surface')[:100]}, and its walk "
+                          "map, read again, still shows no way off the map: open a way by hand (a gate's lever, a "
+                          "door, a wall or a fallen tree on the way)")
+        return
     if digs >= int(_cfg(cfg, "way_out_dig_tries")):
         ask_player(notes, f"{head}{pl}. The AI opened what it owns ({tries} time(s)) and asked {digs} time(s) for "
                           "a stair dug to the surface, and the fort is still shut in: open a way by hand (a "
@@ -219,7 +276,13 @@ def note_way_out_cycle(s: dict, memory) -> list:
         if rec.get("tries") or rec.get("digs"):
             out.append(f"the fort has a way off the map again (after {int(rec.get('tries') or 0)} opening(s) and "
                        f"{int(rec.get('digs') or 0)} dig(s) by the AI)")
-        memory.way_out = {}
+        # (0.105.51) a refused dig is remembered past the way reading open: a
+        # verdict that flips back (the walk map redone) doesn't ask for the
+        # same refused stair again at once (R3: ~1,280 refusals in six forts)
+        ref = _d(rec.get("refused"))
+        rt = _since(ref, "tick", now)
+        keep = int(PLANNER_CONFIG["way_out_dig_refusal_keep_days"]) * 1200
+        memory.way_out = {"refused": ref} if ref and rt is not None and rt < keep else {}
         return out
     rec.setdefault("since", now)
     why, hard = live_cause(s, PLANNER_CONFIG, memory)
@@ -246,9 +309,23 @@ def note_way_out(p, r: dict, state: dict, memory, now: int) -> None:
             if r.get("ok") is False and r.get("nothing"):
                 rec["tries"] = max(rec["tries"], int(PLANNER_CONFIG["way_out_tries"]))   # nothing to open: on to the dig
     elif t == "dig_way_in":
-        rec["digs"] = int(rec.get("digs") or 0) + 1
-        rec["dig_tick"] = now
+        # (0.105.51) each refusal by what it said: a dig the game holds back for
+        # now (the watcher armed) isn't a try; one it says is needless (the fort
+        # has its ways) ends the digging; no safe spot: asked again later and later
+        kind = refusal_kind(r.get("why") or r.get("error")) if r.get("ok") is False else None
+        if kind == "wait":
+            rec["dig_tick"] = now - int(PLANNER_CONFIG["way_out_dig_retry_days"]) * 1200 \
+                + int(PLANNER_CONFIG["way_out_retry_ticks"])                # soon again
+        else:
+            rec["digs"] = int(rec.get("digs") or 0) + 1
+            rec["dig_tick"] = now
         rec["dig_ok"] = r.get("ok")
+        if kind in ("pointless", "refused"):
+            old = _d(rec.get("refused"))
+            n = int(old.get("n") or 0) + 1 if old.get("kind") == kind else 1
+            rec["refused"] = {"kind": kind, "n": n, "tick": now, "why": str(r.get("why") or r.get("error"))[:160]}
+        elif r.get("ok"):
+            rec.pop("refused", None)
     memory.way_out = rec
 
 
