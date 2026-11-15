@@ -131,6 +131,14 @@ reads as `ai`, its default then).
   a year, or never. A Guided or Architect fort starts landmarks (0.105.47);
   a Scripts fort never does. Guided builds only its language's own library
   landmarks (the preset's first), Architect any, with `--ai` its own drawings.
+- **New levels:** (`floor_layout`) *along a main hall on each floor* (the
+  default, `hallway`) or *each on its own (classic)* (`classic`). Along a
+  main hall, each new level's rooms go beside a 3-wide hall that runs out
+  from the main stair on that floor; classic places every level as 0.105.54
+  did. The default holds for new and running forts alike: a save without the
+  key reads `hallway`, and only its next levels change, never a standing
+  one. From outside: `{"rules": {"floor_layout": "classic"}}`. No preset
+  sets it. See [building.md](building.md), "Hallway-first floors".
 - **DF pop cap from Growth/Maintain** (on): the AI sets DF's population cap,
   which decides how many migrants come, to the Growth target, or to the held
   size under Maintain. It lasts for the session; the AI sets it again after a

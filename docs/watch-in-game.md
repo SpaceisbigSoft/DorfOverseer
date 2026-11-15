@@ -13,6 +13,28 @@ The forts are A War-hold, B Monastery, C Merchant city, D Hermit hold, E Deep mi
 The quick way through this file: `python brain\seen.py` (from any DF-AI folder) writes each folder's `logs\seen-ledger.md` and a summary across them (`DF-AI\logs\seen-ledger-all.md`): every section, action and Rules switch since 0.105.32 as seen, refused (why), not yet met or in error, and this file's lines ticked where the reports and journals show them. Lines about how things look stay "needs eyes".
 
 
+## Layout option B: hallway-first floors
+
+New levels go along a 3-wide main hall on each floor (docs/building.md, "Hallway-first floors"). Tick each line once it is seen in a fort.
+
+- **Along a hall.** A new level appears along a 3-wide hall running out from the main stair, not somewhere on its own.
+- **Hall first.** The hall is dug before the rooms (its tiles carry a higher dig priority).
+- **Both sides.** Rooms on both sides open onto the hall: bedrooms by a door, storage and workshops by a 3-wide opening.
+- **Pile rooms.** A workshop has its pile room next door, the pile fills with its material and is linked to the shop.
+- **A second level.** A second level on the same floor lengthens the hall or fills the other side; it does not start elsewhere.
+- **Turns and arms.** A hall that reaches its length turns (a 5x5 square with statues in a grand fort) or a second hall leaves the stair.
+- **A full floor.** A full floor sends the next level of that district to its next floor; the log says so.
+- **Old levels.** Old levels are untouched; new rooms start past them; a free room in an old workshops level is still used first.
+- **Obstacles.** No hall ends at water, a cavern or an aquifer; no run of damp-stone cancellations on a new hall.
+- **Sound rooms.** No bedroom with a second opening, no stockpile cut by a hall, no dwarf in a doorless pocket.
+- **The hospital.** The hospital sits at the far end of its floor, never by the stair.
+- **Spacing and Room size.** Spacing and Room size visibly change a new floor: a tight fort's rooms touch wall to wall from the stair on; a spread-out fort's stand in separate blocks along a longer hall; a large-room fort has bigger rooms and pile rooms.
+- **The presets.** The Deep mine (E) goes down floor by floor with short halls; the Garden fort (F) spreads over one wide floor with several halls; the War-hold's (A) halls start with a doored neck and turn early.
+- **Classic.** The Rules cycle set to classic brings back the old placement for the next level.
+- **The log.** The log names the floor a level went to ("on floor #3, along the east hall") or why it did not ("not on a floor: ...").
+- **Speed.** The game does not slow: no new slow report section, `start_project` answers in its usual time.
+
+
 ## 0.105.48 (14 Nov): the full audit's fixes K1-K10 (R3, from the fresh embark)
 
 - **Squads stationed.** The journal's `squad_station` done (not refused), and the squad's soldiers standing on that tile in the game: the move order is built from DF's own fields now (it could never be made before).
