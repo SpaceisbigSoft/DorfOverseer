@@ -475,12 +475,25 @@ def social_shortfall(s: dict, cfg: dict) -> list:
     worst of the needs counted), up to `social_halls_max`, once one stands."""
     nd = _d(_d(s.get("needs")).get("needs"))
     locs = _d(_d(s.get("locations")).get("count"))
+    listing = [e for e in _l(_d(s.get("locations")).get("list")) if isinstance(e, dict)]
     cit = int(_d(s.get("dwarves")).get("total") or 0)
+    # (0.105.51, R3 fort B) arguments: B's 83 dwarves had one tavern of its
+    # own and the stop-gap laid over its 6-table dining hall, where they ate,
+    # drank and talked; arguments (31-68 citizens a month) came with the crowd
+    argue = 0
+    for c in _l(_d(_d(s.get("needs")).get("stress_causes")).get("causes")):
+        if isinstance(c, dict) and c.get("thought") == "Argument":
+            argue = int(c.get("citizens") or 0)
     out = []
     for kind, (where, needs, per_key) in SOCIAL_KINDS.items():
         have = int(locs.get(where) or 0)
         if have < 1:
             continue                                  # the first is the ladder's (and the urgent rules')
+        # (0.105.51) a stop-gap laid over a dining hall is no hall of its own
+        stopgap = sum(1 for e in listing if e.get("type") == where and e.get("over_dining"))
+        if not (stopgap and have - stopgap >= 1):
+            stopgap = 0
+        have -= stopgap
         badly = max([int(_d(nd.get(n)).get("badly") or 0) for n in needs] or [0])
         # (0.104.146) or every distracted dwarf, at a wider spacing: Teacheroar's
         # 93 distracted for want of prayer (40 badly) held at 2 temples, one of
@@ -488,11 +501,17 @@ def social_shortfall(s: dict, cfg: dict) -> list:
         dist = max([int(_d(nd.get(n)).get("distracted") or 0) for n in needs] or [0])
         want = min(cfg["social_halls_max"],
                    max(1 + badly // cfg[per_key], 1 + dist // cfg["social_distracted_per"]))
-        if (badly >= cfg["social_badly_share"] * cit or dist >= cfg["social_distracted_share"] * cit) and have < want:
+        crowd = (kind == "tavern" and cit > 0 and argue >= cfg["argument_crowd_share"] * cit
+                 and have < min(cfg["social_halls_max"], 1 + cit // cfg["tavern_crowd_per"]))
+        if ((badly >= cfg["social_badly_share"] * cit or dist >= cfg["social_distracted_share"] * cit)
+                and have < want) or crowd:
             words = ", ".join(f"{n} {int(_d(nd.get(n)).get('distracted') or 0)} distracted "
                               f"({int(_d(nd.get(n)).get('badly') or 0)} badly)" for n in needs)
-            out.append((kind, f"{have} {kind}(s) for {cit} dwarves and many badly miss what one gives ({words}): "
-                              f"another {kind} ({want} wanted)"))
+            out.append((kind, f"{have} {kind}(s) for {cit} dwarves"
+                              + (" (not counting the stop-gap in the dining hall)" if stopgap else "")
+                              + (f", {argue} citizens upset by arguments this month (a crowd)" if crowd else "")
+                              + f" and many badly miss what one gives ({words}): another {kind}"
+                              + (f" ({max(want, 1 + cit // cfg['tavern_crowd_per']) if crowd else want} wanted)")))
     return out
 
 
@@ -516,16 +535,47 @@ def prayer_uncovered(s: dict) -> tuple[int, dict] | None:
 def dining_shortfall(s: dict, cfg: dict) -> dict | None:
     """(0.104.135) The fort's tables against its diners, once it has a dining
     hall: {have, want, tables, citizens} when under `dining_short_share` of
-    what it wants, or None."""
+    what it wants, or None.
+
+    (0.105.51, R3 fort B) Public seats only: B had 29 tables for 83 dwarves,
+    6 of them in its one dining hall (the rest in offices, nobles' dining
+    rooms, the hospital), LackTables the worst stress (60+ citizens), and no
+    hall came because all 29 were counted. With the bridge's table census
+    (buildings.dining) only the tables in a dining hall nobody owns count,
+    and the fort wants one for every `dining_seat_share` dwarf (half: meals
+    are staggered). Eating without a table in the stress census
+    (`lack_tables_min` citizens or more) is short too, while the halls seat
+    under `lack_tables_seat_cap` of the fort (the census looks 28 days back:
+    a hall just finished doesn't bring a third). `lack` and `source` say why."""
     zones = _d(_d(s.get("buildings")).get("zones"))
     if not zones.get("DiningHall"):
         return None                        # the first hall is the ladder's
     cit = int(_d(s.get("dwarves")).get("total") or 0)
-    have = int(_d(_d(s.get("buildings")).get("other")).get("Table") or 0)
-    want = math.ceil(cit / cfg["dwarves_per_table"])
-    if cit < cfg["min_dwarves_for_dining"] or have >= cfg["dining_short_share"] * want:
+    if cit < cfg["min_dwarves_for_dining"]:
         return None
-    return {"have": have, "want": want, "citizens": cit, "tables": max(8, min(40, want - have))}
+    dn = _d(_d(s.get("buildings")).get("dining"))
+    lack = 0
+    for c in _l(_d(_d(s.get("needs")).get("stress_causes")).get("causes")):
+        if isinstance(c, dict) and c.get("thought") == "LackTables":
+            lack = int(c.get("citizens") or 0)
+    lacking = lack >= cfg["lack_tables_min"]
+    if isinstance(dn.get("hall"), int):
+        have = dn["hall"]
+        want = math.ceil(cit * cfg["dining_seat_share"])
+        short = have < want or (lacking and have < math.ceil(cit * cfg["lack_tables_seat_cap"]))
+        source = "public"
+    else:                                  # an older bridge: every table the fort has
+        have = int(_d(_d(s.get("buildings")).get("other")).get("Table") or 0)
+        want = math.ceil(cit / cfg["dwarves_per_table"])
+        short = (have < cfg["dining_short_share"] * want
+                 or (lacking and have < math.ceil(cit * cfg["lack_tables_seat_cap"])))
+        source = "all"
+        if lacking:
+            want = max(want, math.ceil(cit * cfg["dining_seat_share"]))
+    if not short:
+        return None
+    return {"have": have, "want": want, "citizens": cit, "tables": max(8, min(40, want - have)),
+            "lack": lack, "source": source}
 
 
 def hospital_shortfall(s: dict, traits: dict, cfg: dict) -> dict | None:
@@ -1075,10 +1125,14 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             and len(open_) < (pr.get("max_open") or 2) + 2 and not any(p.get("kind") == "dining" for p in open_):
         dn = dining_shortfall(s, cfg)
         if dn and player_rules(s)["levels"].get("dining", True):
+            where = " in the dining halls" if dn.get("source") == "public" else ""
+            lack = (f"; {dn['lack']} citizens upset at eating without a table this month"
+                    if dn.get("lack", 0) >= cfg["lack_tables_min"] else "")
             proposals.append(Proposal("build", {"type": "start_project", "kind": "dining", "tables": dn["tables"],
                                                 "urgent": True},
-                                      f"{dn['have']} tables for {dn['citizens']} dwarves (the fort wants {dn['want']}; "
-                                      f"a meal without one is a bad thought): another dining hall with {dn['tables']} tables", 2))
+                                      f"{dn['have']} tables{where} for {dn['citizens']} dwarves (the fort wants "
+                                      f"{dn['want']}; a meal without one is a bad thought{lack}): another dining "
+                                      f"hall with {dn['tables']} tables and chairs", 2))
     # (0.104.137, 12k) taverns and temples by the dwarves who badly miss what
     # they give, not by whether one stands (Teacheroar: 2 taverns and 2
     # temples for 221 dwarves; 85 badly missing friends, 56 drink, 63 prayer)

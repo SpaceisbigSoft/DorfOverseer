@@ -2297,6 +2297,7 @@ function get_buildings()
         being_built = {},     -- building type -> count, not finished yet (a depot waiting for its stone)
         trap_kinds = {}, ai_levers = 0,   -- (0.105.46) Trap buildings by df.trap_type; the AI's levers
     }
+    local tables = {}
     for _, b in ipairs(df.global.world.buildings.all) do
         local t = b:getType()
         if t == df.building_type.Stockpile then
@@ -2329,6 +2330,7 @@ function get_buildings()
                 out.workshop_jobs_queued = out.workshop_jobs_queued + #b.jobs
             else
                 inc(out.other, df.building_type[t] or tostring(t))
+                if t == df.building_type.Table then table.insert(tables, b) end   -- (0.105.51)
                 -- (0.105.46) a lever is a Trap building (trap_type Lever), so
                 -- `other` had no "Lever" and the scorecard read 0 levers:
                 -- traps by kind, and the AI's own levers (named "AI ...",
@@ -2346,6 +2348,41 @@ function get_buildings()
             end
         end
     end
+    -- (0.105.51, R3 fort B) where the tables stand: B had 29 tables for 83
+    -- dwarves and 6 of them in its one dining hall (the rest in offices,
+    -- nobles' dining rooms, the hospital), LackTables the worst stress, and the
+    -- AI counted all 29. hall: in a dining hall nobody owns; meeting: in a
+    -- meeting hall or tavern zone nobody owns; owned: in a zone a unit owns
+    -- (a noble's dining room, an office); other: anywhere else. Each table
+    -- once. halls: the dining hall zones nobody owns, and of them with a table.
+    pcall(function()
+        local d = {hall = 0, meeting = 0, owned = 0, other = 0, halls = 0, halls_with_tables = 0, owned_halls = 0}
+        local per = {}
+        for _, b in ipairs(tables) do
+            local kind = 'other'
+            pcall(function()
+                for _, z in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(b.x1, b.y1, b.z)) or {}) do
+                    local zt = df.civzone_type[z.type]
+                    local owned = z.assigned_unit_id ~= -1
+                    if owned then kind = 'owned' break
+                    elseif zt == 'DiningHall' then kind = 'hall'; per[z.id] = (per[z.id] or 0) + 1
+                    elseif zt == 'MeetingHall' and kind == 'other' then kind = 'meeting' end
+                end
+            end)
+            d[kind] = d[kind] + 1
+        end
+        for _, b in ipairs(df.global.world.buildings.all) do
+            if b:getType() == df.building_type.Civzone and df.civzone_type[b.type] == 'DiningHall' then
+                if b.assigned_unit_id == -1 then
+                    d.halls = d.halls + 1
+                    if per[b.id] then d.halls_with_tables = d.halls_with_tables + 1 end
+                else
+                    d.owned_halls = d.owned_halls + 1
+                end
+            end
+        end
+        out.dining = d
+    end)
     -- spots outside being cleared of trees (kind -> trees left to fell)
     local okc, clearing = pcall(function() return reqscript('ai-builder').clearing_status() end)
     out.clearing = okc and clearing or {}

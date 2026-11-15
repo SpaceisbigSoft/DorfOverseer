@@ -293,6 +293,8 @@ def _training_squad_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
         proposals.append(Proposal("training_squad", {"type": "squad_routine", "squad_id": q["id"], "routine": routine},
                                   f"{q.get('name') or 'the training squad'} is there to train: "
                                   f"{routine.lower()}", 4))
+    if members > 0:
+        _training_place(s, q, cfg, proposals, notes)
     room = _room(q, cap)
     if room > 0 and keen > 0:
         from planner_core import recently_home
@@ -310,6 +312,47 @@ def _training_squad_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
     if members > cap:
         notes.append(f"the training squad has {members}, over its cap of {cap} (the fort is smaller): no new "
                      "volunteers until it is under")
+
+
+def _training_place(s: dict, q: dict, cfg: dict, proposals: list, notes: list) -> None:
+    """(0.105.51, R3 fort B) Somewhere to train. A squad trains only in a
+    barracks it is given (DF: the zone's squad list, Train); B's training squad
+    of 10 volunteers had none (the Monastery's Barracks level is off, so the
+    fort never dug one, and the barracks rule passes the training squad by),
+    so its members stayed "badly" short of martial training (MartialTraining
+    badly unmet for 12 of the 16 in squads, 40 of 83 in all). A barracks the
+    fort has: the training squad is given it (to train there and keep its
+    things). None: a small training hall (the barracks level at its least,
+    `training_hall_beds`), even with the Barracks level off; it is the
+    training squad's, which the player's Training squad switch allows."""
+    mil = _d(s.get("military"))
+    bks = [b for b in _l(mil.get("barracks")) if isinstance(b, dict) and b.get("id") is not None]
+    if any(q.get("id") in _l(b.get("squads")) for b in bks):
+        return
+    name = q.get("name") or "the training squad"
+    if bks:
+        b = min(bks, key=lambda b: len(_l(b.get("squads"))))
+        proposals.append(Proposal("training_squad", {"type": "squad_barracks", "squad_id": q["id"],
+                                                     "zone_id": b["id"]},
+                                  f"{name} has nowhere to train (a squad trains only in a barracks it is "
+                                  "given): train in the barracks", 4))
+        return
+    zones = _d(_d(s.get("buildings")).get("zones"))
+    if zones.get("Barracks") or "buildings" in _d(s.get("_errors")):
+        return                                   # one stands, not listed yet: the next report
+    pr = _d(s.get("projects"))
+    open_ = [p for p in _l(pr.get("open")) if isinstance(p, dict)]
+    if any(p.get("kind") == "barracks" for p in open_):
+        notes.append(f"{name} waits for its training hall (being built)")
+        return
+    if len(open_) >= int(pr.get("max_open") or 2):
+        notes.append(f"{name} has nowhere to train (no barracks): a small training hall waits for a building slot")
+        return
+    beds = cfg["training_hall_beds"]
+    proposals.append(Proposal("training_squad", {"type": "start_project", "kind": "barracks", "beds": beds},
+                              f"{name} has nowhere to train (a squad trains only in a barracks, and the fort has "
+                              f"none): a small training hall for it ({beds} places; the Barracks level stays off "
+                              "for soldiers)", 4))
 
 
 def guard_training_orders(s: dict, proposals: list, notes: list) -> list:
