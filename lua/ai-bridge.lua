@@ -999,6 +999,7 @@ BRIDGE_MODULES = {
     'ai-lure',   -- (0.105.45)
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
     'ai-recovery',   -- (0.105.46, I4)
+    'ai-floorplan',   -- (layout B) the hallway-first floor plans
     'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
     'ai-mood-help',   -- (0.105.47, J1) job cancels, webs, the moods' tiles in the shelter
     'ai-screen-buttons', 'ai-meeting-open',   -- (0.105.47) buttons kept for every save; the meeting opened
