@@ -1394,7 +1394,9 @@ def _():
         local s = W.get(70, 58, 69); s.designated = false; s.shape = 'RAMP'
     end""")(W)
     d = B.projects_report().open[1].dig
-    assert d.stuck == 0 and d.redesignated == 1 and W.get(70, 58, 69).designated, (d.stuck, d.redesignated)
+    assert d.stuck == 0 and d.redig_due == 1 and not W.get(70, 58, 69).designated, (d.stuck, d.redig_due)
+    r2 = B.redig_projects(False)       # (0.105.48) the action, never the report, designates it
+    assert r2.ok and r2.tiles == 1 and W.get(70, 58, 69).designated, dict(r2)
     assert W.get(70, 58, 69).dig_text == "h1"
     # every stair dug, the shaft not: the well is never placed over it
     dig_shaft_stairs()

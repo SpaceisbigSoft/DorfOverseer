@@ -635,7 +635,9 @@ def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list, no
             # (marked raised in planner.record, once the game took it: a
             # proposal held by the cycle's limits is asked again)
         jobs = "; ".join(str(w) for w in _l(dig.get("waiting"))[:3])
-        if days >= cfg["dig_stall_furnish_days"] and dug >= 0.9 * total and dug < total:
+        # (0.105.48, K7c) never over a held or closed cavern shaft: the bridge refuses it
+        shaft_shut = bool(dig.get("held")) or dig.get("shaft_open") is False
+        if days >= cfg["dig_stall_furnish_days"] and dug >= 0.9 * total and dug < total and not shaft_shut:
             proposals.append(Proposal("project", {"type": "furnish_project", "project_id": p["id"], "stalled": True},
                                       f"{what}: {dug} of {total} tiles dug and none for {days} days"
                                       + (f" ({jobs})" if jobs else "") + ": furnish it without the last ones", 3))
@@ -647,6 +649,22 @@ def _dig_stall_rule(s: dict, memory, cfg: dict, open_: list, proposals: list, no
     for k in list(seen):
         if k not in live:
             del seen[k]
+
+
+def _redig_rule(open_: list, proposals: list) -> None:
+    """(0.105.48, K7c) A well's shaft or stairs, a gallery or a way in's steps
+    that lost their designation (dig.redig_due in the report) are designated
+    again by the redig_projects action. The report used to do it itself,
+    every cycle and even while the AI was halted."""
+    due = [p for p in open_ if p.get("phase") == "dig" and isinstance(p.get("id"), int)
+           and int(_d(p.get("dig")).get("redig_due") or 0) > 0]
+    if not due:
+        return
+    n = sum(int(_d(p.get("dig")).get("redig_due") or 0) for p in due)
+    what = ", ".join(f"the {p.get('kind')} level (project {p['id']})" for p in due[:3])
+    proposals.append(Proposal("redig", {"type": "redig_projects"},
+                              f"{what}: {n} shaft, stair or gallery tile(s) lost their designation: "
+                              "designate them again", 3))
 
 
 def room_size(traits: dict) -> int:
@@ -822,6 +840,7 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
     except Exception as e:  # noqa: BLE001  (an odd report value: the project steps go on)
         notes.append(f"rule _soil_floor_rule failed ({type(e).__name__}: {str(e)[:120]}); the others ran")
     _dig_stall_rule(s, memory, cfg, open_, proposals, notes)
+    _redig_rule(open_, proposals)        # (0.105.48, K7c)
 
     # (0.104.12) projects that hold a building slot for good: a dig that has
     # crept (under half dug in slow_dig_days: Enxah's cavern well, 2 of 24

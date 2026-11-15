@@ -303,7 +303,15 @@ function quickfort_apply(mode, cells, z, ax, ay, command, dry_run)
             -- (0.105.40b fix) the guard itself threw: the levels at or below the
             -- deep floor (or beside a deep level) dropped, the rest let by; recorded
             local okd, d3, n3, w3 = pcall(function() return util_module().dig_guard_drop_deep(data, ax, ay, 0, (not dry_run) and 'quickfort' or nil) end)
-            if okd and d3 then data, refused, why = d3, n3, w3 end
+            if okd and d3 then
+                data, refused, why = d3, n3, w3
+            else
+                -- (0.105.48, A3 15) neither guard could run: nothing is dug
+                -- (was: the blueprint dug unguarded, nothing recorded)
+                local err = tostring(okg and 'no data' or d2):sub(1, 120)
+                return {dig_designated = {value = 0}, dig_guard_refused = {value = 1},
+                        dig_guard_why = 'the dig guard could not run: ' .. err, dig_guard_error = err}
+            end
         end
         -- (0.105.41, item 7) a channel that would leave a floor hanging over
         -- nothing (a cave-in) taken out (lua/ai-hazards.lua channel_check)
@@ -313,10 +321,15 @@ function quickfort_apply(mode, cells, z, ax, ay, command, dry_run)
         if okc and d4 and (n4 or 0) > 0 then
             data, refused, why = d4, (refused or 0) + n4, why or w4
             cave_ins, cave_why = n4, w4
+        elseif not okc then
+            cave_why = 'the cave-in check could not run: ' .. tostring(d4):sub(1, 120)   -- (0.105.48, A3 15) recorded
         end
     end
     local stats = qf.apply_blueprint{mode = mode, command = command or 'run', dry_run = dry_run,
                                      data = data, pos = {x = ax, y = ay, z = 0}}
+    if cave_why and not cave_ins and type(stats) == 'table' then
+        pcall(function() stats.dig_guard_error = cave_why end)
+    end
     if refused and refused > 0 and type(stats) == 'table' then
         pcall(function()
             stats.dig_guard_refused = {value = refused}

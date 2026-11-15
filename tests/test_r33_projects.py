@@ -53,6 +53,7 @@ def _():
     for _ in range(B.REDIG_MAX + 1):
         o = open_of(B.projects_report())[0]
         nexts.append(o.next)
+        B.redig_projects(False)       # (0.105.48) the action puts it back, never the report
         W.set(41, 25, 27, LUA.table_from({"designated": False}))                  # and takes it off again
     assert nexts[:B.REDIG_MAX] == [False] * B.REDIG_MAX, nexts
     assert nexts[-1] == "cancel", nexts

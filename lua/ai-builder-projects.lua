@@ -350,6 +350,7 @@ function start_project(params, now, dry_run)
     end
     local p = {
         id = data.next_id, kind = kind, phase = 'dig',
+        urgent = params.urgent == true or nil,     -- (0.105.48, A3 14) the report's row carries it
         params = {rooms = params.rooms, room_size = params.room_size, tables = params.tables, beds = params.beds,
                   dormitory = params.dormitory,
                   piles = params.piles, shops = params.shops, size = params.size,
@@ -389,7 +390,11 @@ end
 -- How far the digging has got, and whether it's stuck.
 REDIG_MAX = 3        -- (0.105.33, L4) times a lost shaft, stair or gallery tile is designated again
 
-function dig_progress(p)
+-- (0.105.48, K7c) read only unless `redig` is true: the report only counts
+-- the lost shaft, stair and gallery tiles it would designate again
+-- (`redig_due`, not counted as stuck); redig_projects (an action, so never
+-- while halted) puts them back (`redesignated`), dry_run counting only.
+function dig_progress(p, redig, dry_run)
     local total, dug, stuck, marked, digging = 0, 0, 0, 0, 0
     local jobs = job_tiles()
     local waiting = {}             -- (0.104.110) what the tiles left wait on: up to 5, with their jobs
@@ -491,7 +496,7 @@ function dig_progress(p)
     -- the well waits for every level of it.
     local open_shape = function(t) return t.shape ~= 'WALL' and t.shape ~= 'FLOOR' and t.shape ~= 'RAMP' end
     local pri = type(p.params) == 'table' and p.params.pri or ''
-    local shaft_open, redug = true, 0
+    local shaft_open, redug, due = true, 0, 0
     -- (0.105.33, L4) each tile at most REDIG_MAX times (counted in the
     -- project): one the game (or the player) keeps taking off stays stuck,
     -- so the project can end instead of putting it back for ever
@@ -503,12 +508,16 @@ function dig_progress(p)
         local tk = x .. ',' .. y .. ',' .. z
         local times = type(p.redug) == 'table' and tonumber(p.redug[tk]) or 0
         if stuck > before and t and not t.marked and times < REDIG_MAX then
-            local ok, s = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = key .. (pri or '')}}, z, x, y)
-            if ok and stat(s, 'dig_designated') == 1 then
-                stuck, redug = stuck - 1, redug + 1
+            if not redig or dry_run then
+                stuck, due = stuck - 1, due + 1      -- (0.105.48) waits for redig_projects
+            else
+                local ok, s = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = key .. (pri or '')}}, z, x, y)
+                if ok and stat(s, 'dig_designated') == 1 then
+                    stuck, redug = stuck - 1, redug + 1
+                end
+                if type(p.redug) ~= 'table' then p.redug = {} end
+                p.redug[tk], p.redug_changed = times + 1, true
             end
-            if type(p.redug) ~= 'table' then p.redug = {} end
-            p.redug[tk], p.redug_changed = times + 1, true
         end
     end
     -- (0.105.4 review) the shaft's last level (it opens into the cavern) and
@@ -546,7 +555,9 @@ function dig_progress(p)
     local out = {total = total, dug = dug, stuck = stuck, marked = marked, digging = digging,
                  waiting = #waiting > 0 and waiting or nil}
     if top_waits > 0 then shaft_open = false end      -- (0.105.47)
-    if p.shaft then out.shaft_open, out.redesignated = shaft_open, redug > 0 and redug or nil end
+    if p.shaft then out.shaft_open = shaft_open end
+    if redug > 0 then out.redesignated = redug end
+    if due > 0 then out.redig_due = due end           -- (0.105.48) lost tiles redig_projects puts back
     if held_n > 0 then out.held = held_n end          -- (0.105.4 review)
     -- (0.105.31) a well's channel not dug: why
     if p.kind == 'well' and dug == 0 and total > 0 then
@@ -674,11 +685,13 @@ function projects_report()
     OFFSET = elevation_offset()
     local data = load_projects()
     local out, decorating, finished = {}, {}, 0
-    local redug_seen = false
     for _, p in ipairs(data.list) do
         if p.phase == 'dig' or p.phase == 'furnish' or p.phase == 'decorate' then
             local r = {id = p.id, kind = p.kind, phase = p.phase, z = p.z, elevation = ez(p.z),
-                       summary = p.summary, furniture = p.furniture, started = p.started}
+                       summary = p.summary, furniture = p.furniture, started = p.started,
+                       -- (0.105.48, A3 14) the planner's "dig first" and well rules read these
+                       urgent = (p.urgent == true or (type(p.params) == 'table' and p.params.urgent == true)) or nil,
+                       dig_done = p.dig_done}
             if p.phase == 'dig' then r.dig = dig_progress(p) end
             -- (0.92) a hall built for a petition: what it's dedicated to
             local pr = type(p.params) == 'table' and p.params or {}
@@ -697,14 +710,12 @@ function projects_report()
                                   seen = type(p.well_diag) == 'table' and p.well_diag.text or nil}
             end
             r.next = next_step(p, r) or false
-            if p.redug_changed then p.redug_changed, redug_seen = nil, true end
             table.insert(p.phase == 'decorate' and decorating or out, r)
         elseif p.phase == 'done' then
             finished = finished + 1
         end
     end
-    -- (0.105.33, L4) the tiles the report designated again are counted with the fort
-    if redug_seen then pcall(save_projects, data) end
+    -- (0.105.48, K7c) the report changes nothing: lost tiles are put back by redig_projects
     local okc, cap = pcall(slot_cap, open_projects(data))
     local okl, lids = pcall(well_lids, true, data)     -- (0.104.151)
     -- (0.105.33, industry 2) `finished` counts only the KEEP_CLOSED_PROJECTS
@@ -713,6 +724,31 @@ function projects_report()
             max_open = okc and cap or MAX_OPEN_PROJECTS,
             max_open_base = MAX_OPEN_PROJECTS, well_lids = (okl and #lids > 0) and lids or nil,
             well_lids_error = (not okl) and tostring(lids):sub(1, 120) or nil}
+end
+
+-- (0.105.48, K7c) The action that puts back what projects_report counts as
+-- redig_due: a well's shaft and its stairs, a gallery, a way in's steps that
+-- lost their designation, each tile at most REDIG_MAX times (counted in the
+-- project). Was done inside the report (every cycle, halted or not).
+function redig_projects(dry_run)
+    local data = load_projects()
+    local n, projects, changed = 0, {}, false
+    for _, p in ipairs(data.list) do
+        if p.phase == 'dig' then
+            local d = dig_progress(p, true, dry_run == true)
+            local k = dry_run and (d.redig_due or 0) or (d.redesignated or 0)
+            if k > 0 then
+                n = n + k
+                table.insert(projects, p.id)
+            end
+            if p.redug_changed then p.redug_changed, changed = nil, true end
+        end
+    end
+    if changed and not dry_run then pcall(save_projects, data) end
+    if n == 0 and not changed then
+        return {ok = false, rejected = true, error = 'no lost shaft, stair or gallery tile to designate again'}
+    end
+    return {ok = true, dry_run = dry_run == true or nil, tiles = n, projects = projects}
 end
 
 -- The box a project covers, in map coordinates: {x1, y1, x2, y2, z}, from

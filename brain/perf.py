@@ -45,6 +45,32 @@ def slow_sections(perf: dict, n: int = 3) -> list[tuple[str, float]]:
     return secs[:n]
 
 
+def section_age(s: dict, name: str) -> float | None:
+    """(0.105.48, K7c) How many game days old the report's copy of a section
+    is: 0.0 when it was built for this report, its cached copy's age when it
+    came from the bridge's cache (perf.cache_age), None when the report has
+    no such section or no perf section (an older bridge)."""
+    if not isinstance(s, dict) or name not in s:
+        return None
+    p = _d(s.get("perf"))
+    if not p or "error" in p:
+        return None
+    age = _d(p.get("cache_age")).get(name)
+    if _num(age):
+        return float(age)
+    return None if _d(p.get("cached")).get(name) else 0.0
+
+
+def stale_sections(s: dict) -> list[tuple[str, float]]:
+    """(0.105.48, K7c) The cached sections sent past their own cache days
+    (perf.cache_due), oldest first, with their age in game days."""
+    p = _d(_d(s).get("perf"))
+    ages = _d(p.get("cache_age"))
+    out = [(k, float(ages[k])) for k, v in _d(p.get("cache_due")).items() if v and _num(ages.get(k))]
+    out.sort(key=lambda kv: (-kv[1], kv[0]))
+    return out
+
+
 def _ms(v) -> str:
     return f"{v:.0f}" if _num(v) else "?"
 
@@ -59,9 +85,11 @@ def perf_line(s: dict) -> str:
     slow = slow_sections(p)
     cached = sum(1 for v in _d(p.get("cached")).values() if v)
     fps = p.get("fps")
+    stale = stale_sections(s)
     return (f"PERF report {_ms(p.get('total_ms'))} ms"
             + (" | slowest " + ", ".join(f"{k} {_ms(v)}" for k, v in slow) if slow else "")
             + (f" | cached {cached}" if cached else "")
+            + (" | stale " + ", ".join(f"{k} {v:.1f}d" for k, v in stale[:3]) if stale else "")
             + f" | fps {_ms(fps)}")
 
 

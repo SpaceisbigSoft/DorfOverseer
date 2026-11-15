@@ -1019,8 +1019,16 @@ stairwell_search = function(params, dry_run)
                             local out = {ok = true, x = x, y = y, elev_top = ez(z), elev_bottom = ez(lo_z),
                                          levels = #cells, dir = params.dir, dry_run = dry_run or nil}
                             if dry_run then return out end
-                            for _, c in ipairs(cells) do
-                                quickfort_apply('dig', {{x = 0, y = 0, text = c.key}}, c.z, x, y)
+                            -- (0.105.48, A3 19) each level checked; a miss undoes the rest
+                            for i, c in ipairs(cells) do
+                                local okr, rs = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key}}, c.z, x, y)
+                                if not (okr and stat(rs, 'dig_designated') == 1) then
+                                    for j = 1, i do
+                                        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = cells[j].key}}, cells[j].z, x, y, 'undo')
+                                    end
+                                    return {ok = false, rejected = true,
+                                            error = ('the game would not dig the stairwell at elevation %d: undone'):format(ez(c.z))}
+                                end
                             end
                             return out
                         end
