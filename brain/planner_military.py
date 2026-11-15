@@ -1645,6 +1645,10 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
     ranged = [q for q in manned if is_ranged(q)]
     if peaceful:
         made_ = [q for q in manned if q.get("ai_uniform") and q["id"] in (squads_made or []) and not is_ranged(q)]
+        # (0.105.54 merge) one melee squad always stays: crossbows alone can't
+        # hold a doorway or close on an enemy inside
+        if len([q for q in manned if not is_ranged(q)]) <= 1:
+            made_ = []
         if made_:
             q = min(made_, key=lambda q: q["id"])
             kind = "metal" if "metal" in str(q.get("ai_uniform") or "").lower() else "leather"

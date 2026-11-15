@@ -246,7 +246,11 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
         targets = [i for i in reach if i not in off]
         return any(i in off and threats[i].get("great_danger") for i in reach) and not targets, targets
     # (0.105.40b) a fire breather is hidden from like an unfought great danger
-    fire = {i for i in reach if threats[i].get("fire_breather") is True}
+    # (0.105.54 merge) and any beast melee can't close on (fire, gas, dust,
+    # webs: planner_matchup.melee_bar), as the military rules judge it
+    from planner_matchup import melee_bar
+    fire = {i for i in reach if threats[i].get("fire_breather") is True
+            or (threats[i].get("great_danger") and melee_bar(threats[i]))}
     great = [i for i in reach if threats[i].get("great_danger") and i not in fire]
     if policy == "never":
         return bool(great) or bool(fire), []

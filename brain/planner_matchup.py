@@ -253,6 +253,10 @@ def fight_bar(threat, cfg: dict) -> dict:
         return {"bar": clear, "ranged_only": False,
                 "why": f"its abilities can't be read: a clear win ({clear:g}x) wanted"}
     if any(t.get("flier") for t in rows) and all(t.get("flier") for t in rows):
+        # (0.105.54 merge) a flier inside the fort is in reach of melee: fought
+        # however the fort is armed (a fort with no crossbow squad left it free)
+        if any(t.get("inside") is True for t in rows):
+            return {"bar": even, "ranged_only": False, "why": f"about even odds ({even:g}x); it flies but is inside"}
         return {"bar": even, "ranged_only": True, "why": f"about even odds ({even:g}x); it flies: crossbows"}
     return {"bar": even, "ranged_only": False, "why": f"about even odds ({even:g}x)"}
 
