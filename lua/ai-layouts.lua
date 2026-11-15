@@ -915,7 +915,10 @@ BIG_LEVEL_ROOMS = 4
 -- The rooms of a room level, arranged as the style's arms say.
 local function rooms_for(L, nslots, size, round)
     if L.style.arms == 'cross' then return cross_rooms(L, nslots, size, round) end
-    if L.style.arms == 'ring' and nslots >= RING_MIN_ROOMS then return ring_rooms(L, nslots, size, round) end
+    -- (0.105.54 merge) workshop levels never ring: rooms along a corridor
+    -- (the player: halls with rooms along them), and a level keeps its shape
+    -- as it grows (a ring re-laid at 4 rooms would move every room dug)
+    if L.style.arms == 'ring' and nslots >= RING_MIN_ROOMS and not L.no_ring then return ring_rooms(L, nslots, size, round) end
     local slots = corridor_rooms(L, nslots, size, round)
     if L.style.grand then
         local width, top = L.corridor.width, L.corridor.top
@@ -1078,6 +1081,7 @@ function workshops(p)
     end
     if #shops == 0 then return nil, 'no valid workshop types' end
     local L = new_layout('workshops', p)
+    L.no_ring = true          -- (0.105.54 merge) see rooms_for
     -- (0.105.29, custom ore_piles) one room more, a 5x5 stone (and ore) pile, under 12 shops
     local ore = L.style.customs.ore_piles and #shops < WORKSHOP_ROOMS_MAX
     local spare = clamp(p.spare or 0, 0, WORKSHOP_ROOMS_MAX - #shops - (ore and 1 or 0))

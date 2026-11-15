@@ -78,25 +78,16 @@ def span(f):
     return max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
 
 
-@test("ring: under 4 rooms no loop at all (the corridor layout), from 4 rooms a loop sized from the count")
+@test("ring: workshop levels never ring (0.105.54 merge: rooms along a corridor at any count); other levels ring only from 4 rooms")
 def _():
-    for n in (1, 2, 3):
+    for n in (1, 2, 3, 4, 8, 9):
         ring = make("workshops", {"shops": SHOPS[:n]}, {"arms": "ring"})
         plain = make("workshops", {"shops": SHOPS[:n]}, {})
         assert SER(ring) == SER(plain), n                     # byte-identical to the plain style
-        f = flat(ring)
-        assert not f["ring"] and len(f["tiles"]) <= 130, (n, len(f["tiles"]))
+        assert not flat(ring)["ring"], n
     # the old shape: one shop in a 15x15 loop plus its alcove, ~250 tiles
     one = shops(1, RING_STYLE)
     assert len(one["tiles"]) <= 100 and max(span(one)) <= 17, (len(one["tiles"]), span(one))
-    f4, f8 = shops(4, RING_STYLE), shops(8, RING_STYLE)
-    assert f4["ring"] == f8["ring"] == 6, (f4["ring"], f8["ring"])     # the smallest loop holding them
-    assert shops(9, RING_STYLE)["ring"] == 12                            # a second room a half side
-    # 4 rooms: one on each side of the loop (not two sides of two)
-    sides = set()
-    for x, y, t in f4["build"]:
-        sides.add("N" if y < -5 else "S" if y > 5 else "W" if x < -5 else "E")
-    assert sides == {"N", "S", "E", "W"}, f4["build"]
     # bedrooms on a ring stay a ring (a home with many rooms)
     assert flat(make("bedrooms", {"rooms": 16, "room_size": 3}, {"arms": "ring"}))["ring"]
 

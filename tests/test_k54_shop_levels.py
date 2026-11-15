@@ -94,16 +94,16 @@ def builds(p):
 
 # --- B's duplicate Millstone levels --------------------------------------------------
 
-@test("B's second single-Millstone level (projects 71/72): the standing ring level is extended (~24 tiles), not a new one (~250)")
+@test("B's second single-Millstone level (projects 71/72): the standing level is extended, not a new one (0.105.54 merge: one shop is a 72-tile corridor level now, not a 250-tile ring)")
 def _():
     need()
     r1 = start(kind="workshops", shops=["Millstone"], spare=0, style=STYLE_B71)     # as B's old level was planned
-    assert r1.ok and r1.project_id == 1 and r1.tiles >= 200, dict(r1)
+    assert r1.ok and r1.project_id == 1 and r1.tiles >= 60, dict(r1)
     dig_all()
     set_phase(1, "done")
     r2 = start(kind="workshops", shops=["Millstone"], spare=0, style=STYLE_B72)    # (B's 72: the rule's style)
     assert r2.ok and r2.joined == 1 and r2.how == "extension", dict(r2)
-    assert r2.tiles < 40 and r2.tiles * 5 < r1.tiles, (r2.tiles, r1.tiles)
+    assert r2.tiles < r1.tiles, (r2.tiles, r1.tiles)
     p2, p1 = project(2), project(1)
     assert p2.parent == 1 and p2.kind == "workshops" and p2.phase == "dig" and p2.z == p1.z, dict(p2)
     assert (p2.anchor.x, p2.anchor.y) == (p1.anchor.x, p1.anchor.y)
@@ -125,11 +125,15 @@ def _():
     r2 = start(kind="workshops", shops=["Millstone"], style=STYLE_B71)
     assert r2.ok and r2.how == "extension" and r2.tiles < 100 and r2.tiles * 2 < r1.tiles, dict(r2)
     p1 = project(1)
-    assert p1.params.spare == 1 + int(B.WORKSHOP_EXTEND_SPARE) and p1.free_left == int(B.WORKSHOP_EXTEND_SPARE)
+    # (0.105.54 merge) as many spares as fit without moving a dug room
+    assert 1 <= p1.params.spare <= 1 + int(B.WORKSHOP_EXTEND_SPARE) and p1.free_left == p1.params.spare - 1
     dig_all()
     set_phase(2, "done")
     r3 = start(kind="workshops", shops=["Quern"], style=STYLE_B71)
-    assert r3.ok and r3.joined == 1 and r3.how == "free_room" and r3.tiles == 0, dict(r3)
+    # (0.105.54 merge) a free room when the extension could hold spares, else
+    # another small extension of the same level: never a new level
+    assert r3.ok and r3.joined == 1 and (r3.how == "free_room" and r3.tiles == 0
+                                         or r3.how == "extension" and r3.tiles < 40), dict(r3)
 
 
 @test("join = false (the old way, every shop its own level): B's second Millstone digs a whole new level")
@@ -139,10 +143,10 @@ def _():
     dig_all()
     set_phase(1, "done")
     r = start(kind="workshops", shops=["Millstone"], spare=0, style=STYLE_B72, join=False)
-    assert r.ok and r.joined is None and r.project_id == 2 and r.tiles >= 200, dict(r)
+    assert r.ok and r.joined is None and r.project_id == 2 and r.tiles >= 60, dict(r)
 
 
-@test("a ring holds 8 rooms: a 9th would move its loop, so it isn't extended (a new level instead)")
+@test("8 shops on one level (a corridor now, never a ring): a 9th extends it along its corridor")
 def _():
     need()
     r1 = start(kind="workshops", shops=["Kitchen", "Still", "Butchers", "Tanners", "Farmers", "Fishery",
@@ -151,7 +155,7 @@ def _():
     dig_all()
     set_phase(1, "done")
     r2 = start(kind="workshops", shops=["Still"], spare=0, style=STYLE_B71)
-    assert r2.ok and r2.joined is None and "moves its rooms" in str(r2.not_joined), (dict(r2), r2.not_joined)
+    assert r2.ok and r2.joined == 1 and r2.how == "extension", (dict(r2), r2.not_joined)
 
 
 @test("a corridor level grows along its corridor: the new rooms and the corridor's next stretch only")
