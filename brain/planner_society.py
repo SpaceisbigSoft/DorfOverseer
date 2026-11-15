@@ -252,6 +252,28 @@ NEED_ADVICE = {
 JEWEL_RECIPES = ("stone_amulet", "stone_bracelet", "stone_ring", "stone_earring")
 
 
+UNHAPPY_LABELS = ("miserable", "very_unhappy", "unhappy")
+
+
+def unhappy_share(s: dict) -> float:
+    """(0.105.51) The share of the citizens unhappy or worse (the dwarves
+    section's stress counts), 0.0 when unknown."""
+    st = _d(_d(s.get("dwarves")).get("stress"))
+    counts = [v for v in st.values() if isinstance(v, int) and not isinstance(v, bool)]
+    total = sum(counts) or int(_d(s.get("dwarves")).get("total") or 0)
+    if total <= 0:
+        return 0.0
+    low = sum(st[k] for k in UNHAPPY_LABELS if isinstance(st.get(k), int))
+    return low / total
+
+
+def unhappy_wide(s: dict, cfg: dict) -> bool:
+    """(0.105.51) Is the fort unhappy enough (unhappy_wide_share, ~20%) that
+    the recreation burrow and stress care reach the plain unhappy? E's bulk
+    (17-30 of 38-63) sat at plain unhappy, out of both rules' reach."""
+    return unhappy_share(s) >= float(cfg.get("unhappy_wide_share", 0.2))
+
+
 def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, memory=None) -> None:
     """(0.104.78) The recreation burrow (players' cure for dwarves too busy to
     meet their needs): the very unhappy and miserable civilians moved into a
@@ -288,7 +310,12 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
                                                      "days": cfg["recreation_days"]},
                                       f"{why}: everyone in the recreation burrow back to the fort", 4))
         return
-    low = [x for x in worst if x.get("stress") in ("miserable", "very_unhappy") and not x.get("squad")]
+    # (0.105.51) a fort unhappy past unhappy_wide_share: the plain unhappy too
+    # (the bridge then moves in from DF's stress category 2, not 1)
+    wide = unhappy_wide(s, cfg)
+    labels = UNHAPPY_LABELS if wide else ("miserable", "very_unhappy")
+    low = [x for x in worst if x.get("stress") in labels and not x.get("squad")]
+    n_unhappy = int(_d(_d(s.get("dwarves")).get("stress")).get("unhappy") or 0) if wide else 0
     # (0.104.80) civilians badly wanting friends get a few short stays too
     bwf = _d(_d(_d(s.get("needs")).get("needs")).get("BeWithFriends"))
     lonely = int(bwf.get("badly") or 0) - int(bwf.get("badly_soldiers") or 0)
@@ -310,16 +337,22 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
                    for t in _l(getattr(memory, "fight_deaths", None)))
     if fighting:
         friends = 0
-    if low or members or friends:
+    if low or members or friends or n_unhappy:
         cap = cfg["recreation_max"] if fighting else min(30, max(cfg["recreation_max"], citizens // 20))
+        if wide and not fighting:
+            cap = max(cap, min(30, citizens // 5))      # (0.105.51) a fifth of the fort at most
         if small:
             cap = max(1, min(cap, citizens // 4))
         action = {"type": "recreation", "max": cap,
                   "days": cfg["recreation_days"]}
+        if wide:
+            action["unhappy"] = True
         if friends:
             action.update(friends=friends, friend_days=cfg["recreation_friend_days"])
         proposals.append(Proposal("recreation", action,
-                                  f"{len(low)} civilian(s) very unhappy or worse"
+                                  (f"{round(unhappy_share(s) * 100)}% of the fort unhappy or worse, "
+                                   f"{max(len(low), n_unhappy)} civilian(s) unhappy or worse" if wide else
+                                   f"{len(low)} civilian(s) very unhappy or worse")
                                   + (f", {lonely} civilian(s) badly wanting friends" if friends else "")
                                   + (f", {members} in the recreation burrow" if members else "")
                                   + ": the unhappiest off work in the taverns, temples and halls"
@@ -351,6 +384,13 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
     crisis = [x for x in worst if x.get("id") is not None
               and (x.get("stress") in labels or (x.get("stress") == "very_unhappy" and _lt(x) >= lt_min))]
     crisis.sort(key=lambda x: (x.get("stress") != "miserable", -_lt(x)))
+    # (0.105.51) a fort unhappy past unhappy_wide_share: the rest of the
+    # unhappy band (very unhappy, plain unhappy) get a bedroom and what they
+    # miss, after the crisis; never let out of a squad for it
+    have_ids = {x.get("id") for x in crisis}
+    mild = ([x for x in worst if x.get("id") is not None and x.get("id") not in have_ids
+             and x.get("stress") in UNHAPPY_LABELS] if unhappy_wide(s, cfg) else [])
+    mild.sort(key=lambda x: (UNHAPPY_LABELS.index(x.get("stress")), -_lt(x)))
     # (0.105.40b) the near-breaking (long-term stress high: planner_insane)
     # first, at a higher priority; one the needs list left out comes from the
     # insane section's own row (no squad release for them: their longing to
@@ -363,7 +403,7 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
         extra = [by_id.get(r["id"]) or dict(r, from_risk=True) for r in risk if r["id"] not in have]
         crisis = ([x for x in crisis if x["id"] in risk_ids] + extra
                   + [x for x in crisis if x["id"] not in risk_ids])
-    if not crisis:
+    if not crisis and not mild:
         return
     quiet = not _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves")
     now = abs_tick(s)
@@ -396,7 +436,7 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
             proposals.append(into)
             return
     free = int(_d(_d(s.get("noble_rooms")).get("free")).get("bedroom") or 0)
-    for x in crisis:
+    for x in crisis + mild:
         if x.get("bedroom") is False and free > 0:
             near = x["id"] in risk_ids
             proposals.append(Proposal("stress_care", {"type": "give_room", "unit_id": x["id"], "kind": "bedroom"},
@@ -407,10 +447,10 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
     # (0.105.47, I7b) bedroom and squad aren't the trouble: the dwarf's top
     # unmet need, with the actions that exist (B's last stress care was in
     # summer 260: every stressed dwarf had a bedroom and no squad)
-    for x in crisis if cfg.get("stress_need_care", True) else []:
+    for x in (crisis + mild) if cfg.get("stress_need_care", True) else []:
         if x.get("from_risk"):
             continue
-        p = _need_care(s, cfg, x, x["id"] in risk_ids, proposals)
+        p = _need_care(s, cfg, x, x["id"] in risk_ids, proposals, memory, now)
         if p is not None and (memory is None or _refused_wait(memory, p, now) is None):
             proposals.append(p)
             return
@@ -421,7 +461,7 @@ CARE_SOCIAL = ("PrayOrMeditate", "BeWithFriends", "Socialize", "BeWithFamily", "
                "HearEloquence", "AdmireArt", "LearnSomething", "BeCreative", "Wander")
 
 
-def _need_care(s: dict, cfg: dict, x: dict, near: bool, proposals: list):
+def _need_care(s: dict, cfg: dict, x: dict, near: bool, proposals: list, memory=None, now: int = 0):
     """The proposal that answers this stressed dwarf's worst unmet need it can
     (their list is worst first), or None. A good meal: lavish meals at the
     kitchen; something to own or finery: trinkets given; crafting: idle
@@ -437,30 +477,53 @@ def _need_care(s: dict, cfg: dict, x: dict, near: bool, proposals: list):
     pri = 3 if near else 4
     kinds = {_d(p.action).get("type") for p in proposals}
     recipes = {_d(p.action).get("recipe") for p in proposals}
+
+    def _refused(p) -> bool:
+        return memory is not None and _refused_wait(memory, p, now) is not None
+    refused_any = False
+
+    def _meal(words: str):
+        if _has_shop(b, "Kitchen") and not queued(s, {"prepare_lavish_meal"}) and "prepare_lavish_meal" not in recipes:
+            return Proposal("stress_care", {"type": "work_order", "recipe": "prepare_lavish_meal", "amount": 5},
+                            f"{who}, {words}: cook lavish meals", pri, True)
+        return None
     for need in _l(x.get("unmet")):
+        p = None
         if need == "EatGoodMeal":
             if lavish_due(s, cfg):
                 return None                  # the needs_meal rule orders them for the fort this cycle
-            if _has_shop(b, "Kitchen") and not queued(s, {"prepare_lavish_meal"}) and "prepare_lavish_meal" not in recipes:
-                return Proposal("stress_care", {"type": "work_order", "recipe": "prepare_lavish_meal", "amount": 5},
-                                f"{who}, missing a good meal most: cook lavish meals", pri, True)
+            p = _meal("missing a good meal most")
         elif need in ("AcquireObject", "BeExtravagant"):
             if isinstance(nd.get("trinkets"), int) and nd["trinkets"] > 0 and "give_trinkets" not in kinds \
                     and player_rules(s).get("give_trinkets", True):
-                return Proposal("stress_care", {"type": "give_trinkets", "max": 3},
-                                f"{who}, missing something of their own most: give out trinkets", pri)
+                p = Proposal("stress_care", {"type": "give_trinkets", "max": 3},
+                             f"{who}, missing something of their own most: give out trinkets", pri)
         elif need == "CraftObject":
             ic = _d(nd.get("idle_crafting"))
             if _has_shop(b, "Craftsdwarfs") and nd.get("idle_crafting") is not None and not ic.get("workshops") \
                     and "idle_crafting" not in kinds:
-                return Proposal("stress_care", {"type": "idle_crafting"},
-                                f"{who}, missing making something most: let idle dwarves craft at the "
-                                "Craftsdwarf's workshops", pri)
+                p = Proposal("stress_care", {"type": "idle_crafting"},
+                             f"{who}, missing making something most: let idle dwarves craft at the "
+                             "Craftsdwarf's workshops", pri)
         elif need in CARE_SOCIAL:
             # prayer, friends, company: the recreation rule's stay (it runs
             # after this, from recreation_min_citizens, the most stressed
             # first, and this dwarf is among them): the next need
             continue
+        if p is None:
+            continue
+        # (0.105.51) one the bridge refused lately ("nobody wants something
+        # to own": E asked trinkets for one dwarf 8 times): the next need
+        if _refused(p):
+            refused_any = True
+            continue
+        return p
+    # (0.105.51) every remedy for their needs refused: another comfort, a
+    # good meal (DF: a fine meal lifts any dwarf's mood)
+    if refused_any and not lavish_due(s, cfg):
+        p = _meal("what they miss can't be given now")
+        if p is not None and not _refused(p):
+            return p
     return None
 
 
@@ -488,11 +551,13 @@ def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None,
         # (0.105.35) the player's own switch: said, not handed back to them
         notes.append(f"the fort agreed to petitions it hasn't kept: {', '.join(want[:4])}; the AI doesn't build "
                      "them while the Rules switch for building them is off")
-    worst = [x for x in _l(nd.get("stressed")) if isinstance(x, dict)]
+    listed = [x for x in _l(nd.get("stressed")) if isinstance(x, dict)]
+    # (0.105.51) the list holds the plain unhappy too: the notes keep to the very unhappy or worse
+    worst = [x for x in listed if x.get("stress") != "unhappy"]
     miserable = [x for x in worst if x.get("stress") == "miserable"]
-    _stress_care(s, cfg, worst, proposals, memory)
+    _stress_care(s, cfg, listed, proposals, memory)
     _soldier_swap(s, cfg, proposals, memory)
-    _recreation_rule(s, cfg, worst, proposals, memory)
+    _recreation_rule(s, cfg, listed, proposals, memory)
     # (0.104.133) the full counts (the list keeps the worst 8: "8 miserable" was
     # said with 94 miserable and 48 very unhappy)
     stress = _d(_d(s.get("dwarves")).get("stress"))

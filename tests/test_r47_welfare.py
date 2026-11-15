@@ -77,43 +77,58 @@ def c_max(p):
 
 # ---- coffins anywhere ---------------------------------------------------------------------
 
-@test("burial_corner: the dead outnumber the free tombs a season with no tomb level come: coffins anywhere")
+@test("burial_corner (0.105.51): the dead outnumber the free tombs while a tomb level is under way: coffins after two weeks (was a season)")
 def _():
     m = Memory()
     dead = {"unburied": 6, "free_tombs": 0, "why": {"free": 6}}
-    p, _ = run(st(dead, tick=0), m)
+    tl = [{"kind": "tombs"}]
+    p, _ = run(st(dead, tick=0, projects=tl), m)
     assert not by(p, "burial_corner") and m.welfare["short_since"] == 262 * YEAR, (p, m.welfare)
-    p, _ = run(st(dead, tick=40 * DAY), m)
+    p, _ = run(st(dead, tick=10 * DAY, projects=tl), m)
     assert not by(p, "burial_corner"), p
-    p, _ = run(st(dead, tick=84 * DAY), m)
+    p, _ = run(st(dead, tick=CFG["burial_fallback_days"] * DAY, projects=tl), m)
     c = by(p, "burial_corner")
-    assert c and c[0].action == {"type": "coffins_anywhere", "max": 6} and "84 days" in c[0].reason, c
-    # a tomb level open but stalled a season: still the fallback
-    p, _ = run(st(dead, tick=90 * DAY, projects=[{"kind": "tombs"}]), m)
-    assert by(p, "burial_corner"), p
+    assert c and c[0].action == {"type": "coffins_anywhere", "max": 6} and "14 days" in c[0].reason \
+        and "under way" in c[0].reason, c
     # enough tombs again: the clock is forgotten
     run(st({"unburied": 6, "free_tombs": 6, "why": {"free": 6}}, tick=91 * DAY), m)
     assert "short_since" not in m.welfare, m.welfare
 
 
-@test("burial_corner: a week after a tomb level's search failed ('no safe level found'), or at once with 10+ more dead")
+@test("burial_corner (0.105.51): C's 9 dead and no free tomb, no tomb level under way: coffins at once (it waited 84 days)")
+def _():
+    m = Memory()
+    p, _ = run(st({"unburied": 9, "free_tombs": 0, "why": {"free": 9}}), m)
+    c = by(p, "burial_corner")
+    assert c and c[0].action == {"type": "coffins_anywhere", "max": min(9, CFG["burial_corner_max"])}, c
+    assert "no tomb level under way" in c[0].reason, c
+    # one dead and no free tomb: one coffin at once too
+    p, _ = run(st({"unburied": 1, "free_tombs": 0, "why": {"free": 1}}), Memory())
+    assert c_max(p) == 1, p
+    # a free tomb for each: nothing
+    p, _ = run(st({"unburied": 2, "free_tombs": 2, "why": {"free": 2}}), Memory())
+    assert not by(p, "burial_corner"), p
+
+
+@test("burial_corner: a week after a tomb level's search failed ('no safe level found') while one is under way")
 def _():
     m = Memory()
     key = 'tombs_ghosts:' + json.dumps({"kind": "tombs", "type": "start_project"}, sort_keys=True)
     m.refusals = {key: {"n": 3, "at": 262 * YEAR + 2 * DAY, "until": 262 * YEAR + 20 * DAY, "why": "no safe level found near 1 staircase(s)"}}
     dead = {"unburied": 4, "free_tombs": 0, "why": {"free": 4}}
-    run(st(dead, tick=0), m)
-    p, _ = run(st(dead, tick=5 * DAY), m)
+    tl = [{"kind": "tombs"}]
+    run(st(dead, tick=0, projects=tl), m)
+    p, _ = run(st(dead, tick=5 * DAY, projects=tl), m)
     assert not by(p, "burial_corner"), p
-    p, _ = run(st(dead, tick=8 * DAY), m)
+    p, _ = run(st(dead, tick=14 * DAY, projects=tl), m)
     c = by(p, "burial_corner")
-    assert c and "search failed" in c[0].reason and c[0].action["max"] == 4, c
-    # many more dead than tombs, nothing under way: at once
+    assert c and c[0].action["max"] == 4, c
+    # many more dead than tombs, nothing under way: at once, burial_corner_max of them
     m2 = Memory()
     p, _ = run(st({"unburied": 190, "free_tombs": 0, "why": {"free": 150, "unreachable": 40}}), m2)
     c = by(p, "burial_corner")
     assert c and c[0].action["max"] == CFG["burial_corner_max"] and "150 more dead" in c[0].reason, c
-    # ...but not while a tomb level is being dug (its own season first)
+    # ...but not at once while a tomb level is being dug (its two weeks first)
     p, _ = run(st({"unburied": 190, "free_tombs": 0, "why": {"free": 150}}, projects=[{"kind": "tombs"}]), Memory())
     assert not by(p, "burial_corner"), p
 
@@ -121,12 +136,13 @@ def _():
 @test("burial_corner: the unreachable, the outside and other civs' dead aren't counted; coffins already placed are")
 def _():
     m = Memory()
-    p, _ = run(st({"unburied": 30, "free_tombs": 0, "why": {"free": 2, "unreachable": 28}}), m)
+    p, _ = run(st({"unburied": 30, "free_tombs": 2, "why": {"free": 2, "unreachable": 28}}), m)
+    assert not by(p, "burial_corner"), p
+    p, _ = run(st({"unburied": 30, "free_tombs": 0, "why": {"not_ours": 30, "outside": 3}}), Memory())
     assert not by(p, "burial_corner"), p
     p, _ = run(st({"unburied": 30, "free_tombs": 2, "why": {"free": 20}},
                   welfare={"corner": {"placed": 10, "built": 2, "waiting": 8}}), Memory())
     assert c_max(p) == 10, p
-
 
 
 @test("burial_corner: not while the Rules switch for tomb levels is off, nor with the welfare section failed")

@@ -420,6 +420,7 @@ PLANNER_CONFIG = {
     "recreation_friends": 4,                     # (0.104.80) and places for those badly wanting friends...
     "recreation_friend_days": 7,                 # ...a week each...
     "recreation_friends_share": 0.2,             # ...while this share of the citizens badly want friends
+    "unhappy_wide_share": 0.2,                   # (0.105.51) the fort's unhappy-or-worse share from which the recreation burrow and stress care reach the plain unhappy (E: 25-60%)
     "recreation_min_citizens": 5,                # (0.105.47, I7b) was 30: B (28), D (8) and E (23) never had the burrow, the unhappiest forts
     "recreation_cooldown_ticks": 7 * 1200,           # (0.104.80) a week: members stay up to 28 days; the burrow is refilled weekly
     "hospital_burrow_max": 30,                   # (0.104.167) at most this many patients kept in the hospital burrow...
@@ -1132,9 +1133,12 @@ PLANNER_CONFIG = {
     "training_squad_cooldown_ticks": 1200,   # a day between its steps
     "never_draft_days": 672,              # stress care's "never draft" kept two years at most...
     # (0.105.47, I7b) the unburied dead and welfare in small forts (brain/planner_welfare.py, lua/ai-welfare.lua)
-    "burial_fallback_days": 84,           # the dead outnumber the free tombs this long (a season) with no tomb level come: coffins anywhere
+    # (0.105.51) was 84 days and 10 dead: C's 9 dead lay unburied a season before any coffin, and a ghost killed a dwarf
+    "burial_fallback_days": 14,           # the dead outnumber the free tombs this long while a tomb level is under way: coffins anywhere
     "burial_fallback_refused_days": 7,    # ...or this long after a tomb level's search failed
-    "burial_fallback_unburied": 10,       # ...or at once when this many more dead than free tombs wait and no tomb level is under way
+    "burial_fallback_unburied": 1,        # ...or at once when this many more dead than free tombs wait and no tomb level is under way
+    "burial_others_max": 50,              # (0.105.51) the bodies DF never buries (visitors', other civs') marked for the dump in one go
+    "burial_others_cooldown_ticks": 3 * 1200,
     "burial_corner_max": 10,              # coffins placed on the AI's other levels in one go
     "burial_corner_cooldown_ticks": 7 * 1200,
     "burial_coffins_cooldown_ticks": 3 * 1200,

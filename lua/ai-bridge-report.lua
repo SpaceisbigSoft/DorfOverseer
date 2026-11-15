@@ -198,6 +198,7 @@ DISTRACTED, BADLY = -1000, -10000
 function get_needs(txt_fn)
     local t = txt_fn or txt
     local out = {needs = {}, deities = {}, deity_ids = {}, stressed = {}, worship = {}, content_ids = {}}
+    local stress_cat = {}       -- (0.105.51) each listed row's stress category, for the sort
     local deity_names = {}
     -- (0.105.23) a deity's name, looked up once a report
     local function deity_name(id)
@@ -276,7 +277,10 @@ function get_needs(txt_fn)
                 end
             end
             local cat = dfhack.units.getStressCategory(u)
-            if cat <= 1 then
+            -- (0.105.51) the plain unhappy (2) listed too, after the worse:
+            -- E's bulk (17-30 dwarves) sat there, and stress care and the
+            -- recreation burrow reach them when the fort's unhappy share is high
+            if cat <= 2 then
                 table.sort(worst, function(a, b) return a.focus < b.focus end)
                 local w = {}
                 for i = 1, math.min(3, #worst) do w[i] = worst[i].name end
@@ -307,13 +311,20 @@ function get_needs(txt_fn)
                 pcall(function() row.longterm = u.status.current_soul.personality.longterm_stress end)
                 pcall(function() row.born = u.birth_year; row.hf = u.hist_figure_id end)
                 table.insert(out.stressed, row)
+                stress_cat[row] = cat
             end
             -- (0.105.47) the content or better (category 4+): the AI's "never
             -- draft" memory forgets one whose mood rose that far
             if cat >= 4 and #out.content_ids < 300 then table.insert(out.content_ids, u.id) end
         end
     end
-    table.sort(out.stressed, function(a, b) return a.stress < b.stress end)
+    -- (0.105.51) by DF's category, the worst first (the labels sorted as
+    -- words put 'unhappy' before 'very_unhappy'), then the long-term stress
+    table.sort(out.stressed, function(a, b)
+        local ca, cb = stress_cat[a] or 9, stress_cat[b] or 9
+        if ca ~= cb then return ca < cb end
+        return (tonumber(a.longterm) or 0) > (tonumber(b.longterm) or 0)
+    end)
     while #out.stressed > 8 do table.remove(out.stressed) end
     -- (0.105.47, I7b) the year each of the listed came to the fort (lua/ai-welfare.lua)
     pcall(function()
@@ -1912,6 +1923,14 @@ function get_dead()
     local why = {forbidden = 0, dump = 0, in_job = 0, unreachable = 0, outside = 0, carried = 0,
                  not_ours = 0, free = 0}
     local samples = {}
+    local side_ctx
+    pcall(function()
+        local U = reqscript('ai-util')
+        if type(U.corpse_side) == 'function' and type(U.fort_race_civ) == 'function' then
+            local r, c, g = U.fort_race_civ()
+            side_ctx = {U = U, race = r, civ = c, group = g}
+        end
+    end)
     local from = from0      -- where the first citizen stands (13c: found once, above)
     for _, it in ipairs(df.global.world.items.other.CORPSE) do
         local ok, r = pcall(function() return it.race end)
@@ -1934,11 +1953,29 @@ function get_dead()
                 -- (0.104.16) whose body: the fort's own dead, or a visitor's,
                 -- a merchant's, a migrant's who never joined (DF buries only
                 -- its own in the fort's tombs)
+                -- (0.105.51) the shared classifier (ai-util corpse_side: the
+                -- dead one's record, a visitor or merchant of any civ is not
+                -- ours), else the civ alone as before
                 local okc, own = pcall(function()
+                    if side_ctx then return side_ctx.U.corpse_side(it, 'CORPSE', side_ctx) == 'own' end
                     local du = df.unit.find(it.unit_id)
                     return du ~= nil and du.civ_id == civ
                 end)
-                if okc and not own then why.not_ours = why.not_ours + 1 end
+                if okc and not own then
+                    why.not_ours = why.not_ours + 1
+                    -- (0.105.51) of those, the ones neither marked for the dump
+                    -- nor lying in a garbage dump zone: the brain's burial_others
+                    -- asks for these alone (a dumped body stays counted above)
+                    local loose = not f.dump
+                    if loose and x then
+                        pcall(function()
+                            for _, zn in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(x, y, z)) or {}) do
+                                if zn.type == df.civzone_type.Dump then loose = false end
+                            end
+                        end)
+                    end
+                    if loose then why.not_ours_loose = (why.not_ours_loose or 0) + 1 end
+                end
                 if reach and not f.forbid and not f.dump and not f.in_job and not f.in_inventory
                         and (not okc or own) then
                     why.free = why.free + 1          -- nothing in the way that the AI can see

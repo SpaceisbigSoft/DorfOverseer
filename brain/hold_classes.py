@@ -104,7 +104,7 @@ _SURVIVAL_RULES = {
     "rescue_labor", "stranded", "insane", "cave_in_dig_out", "way_in", "way_out", "way_out_dig", "second_way",
     "webs", "remove_webs",
     # the dead
-    "burial", "burial_coffins", "burial_corner", "coffins", "slabs", "slabs_free", "slabs_ahead",
+    "burial", "burial_coffins", "burial_corner", "burial_others", "coffins", "slabs", "slabs_free", "slabs_ahead",
     "slabs_ahead_blanks", "slabs_ahead_place", "tombs_ghosts", "ghost_mason", "ghost_masons", "dead_units",
     "necro_corpses",
     # the mind: needs, stress, tantrums, justice, moods

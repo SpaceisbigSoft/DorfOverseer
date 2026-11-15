@@ -1710,7 +1710,10 @@ function act_recreation(a)
     if a.release_only and a.release ~= true then      -- (0.105.48, K3) halted: only let out
         return {ok = false, rejected = true, halted = true, error = 'the AI is halted in the game: the burrow only emptied'}
     end
-    return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd, a.release == true)
+    -- (0.105.51) unhappy: the plain unhappy moved in too (a fort unhappy past the brain's share)
+    if a.unhappy ~= nil and type(a.unhappy) ~= 'boolean' then return reject('recreation: unhappy is true or false') end
+    return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd, a.release == true,
+                                                   a.unhappy == true)
 end
 
 -- (0.104.168) The loose cups no finished goods pile takes: the pile with the
@@ -3264,7 +3267,7 @@ local function disposal_opts(a, allowed, name)
         o.max = int_in(a.max, 1, DISPOSAL_MAX)
         if not o.max then return nil, ('%s: max is 1-%d'):format(name, DISPOSAL_MAX) end
     end
-    for _, k in ipairs({'player_items', 'keep_masterwork', 'keep_enemy_gear'}) do
+    for _, k in ipairs({'player_items', 'keep_masterwork', 'keep_enemy_gear', 'bodies', 'junk'}) do   -- (0.105.51) bodies, junk: mark_dump's
         if a[k] ~= nil and type(a[k]) ~= 'boolean' then return nil, ('%s: %s is true or false'):format(name, k) end
         o[k] = a[k]
     end

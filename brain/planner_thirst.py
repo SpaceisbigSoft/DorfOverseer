@@ -60,6 +60,7 @@ for _s in (EMERGENCY, NO_COOLDOWN, LIMIT_EXEMPT, STEER_PROTECTED, MULTI_PER_CYCL
 
 DEHYDRATED = 50000
 YEAR = 403200
+JOURNALED_KEEP = 500        # (0.105.51) thirst deaths remembered as journaled (ids), the newest kept
 
 REASONS = {
     "insane": "insane: they don't drink",
@@ -143,7 +144,14 @@ def thirst_journal(s: dict, memory) -> list[dict]:
         return []
     b = _book(memory)
     now = abs_tick(s)
-    _prune(b["journaled"], now, YEAR)
+    # (0.105.51) a death is journaled once for good: pruned after a year (or
+    # on an older autosave's clock), A re-recorded unit 17408's thirst death
+    # every summer y252-257 while the bridge still listed it. Only the oldest
+    # past JOURNALED_KEEP ids are let go.
+    jb = b["journaled"]
+    if len(jb) > JOURNALED_KEEP:
+        for k in sorted(jb, key=lambda k: jb[k] if isinstance(jb[k], int) else -1)[:len(jb) - JOURNALED_KEEP]:
+            jb.pop(k, None)
     out = []
     for d in _l(_d(s.get("thirst")).get("deaths")):
         if not isinstance(d, dict) or not isinstance(d.get("id"), int):

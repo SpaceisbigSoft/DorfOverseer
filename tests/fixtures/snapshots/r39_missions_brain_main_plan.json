@@ -61,7 +61,7 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "notes": "sha256:a76be1d185e69e105d3b5eb9",
-   "props": "sha256:c2c078cf4656a8fee02dca8f",
+   "props": "sha256:79bd6f3f1ddc07a81e72b38c",
    "rules": [
     "build",
     "hospital",
@@ -83,6 +83,7 @@
     "train",
     "unstick_uniforms",
     "build",
+    "burial_others",
     "squad_trim",
     "pair_chairs",
     "alerts",
@@ -93,7 +94,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:a32458a5af5caa5bca3bd5b6",
-   "props": "sha256:ec5518d55b53dc1b843f065c",
+   "props": "sha256:af094334b4f7b5b2e58c3bf7",
    "rules": [
     "build",
     "hospital",
@@ -114,6 +115,7 @@
     "train",
     "unstick_uniforms",
     "build",
+    "burial_others",
     "squad_trim",
     "pair_chairs",
     "alerts",
@@ -123,7 +125,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:a32458a5af5caa5bca3bd5b6",
-   "props": "sha256:0cfaa49daa2922c339ed51e1",
+   "props": "sha256:b32dc71737753109bba20f85",
    "rules": [
     "build",
     "hospital",
@@ -144,6 +146,7 @@
     "train",
     "unstick_uniforms",
     "build",
+    "burial_others",
     "squad_trim",
     "pair_chairs",
     "alerts",
@@ -156,7 +159,7 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "notes": "sha256:a76be1d185e69e105d3b5eb9",
-   "props": "sha256:c2c078cf4656a8fee02dca8f",
+   "props": "sha256:79bd6f3f1ddc07a81e72b38c",
    "rules": [
     "build",
     "hospital",
@@ -178,6 +181,7 @@
     "train",
     "unstick_uniforms",
     "build",
+    "burial_others",
     "squad_trim",
     "pair_chairs",
     "alerts",
@@ -188,7 +192,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:a32458a5af5caa5bca3bd5b6",
-   "props": "sha256:ec5518d55b53dc1b843f065c",
+   "props": "sha256:af094334b4f7b5b2e58c3bf7",
    "rules": [
     "build",
     "hospital",
@@ -209,6 +213,7 @@
     "train",
     "unstick_uniforms",
     "build",
+    "burial_others",
     "squad_trim",
     "pair_chairs",
     "alerts",
@@ -218,7 +223,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:a32458a5af5caa5bca3bd5b6",
-   "props": "sha256:0cfaa49daa2922c339ed51e1",
+   "props": "sha256:b32dc71737753109bba20f85",
    "rules": [
     "build",
     "hospital",
@@ -239,6 +244,7 @@
     "train",
     "unstick_uniforms",
     "build",
+    "burial_others",
     "squad_trim",
     "pair_chairs",
     "alerts",
