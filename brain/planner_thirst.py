@@ -214,6 +214,15 @@ def _remedy(r: dict, s: dict, cfg: dict, ex: dict) -> tuple[dict | None, str]:
                       "dropped jobs")
     if reason == "alert":
         if s.get("civ_alert_shelter") == "ai":
+            # (0.105.52) the shelter, redrawn over the whole fort, still holds no
+            # drink (R3 15 Nov: B's 20 thirst deaths): a dehydrated dwarf gets the
+            # AI's alarm lowered for half a day, not another dry redraw
+            if ex.get("shelter_dry") and timer >= DEHYDRATED:
+                if "civ_alert" in ex["types"]:
+                    return None, "the alarm is changed this cycle"
+                return ({"type": "civ_alert", "on": False, "why": "thirst"},
+                        "the shelter holds no drink even over the whole fort: the AI's alarm comes down for half "
+                        "a day so the thirsty can drink")
             if "refresh_shelter" in ex["types"]:
                 return None, "the AI shelter is redrawn this cycle"
             return {"type": "refresh_shelter"}, "redraw the AI shelter over the fort as it is now (drink taken back in)"
@@ -270,6 +279,7 @@ def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
     acts_max = int(cfg.get("thirst_actions_max", 6))
     notes_max = int(cfg.get("thirst_notes_max", 8))
     ex = _existing(proposals)
+    ex["shelter_dry"] = bool(_d(getattr(memory, "shelter_supply", None)).get("dry")) if memory is not None else False
     acts, said, rest = 0, 0, {}
     shared = set()          # actions for the whole fort (refresh_shelter, join_levels): once a cycle
     for r in rows:

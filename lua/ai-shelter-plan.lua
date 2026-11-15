@@ -686,6 +686,7 @@ local function run_slices(name, spec)
     return spec.finish(acc), 'done', #list, #list
 end
 
+local RANGE = nil    -- (0.105.52) the citizens' level range while a danger stays (only widens)
 local MEMO = nil     -- the last finished plan: {tick, sig, grid, cands, rest, keep, ...}
 local WALK_CTX = nil -- the levels' walk under way: what it walks over
 CALM_SINCE = nil     -- (0.105.48, K1) the tick since which no danger that can come is on the map
@@ -867,6 +868,7 @@ function report(txt, tier)
     if #list == 0 then
         out.danger = false
         MEMO = nil
+        RANGE = nil
         if CALM_SINCE == nil or CALM_SINCE > now then CALM_SINCE = now end
         out.calm_ticks = now - CALM_SINCE
         return out
@@ -876,6 +878,16 @@ function report(txt, tier)
     local S = reqscript('ai-society')
     local lo, hi = S.shelter_level_range()
     if not lo then out.error = 'no citizens to measure from'; return out end
+    -- (0.105.52) the range only widens while the dangers stay: the citizens'
+    -- levels change as they move, hide and die, and each change restarted the
+    -- grid and the walk (R3 15 Nov: B's plan was 'still being walked' for two
+    -- hours of a Hill Titan's siege, the dry shelter kept meanwhile)
+    if RANGE and RANGE[1] <= lo and RANGE[2] >= hi then
+        lo, hi = RANGE[1], RANGE[2]
+    elseif RANGE then
+        lo, hi = math.min(lo, RANGE[1]), math.max(hi, RANGE[2])
+    end
+    RANGE = {lo, hi}
     -- each danger's way in: the nearest entrance (straight), and a building
     -- destroyer's every door-only one (0.105.47), cap 8 ways
     local ways = ways_in(list, ents)
@@ -904,8 +916,11 @@ function report(txt, tier)
     if base and not fresh then
         local info = {points = points, ways = ways, lo = lo, hi = hi, cur = cur, now = now, sig = signature, dsig = dsig}
         local left = math.max(1, budget - (os.clock() - t0) * 1000)
+        -- (0.105.52) keyed by the ways in and the range only: a new shelter
+        -- pick (the flee) no longer throws the unfinished walk away; the plan
+        -- it finishes is marked stale against the pick and redone after
         local r, wst, wdone, wtotal = run_slices('shelter_walk', {
-            key = signature, now = now, ttl = 0,
+            key = table.concat(sig, ',') .. '|' .. lo .. '-' .. hi, now = now, ttl = 0,
             items = function() return walk_items(base, info) end,
             init = function() return {cands = {}} end,
             visit = walk_visit, finish = walk_finish, max_ms = left})

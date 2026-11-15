@@ -867,6 +867,8 @@ function shelter_for_keep_in(force)
     end
     dfhack.burrows.clearTiles(b)
     local n, info = fill_shelter(b, picked_levels())
+    local okc, cut_tiles = pcall(cover_cut_off, b)            -- (0.105.52)
+    if okc and tonumber(cut_tiles) then n = (n or 0) + cut_tiles end
     shelter_drawn(n, info)
     info = type(info) == 'table' and info or {}
     return {tiles = n or 0, no_water = info.no_water and true or nil, drink_short = info.drink_short and true or nil,
@@ -904,14 +906,60 @@ function setup_shelter()
     if n == 0 then
         return {ok = false, error = 'found no inside tiles to shelter in'}
     end
+    local okc, cut_tiles, cut_people = pcall(cover_cut_off, b)      -- (0.105.52)
+    if okc and tonumber(cut_tiles) then n = n + cut_tiles end
     require('utils').insert_sorted(civ_alert().burrows, b.id)
     shelter_drawn(n, info)
-    return shelter_result({ok = true, burrow_id = b.id, tiles = n}, info)
+    local r = shelter_result({ok = true, burrow_id = b.id, tiles = n}, info)
+    if okc and (cut_people or 0) > 0 then r.cut_off_covered = cut_people end
+    return r
 end
 
 -- (0.105.8) The AI's shelter made again over the fort as it is now, when it
 -- is the civilian alert's burrow (a player's own is never touched): before
 -- each alarm the AI sounds. {refreshed, tiles, before} or nil.
+-- (0.105.52) A citizen who can't walk to any tile of the AI shelter gets a
+-- patch of it where they stand (their own walk group, within CUT_OFF_RADIUS on
+-- their level): DF sends every citizen to the alarm's burrow, and one who
+-- can't reach it fails a whole-map path search every few ticks, which brought
+-- R3's B to 2 FPS (25,000 "Milling Burrow" path fails in DF's errorlog). One
+-- patch per cut-off walk group. Returns tiles added, citizens covered.
+CUT_OFF_RADIUS = 8
+function cover_cut_off(b)
+    local groups, any = {}, false
+    local ok = pcall(function()
+        for _, blk in ipairs(dfhack.burrows.listBlocks(b)) do
+            local bx, by, bz = blk.map_pos.x, blk.map_pos.y, blk.map_pos.z
+            for y = 0, 15 do
+                for x = 0, 15 do
+                    if dfhack.burrows.isAssignedBlockTile(b, blk, x, y) then
+                        local g = dfhack.maps.getWalkableGroup(xyz2pos(bx + x, by + y, bz))
+                        if g and g > 0 then groups[g] = true; any = true end
+                    end
+                end
+            end
+        end
+    end)
+    if not ok or not any then return 0, 0 end
+    local added, people = 0, 0
+    for _, u in ipairs(dfhack.units.getCitizens()) do
+        local okg, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(u.pos.x, u.pos.y, u.pos.z))
+        if okg and g and g > 0 and not groups[g] then
+            people = people + 1
+            for dy = -CUT_OFF_RADIUS, CUT_OFF_RADIUS do
+                for dx = -CUT_OFF_RADIUS, CUT_OFF_RADIUS do
+                    local p = xyz2pos(u.pos.x + dx, u.pos.y + dy, u.pos.z)
+                    if dfhack.maps.isValidTilePos(p) and dfhack.maps.getWalkableGroup(p) == g then
+                        if pcall(dfhack.burrows.setAssignedTile, b, p, true) then added = added + 1 end
+                    end
+                end
+            end
+            groups[g] = true
+        end
+    end
+    return added, people
+end
+
 function refresh_shelter()
     local b = find_burrow(SHELTER_NAME)
     if not b then return nil end
@@ -923,9 +971,35 @@ function refresh_shelter()
     local before = 0
     pcall(function() before = dfhack.burrows.listBlocks and #dfhack.burrows.listBlocks(b) or 0 end)
     dfhack.burrows.clearTiles(b)
-    local n, info = fill_shelter(b, picked_levels())        -- (0.105.45) the pick away from the threat
+    local only = picked_levels()
+    local n, info = fill_shelter(b, only)        -- (0.105.45) the pick away from the threat
+    -- (0.105.52) drink beats distance: a picked shelter with no drink and no
+    -- well is redrawn over the whole fort (R3 15 Nov: B's 20 thirst deaths in
+    -- a dry shelter level while a Hill Titan was on the map; the redraw kept
+    -- redrawing the same dry level)
+    local widened = false
+    if only and (tonumber(info.drink_units) or 0) <= 0 and (tonumber(info.well_tiles) or 0) <= 0 then
+        dfhack.burrows.clearTiles(b)
+        local n2, info2 = fill_shelter(b, nil)
+        if (tonumber(info2.drink_units) or 0) > 0 or (tonumber(info2.well_tiles) or 0) > 0 then
+            n, info, widened = n2, info2, true
+        else
+            -- the whole fort is dry too: the safer pick kept (the planner lowers
+            -- the alarm for the dehydrated instead)
+            dfhack.burrows.clearTiles(b)
+            n, info = fill_shelter(b, only)
+        end
+    end
+    local okc, cut_tiles, cut_people = pcall(cover_cut_off, b)
+    if okc and (cut_people or 0) > 0 then n = n + (cut_tiles or 0) end
     shelter_drawn(n, info)
-    return shelter_result({refreshed = true, tiles = n, blocks_before = before}, info)
+    local r = shelter_result({refreshed = true, tiles = n, blocks_before = before}, info)
+    if widened then r.widened_for_drink = true end
+    if okc and (cut_people or 0) > 0 then r.cut_off_covered = cut_people; r.cut_off_tiles = cut_tiles end
+    -- still none (drink near an open entrance only, or none in the fort):
+    -- the planner's thirst rule lowers the AI's alarm rather than hold them dry
+    if (tonumber(info.drink_units) or 0) <= 0 and (tonumber(info.well_tiles) or 0) <= 0 then r.dry = true end
+    return r
 end
 
 -- Grass tiles a grazer needs: DF's rule of thumb, 20000 / its GRAZER value

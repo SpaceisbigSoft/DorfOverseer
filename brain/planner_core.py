@@ -337,6 +337,7 @@ class Memory:
     fight_factor: dict = field(default_factory=dict)     # (0.104.118) kind -> how much stronger than estimated (learned)
     shelter_since: dict = field(default_factory=dict)    # (0.105.22) squad id -> tick it took the shelter order
     shelter_rest: dict = field(default_factory=dict)     # (0.105.22) squad id -> tick it may shelter again
+    thirst_alarm_off_until: int = 0   # (0.105.52) the AI's alarm let down for the thirsty: not raised before this tick
     shelter_supply: dict = field(default_factory=dict)   # (0.105.36, D5) the AI shelter's last fill: {tick, drink_short, no_water, no_food, ...}
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
@@ -2238,7 +2239,12 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
     if isinstance(sh, dict) and sh.get("ok") is not False and isinstance(sh.get("tiles"), int):
         memory.shelter_supply = {"tick": now, "tiles": sh["tiles"],
                                  **{k: sh[k] for k in ("drink_short", "no_water", "no_food", "drink_units",
-                                                       "food_units", "well_tiles") if sh.get(k) is not None}}
+                                                       "food_units", "well_tiles", "dry", "widened_for_drink")
+                                    if sh.get(k) is not None}}
+    # (0.105.52) the AI's alarm lowered for the thirsty (a shelter with no
+    # drink even over the whole fort): not sounded again for half a day
+    if t == "civ_alert" and a.get("on") is False and a.get("why") == "thirst" and r.get("ok") is not False:
+        memory.thirst_alarm_off_until = now + TICKS_PER_DAY // 2
     # (0.105.36 fix) the alarm's burrow isn't the AI shelter (the player set
     # their own): its fill record forgotten (the AI no longer fills it)
     if t == "refresh_shelter" and r.get("ok") is False and "not the AI shelter" in str(r.get("error") or ""):

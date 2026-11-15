@@ -1546,6 +1546,13 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                 p.action = dict(p.action, squad_id=alt["id"])
                 p.reason = (f"{p.reason} ({alt.get('name') or 'squad ' + str(alt['id'])} goes: squad {taken_} "
                             f"has another order this cycle)")
+            # (0.105.52) the AI's alarm let down for the thirsty: not raised again
+            # for half a day (the shelter held no drink even over the whole fort)
+            if (isinstance(p.action, dict) and p.action.get("type") == "civ_alert" and p.action.get("on") is True
+                    and now < int(getattr(memory, "thirst_alarm_off_until", 0) or 0)):
+                held.append(f"{p.rule}: the alarm was let down for the thirsty (the shelter has no drink): "
+                            "not sounded again before they've drunk")
+                continue
             why_sq = squad_claim(p, squads_claimed)
             if why_sq:
                 held.append(why_sq)
