@@ -573,6 +573,7 @@ LEDGER_FIELDS = {
     tools_seen_on = true, tools_player_disabled = true, stuck_cancelled = true, wishes_agreed = true,
     last_expel_tick = true, last_memorial_tick = true, last_garden_tick = true, gardens_built = true,
     memorials_built = true, quick_locations = true, at = true,
+    fort_run = true,   -- (0.105.48, K8) the run id (brain/fort_run.py): a fresh embark has none
 }
 -- (0.105.0) the AI's own work orders' day counts, and its gate, door and trap
 -- records: a reload restarted the first and lost the second

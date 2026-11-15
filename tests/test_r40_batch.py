@@ -66,6 +66,9 @@ def _before():
 
 
 test = make_test(before=_before)
+# (0.105.48, K8) the run id (brain/fort_run.py) is random: fixed, so two runs' ledger_set compare equal
+import fort_run  # noqa: E402
+fort_run.new_id = lambda now=None: "20261114-test"
 
 
 class FakeGame:

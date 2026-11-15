@@ -315,6 +315,7 @@ class Memory:
     culture_pushed: str = ""                              # what was last written into the save
     declined: dict = field(default_factory=dict)          # proposal id -> tick you said No
     saved_before: str = ""                                # project the game was saved for
+    fort_run: str = ""                                    # (0.105.48, K8) this fort's run id (brain/fort_run.py), kept in the save's ledger
     # Memory, part one (brain/outcomes.py, calibrate.py, learning.py)
     outcomes: dict = field(default_factory=dict)          # the outcome log: open entries, verdicts, tallies
     calibration: dict = field(default_factory=dict)       # self-tuned targets, within bounds

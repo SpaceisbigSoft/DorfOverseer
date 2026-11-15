@@ -52,6 +52,7 @@ import planner_stuck  # noqa: E402  (0.105.45) the stuck sweep's soak summary
 import seen as seen_ledger  # noqa: E402  (0.105.46, I1) each full report's sections tallied
 import atlas  # noqa: E402
 import backup  # noqa: E402
+import fort_run as runid  # noqa: E402  (0.105.48, K8) the run id (overseer.fort_run is the preset stamp)
 import health_check  # noqa: E402
 import ledger  # noqa: E402
 import season as season_mod  # noqa: E402
@@ -182,6 +183,13 @@ def load(key: str, bridge=None, prefer_logs: bool = False, state: dict | None = 
         c["tick"] = now
         return c["memory"], c["bank"]
     memory, bank = memstore.load(key, bridge, prefer_logs)
+    if state is not None:
+        # (0.105.48, K8) this fort's run (brain/fort_run.py): another run's logs
+        # copy set aside; a save holding no run id gets one (written with the ledger)
+        try:
+            memory, bank = runid.settle(memory, bank, state, say)
+        except Exception as e:  # noqa: BLE001  (the run id never stops the fort)
+            say(f"Run: couldn't settle this fort's run id ({type(e).__name__}: {str(e)[:100]})")
     seed_squads_made(memory, key)
     # (0.104.0) what the AI must not forget, as saved with this very game
     if state is not None and ledger.apply(memory, state.get("ledger")):
@@ -1092,6 +1100,16 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
     if memory._texts.get("save_unread"):
         say("Memory: the save's memory couldn't be read this time; nothing is written into the save this cycle"
             + (f" ({memory._texts.get('save_unread_why')})" if memory._texts.get("save_unread_why") else "") + ".")
+        if memory._texts.get("source") == "new":
+            # (0.105.48, K8) and no copy in logs/ read either: a blank memory (no
+            # master plan, cooldowns or saved-before marks) would be acted on and
+            # then written over the only copy outside the save. Next cycle.
+            say("Memory: no copy of this fort's memory could be read (the save's didn't answer, logs/ holds "
+                "none for it): not acting this cycle, nothing written.")
+            MEMORY_CACHE.pop(key, None)
+            return
+    if isinstance(state.get("fort"), dict) and runid.of(memory):
+        state["fort"]["fort_run"] = runid.of(memory)   # (0.105.48, K8) for the backup's mark and last-fort.json
     to_save = False
     try:
         # (0.105.46, I1) each section of a full report, ok or {"error"}, tallied for
@@ -1425,7 +1443,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             import revive
             f0 = _d(state.get("fort"))
             revive.write_last_fort((bridge.version or {}).get("df_path"), f0.get("save_dir"), key,
-                                   world=f0.get("world"))
+                                   world=f0.get("world"), run=f0.get("fort_run"))
         except Exception:  # noqa: BLE001
             pass
         if controls.get("unattended") and not controls.get("no_backup"):

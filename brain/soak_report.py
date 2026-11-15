@@ -39,6 +39,9 @@ EVENTS = [
     ("time stood still (popups)", r"time stood still"),
     ("AI chronicle stories", r"AI chronicle \("),
     ("unexpected problems (see logs/overseer-errors.log)", r"Unexpected problem"),
+    # (0.105.48, K8) the keeper's own end, and an overseer that can't stay up
+    ("keeper trouble (stopped, or the overseer can't run)",
+     r"Keeper stopped unexpectedly|the overseer couldn't be run|Keeper: the overseer has stopped \d+ times in a row"),
 ]
 
 

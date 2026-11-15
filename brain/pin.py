@@ -8,7 +8,7 @@ reviver loads only that world's saves, the daily backup copies only that
 fort, and the overseer under the keeper (DFAI_PIN=1) refuses to act on any
 other fort, saying so.
 
-    p = pin.current()                  # {"world", "site", "save_dir", "df_path"} or None
+    p = pin.current()                  # {"world", "site", "save_dir", "df_path", "run"?} or None
     pin.take(keeper_started)           # the keeper: pin the fort once it is known
     pin.matches(world, site)           # True when nothing is pinned
 """
@@ -74,6 +74,8 @@ def take(started: float, at_title: bool = False, log=None) -> dict | None:
         return None
     p = {"world": d["world"], "site": site, "save_dir": d["save_dir"], "df_path": d.get("df_path"),
          "started": started, "pinned_at": time.time()}
+    if isinstance(d.get("run"), str) and d["run"]:
+        p["run"] = d["run"]       # (0.105.48, K8) this fort's run id: only its backups are restored
     try:
         PIN_FILE.parent.mkdir(parents=True, exist_ok=True)
         from dfhack import write_atomic
@@ -84,6 +86,22 @@ def take(started: float, at_title: bool = False, log=None) -> dict | None:
         log(f"Keeper: pinned to the world '{p['world']}', site {p['site']} (save folder '{p['save_dir']}'): "
             "only this fort is loaded, copied and run until the keeper stops.")
     return p
+
+
+def run_id() -> str | None:
+    """(0.105.48, K8) The pinned fort's run id: logs/last-fort.json's (the
+    overseer writes it each cycle, only for the pinned fort) when it names the
+    pinned world and site, else the pin's own (taken at the title it may be
+    the last run's, or none). None with no pin or no run known."""
+    p = current()
+    if not p:
+        return None
+    d = _read(LAST_FORT)
+    if (isinstance(d.get("run"), str) and d["run"] and str(d.get("world") or "") == str(p["world"])
+            and site_of(d.get("fort")) == str(p["site"])):
+        return d["run"]
+    r = p.get("run")
+    return r if isinstance(r, str) and r else None
 
 
 def matches(world, site) -> bool:
