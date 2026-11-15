@@ -33,14 +33,22 @@ RECOVERY_RULES |= {"containers"}
 RECOVERY_RULES |= {"staff_tantrum", "chronic_posts", "chronic_care", "hospital_guard"}
 RECOVERY_RULES |= {"booze_variety"}   # (0.105.24) the worst stress in B and E: the same old booze
 # levels that are themselves recovery when started (a build of these kinds is never held)
-RECOVERY_KINDS = {"hospital", "tombs", "dining", "tavern", "temple", "jail", "bedrooms", "workshops",
-                  "suites", "well", "farms", "storage"}
-# work that can wait while the fort is in crisis ((0.104.164) not the traction
-# bench's parts: care for the wounded, held while a patient waited for traction)
-EXPANSION_RULES = {"polish", "stairwell", "grandeur", "location_value", "glass", "gems", "gem_cutting",
-                   "encrust", "squad_make", "war_animals", "instruments",
-                   "instrument_orders", "industry", "idle"}
+# (0.105.48, K5) one table for crisis and recovery: brain/hold_classes.py
+import hold_classes as _hc  # noqa: E402
 
+RECOVERY_KINDS = _hc.SURVIVAL_KINDS
+# work that waits while the fort is in crisis: every rule classed expansion
+# (0.105.48, K5: it was 14 names by hand, squad_make among them; the guard's
+# squads are defence now, and the hunts, missions, kill zones, landmarks,
+# the hall and the keep wait as in recovery)
+EXPANSION_RULES = _hc.EXPANSION_RULES
+# the lists before 0.105.48, kept only for `crisis_hold_table` False (the
+# tests that compare plan() with main's)
+_OLD_KINDS = {"hospital", "tombs", "dining", "tavern", "temple", "jail", "bedrooms", "workshops",
+              "suites", "well", "farms", "storage"}
+_OLD_EXPANSION = {"polish", "stairwell", "grandeur", "location_value", "glass", "gems", "gem_cutting",
+                  "encrust", "squad_make", "war_animals", "instruments",
+                  "instrument_orders", "industry", "idle"}
 
 def deaths_recent(s: dict, memory, days: int = 28) -> int:
     now = abs_tick(s)
@@ -165,35 +173,48 @@ def update(s: dict, memory, cfg: dict, notes: list) -> list:
     return (memory.crisis or {}).get("why") or []
 
 
-def is_expansion(p) -> bool:
-    a = p.action
-    if p.rule in RECOVERY_RULES:
-        return False
-    if a.get("type") == "start_project":
-        if a.get("urgent") or a.get("kind") in RECOVERY_KINDS and not a.get("set_piece") and not a.get("growth"):
+def _old_table(cfg) -> bool:
+    return isinstance(cfg, dict) and cfg.get("crisis_hold_table") is False
+
+
+def is_expansion(p, cfg=None) -> bool:
+    """(0.105.48, K5) A step classed expansion (hold_classes.step_class): the
+    rule outranks a start_project's kind (a Jeweler's level from `gems` waits),
+    a crisis recovery rule's own level goes."""
+    if _old_table(cfg):
+        a = p.action
+        if p.rule in RECOVERY_RULES:
             return False
-        return True                            # the ladder's optional levels, growth halls, set pieces, gardens
-    return p.rule in EXPANSION_RULES
+        if a.get("type") == "start_project":
+            return not (a.get("urgent") or a.get("kind") in _OLD_KINDS and not a.get("set_piece")
+                        and not a.get("growth"))
+        return p.rule in _OLD_EXPANSION
+    return _hc.step_class(p) == _hc.EXPANSION
 
 
-def is_recovery(p) -> bool:
+def is_recovery(p, cfg=None) -> bool:
     """A recovery step: a recovery rule, or a level that is itself recovery
-    (urgent, or a hospital, tombs, dining hall, tavern, temple...)."""
+    (urgent, or a hospital, tombs, dining hall, tavern, temple...). Never an
+    expansion step (0.105.48, K5: a `gems` workshops level was boosted)."""
+    if _old_table(cfg):
+        return p.rule in RECOVERY_RULES or (p.action.get("type") == "start_project" and not is_expansion(p, cfg))
+    if is_expansion(p):
+        return False
     if p.rule in RECOVERY_RULES:
         return True
-    return p.action.get("type") == "start_project" and not is_expansion(p)
+    return p.action.get("type") == "start_project"
 
 
-def apply(proposals: list, why: list, notes: list) -> list:
+def apply(proposals: list, why: list, notes: list, cfg=None) -> list:
     """Expansion held, recovery ranked first (priority - 2)."""
     if not why:
         return proposals
     kept, waiting = [], []
     for p in proposals:
-        if is_expansion(p):
+        if is_expansion(p, cfg):
             waiting.append(p)
             continue
-        if is_recovery(p):
+        if is_recovery(p, cfg):
             p.priority -= 2
         kept.append(p)
     if waiting:

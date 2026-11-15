@@ -1099,7 +1099,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (0.104.137) crisis mode: expansion waits, recovery goes first
     why = _d(getattr(memory, "crisis", None)).get("why") if memory is not None else None
     if why:
-        kept = _guard(crisis.apply, proposals, why, notes)
+        kept = _guard(crisis.apply, proposals, why, notes, cfg)
         if kept is not None:
             proposals = kept
     # (0.105.46, I4) collapse recovery: survival first, the rest waits (planner_recovery)
@@ -1381,7 +1381,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             continue
         # (0.104.137) in a crisis, recovery gets extra action slots
         limit = cfg["max_actions_per_cycle"]
-        if _d(getattr(memory, "crisis", None)).get("why") and crisis.is_recovery(p):
+        if _d(getattr(memory, "crisis", None)).get("why") and crisis.is_recovery(p, cfg):   # (0.105.48, K5) cfg: the table switch
             limit += cfg["crisis_extra_actions"]
         if (p.rule not in LIMIT_EXEMPT
                 and len([a for a in allowed if a.rule not in LIMIT_EXEMPT]) >= limit):
