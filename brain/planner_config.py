@@ -495,6 +495,9 @@ PLANNER_CONFIG = {
     "hatch_lever_max_hatches": 2,      # (0.105.23) an entrance with more hatches (a cut) gets no levers: one each
     "gatehouse_fortification": 80,     # (0.105.23, 14.1 step 4a) a gatehouse at the founding stair from this
                                        # Fortification (the War-hold's 120)
+    "destroyer_gate_year": 1,          # (0.105.51) every fort's plain gatehouse (a drawbridge a titan can't break)
+                                       # from this many years in, or at the first great danger, whichever first
+    "gatehouse_wagon_retry_ticks": 3 * 1200,   # (0.105.51) the embark wagon's removal asked again after this
     "residency_accept_by_flag": False, # (0.105.11) seen 2 Nov in B: an agreement set by the flag left the visitor a
                                        # guest (DF's Other list, not Residents): welcoming forts leave them to you
     "residency_cooldown_ticks": 1200,  # (review) a batch a day, not the default 2 days

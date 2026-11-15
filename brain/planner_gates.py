@@ -14,7 +14,7 @@ from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 from planner_construct import _wings_rule, cavern_wall_style  # (0.105.30) wing walls, the Hermit's cavern walls
 
-__all__ = ["_gate_rules", "_stranded_rule", "player_gate_row", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
+__all__ = ["_gate_rules", "_stranded_rule", "player_gate_row", "split_pieces", "stuck_rows", "note_gate_stuck", "note_gate_stuck_cycle", "note_second_way", "_second_way_rule", "WAY_IN_KINDS", "GATE_STUCK_TRIED", "STRANDED_CONFIG", "GATE_PART_RECIPES", "GATE_PART_STUCK_DAYS", "_gate_parts_rule", "_free_gate_levers", "_lever_far_enough", "machinery_wanted", "_lever_hatches_ok", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "fort_years", "destroyer_gate_due", "gatehouse_wanted", "gatehouse_asked", "GATEHOUSE_WAGON", "_near_spot", "lone_intruders", "few_ordinary", "few_alert_over", "few_near", "hunted_outside", "ai_gates_shut", "_Rec", "_lockdown", "lockdown_released", "lone_alert_over", "_lockdown_ids", "_lockdown_cap_why", "note_lockdown", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule"]
 
 
 # (0.105.26) citizens stranded outside (lua/ai-gates.lua stranded_citizens)
@@ -1426,6 +1426,63 @@ def _trap_rule(s: dict, memory, cfg: dict, es: list, now: int, traits: dict, pro
         return
 
 
+GATEHOUSE_WAGON = "the embark wagon"     # (0.105.51) a refusal that only waits for the wagon to go
+
+
+def fort_years(s: dict, memory) -> int | None:
+    """(0.105.51) Whole game years since the AI began keeping this fort (the
+    chronicle's "founded" entry), or None when unknown."""
+    ys = [x.get("y") for x in _l(_d(getattr(memory, "chronicle", None)).get("entries"))
+          if isinstance(x, dict) and x.get("k") == "founded" and isinstance(x.get("y"), int)]
+    year = _d(s.get("date")).get("year")
+    if not ys or not isinstance(year, int):
+        return None
+    return max(0, year - min(ys))
+
+
+def destroyer_gate_due(s: dict, memory, cfg: dict) -> str | None:
+    """(0.105.51) Why every fort now wants a gate a building destroyer can't
+    break, or None: a great danger or building destroyer on the map (anywhere,
+    the caverns too), one seen before (last_great_tick), or the fort's
+    `destroyer_gate_year`th year (the second). R3, 15 Nov: C's titans walked
+    in by the founding stair's bare hatch in its seventh year; nothing but a
+    War-hold ever built the gatehouse."""
+    for t in _l(_d(s.get("others_on_map")).get("threats")):
+        if isinstance(t, dict) and (t.get("great_danger") or t.get("destroyer")):
+            return f"{str(t.get('name') or 'a great danger')[:60]} is on the map"
+    if memory is not None and int(getattr(memory, "last_great_tick", 0) or 0) > 0:
+        return "a great danger has come before"
+    years = fort_years(s, memory) if memory is not None else None
+    if years is not None and years >= int(cfg.get("destroyer_gate_year", 1)):
+        return "the fort is in its second year"
+    return None
+
+
+def gatehouse_wanted(s: dict, memory, cfg: dict, e: dict, now: int) -> bool:
+    """(0.105.51) May a gatehouse be asked for at this entrance now? The
+    founding stair's lid with room for one (or room once the embark wagon is
+    gone), none built there, no refusal waiting gate_retry_ticks (one that
+    only waited for the wagon: `gatehouse_wagon_retry_ticks`, or at once when
+    the wagon is gone)."""
+    if not (e.get("sealed") and e.get("kind") == "surface" and e.get("gatehouse") in ("possible", "wagon")):
+        return False
+    spot = f"{e.get('x')},{e.get('y')},{e.get('z')}"
+    if _near_spot(e, getattr(memory, "gatehouses", None) or {}):
+        return False                            # built here once: the scan sees its bridge, or it was taken down
+    why, when = memory.gate_failures.get("gatehouse:" + spot), memory.gate_failure_ticks.get("gatehouse:" + spot)
+    if why and isinstance(when, int) and now >= when:
+        if str(why).startswith(GATEHOUSE_WAGON):
+            if e.get("gatehouse") == "wagon" and now - when < cfg.get("gatehouse_wagon_retry_ticks", 3 * 1200):
+                return False
+        elif now - when < cfg["gate_retry_ticks"]:
+            return False
+    return True
+
+
+def gatehouse_asked(proposals: list) -> bool:
+    return any(isinstance(p.action, dict) and p.action.get("type") == "build_gatehouse" for p in proposals)
+
+
 def _gatehouse_rule(s: dict, memory, cfg: dict, es: list, now: int, traits: dict, proposals: list) -> None:
     """(0.105.23, 14.1 step 4a) The War-hold's gate as a level: a fort of
     Fortification gatehouse_fortification+ builds a gatehouse in front of
@@ -1434,32 +1491,43 @@ def _gatehouse_rule(s: dict, memory, cfg: dict, es: list, now: int, traits: dict
     (cage when it has none), ended by a drawbridge the gate rule then gives
     a lever. Once at a spot, never while a threat can reach the dwarves (the
     caller), one a cycle; a refusal waits gate_retry_ticks. Mechanisms for
-    the traps, the lever and its link are ordered when short."""
+    the traps, the lever and its link are ordered when short.
+    (0.105.51) Every other fort builds it too, plain (no traps), once
+    destroyer_gate_due says so: a hatch or door is no gate against a titan,
+    a raised drawbridge is. The embark wagon in its way is taken down first."""
     import defence
-    if (traits.get("fortification", 0) or 0) < cfg["gatehouse_fortification"]:
+    war = (traits.get("fortification", 0) or 0) >= cfg["gatehouse_fortification"]
+    due = None if war else destroyer_gate_due(s, memory, cfg)
+    if not war and not due:
+        return
+    if gatehouse_asked(proposals):
         return
     ent = _d(s.get("entrances"))
     off = _d(s.get("map")).get("elevation_offset")
     off = off if isinstance(off, int) else 0
-    built = getattr(memory, "gatehouses", None) or {}
     for e in es:
-        if not (e.get("sealed") and e.get("kind") == "surface" and e.get("gatehouse") == "possible"):
+        if not gatehouse_wanted(s, memory, cfg, e, now):
             continue
-        spot = f"{e.get('x')},{e.get('y')},{e.get('z')}"
-        if _near_spot(e, built):
-            continue                            # built here once: the scan sees its bridge, or it was taken down
-        why, when = memory.gate_failures.get("gatehouse:" + spot), memory.gate_failure_ticks.get("gatehouse:" + spot)
-        if why and isinstance(when, int) and 0 <= now - when < cfg["gate_retry_ticks"]:
-            continue
-        kind = profile_from(traits, memory.culture)["traps"]
-        kind = kind if kind in ("cage", "stonefall", "weapon") else "cage"
-        n = max(2, min(4, defence.trap_count(traits)))
         where = f"the founding stair at elevation {(e.get('z') or 0) + off + 1} (x{e.get('x')} y{e.get('y')})"
-        proposals.append(Proposal("gatehouse", {"type": "build_gatehouse", "entrance_id": e["id"], "kind": kind,
-                                                "count": n},
-                                  f"a fortified fort (Fortification {int(traits.get('fortification', 0)):+d}): a "
-                                  f"gatehouse in front of the hatch at {where}: a walled corridor with {n} {kind} "
-                                  "trap(s) and a drawbridge, raised with the hatch when danger comes", 6))
+        wagon = " (the embark wagon in its way is taken down first)" if e.get("gatehouse") == "wagon" else ""
+        if war:
+            kind = profile_from(traits, memory.culture)["traps"]
+            kind = kind if kind in ("cage", "stonefall", "weapon") else "cage"
+            n = max(2, min(4, defence.trap_count(traits)))
+            why = (f"a fortified fort (Fortification {int(traits.get('fortification', 0)):+d}): a "
+                   f"gatehouse in front of the hatch at {where}: a walled corridor with {n} {kind} "
+                   "trap(s) and a drawbridge, raised with the hatch when danger comes" + wagon)
+        else:
+            kind, n = "cage", 0
+            why = (f"{due}: a gate a building destroyer can't break, before one comes: a drawbridge at the end of "
+                   f"a short walled corridor in front of the hatch at {where} (titans break hatches and doors), "
+                   "raised with the hatch when danger comes and lowered after" + wagon)
+        # (the plain one is defence, as destroyer_gate's: no hold on new works keeps it back)
+        act = {"type": "build_gatehouse", "entrance_id": e["id"], "kind": kind, "count": n}
+        if war:
+            proposals.append(Proposal("gatehouse", act, why, 6))
+        else:
+            proposals.append(Proposal("destroyer_gate", act, why, 6))
         need = n + 3                            # the traps, the bridge's lever and its link
         free = ent.get("free_mechanisms")
         if isinstance(free, int) and free < need and not queued(s, {"mechanisms"}):

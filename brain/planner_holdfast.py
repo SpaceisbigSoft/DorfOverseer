@@ -561,6 +561,25 @@ def _destroyer_gate_rule(s: dict, cfg: dict, proposals: list, notes: list, memor
             notes.append(f"the gate at x{e.get('x')} y{e.get('y')}: the destroyer is {d} tiles from it, too close to "
                          "build there now")
             continue
+        # (0.105.51) the founding stair's lid: a hatch can't take a drawbridge
+        # nor a wall (C, R3: "the way in at x108 y149 is a stair updown ..."):
+        # the gatehouse in front of it is the gate a destroyer can't break
+        if e.get("gatehouse") == "standing":
+            notes.append(f"the gatehouse at x{e.get('x')} y{e.get('y')} stands: its drawbridge holds once its lever "
+                         "is linked (the gate rule links it)")
+            continue
+        from planner_gates import gatehouse_asked, gatehouse_wanted
+        if gatehouse_asked(proposals):
+            return
+        if gatehouse_wanted(s, memory, cfg, e, abs_tick(s)):
+            wagon = (" (the embark wagon in its way is taken down first)"
+                     if e.get("gatehouse") == "wagon" else "")
+            proposals.append(Proposal(WALL_RULE, {"type": "build_gatehouse", "entrance_id": e["id"], "kind": "cage",
+                                                  "count": 0},
+                                      f"{names} breaks doors and hatches: the founding stair's hatch at x{e.get('x')} "
+                                      f"y{e.get('y')} elevation {(e.get('z') or 0) + off + 1} gets a gatehouse, a "
+                                      "drawbridge at the end of a walled corridor (raised with the gates)" + wagon, 1))
+            return
         r = _d(walls.get(spot))
         tried = r.get("style")
         when = _d(getattr(memory, "gate_failure_ticks", None)).get(spot)

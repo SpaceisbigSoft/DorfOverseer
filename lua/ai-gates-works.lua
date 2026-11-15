@@ -895,6 +895,13 @@ end
 -- the corridor's traps in the fort's style, and a lever where the dwarves
 -- are (unless an AI lever stands unlinked: that one is linked instead). The
 -- gate rule links the lever to the bridge once both are built.
+-- (0.105.51) The embark wagon taken down (a dwarf's job: its logs come
+-- back). Tests replace this.
+function take_down_wagon(b)
+    dfhack.buildings.deconstruct(b)
+    return true
+end
+
 function build_gatehouse(id, kind, n, dry_run, starts)
     local e = entrance(id)
     if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
@@ -908,7 +915,26 @@ function build_gatehouse(id, kind, n, dry_run, starts)
     end
     cache, edge_cache = {}, {}            -- the map may have changed since the scan
     local plan, why = plan_gatehouse(e, h)
-    if not plan then return {ok = false, error = why} end
+    if not plan then
+        -- (0.105.51) only the embark wagon in the way: it is taken down
+        -- first (a dwarf's job); the gatehouse is asked again once it is gone
+        local okw, wplan = pcall(plan_gatehouse, e, h, true)
+        if okw and wplan and wplan.wagons then
+            local n_w, failed_w = 0, {}
+            if not dry_run then
+                for _, w in pairs(wplan.wagons) do
+                    local okd, d = pcall(take_down_wagon, w)
+                    if okd then n_w = n_w + 1 else table.insert(failed_w, tostring(d)) end
+                end
+            end
+            return {ok = false, wagon = true, wagons = n_w, dry_run = dry_run or nil,
+                    error = 'the embark wagon stands where the gatehouse goes: '
+                        .. (dry_run and 'it would be taken down first'
+                            or (n_w > 0 and 'it is being taken down; the gatehouse follows once it is gone'
+                                or ('it could not be taken down (' .. table.concat(failed_w, '; '):sub(1, 120) .. ')')))}
+        end
+        return {ok = false, error = why}
+    end
     n = math.max(0, math.min(#plan.corridor, math.floor(tonumber(n) or #plan.corridor)))
     local br = plan.bridge
     local out = {ok = true, bridge = {x = br.x, y = br.y, z = br.z}, dir = br.dir, length = plan.len,
