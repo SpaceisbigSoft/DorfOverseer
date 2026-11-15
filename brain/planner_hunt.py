@@ -438,12 +438,19 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
 
     said: list = []
     ranked = []
+    from planner_core import thief_rows, crowded_thief
+    crowd_ids = {x.get("id") for x in thief_rows(s) if crowded_thief(x, cfg)}
     for t in targets_l:
         tid, head = t["id"], _head(t)
         r = _d(t.get("route"))
         near = _int(t.get("near_workers"))
         cls = _kind_class(t, near)
         if tid in hunted:
+            continue
+        # (0.105.51 merge) a thief among a crowd (a tavern of guests) is the
+        # thieves rule's watch, never a hunt into the crowd (E, 15 Nov)
+        if t.get("thief") and tid in crowd_ids:
+            said.append(f"{head}: a thief among a crowd: watched by the thieves rule, not hunted there")
             continue
         if tid in ordered:
             said.append(f"{head}: a squad is sent at it this cycle by another rule; not hunted as well")

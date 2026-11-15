@@ -1627,6 +1627,7 @@ function calm_burrow_tick(max, days, dry_run, txt, release)
         if was and now - was >= CALM_OUT_DAYS * 1200 then d.out[key] = nil; was = nil end
         local okb, baby = pcall(dfhack.units.isBaby, u)
         if in_tantrum(u) and not d.members[key] and not was and not (okb and baby) and hb_citizen(u)
+                and not in_mood(u)   -- (0.105.51 merge) a mood claims its workshop outside the burrow
                 and u.military.squad_id == -1 and not thirsty(u) and not needs_care(u) then
             local other, which = calm_burrows_of(u, ids)
             -- (review) never one in the hospital burrow: they stay with the doctors

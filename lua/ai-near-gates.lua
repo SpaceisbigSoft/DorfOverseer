@@ -267,6 +267,10 @@ function set(on, radius, dry_run, txt)
         local mine, other = burrows_of(u, bid)
         local v = member_verdict({member = d.members[id] == true, in_ours = mine, other = other,
                                   soldier = soldier(u), patient = patient(u)})
+        -- (0.105.51 merge) never a dwarf in a strange mood: DF lets it claim a
+        -- workshop and fetch only inside its burrows (R3: five moods failed so)
+        local okm, mood = pcall(function() return u.mood end)
+        if v == 'add' and okm and type(mood) == 'number' and mood >= 0 then v = 'skip' end
         if v == 'add' then
             if dry_run then
                 added = added + 1
