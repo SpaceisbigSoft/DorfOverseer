@@ -702,8 +702,10 @@ function field_watch(txt)
                 -- no great danger is wildlife here, whatever isDanger says
                 if danger and wild_animal(u) then danger = false end
                 local wild = not danger and hostile_wild(u)
-                -- (0.105.47) or one that went for a citizen (a giant coyote)
-                local attacking = not danger and not wild and outside and wild_attacking(u, cit_ids)
+                -- (0.105.47) or one that went for a citizen (a giant coyote);
+                -- (0.105.51) a large predator at grips with one says so too
+                -- (the brain's wild_pack: a lone one attacking, no squad: the alarm)
+                local attacking = not danger and outside and wild_attacking(u, cit_ids)
                 if attacking then wild = true end
                 if danger or wild then
                     local row = {id = u.id, name = name_of(u, txt), wild = wild or nil, outside = outside,

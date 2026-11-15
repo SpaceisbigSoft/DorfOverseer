@@ -262,7 +262,9 @@ def _():
 # --- the "can reach" alarm's maximum time ---------------------------------------------------
 
 def far_beast(**kw):
-    t = {"id": 6001, "name": "a titan", "great_danger": True, "kinds": ["Titan"], "size": 9000000,
+    # (0.105.51) an ordinary enemy: a great danger never has the alarm lowered at the cap
+    # (planner_alarm.reach_never_capped; tests/test_k51_wild_pack.py)
+    t = {"id": 6001, "name": "a goblin lasher", "great_danger": False, "kinds": [], "size": 60000, "invader": True,
          "can_reach_dwarves": True, "layer": "upper_levels", "distance_to_nearest_dwarf": 150,
          "levels_from_nearest_dwarf": 0, "pos": {"x": 10, "y": 10, "z": 170}}
     t.update(kw)
@@ -282,7 +284,7 @@ def _():
     offs = [p for p in props if p.action == {"type": "civ_alert", "on": False}]
     assert offs and "has been up" in offs[0].reason, [(p.rule, p.action, p.reason) for p in props
                                                       if p.rule == "threat_alert"]
-    assert not reach_alarm_over(fort([far_beast(distance_to_nearest_dwarf=40)], [], alert=True), m, CFG, [6001])
+    assert not reach_alarm_over(fort([far_beast(distance_to_nearest_dwarf=20)], [], alert=True), m, CFG, [6001])
     s_in = fort([far_beast(great_danger=False, kinds=[])], [], alert=True)
     s_in["entrances"]["intruders_inside"] = [6001]
     assert not reach_alarm_over(s_in, m, CFG, [6001])

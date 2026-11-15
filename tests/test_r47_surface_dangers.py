@@ -390,7 +390,9 @@ if LuaRuntime is not None:
         wild = {x["id"]: x for x in r["wild"]}
         assert set(wild) == {10, 15}, wild
         assert wild[10]["attacking"] is True and wild[10]["wild"] is True and wild[10]["distance_outside"] == 2
-        assert wild[15].get("attacking") is None                  # a predator anyway: listed as before
+        # (0.105.51) a predator at grips with a citizen says so too (the brain's wild_pack: a lone
+        # one attacking with no squad that beats it sounds the alarm)
+        assert wild[15].get("attacking") is True and wild[15]["wild"] is True
 
     @test("field_watch: wild_attacking reads the creature's last target only, in a pcall")
     def _():

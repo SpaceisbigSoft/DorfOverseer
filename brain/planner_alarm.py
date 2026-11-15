@@ -41,7 +41,7 @@ from __future__ import annotations
 from planner_core import PLANNER_CONFIG, TICKS_PER_DAY, abs_tick
 
 __all__ = ["ALARM_CONFIG", "alarm_cause", "govern_alarm", "note_alarm_change", "GOVERNED", "REACH_CAP_WHY",
-           "reach_near", "reach_alarm_over", "reach_raise_held", "SNATCH_CAP_WHY", "snatch_alarm",
+           "reach_near", "reach_never_capped", "reach_alarm_over", "reach_raise_held", "SNATCH_CAP_WHY", "snatch_alarm",
            "reach_gates_lift"]
 
 ALARM_CONFIG = {
@@ -185,8 +185,14 @@ def reach_near(s: dict, cfg: dict, ids) -> list:
         if isinstance(s.get("entrances"), dict) else set()
     o = s.get("others_on_map") if isinstance(s.get("others_on_map"), dict) else {}
     out = []
-    for t in o.get("threats") or []:
-        if not isinstance(t, dict) or t.get("id") not in want:
+    # (0.105.51) and the wild pack's rows (the hunt's and the field watch's,
+    # not in the threats rows: planner_core.wild_rows)
+    from planner_core import wild_rows
+    rows = [t for t in o.get("threats") or [] if isinstance(t, dict)]
+    have = {t.get("id") for t in rows}
+    rows += [t for t in wild_rows(s, cfg) if t.get("id") not in have]
+    for t in rows:
+        if t.get("id") not in want:
             continue
         lim = _c(cfg, "reach_alarm_near_tiles_fast" if (t.get("great_danger") or t.get("flier"))
                  else "reach_alarm_near_tiles")
@@ -194,6 +200,34 @@ def reach_near(s: dict, cfg: dict, ids) -> list:
         if t.get("id") in inside or (isinstance(d, (int, float)) and not isinstance(d, bool) and d <= lim):
             out.append(str(t.get("name") or "an enemy"))
     return out
+
+
+def reach_never_capped(s: dict, cfg: dict, ids) -> str:
+    """(0.105.51) What the cap never lowers the alarm for ("" if nothing):
+    a great danger on the map (great_present) or among these, a building
+    destroyer among them, or one that can reach within `near_threat_tiles`
+    of a dwarf. C (R3, 08:39): the alarm came down after 29 days with a
+    Hill Titan about, the gates opened, and it went up again 15 s later."""
+    from planner_core import great_present, GREAT_LIKE_KINDS
+    if great_present(s):
+        return "a great danger is on the map"
+    want = set(ids)
+    o = s.get("others_on_map") if isinstance(s.get("others_on_map"), dict) else {}
+    near = max(_c(cfg, "near_threat_tiles"), _c(cfg, "reach_alarm_near_tiles"))
+    for t in o.get("threats") or []:
+        if not isinstance(t, dict) or t.get("id") not in want:
+            continue
+        name = str(t.get("name") or "an enemy")
+        kinds = set(t.get("kinds") if isinstance(t.get("kinds"), list) else [])
+        if t.get("great_danger") or kinds & (GREAT_LIKE_KINDS - {"Undead", "NightCreature"}):
+            return f"{name} is a great danger"
+        if t.get("destroyer"):
+            return f"{name} breaks buildings"
+        d = t.get("distance_to_nearest_dwarf")
+        if (t.get("can_reach_dwarves") is True and isinstance(d, (int, float)) and not isinstance(d, bool)
+                and d <= near):
+            return f"{name} can reach the dwarves and is {d} tiles from one"
+    return ""
 
 
 def reach_alarm_over(s: dict, memory, cfg: dict, ids) -> str:
@@ -205,7 +239,7 @@ def reach_alarm_over(s: dict, memory, cfg: dict, ids) -> str:
     if not _int(now) or not isinstance(on, dict) or not _int(on.get("tick")):
         return ""
     days = (now - on["tick"]) // TICKS_PER_DAY
-    if days < _c(cfg, "reach_alarm_max_days") or reach_near(s, cfg, ids):
+    if days < _c(cfg, "reach_alarm_max_days") or reach_near(s, cfg, ids) or reach_never_capped(s, cfg, ids):
         return ""
     return (f"{REACH_CAP_WHY} {days} days and none of the {len(ids)} enemy/enemies that can reach the dwarves "
             f"has come within {_c(cfg, 'reach_alarm_near_tiles')} tiles of one or into the fort: it comes down "
@@ -223,7 +257,7 @@ def reach_raise_held(s: dict, memory, cfg: dict, ids) -> str:
         return ""
     from planner_gates import _lockdown
     new = _lockdown(memory).get("new")
-    if not _int(new) or new > capped or reach_near(s, cfg, ids):
+    if not _int(new) or new > capped or reach_near(s, cfg, ids) or reach_never_capped(s, cfg, ids):
         return ""
     return (f"{len(ids)} threat(s) can reach the dwarves, none near them and none new since the alarm came down "
             f"for its maximum time: it stays down (it sounds for one within {_c(cfg, 'reach_alarm_near_tiles')} "

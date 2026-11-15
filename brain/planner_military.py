@@ -746,11 +746,17 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # not remove the retreat: a fight called off for its losses is off under
     # `all` too (War-hold: six squads sent at a titan with deadly dust, never
     # called back however many fell)
+    # (0.105.51) a wild pack the free squads don't beat (planner_core.wild_pack):
+    # the alarm keeps the civilians in, no sortie at it (under `ordinary`)
+    wp = wild_pack(s, cfg)
+    no_sortie = set(wp["ids"]) if wp["danger"] and not wp["fight"] else set()
     targets = [i for i in reach if (policy == "all" and i not in off)
-               or (policy == "ordinary" and i not in off and i not in fire
+               or (policy == "ordinary" and i not in off and i not in fire and i not in no_sortie
                    and (not threats[i].get("great_danger") or fight))]
     recalled = set()
-    held_back = [i for i in reach if i not in targets and i not in fire]
+    held_back = [i for i in reach if i not in targets and i not in fire and i not in no_sortie]
+    if no_sortie and policy == "ordinary":
+        notes.append(f"{wp['danger']}: the squads stay in")
     # (0.105.48, K16) a squad out on a great danger the squads can no longer
     # take (more came, the verdict turned: held back, not a target now) comes
     # back as a called-off one does, under every policy; a hunt's party is

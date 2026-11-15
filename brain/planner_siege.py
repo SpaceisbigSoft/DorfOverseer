@@ -455,7 +455,16 @@ def _wild_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list
     if not ok:
         notes.append(f"{names} near the dwarves outside: it breathes fire, no squad goes at it")
         return []
-    if s.get("civ_alert"):
+    # (0.105.51) a pack (planner_core.wild_pack): the free squads go only when
+    # they beat it (the alarm is up for it: no sortie short of that, the
+    # civilians in); with the alarm up for something else, the squads have that
+    from planner_core import wild_pack
+    wp = wild_pack(s, cfg)
+    pack = set(wp["ids"]) if wp["danger"] else set()
+    if pack and not wp["fight"] and pack & {r["id"] for r in ok}:
+        notes.append(f"{wp['danger']}: no squad is sent at them")
+        return []
+    if s.get("civ_alert") and not (pack and pack & {r["id"] for r in ok}):
         return []                       # the alarm is up for something else: the squads have that
     if _held(s, cfg, f"{names} near the dwarves outside", notes):
         return []
