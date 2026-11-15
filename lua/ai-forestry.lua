@@ -161,6 +161,71 @@ local function build_census()
     return c
 end
 
+-- (0.105.51) The census for the report, walked in slices (lua/ai-slices.lua):
+-- R3 (15 Nov) had the forestry section at 110-175 ms median a full report
+-- (the plant list, each tree's tile and, for a cavern tree, eight walk
+-- checks), once a game day: the daily reports paid it every other time.
+-- Each report walks CENSUS_SLICE_MS of the list (chunks of CENSUS_CHUNK
+-- plants) and sends the last whole census meanwhile; the first is walked
+-- whole (the old cost once a map). The actions' census(fresh) is unchanged.
+CENSUS_SLICE_MS = 50
+CENSUS_CHUNK = 200
+
+local function census_items()
+    local n = 0
+    pcall(function() n = #df.global.world.plants.all end)
+    local out = {}
+    for i = 0, n - 1, CENSUS_CHUNK do table.insert(out, {i, math.min(n - 1, i + CENSUS_CHUNK - 1)}) end
+    return out
+end
+
+local function census_init()
+    return {c = {trees = {}, saplings = {}, tick = now(), site = site_id()}, from = anchor(), seen = {}}
+end
+
+-- one chunk of the plant list (the list may have changed since the pass
+-- began: an index past its end is skipped, a tile seen twice counted once)
+local function census_visit(acc, item)
+    local plants = df.global.world.plants.all
+    local c, seen, from = acc.c, acc.seen, acc.from
+    for i = item[1], item[2] do
+        if i >= #plants then break end
+        local p = plants[i]
+        local x, y, z = p.pos.x, p.pos.y, p.pos.z
+        local k = key(x, y, z)
+        if not seen[k] then
+            seen[k] = true
+            local kind, where, marked = tile_class(x, y, z)
+            if kind == 'tree' then
+                table.insert(c.trees, {x = x, y = y, z = z, where = where, marked = marked or nil,
+                                       reach = where ~= 'surface' and reachable(from, x, y, z) or nil})
+            elseif kind == 'sapling' then
+                table.insert(c.saplings, {x = x, y = y, z = z, where = where})
+            end
+        end
+    end
+end
+
+function census_sliced()
+    local t = now()
+    if CENSUS and t - (CENSUS.tick or -1e9) < CENSUS_TICKS and t >= (CENSUS.tick or 0)
+            and CENSUS.site == site_id() then
+        return CENSUS
+    end
+    local okm, SL = pcall(reqscript, 'ai-slices')
+    if not okm or type(SL) ~= 'table' or not SL.run then return census() end
+    local r, st = SL.run('forest_census', {
+        key = tostring(site_id()), now = t, ttl = CENSUS_TICKS,
+        items = census_items, init = census_init, visit = census_visit,
+        finish = function(acc) return acc.c end,
+        max_ms = CENSUS_SLICE_MS, whole_first = true})
+    if (st == 'done' or st == 'cached') and type(r) == 'table' then
+        if st == 'done' or not CENSUS or (r.tick or 0) > (CENSUS.tick or 0) then CENSUS = r end
+    end
+    if CENSUS and CENSUS.site == site_id() and t >= (CENSUS.tick or 0) then return CENSUS end
+    return type(r) == 'table' and r or census()
+end
+
 function census(fresh)
     local t = now()
     if fresh or not CENSUS or t - (CENSUS.tick or -1e9) >= CENSUS_TICKS or t < (CENSUS.tick or 0)
@@ -278,7 +343,7 @@ local function grove_counts(g)
 end
 
 function report()
-    local c = census()
+    local c = census_sliced()
     local d = load_state()
     local cave_d, all_d = dangers()
     local out = {surface = {trees = 0, saplings = 0, marked = 0}, cavern = {trees = 0, reachable = 0, marked = 0},

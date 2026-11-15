@@ -531,6 +531,36 @@ function record_state(rec)
     return st
 end
 
+-- (0.105.51) The corridor plan of an entrance with no zone of the AI's
+-- (its 'possible' or 'none' row) kept between reports: the walk in from the
+-- opening (up to SEARCH_TILES tiles through ai-gates, its tile cache reset)
+-- was most of the section's 180-400 ms a report in the R3 run (15 Nov: one
+-- 'none' entrance in nearly every fort, walked again each rebuild). Kept
+-- KZ_PLAN_TICKS while the gate scan (its tick), the entrance and the held
+-- ways in are the same; dropped by build_killzone and a new map.
+KZ_PLAN_TICKS = 3 * 1200
+PLAN_MEMO = PLAN_MEMO or {}
+
+local function now_tick()
+    local ok, t = pcall(U.abs_tick)
+    return ok and type(t) == 'number' and t or nil
+end
+
+-- the memo's key for entrance e: the scan, the entrance, the held ways in (bypass reads them)
+function plan_memo_key(G, e, held)
+    local ids = {}
+    for _, h in ipairs(held or {}) do
+        table.insert(ids, ('%s@%s,%s,%s%s'):format(tostring(h.id), tostring(h.x), tostring(h.y), tostring(h.z),
+                                                  h.sealed == true and 's' or ''))
+    end
+    return table.concat({tostring((G.GATES or {}).scanned_tick), key3(e.x, e.y, e.z), tostring(e.sealed == true),
+                         tostring(e.gatehouse), table.concat(ids, ';')}, '|')
+end
+
+function plan_memo_clear() PLAN_MEMO = {} end
+
+local PLAN_FIELDS = {'state', 'corridor', 'trap_tiles', 'depth', 'drawbridge', 'why'}
+
 function report(txt)
     local G = gates()
     local out = {entrances = {}, scanned = (G.GATES or {}).scanned == true}
@@ -539,7 +569,13 @@ function report(txt)
     local held = held_entrances(G)
     local starts = {}
     pcall(function() starts = G.fort_starts(G.citizen_starts()) end)
-    local M = game_map(G, starts)
+    -- the map (ai-gates' tile cache reset) only when a corridor is walked
+    local M_ = nil
+    local function M() if not M_ then M_ = game_map(G, starts) end return M_ end
+    local now = now_tick()
+    local memo = type(PLAN_MEMO) == 'table' and PLAN_MEMO or {}
+    PLAN_MEMO = memo
+    local kept, walked = 0, 0
     for _, e in ipairs(held) do
         local row = {id = e.id, kind = e.kind, x = e.x, y = e.y, z = e.z, sealed = e.sealed == true}
         local ok, err = pcall(function()
@@ -564,6 +600,15 @@ function report(txt)
                 end
                 row.bridge_note = rec.bridge_note
             elseif not row.state then
+                local mk = plan_memo_key(G, e, held)
+                local m = memo[mk]
+                if m and now and now >= m.tick and now - m.tick < KZ_PLAN_TICKS then
+                    for _, f in ipairs(PLAN_FIELDS) do row[f] = m.row[f] end
+                    kept = kept + 1
+                    return
+                end
+                walked = walked + 1
+                local M = M()
                 local plan, why = plan_corridor(e, M, true)
                 if plan then
                     row.state = 'possible'
@@ -581,6 +626,11 @@ function report(txt)
                 else
                     row.state, row.why = 'none', why
                 end
+                if now then
+                    local copy = {}
+                    for _, f in ipairs(PLAN_FIELDS) do copy[f] = row[f] end
+                    memo[mk] = {tick = now, row = copy}
+                end
             end
         end)
         if not ok then row.error = tostring(err):sub(1, 160) end
@@ -595,6 +645,7 @@ function report(txt)
     out.free_cages = count_free('CAGE')
     out.mechanics = mechanics()
     out.free_levers = (function() local okl, l = pcall(G.free_levers); return okl and #l or nil end)()
+    if kept + walked > 0 then out.plans = {kept = kept, walked = walked} end   -- (0.105.51) the corridor plans this time
     return out
 end
 
@@ -679,6 +730,7 @@ end
 -- the traps leave alone), and a drawbridge (flat, or over a channel where
 -- the rules allow one). Called again, a channelled bridge goes one step on.
 function build_killzone(id, n, kind, drawbridge, dry_run, starts)
+    if not dry_run then PLAN_MEMO = {} end      -- (0.105.51) the corridors walked again in the next report
     local G = gates()
     local e = G.entrance(id)
     if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
@@ -827,4 +879,13 @@ function reset_cage_traps(id, dry_run)
         out.needs = needs
     end
     return out
+end
+
+-- (0.105.51) a new map: the corridor plans walked afresh
+if dfhack and dfhack.onStateChange then
+    pcall(function()
+        dfhack.onStateChange['ai-killzone'] = function(sc)
+            if sc == SC_MAP_UNLOADED or sc == SC_WORLD_UNLOADED then PLAN_MEMO = {} end
+        end
+    end)
 end

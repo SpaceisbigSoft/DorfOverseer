@@ -1574,6 +1574,10 @@ SECTION_CACHE_DAYS.siege = 1           -- (item5) small boxes round the entrance
 SECTION_CACHE_DAYS.paper = 1           -- (item9) the plants and tools walked once
 SECTION_CACHE_DAYS.artifacts = 1       -- (item 12) the artifacts and display furniture walked once
 SECTION_CACHE_DAYS.killzones = 1       -- (0.105.45) a walk in from each entrance, the units once
+-- (0.105.51) R3 (15 Nov): 110-196 ms median a full report, rebuilt each one:
+-- the AI's project areas (the registry decoded and copied) and every
+-- citizen's skills for each kind; read only for the slow training-bench rule
+SECTION_CACHE_DAYS.benches = 2
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
 -- (0.105.48, K7c) the most game days a cached copy is ever sent: past it the
 -- section is rebuilt whatever the rotation (A1: two rebuilds a report against
@@ -1584,7 +1588,7 @@ SECTION_MAX_DAYS = {
     needs = 2, homes = 2, disposal = 2, food_store = 2, planned = 2,   -- the people and the food: within a day or two
     siege = 2, killzones = 2,                                         -- the defences
     missions = 3, noble_demands = 3, pile_links = 3, paper = 3, artifacts = 3, petitions = 3,
-    locations = 4,
+    locations = 4, benches = 4,
     logistics = 6, room_gaps = 6, registry = 6, noble_rooms = 6, constructions = 6, citizens_taste = 7,
     industry = 12, diplomacy = 12, crossings = 12,
 }
@@ -1648,6 +1652,7 @@ CACHE_INVALIDATES.display_artifact = {'artifacts'}
 CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store', 'pile_links'}
 CACHE_INVALIDATES.furnish_project = {'registry', 'locations', 'noble_rooms', 'food_store'}
 CACHE_INVALIDATES.polish_room = {'noble_demands'}   -- (0.105.41)
+CACHE_INVALIDATES.bench_caps = {'benches'}          -- (0.105.51) the cap set or lifted read again
 for _, name in ipairs({'give_room', 'place_in_zone', 'furnish_project', 'house_dwarves'}) do
     table.insert(CACHE_INVALIDATES[name], 'noble_demands')     -- (0.105.41) a noble's room changed
 end
@@ -1793,7 +1798,7 @@ function perf_section(sections, cached, total_ms, tick)
         local slices
         pcall(function()
             local S = reqscript('ai-slices')
-            for _, n in ipairs({'industry_veins', 'deep_hazard', 'cavern_scan', 'shelter_grid', 'shelter_walk'}) do
+            for _, n in ipairs({'industry_veins', 'deep_hazard', 'cavern_scan', 'shelter_grid', 'shelter_walk', 'forest_census'}) do
                 local st = S.status(n)
                 if st then
                     slices = slices or {}
