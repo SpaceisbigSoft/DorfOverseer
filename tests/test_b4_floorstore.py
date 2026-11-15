@@ -232,7 +232,7 @@ def new_site(store_code="{v = 1, next = 1, fallbacks = 0, floors = {}}"):
 def _():
     need()
     assert "floorstore" in lst(B.PARTS)
-    assert B.PART_VERSIONS["ai-builder-floorstore"] == "0.105.54"
+    assert B.PART_VERSIONS["ai-builder-floorstore"] == B.PART_VERSIONS["ai-builder"]   # (bumped together)
     assert B.FLOORS_KEY == KEY
     for name in ("floor_mode", "load_floors", "save_floors", "floor_commit", "floor_fallback",
                  "floor_release", "floors_report"):

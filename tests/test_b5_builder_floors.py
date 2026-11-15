@@ -335,7 +335,7 @@ BED = {"kind": "bedrooms", "rooms": 2, "room_size": 3}
 @test("the builder boots with the floors part: in PARTS, its version mark, no reqscript while loading")
 def _():
     assert "floors" in lst(B.PARTS), lst(B.PARTS)
-    assert B.PART_VERSIONS["ai-builder-floors"] == B.PART_VERSIONS["ai-builder"] == "0.105.54"
+    assert B.PART_VERSIONS["ai-builder-floors"] == B.PART_VERSIONS["ai-builder"]   # (bumped together)
     assert LUA.eval("type")(B.floor_site) == "function" and LUA.eval("type")(B.floor_env) == "function"
     assert B.FLOOR_SECONDS == 1.5 and B.FLOORS_TRY == 3 and B.FLOOR_LEVELS_SCAN == 8 and B.FLOOR_STAIRS == 3
     kinds = dict(B.FLOOR_KINDS)

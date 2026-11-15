@@ -549,7 +549,7 @@ def _():
 def _():
     parts = list(B.PARTS.values())
     assert "floorpiles" in parts and parts.index("floorpiles") > parts.index("court"), parts
-    assert B.PART_VERSIONS["ai-builder-floorpiles"] == B.PART_VERSIONS["ai-builder"] == "0.105.54"
+    assert B.PART_VERSIONS["ai-builder-floorpiles"] == B.PART_VERSIONS["ai-builder"]   # (bumped together)
     for name in ("floor_pile_units", "floor_book_piles", "FLOOR_OUTPUTS"):
         assert B[name] is not None, name
     lua2, b2, _w = TB.boot()                            # a fresh engine: only ai-layouts and quickfort known
