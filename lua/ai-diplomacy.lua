@@ -726,7 +726,7 @@ end
 -- DF's confirm key for an agreeing answer (Yes, Done; never No: leaving
 -- the screen is the AI's no). Returns how ('button', 'word', 'key') and the
 -- place clicked, or nil.
-KEY_FOR = {Yes = 'SELECT', Done = 'SELECT'}
+KEY_FOR = {Yes = 'SELECT', Done = 'SELECT', Okay = 'SELECT'}   -- (0.105.49) Okay: the text screens
 function press_named(name, btn)
     local b = btn and btn[name]
     if b then click(b); return 'button', b end
@@ -835,23 +835,26 @@ function answer_meeting(a, txt)
                 error = 'a barony\'s holder is the player\'s to choose: left to you'}
     end
     -- (0.105.47) nothing left to agree (every topic concluded, or none
-    -- brought): the screen's text is stepped on with DF's confirm key, never
-    -- a click (the meeting then ends as DF ends it)
+    -- brought): the screen's text is stepped on (the meeting then ends as DF
+    -- ends it). (0.105.49) By the screen's own Okay (shown, else found by its
+    -- word): DF 53.17's text screens ignore the confirm key (R3, 14 Nov: the
+    -- liaison's greeting held all six games); the key only when no Okay is found
     local pending = pending_topics(st.topics, st.concluded)
     if #pending == 0 and st.topics ~= nil then
         out.answer, out.why = 'continue', 'no topic is left open: the text stepped on'
         if a.dry_run then out.ok = true; return out end
         local before = fingerprint()
-        pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'SELECT') end)
-        out.pressed, out.via = 'continue', 'key'
+        local how, place = press_named('Okay', btn)
+        out.pressed, out.via = 'continue', how or 'key'
         out.ok = fingerprint() ~= before
-        if not out.ok then out.error = 'the confirm key changed nothing on the meeting screen' end
+        if out.ok then keep_found('Okay', how, place) end
+        if not out.ok then out.error = 'Okay was pressed (' .. tostring(how) .. ') and nothing changed on the meeting screen' end
         local st2 = meeting_state(nil)
         if st2 and st2.done then
             pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN') end)
             out.closed = meeting_state(nil) == nil
         end
-        save_probe({answered = 'continue', via = 'key', ok = out.ok, after = probe(txt)})
+        save_probe({answered = 'continue', via = out.via, ok = out.ok, after = probe(txt)})
         return out
     end
     -- (0.105.0 review) pressed only when the topic is certain and safe

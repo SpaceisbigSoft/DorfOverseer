@@ -499,6 +499,44 @@ def _():
     assert d.ok and d.answer == "continue" and d.pressed is None
 
 
+@test("answers (0.105.49): every topic concluded: the screen's own Okay clicked when found by its word (DF 53.17 ignores the key there)")
+def _():
+    import test_world as TW
+    done = TW.MEETING + "df.global.game.main_interface.diplomacy.dipev.agreement_topic = G.vec({7, 2})"
+    env, G = TW.world(done)
+    G.on_click = None
+    TW.LUA.execute(r"""local env, G = ...
+        local sim = env.require('gui').simulateInput
+        local req = env.require
+        env.require = function(n)
+          if n == 'gui' then return {simulateInput = function(s, key)
+            if key == '_MOUSE_L' then
+              table.insert(G.clicks, {env.df.global.gps.mouse_x, env.df.global.gps.mouse_y})
+              env.df.global.game.main_interface.diplomacy.environment.dipev.cur_step = 4
+            end
+            -- the confirm key does nothing on the text screen (as in DF 53.17)
+          end} end
+          return req(n)
+        end
+        local rq = env.reqscript
+        env.reqscript = function(n)
+          if n == 'ai-meeting-open' then return {find_word = function(w)
+            if w == 'Okay' then return {{12, 9}} end return {} end} end
+          return rq(n)
+        end""", env, G)
+    r = env.answer_meeting(TW.LUA.table_from({}))
+    assert r.ok and r.answer == "continue" and r.via == "word" and len(G.clicks) >= 1, dict(r)
+
+
+@test("overseer (0.105.49): an answer the bridge raises on (ok false) counts as a dead press: no more presses, left after the give-up time")
+def _():
+    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    i = src.index('bridge.act({"type": "answer_meeting"})')
+    block = src[i:i + 2200]
+    j = block.index("except BridgeError as e:")
+    assert "answer_dead = answer_cant = held_since" in block[j:j + 600]
+
+
 # --- the overseer's rule (brain/planner_meetings.py) ----------------------------------------
 
 @test("rule: the light clicked only unattended, in autopilot, not halted or pinned or stopped, nothing else open, once a minute")

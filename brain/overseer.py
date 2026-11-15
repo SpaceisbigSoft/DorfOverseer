@@ -2605,7 +2605,15 @@ def _run(args) -> int:
                     if r.get("pressed") or r.get("needs_button") or r.get("left_to_player"):
                         say("DF's meeting screen: " + (f"answered {r.get('answer')} ({r.get('why') or r.get('topic')})"
                                                        if r.get("ok") else str(r.get("error"))))
-                except (BridgeError, DFHackError):
+                except BridgeError as e:
+                    # (0.105.49) bridge.act raises on an answer that came back ok false
+                    # (a press that changed nothing): no more presses for this meeting,
+                    # and it is left after MEETING_GIVEUP_S (R3, 14 Nov: a dead key
+                    # was pressed every 30 s for 5 minutes in all six games)
+                    answer_dead = answer_cant = held_since
+                    say(f"DF's meeting screen: {str(e)[:160]}; left in about {int(MEETING_GIVEUP_S)} s "
+                        "if nobody answers it")
+                except DFHackError:
                     pass
             if (args.unattended and args.autopilot and st.get("in_fort") and not controls["halted"] and not held_pin
                     and not STOP_FILE.exists() and nowt - held_since >= meeting_leave_after(answer_cant == held_since)
