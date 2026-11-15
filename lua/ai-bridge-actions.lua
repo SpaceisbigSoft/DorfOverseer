@@ -2881,14 +2881,14 @@ function send_mission_danger()
 end
 
 -- (0.105.47, J17) the Rules' raid_policy (ai | aggressive | reactive | off;
--- unreadable: ai) and which reasons it allows against a civ that isn't
+-- unreadable: off, (0.105.48, K9) as the default) and which reasons it allows against a civ that isn't
 -- hostile: 'aggressive' (any civ but the fort's friends), 'retaliation' (a
 -- civ that attacked the fort), 'threat' (a hostile or ownerless camp close by)
 function send_raid_policy()
     local ok, s = pcall(function() return reqscript('ai-overseer-settings').load_settings() end)
     local v = ok and type(s) == 'table' and s.raid_policy or nil
-    if v == 'off' or v == 'aggressive' or v == 'reactive' then return v end
-    return 'ai'
+    if v == 'ai' or v == 'aggressive' or v == 'reactive' then return v end
+    return 'off'
 end
 SEND_POLICY_OK = {['ai aggressive'] = true, ['ai retaliation'] = true, ['ai threat'] = true,
                   ['aggressive aggressive'] = true, ['aggressive retaliation'] = true, ['aggressive threat'] = true,

@@ -149,11 +149,17 @@ NEVER_PRESSED = {DemandSurrender = true, DeclareWar = true, InduceWar = true}
 -- left every one of them to a player who wasn't there.
 ALWAYS_YES = {DiscussCurrent = true, PleasantPlace = true, WorldStatus = true, TreeQuota = true,
               OpenTrade = true, ImproveTrade = true, ExportAgreement = true, ImportAgreement = true}
+-- (0.105.48, K9) The tribute's "amount" read so far is dipev.topic_parms
+-- (original name topicindex: an index, not a sum), so 'small' can't weigh it:
+-- until the sum asked has been seen in game (TRIBUTE_SUM_KNOWN), 'small'
+-- answers No (the safe side; before, a small index always passed as "small"
+-- and the AI paid whatever was asked).
+TRIBUTE_SUM_KNOWN = false
 function press_guard(pending, policy, tribute_known)
     for _, t in ipairs(pending or {}) do
         if NEVER_PRESSED[t] then return t .. ' is on the table: left to you' end
         if t == 'TributeAgreement' and not (policy == 'pay' or policy == 'refuse'
-                or (policy == 'small' and tribute_known)) then
+                or (policy == 'small' and (tribute_known or not TRIBUTE_SUM_KNOWN))) then
             return policy == 'small' and 'a tribute is on the table and how much is asked is not known: left to you'
                 or 'a tribute is on the table: left to you'
         end
@@ -183,6 +189,10 @@ function decide(topic, policy, ctx)
     if a == 'tribute' then
         if policy == 'pay' then return 'yes', 'the Rules: pay tribute' end
         if policy == 'refuse' then return 'no', 'the Rules: refuse tribute' end
+        if not TRIBUTE_SUM_KNOWN then
+            return 'no', 'how much tribute is asked can\'t be read yet (DF gives a topic index, not a sum): ' ..
+                         '"small" refuses until the sum is seen in game'
+        end
         local amount, wealth = tonumber(ctx.amount), tonumber(ctx.wealth)
         if not amount or not wealth or amount < 0 then
             return nil, 'how much tribute is asked is not known: left to you'

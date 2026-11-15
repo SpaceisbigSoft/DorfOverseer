@@ -607,11 +607,22 @@ end
 -- that can't be read (TrueType): the guess retired at once, so the Needs you
 -- comes back; readable without the word: a miss. Returns true to press, or
 -- false and why.
+-- (0.105.48, K9) A shown place (this save's or the PC's, a guess that worked
+-- included) gets the forbidden-word check too whenever the text can be read:
+-- Seize or Offer there, not pressed (a window resized, a place shared from
+-- another save); missing or unreadable text doesn't stop a shown place.
 function guess_word_ok(name, b, x, y)
-    if not (b and b.default) then return true end
+    if not b then return true end
     local ok, v, w = pcall(function() return reqscript('ai-screen-buttons').check_word(x, y, 'Trade') end)
     if not ok then v = 'unreadable' end
     if v == 'ok' then return true end
+    if not b.default then
+        if v == 'forbidden' then
+            return false, 'the ' .. name .. ' button\'s place reads "' .. tostring(w) .. '" there now: not pressed ' ..
+                          '(show it again: probe_trade.py --here' .. (name == 'Depot' and '-depot' or '') .. ')', v
+        end
+        return true
+    end
     local why = v == 'forbidden' and ('the guessed ' .. name .. ' button reads "' .. tostring(w) .. '" there: not pressed')
         or v == 'missing' and ('the guessed ' .. name .. ' button doesn\'t read "Trade" there: not pressed')
         or ('the screen\'s text by the guessed ' .. name .. ' button can\'t be read: not pressed blind')
@@ -619,6 +630,25 @@ function guess_word_ok(name, b, x, y)
         reqscript('ai-screen-buttons').miss(BUTTONS_KEY, name, why, v ~= 'missing')
     end)
     return false, why, v
+end
+
+-- (0.105.48, K9) the merchants' lines that answer a trade proposal
+-- (df.talk_line_type): only the Trade button brings one
+TRADE_REPLIES = {Trade = true, Haggle = true, CounterOffer = true, CouldNotFindCounterOffer1 = true,
+                 CouldNotFindCounterOffer2 = true, ICannotAfford = true, YouCannotAfford = true,
+                 NoMoreTradeHaggleFailure = true}
+-- the lines of the other buttons beside it (a gift, a seize)
+WRONG_REPLIES = {Offer = true, Seize = true, OfferJoke = true, SeizeJoke = true}
+
+-- Pure: what a press did, from the talk line before and after, whether the
+-- goods moved and whether a counter-offer came up: 'worked' (a trade
+-- answer), 'wrong' (a gift's or a seize's line, or goods gone without a
+-- trade answer), 'none' (nothing changed).
+function after_verdict(before, after, traded, countered)
+    if WRONG_REPLIES[after] then return 'wrong' end
+    if TRADE_REPLIES[after] or countered then return 'worked' end
+    if traded then return 'wrong' end
+    return 'none'
 end
 
 -- (0.105.47) a guess's check: kept for every save when it worked, counted
@@ -751,6 +781,7 @@ function press(name, txt)
     -- goods?" on a click there (seen in game, 0.56.0): turned off for this one
     -- click only (in memory, its settings file untouched), then back on
     local fort_before = ticked_set(trade, FORT)
+    local talk_before = df.talk_line_type[trade.talkline] or tostring(trade.talkline)
     local okk, err = without_confirm('trade-confirm-trade', click, x, y)
     if not okk then return {ok = false, error = 'the click failed: ' .. tostring(err):sub(1, 200)} end
     local talk = df.talk_line_type[trade.talkline] or tostring(trade.talkline)
@@ -794,11 +825,17 @@ function press(name, txt)
     -- with both lists unchanged). Goods gone with no answer is some other
     -- button (a seize or a gift): the guess retired at once. No answer and
     -- nothing moved: a miss (retired after two).
+    -- (0.105.48, K9) the screen opens on Greet, so "any line but NONE" proved
+    -- nothing (a seize answered too): worked only when the merchants answered
+    -- a trade (TRADE_REPLIES) or a counter-offer came up; a gift's or a
+    -- seize's line (or goods gone with no trade answer) retires the place at once
+    local verdict = after_verdict(talk_before, talk, traded, counter ~= nil or trade.counter_offer == true)
     if b.default then
-        if talk ~= 'NONE' then
+        if verdict == 'worked' then
             guess_result(name, b, true)
-        elseif traded then
-            guess_result(name, b, false, 'goods moved with no answer from the merchants: not the Trade button', true)
+        elseif verdict == 'wrong' then
+            guess_result(name, b, false, 'the merchants answered "' .. tostring(talk) .. '" (or goods moved with no ' ..
+                         'trade answer): not the Trade button', true)
         else
             guess_result(name, b, false, 'pressed and the merchants said nothing')
         end
@@ -814,9 +851,13 @@ function press(name, txt)
     end
     -- one try a caravan: haggling again and again ends the trading for good
     -- (a click that got no answer at all, e.g. a dialog in the way, isn't a refusal)
-    if traded or (talk ~= 'NONE' and talk ~= 'Greet' and talk ~= 'HarshGreet') then mark_done(trade.mer) end
-    return {ok = true, pressed = name, at = {x, y}, answer = talk, traded = traded, screen_now = focus,
-            guessed = b.default or nil,
+    -- (0.105.48, K9) the screen closed after the press: this caravan done for the
+    -- visit (before, a miss on Greet closed it unmarked: open, press, close each cycle)
+    if traded or (talk ~= 'NONE' and talk ~= 'Greet' and talk ~= 'HarshGreet') or closed then mark_done(trade.mer) end
+    local wrong_line = WRONG_REPLIES[talk] == true
+    return {ok = not wrong_line, pressed = name, at = {x, y}, answer = talk, answer_before = talk_before,
+            traded = traded, screen_now = focus, guessed = b.default or nil, verdict = verdict,
+            error = wrong_line and ('the merchants answered "' .. tostring(talk) .. '": not a trade') or nil,
             counter = counter, closed = closed,
             counter_offer = trade.counter_offer or nil,
             before = before, after = after}
@@ -982,7 +1023,7 @@ function open_screen(dry_run, txt)
                 vs.active_sheet = df.view_sheet_type.NONE
                 vs.active_id = -1
             end)
-            LAST_OPEN = {clicked = false, guessed = true, guess_refused = verdict, error = why}
+            LAST_OPEN = {clicked = false, guessed = b.default or nil, guess_refused = verdict, error = why}
             return
         end
         local okc, err = pcall(click, x, y)

@@ -623,8 +623,8 @@ def _():
     import planner_missions as pm
     send = {"last_by_goal": {"raid": {"goal": "raid", "result": "stopped", "reason": "inaccessible", "step": "site",
                                       "site_id": 1600, "tick": 120 * 403200 + 4000}}}
-    targets = [{"goal": "raid", "site_id": 1600, "hostile": True, "dist": 3},
-               {"goal": "raid", "site_id": 73, "hostile": True, "dist": 9}]
+    targets = [{"goal": "raid", "site_id": 1600, "hostile": True, "dist": 3, "type": "Camp"},
+               {"goal": "raid", "site_id": 73, "hostile": True, "dist": 9, "type": "Camp"}]
     s = _state(missions={"send": send, "targets": targets})
     m = _Mem()
     pm.note_missions(s, m)

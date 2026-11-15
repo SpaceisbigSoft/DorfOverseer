@@ -104,6 +104,9 @@ end
 -- Is a squad member (a historical figure id) away from the fort? On an
 -- army's roll (whereabouts.army_id), or with no unit on the map: no unit,
 -- an inactive one, or one that has left. The dead are not away.
+-- Returns away, unit id, on_army. (0.105.48, K9) Only on_army proves a
+-- mission: a member merely gone from the map (left, sent away, a unit gone)
+-- counts as away only in a squad with an army controller (fort_squads).
 local function member_away(R, hfid)
     local hf = R.rd('historical_figure.find', function() return df.historical_figure.find(hfid) end)
     if not hf then return false, nil end
@@ -111,7 +114,7 @@ local function member_away(R, hfid)
     if died and died ~= -1 then return false, nil end
     local unit_id = int(R.rd('historical_figure.unit_id', function() return hf.unit_id end))
     local army = R.rd('hf.info.whereabouts.army_id', function() return hf.info.whereabouts.army_id end)
-    if army and army >= 0 then return true, unit_id end
+    if army and army >= 0 then return true, unit_id, true end
     if not unit_id or unit_id < 0 then return false, nil end   -- never had a unit: not ours to say
     local unit = R.rd('unit.find', function() return df.unit.find(unit_id) end)
     if not unit then return true, unit_id end
@@ -143,8 +146,16 @@ local function fort_squads(R, group)
                 local occ = R.rd('squad_position.occupant', function() return p.occupant end)
                 if occ and occ ~= -1 then
                     s.members = s.members + 1
-                    local away, uid = member_away(R, occ)
-                    if not away and uid and uid >= 0 then table.insert(s.units, uid) end   -- (0.105.47) home: the way-out check
+                    local away, uid, on_army = member_away(R, occ)
+                    -- (0.105.48, K9, the audit: squads 'away: 1' with nobody out
+                    -- blocked every mission) gone from the map without an army's
+                    -- roll and with no controller: not on a mission (counted as gone)
+                    local gone = false
+                    if away and not on_army and not s.controller then
+                        away, gone = false, true
+                        s.gone = (s.gone or 0) + 1
+                    end
+                    if not away and not gone and uid and uid >= 0 then table.insert(s.units, uid) end   -- (0.105.47) home: the way-out check
                     if away then
                         s.away = s.away + 1
                         if uid and uid >= 0 then table.insert(s.away_units, uid) end
@@ -885,15 +896,20 @@ function targets(R, civ, group, fort_site, sc)
             end
             if not who or who == civ or who == group or cur == civ or cur == group then return end
             if not hostile(r) then return end
-            add('raid', id, {why = 'hostile: ' .. r})
-            add('pillage', id, {why = 'hostile: ' .. r})
+            -- (0.105.48, K9) the site's type goes with each offensive target: the
+            -- brain attacks only sites people live in (planner_raids LIVED_IN),
+            -- never a monument, a lair or a cave
+            local st = enum_name(df.world_site_type, R.rd('world_site.type', function() return s.type end))
+            add('raid', id, {why = 'hostile: ' .. r, type = st})
+            add('pillage', id, {why = 'hostile: ' .. r, type = st})
             local d = dist_to(s)
-            local weaker = okp and type(pop) == 'number' and pop >= 0 and n_members and pop < n_members
+            -- (0.105.48) 0 living there is not known to be "smaller" (resident_count may be 0 for a site never loaded)
+            local weaker = okp and type(pop) == 'number' and pop > 0 and n_members and pop < n_members
             if weaker and d and d <= TRIBUTE_DIST then
-                add('tribute', id, {why = 'hostile, smaller (' .. int(pop) .. ' living there), near'})
+                add('tribute', id, {why = 'hostile, smaller (' .. int(pop) .. ' living there), near', type = st})
             end
             if weaker and d and d <= CONQUER_DIST and r:find('War') then
-                add('conquer', id, {why = 'at war, smaller (' .. int(pop) .. ' living there), near'})
+                add('conquer', id, {why = 'at war, smaller (' .. int(pop) .. ' living there), near', type = st})
             end
         end)
         if not okw then R.note('world_site fields') end
@@ -1091,7 +1107,8 @@ function report()
     local out_sq = {}
     for i = 1, math.min(MAX_SQUADS, #squads) do
         local s = squads[i]
-        table.insert(out_sq, {id = s.id, name = s.name, members = s.members, away = s.away, controller = s.controller})
+        table.insert(out_sq, {id = s.id, name = s.name, members = s.members, away = s.away, controller = s.controller,
+                              gone = s.gone})   -- (0.105.48, K9) members gone from the map, not on a mission
     end
     local okst, st = pcall(sites, R, civ, group, fort_site)
     if not okst then R.note('sites'); st = nil end

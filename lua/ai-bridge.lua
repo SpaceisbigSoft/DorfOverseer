@@ -687,6 +687,11 @@ ACTIONS = {
     open_meeting = function(a)
         return reqscript('ai-meeting-open').open(a.dry_run == true)
     end,
+    -- (0.105.48, K9) DF's World screen left (lua/ai-mission-send.lua leave_world):
+    -- sent by the overseer only unattended, after WORLD_CLOSE_S with the screen open
+    close_world = function(a)
+        return reqscript('ai-mission-send').leave_world(a.dry_run == true)
+    end,
     -- (0.105.47, R2 item 3) tantrums: a calm squad stationed at a hospital zone
     -- while a tantrum is loose, or taken off again (release); a tantrum-thrower
     -- off every post they hold, the hospital labours too (lua/ai-tantrums.lua)
@@ -890,6 +895,7 @@ for _, name in ipairs({
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
     'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none
     'open_meeting',    -- (0.105.47) its dry run finds the diplomacy light and clicks nothing
+    'close_world',     -- (0.105.48, K9) its dry run says whether the World screen would be left, and presses nothing
     'hospital_guard', 'tantrum_step_down',   -- (0.105.47) each dry run checks and changes nothing
     'training_squad',   -- (0.105.47) its dry run names the leader or counts the places and changes nothing
     'coffins_anywhere', 'engrave_memorials', 'train_cook',   -- (0.105.47) each dry run finds and names, and changes nothing
@@ -1844,6 +1850,11 @@ local function cmd_status()
         saving = saving_now() or nil,
         -- (0.105.0) DF's meeting screen is open (the overseer answers it)
         meeting = meeting_focus() ~= nil or nil,
+        -- (0.105.48, K9) DF's World screen is open (the overseer leaves it unattended after a while)
+        world_open = (function()
+            local ok, v = pcall(function() return reqscript('ai-mission-send').world_screen() ~= nil end)
+            return ok and v or nil
+        end)(),
         -- (0.105.47) meetings queued behind DF's diplomacy light (the overseer opens them unattended)
         meeting_waiting = (function()
             local ok, n = pcall(function() return #df.global.plotinfo.dipscript_popups end)
@@ -1994,6 +2005,7 @@ for _, name in ipairs({'send_mission', 'trade_deal', 'open_trade', 'close_trade'
     BATCH_NEVER[name] = true
 end
 BATCH_NEVER.open_meeting = true   -- (0.105.47) drives a screen
+BATCH_NEVER.close_world = true    -- (0.105.48, K9) drives a screen over later frames
 
 function cmd_batch(args)
     if not in_fort() then return NOT_IN_FORT end

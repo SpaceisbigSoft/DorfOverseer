@@ -107,6 +107,26 @@ def meeting_leave_after(cant_answer: bool) -> float:
     nothing (either way nobody will answer it). Leaving ends the meeting
     without an agreement, as the 10-minute leave always did."""
     return MEETING_GIVEUP_S if cant_answer else MEETING_CLOSE_S
+
+
+WORLD_CLOSE_S = 360.0            # (0.105.48, K9, unattended) DF's World screen open this long is left
+
+
+def world_leave_due(status: dict, open_since, tried_at, now: float, unattended: bool, autopilot: bool,
+                    halted: bool, held_pin, stopped: bool) -> bool:
+    """(0.105.48, K9) The World screen's backstop, as the trade and meeting
+    screens have theirs: open WORLD_CLOSE_S (longer than the mission
+    sender's own stale time, 5 minutes) in an unattended run with nobody to
+    close it (the date stands still, so no cycle and no new send comes to
+    shut it), it is left; tried again every WORLD_CLOSE_S."""
+    st = status or {}
+    if not (unattended and autopilot and st.get("in_fort") and st.get("world_open")):
+        return False
+    if halted or held_pin or stopped or open_since is None:
+        return False
+    return now - open_since >= WORLD_CLOSE_S and now - tried_at >= WORLD_CLOSE_S
+
+
 STALL_AFTER_S = 60.0             # (unattended) running, but the date hasn't moved this long: a popup
 HEARTBEAT = LOG_DIR / "heartbeat"   # touched every loop: brain/keeper.py restarts a stuck overseer
 PLAN_EVERY_TICKS = 1200          # one in-game day
@@ -580,6 +600,7 @@ SHORT_WORDS = {
     "hunt_recall": "hunt back: call the hunting squads home",    # (0.105.45)
     "call_migrants": "call a migrant wave (DFHack's force Migrants) to a fallen fort DF sends none to",  # (0.105.46, I4)
     "open_meeting": "open the meeting waiting behind DF's diplomacy light",  # (0.105.47)
+    "close_world": "leave DF's World screen",   # (0.105.48, K9) unattended backstop
     "hospital_guard": "station a calm squad in the hospital while a tantrum is loose (or take it off)",  # (0.105.47)
     "tantrum_step_down": "take a tantrum-thrower off every post and the hospital work",  # (0.105.47)
     "training_squad": "a squad that only trains, for the civilians who badly want to fight (made, filled with volunteers, or let go)",  # (0.105.47)
@@ -1061,6 +1082,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
     state = get_state(bridge, tier)
     if controls.get("fps_low"):
         state["fps_low"] = controls["fps_low"]     # measured by the main loop (unattended)
+    # (0.105.48, K9) nobody at the game (--unattended, or the keeper's DFAI_PIN):
+    # the planner answers DF's meeting screen only then (planner_world)
+    state["unattended"] = bool(controls.get("unattended") or os.environ.get("DFAI_PIN"))
     key = fort_key(state)
     if key is None:
         say("Couldn't tell which fort is loaded (report section 'fort' failed); skipping this cycle.")
@@ -2380,6 +2404,7 @@ def _run(args) -> int:
     answer_cant = None           # (0.105.24) held_since of a meeting the AI can't answer (no button, a dead press)
     open_meeting_tried = float("-inf")   # (0.105.47) the last click on DF's diplomacy light
     open_meeting_said = None     # (0.105.47) the last line said about it (not said again)
+    world_since, world_tried = None, float("-inf")   # (0.105.48, K9) the World screen open since, last left
     stall_said = float("-inf")
     stall_wait = STALL_AFTER_S   # the wait before the next try at the same stall (doubles, up to 10 min)
     quieted = False              # (unattended) announcements told not to pause or pop up, this fort
@@ -2502,6 +2527,21 @@ def _run(args) -> int:
                         say(f"Unattended: DF's meeting screen held the game for {int(nowt - held_since)} s with "
                             "nobody to answer: " + ("left it (the meeting ends without an agreement)."
                                                     if r.get("ok") else f"couldn't leave it ({r.get('error')})."))
+                except (BridgeError, DFHackError):
+                    pass
+            # (0.105.48, K9) DF's World screen holds the game too: unattended, left
+            # after WORLD_CLOSE_S (lua/ai-mission-send.lua leave_world)
+            if st.get("in_fort") and st.get("world_open"):
+                world_since = nowt if world_since is None else world_since
+            else:
+                world_since, world_tried = None, float("-inf")
+            if world_leave_due(st, world_since, world_tried, nowt, args.unattended, args.autopilot,
+                               controls["halted"], held_pin, STOP_FILE.exists()):
+                world_tried = nowt
+                try:
+                    r = bridge.act({"type": "close_world"})
+                    say(f"Unattended: DF's World screen held the game for {int(nowt - world_since)} s with nobody "
+                        "to close it: " + ("leaving it." if r.get("ok") else f"not left ({r.get('error')})."))
                 except (BridgeError, DFHackError):
                     pass
             stalled = nowt - date_since >= STALL_AFTER_S

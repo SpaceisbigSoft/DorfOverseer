@@ -34,6 +34,13 @@ RAID_MAX_DIST = 40         -- world tiles: farther sites are no raid's business
 RAID_PER_OWNER = 3         -- the nearest sites of each owner
 RAID_MAX = 30
 RAID_NAME = 40
+-- (0.105.48, K9) the site types people live in (df.world_site_type names; the
+-- rest, Monument, LairShrine, Cave, ImportantLocation, PlayerFortress, are
+-- never a raid's target: the audit's world had 1210 monuments of unknown
+-- civs and the aggressive rule picked them first, being "weakest")
+RAID_LIVED_IN = {Town = true, Hamlet = true, Fortress = true, DarkFortress = true, MountainHalls = true,
+                 ForestRetreat = true, Camp = true, Tower = true}
+
 AI_ZONE_PREFIX = 'AI '     -- the AI's own zones' names ('AI pasture', 'AI gate dogs', ...)
 PET_BOOK_KEY = 'ai-overseer/raid_pets'
 PET_BOOK_MAX = 24
@@ -137,6 +144,25 @@ function pick_sites(rows, per, max, max_dist)
     return out
 end
 
+-- (0.105.48, K9) A site's people: resident_count (first_calc_total_pop, maybe 0
+-- for a site never loaded), else its populace (the entity populations' counts
+-- and the nemesis living there). Returns the count, or nil when none of it
+-- can be read or all of it is 0 (unknown: the brain uses raid_unknown_pop).
+function site_pop(s)
+    local okn, pop = pcall(function() return s.resident_count end)
+    if okn and type(pop) == 'number' and pop > 0 then return int(pop) end
+    local n = 0
+    pcall(function()
+        for _, ip in ipairs(each(s.populace.inhabitants)) do
+            local c = tonumber(ip.count)
+            if c and c > 0 then n = n + c end
+        end
+    end)
+    pcall(function() n = n + #s.populace.nemesis end)
+    if n > 0 then return int(n) end
+    return nil
+end
+
 function raid_sites()
     local okp, civ, group, fort_site = pcall(function()
         return df.global.plotinfo.civ_id, df.global.plotinfo.group_id, df.global.plotinfo.site_id
@@ -188,13 +214,15 @@ function raid_sites()
             local civ_id = (c and c >= 0) and c or (owner_kind == 'Civilization' and who or nil)
             local civ_name = civ_id and ent_info(civ_id) or owner_name
             local r = (civ_id and rel[civ_id]) or rel[who]
-            local okn, pop = pcall(function() return s.resident_count end)
+            local stype = enum_name(df.world_site_type, s.type)
+            if not RAID_LIVED_IN[stype] then return nil end
+            local pop = site_pop(s)
             local e = {site_id = int(s.id), site = name_of(s.name), dist = int(dist),
-                       type = enum_name(df.world_site_type, s.type),
+                       type = stype,
                        civ_id = civ_id and int(civ_id) or nil, owner_id = int(who), civ = civ_name,
                        owner_kind = owner_kind, relation = r or 'unknown',
                        hostile = hostile(r) or nil, at_war = (type(r) == 'string' and r:find('War') ~= nil) or nil,
-                       pop = (okn and type(pop) == 'number' and pop >= 0) and int(pop) or nil}
+                       pop = pop}
             -- no civilisation behind it (bandits, a monster's band): nobody's friend
             if not civ_id then e.bandit = true end
             return e

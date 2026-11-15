@@ -455,7 +455,8 @@ def _():
     assert env.press_guard(T("OpenTrade", "ExportAgreement", "ImportAgreement"), "small") is None
     assert env.press_guard(T("PleasantPlace", "TreeQuota"), "small") is None
     assert "2 topics" in env.press_guard(T("OpenTrade", "RequestPeace"), "small")     # peace is weighed
-    assert "tribute" in env.press_guard(T("OpenTrade", "TributeAgreement"), "small")
+    assert "topics" in env.press_guard(T("OpenTrade", "TributeAgreement"), "pay")        # not all always-yes
+    assert "topics" in env.press_guard(T("OpenTrade", "TributeAgreement"), "small")    # (0.105.48) small: weighed as No
     assert "DeclareWar" in env.press_guard(T("OpenTrade", "DeclareWar"), "pay")
     assert "left to you" in env.press_guard(T("OpenTrade", "BecomeLandHolder"), "small")
 

@@ -80,7 +80,8 @@ BATCH_NEVER = frozenset({
     "answer_meeting", "close_meeting", "save_game", "unpause", "quiet_announcements",
     "found_fort", "survey_water", "scan_entrances", "place_well", "restrict_water",
     "cistern_step",
-    "open_meeting"})   # (0.105.47)
+    "open_meeting",    # (0.105.47)
+    "close_world"})    # (0.105.48, K9)
 
 
 class BridgeError(DFHackError):

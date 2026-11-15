@@ -571,8 +571,9 @@ def player_rules(s: dict) -> dict:
             # wounded visitors) / ai (the default: great dangers too) (brain/planner_hunt.py)
             "hunt": st.get("hunt") if st.get("hunt") in ("off", "small", "ai") else "ai",
             # (0.105.47, J17) raids inside missions 'all': by the sliders, or forced (brain/planner_raids.py)
+            # (0.105.48, K9) off unless the settings say otherwise (the audit: off until watched live)
             "raid_policy": st.get("raid_policy") if st.get("raid_policy") in ("ai", "aggressive", "reactive", "off")
-            else "ai",
+            else "off",
             # (0.105.46, I4) a fallen fort DF sends no migrants to: the AI calls a wave
             # (DFHack's force Migrants; brain/planner_recovery.py): off only when the settings say so
             "call_migrants": st.get("call_migrants") is not False,

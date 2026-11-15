@@ -45,7 +45,8 @@ def fort(rows=(), targets=(), world=None, militarism=0, power=60.0, send=None, p
     for k in ("caution", "greed", "outsiders"):
         if k in settings:
             s["settings"]["traits"][k] = settings.pop(k)
-    s["settings"].update({"missions": "all", "send_missions": True})
+    # (0.105.48, K9) raid_policy is 'off' by default now: these tests turn it on ('ai')
+    s["settings"].update({"missions": "all", "send_missions": True, "raid_policy": "ai"})
     s["settings"].update(settings)
     if settings.pop("third_squad", False):           # 30 soldiers: the timid fort's reserve lets one squad go
         q = copy.deepcopy(s["military"]["squads"][-1])
@@ -154,7 +155,8 @@ def _():
       "clearly beat; an old attack, a peace pending: left alone")
 def _():
     rows = [site(1, 30, 25, pop=10), site(2, 30, 20, pop=10), site(3, 30, 5, pop=200, typ="DarkFortress")]
-    world = {"civs": [{"id": 30, "relation": "Peace"}],
+    # (0.105.48, K9) retaliation only while still at war: TotalWar (at peace: tests/test_k48_raids.py)
+    world = {"civs": [{"id": 30, "relation": "TotalWar"}],
              "sieges": [{"id": 30, "n": 2, "last_year": 147, "last_siege": True, "name": "The Goblins"}]}
     p, _ = rule(fort(rows, world=world))
     a = sent(p)
@@ -173,7 +175,7 @@ def _():
     assert "the thieves or ambush of y147" in sent(rule(fort(rows, world=w4))[0])[0].reason
     m = Mem()
     m.world_seen = {"grudges": {"30": {"name": "The Goblins", "sieges": 1, "last_year": 146}}}
-    assert sent(rule(fort(rows, world={"civs": [{"id": 30, "relation": "Peace"}]}), m)[0])
+    assert sent(rule(fort(rows, world={"civs": [{"id": 30, "relation": "TotalWar"}]}), m)[0])
 
 
 @test("reactive: a hostile camp (or bandits) close by is removed before it grows; one farther only when new since "
@@ -200,7 +202,7 @@ def _():
 
 @test("timid (Militarism -60, the Monastery): retaliation only with a sure win (3x); a threat only within 4 tiles")
 def _():
-    world = {"civs": [{"id": 30, "relation": "Peace"}], "sieges": [{"id": 30, "n": 1, "last_year": 147}]}
+    world = {"civs": [{"id": 30, "relation": "Skirmishing"}], "sieges": [{"id": 30, "n": 1, "last_year": 147}]}
     # one squad of 10 at power 60 (the reserve keeps the other); pop 50 Camp: (4 + 25) x 0.8 = 23.2 -> 2.6x
     mid = [site(1, 30, 10, pop=50)]
     assert sent(rule(fort(mid, world=world))[0])                       # reactive: 2.6x >= 2
@@ -311,6 +313,7 @@ def _():
     assert not [x for x in rule(s)[0] if x.action.get("type") == "mission_pets"]
     s = fort(pets={"held": [], "book": book})
     s["missions"]["squads"][0]["away"] = 10
+    s["missions"]["squads"][0]["controller"] = 77     # (0.105.48, K9) a squad out has a controller
     assert not [x for x in rule(s)[0] if x.action.get("type") == "mission_pets"]
     s = fort(pets={"held": [], "book": book}, send=button({"raid": {"result": "sent", "tick": NOW - 100}}))
     assert not [x for x in rule(s)[0] if x.action.get("type") == "mission_pets"]
