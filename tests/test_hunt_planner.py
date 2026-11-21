@@ -162,7 +162,8 @@ def _():
     assert not sends(p) and any("called off" in x for x in n), n
     p, n = run(state([target(region="cavern", route={"ok": False, "length": None, "blocked_by": "seal"},
                              great_danger=True, kinds=["ForgottenBeast"])], sq))
-    assert not sends(p) and any("cavern seal" in x and "lure and cut-off" in x for x in n), n
+    # (r2h7) judged: the squads win it, so it is the seal's kill plan's (a loss: the lure's)
+    assert not sends(p) and any("cavern seal" in x and "kill plan" in x for x in n), n
     p, n = run(state([target(route={"ok": False, "blocked_by": "no_path"})], sq))
     assert not sends(p) and any("no way" in x for x in n), n
     p, n = run(state([target(thief=True)], [squad(1, 5, 900, at_home=False, hunting=500), squad(2, 5, 900),

@@ -690,8 +690,7 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
         # (0.105.51) not a cavern well's door the seal leaves open (its shaft gate keeps the
         # cavern out, or a dwarf is beyond it): R3 counted "1 door on record, 1 open" and the
         # bridge refused "no door or hatch on the way down to lock" (A 12, B 9, C 7, E 7)
-        lockable = [o for o in ops if o.get("kind") != "well" and o.get("building") in ("Door", "Hatch")
-                    and not o.get("seal_skip") and not o.get("well_blocked")]
+        lockable = seal_lockable_rows(ops)
         # (a door reads closed whenever nobody passes: only the lock, or the seal's own lever pull, counts)
         # (0.105.45) a door a lure holds open (lua/ai-lure.lua, its phase "open") is open on purpose:
         # the lure locks it again itself (planner_lure)
@@ -829,7 +828,14 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                                       "mapped today show no spot for a door or hatch on the way down, and the AI "
                                       "can't wall an opening it hasn't mapped; meanwhile it maps them again each "
                                       "day and puts a door on any opening it finds")
-        shafts = [x for x in _l(_d(s.get("projects")).get("well_lids")) if isinstance(x, dict)
+            elif not lockable and any(o.get("kind") == "well" or o.get("seal_skip") or o.get("well_blocked")
+                                      for o in ops):
+                # (r2h7) R3: the only ways down on record were the cavern well's: its shaft
+                # hatch (worked by its watcher) and its door (left open: the shaft gate keeps
+                # the cavern out). Said, not asked of the bridge (refused 24 of 24)
+                notes.append(f"{who} is about: the only way down on record is the cavern well, whose shaft gate "
+                             "shuts by itself when a danger comes near it; nothing else to lock")
+        shafts =[x for x in _l(_d(s.get("projects")).get("well_lids")) if isinstance(x, dict)
                   and x.get("gate") in ("open", "closed", "pulling")]
         # (group 2) a bridge that judges the shaft itself shuts it only for a
         # danger that could come up it (not for every beast in the caverns): said
@@ -899,8 +905,9 @@ def _far(a, b) -> float:
 
 def _hunt_doors(t: dict) -> list:
     """The seal's doors and hatches on the ways down (what the squads hold)."""
-    return [o for o in _l(_d(t.get("openings")).get("list")) if isinstance(o, dict) and o.get("kind") != "well"
-            and o.get("building") in ("Door", "Hatch") and o.get("built") is not False and not o.get("seal_skip")
+    # (r2h7) the seal's own test (seal_lockable_rows): what it can lock, the squads hold
+    return [o for o in seal_lockable_rows(_l(_d(t.get("openings")).get("list")))
+            if o.get("building") in ("Door", "Hatch") and o.get("built") is not False
             and all(_num(o.get(k)) for k in ("x", "y", "z"))]
 
 
@@ -1110,6 +1117,28 @@ def _beast_hunt(s, cfg, memory, t, great, ops, down, sealed, unlocked, proposals
 STAIRISH = ("STAIR", "RAMP")
 
 
+def seal_lockable_rows(ops: list) -> list:
+    """(r2h7) The openings the seal can lock, by the bridge's own test
+    (ai-threats seal_lockable, which seal_cavern uses too): each row the
+    openings report marks `lockable`. A row from an older bridge (no such
+    field) is judged as 0.105.51 did: a door or hatch, not a cavern well's
+    shaft hatch, not a well door the seal leaves open or a dwarf is beyond."""
+    out = []
+    for o in ops:
+        if not isinstance(o, dict):
+            continue
+        if "lockable" in o:
+            if o.get("lockable") is True:
+                out.append(o)
+        elif (o.get("kind") != "well" and o.get("building") in ("Door", "Hatch")
+              and not o.get("seal_skip") and not o.get("well_blocked")):
+            out.append(o)
+    return out
+
+
+SEAL_NONE_WHY = ("no door or hatch", "only cavern well doors")
+
+
 def _seal_refused_none(memory, s) -> bool:
     """(0.105.51) The seal was refused "no door or hatch on the way down to
     lock" and its back-off still runs: not asked again meanwhile (R3: A 12,
@@ -1117,7 +1146,7 @@ def _seal_refused_none(memory, s) -> bool:
     _cavern_close_way) where the caverns are open to the fort."""
     for k, r in _d(getattr(memory, "refusals", None)).items():
         if (isinstance(k, str) and k.startswith("seal_cavern:") and isinstance(r, dict)
-                and str(r.get("why") or "").startswith("no door or hatch")):
+                and str(r.get("why") or "").startswith(SEAL_NONE_WHY)):
             until, now = r.get("until"), abs_tick(s)
             if isinstance(until, int) and isinstance(now, int) and now < until:
                 return True

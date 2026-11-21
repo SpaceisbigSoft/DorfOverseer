@@ -62,6 +62,7 @@ CAVERN_RADIUS = 25           -- soil this far (across) from where the fort meets
 CAVERN_LEVELS = 2            -- and this many levels up or down
 CAVERN_DANGER = 30           -- no plot with a danger this close
 CAVERN_SIDE_MAX, CAVERN_SIDE_MIN = 6, 2
+CAVERN_SNAP = 4              -- (r2h7) `at` not a cavern tile: the nearest walkable one this near (and CAVERN_LEVELS)
 CAVERN_TILES_MAX = 60
 FARM_GRASS = {SOIL = true, GRASS_LIGHT = true, GRASS_DARK = true, GRASS_DRY = true, GRASS_DEAD = true}
 
@@ -667,6 +668,28 @@ function cavern_spots(good, at, want, radius, levels, side_max, side_min)
     return spots, total
 end
 
+-- (r2h7) The nearest walkable, seen cavern tile (a map feature's) within
+-- CAVERN_SNAP tiles across and CAVERN_LEVELS levels of x, y, z, or nil.
+function cavern_snap(B, x, y, z)
+    local best, bd
+    for dz = -CAVERN_LEVELS, CAVERN_LEVELS do
+        for dy = -CAVERN_SNAP, CAVERN_SNAP do
+            for dx = -CAVERN_SNAP, CAVERN_SNAP do
+                local d = math.abs(dx) + math.abs(dy) + 3 * math.abs(dz)
+                if not bd or d < bd then
+                    local t = B.tile_info(x + dx, y + dy, z + dz)
+                    if t and t.feature_global and not t.hidden and t.shape == 'FLOOR'
+                            and B.walk_group(x + dx, y + dy, z + dz) ~= 0 then
+                        best, bd = {x + dx, y + dy, z + dz}, d
+                    end
+                end
+            end
+        end
+    end
+    if best then return best[1], best[2], best[3] end
+    return nil
+end
+
 function cavern_farm(o, dry_run)
     o = o or {}
     local at = type(o.at) == 'table' and o.at or nil
@@ -680,7 +703,14 @@ function cavern_farm(o, dry_run)
     local B = builder()
     local t = B.tile_info(ax, ay, az)
     if not t or not t.feature_global then
-        return {ok = false, rejected = true, error = ('x%d y%d z%d is not in a cavern'):format(ax, ay, az)}
+        -- (r2h7) A, 15-16 Nov: refused 60 times "x128 y127 z143 is not in a cavern", the
+        -- same tile every time: the deep report's junction is the fort's side of the
+        -- meeting (a dug or built tile). The nearest walkable cavern tile is taken instead
+        local ok, sx, sy, sz = pcall(cavern_snap, B, ax, ay, az)
+        if not (ok and sx) then
+            return {ok = false, rejected = true, error = ('x%d y%d z%d is not in a cavern'):format(ax, ay, az)}
+        end
+        ax, ay, az = sx, sy, sz
     end
     local g = B.walk_group(ax, ay, az)
     if g == 0 then return {ok = false, rejected = true, error = 'the cavern there is not walkable'} end

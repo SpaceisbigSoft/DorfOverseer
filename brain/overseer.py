@@ -562,7 +562,7 @@ SHORT_WORDS = {
     "fortify_post": "carve fortifications beside an entrance (archers shoot through them)",   # (item5)
     "archer_post": "post the crossbow squads behind the entrance's fortifications",
     "place_siege_engine": "place a ballista behind the entrance's fortifications",
-    "place_siege_shop": "place a siege workshop near the gate (ballista parts and arrows)",
+    "place_siege_shop": "place a siege workshop (ballista parts and arrows), by the gate where there is room",
     "build_killzone": "set traps in the narrow way in behind a gate or cavern opening, and a drawbridge",   # (0.105.45)
     "reset_cage_traps": "see that the kill zone's full cage traps can be emptied and loaded again",
     "squad_barracks": "give a squad its barracks",
@@ -917,6 +917,8 @@ def short(a: dict) -> str:
     if t == "start_project":
         what = a.get("name") and f"memorial for {a['name']}" or a.get("kind")
         return f"dig a new {what} level"
+    if t == "finish_project" and a.get("leave_planned"):       # (r2h7)
+        return f"close level #{a.get('project_id')}, its waiting pieces left planned"
     if t == "finish_project" and a.get("give_up"):       # (0.105.51)
         return f"finish level #{a.get('project_id')} without its waiting workshops"
     if t in ("furnish_project", "finish_project", "engrave_project", "cancel_project"):

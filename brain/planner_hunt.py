@@ -292,7 +292,8 @@ def _blocked(s: dict, memory, cfg: dict, rules_: dict, mode: str) -> str | None:
     if "civ_alert" in errors:
         return "the alarm couldn't be read"
     if s.get("civ_alert") is True or (memory is not None and getattr(memory, "ai_alert_raised", False)):
-        return "the alarm is up"
+        if not thief_alarm_over(s, memory, cfg):
+            return "the alarm is up"
     siege = _siege_why(s, cfg)
     if siege:
         return siege
@@ -300,6 +301,38 @@ def _blocked(s: dict, memory, cfg: dict, rules_: dict, mode: str) -> str | None:
     if isinstance(f, dict) and f:
         return "a fight with a great danger is under way"
     return None
+
+
+def thief_alarm_over(s: dict, memory, cfg: dict) -> bool:
+    """(r2h7) Is the alarm up only for a lone thief already dealt with or
+    gone? R3: DF's invasion record of one sneaker (an artifact seeker, a
+    thief) raised the alarm at once (B, C), and with the alarm up no hunt
+    may start: `hunt_send` 0 in six forts over eight game years. True when
+    the AI's own alarm was raised for DF's intruder record, that record is a
+    lone sneaker (planner_threats.lone_sneaker) no longer unseen (spotted, or
+    its time is past), no thief or snatcher is inside or in reach of the
+    dwarves, and nothing else would hold the alarm (a hazard, the walking
+    dead, a great beast near those outside). An alarm the player raised, or
+    one for anything else, still stops the hunts."""
+    if memory is None or not getattr(memory, "ai_alert_raised", False):
+        return False
+    on = _d(_d(getattr(memory, "alarm_gov", None)).get("on"))
+    if on.get("cause") != "intruder":
+        return False
+    try:
+        from planner_threats import lone_sneaker, unseen_intrusion, threat_alert
+        from planner_military import hazard_alert
+        from planner_core import thief_rows
+        if not lone_sneaker(getattr(memory, "intrusion", None)):
+            return False
+        if unseen_intrusion(s, memory, cfg) is not None:
+            return False
+        for x in thief_rows(s):
+            if not x.get("caged") and (x.get("inside") or x.get("can_reach_dwarves") is True):
+                return False
+        return not (hazard_alert(s, cfg) or threat_alert(s, cfg))
+    except Exception:  # noqa: BLE001  (unsure: the alarm stops the hunts, as before)
+        return False
 
 
 def _siege_why(s: dict, cfg: dict) -> str | None:
@@ -436,6 +469,14 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
                 and (_num(tr.get("caution")) or 0) < cfg.get("hunt_great_caution_max", 150))
     great_hunted = any(_d(targets.get(i)).get("great_danger") for i in hunted)
 
+    hidden_mult = float(cfg.get("r2h7_hunt_hidden_ratio_mult", 1.5))
+
+    def _need(t: dict) -> float:
+        # (r2h7) a great beast unseen in a cavern (the bridge lists it hidden): only on a
+        # clearly good matchup, its strength counted `r2h7_hunt_hidden_ratio_mult` times
+        n = need_of(t, memory)
+        return n * hidden_mult if t.get("hidden") else n
+
     said: list = []
     ranked = []
     from planner_core import thief_rows, crowded_thief
@@ -478,7 +519,16 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
         if not r.get("ok"):
             b = r.get("blocked_by")
             if b == "seal" and t.get("region") == "cavern":
-                said.append(f"{head}: behind the AI's cavern seal; left to the lure and cut-off rules, not hunted")
+                # (r2h7) judged as a hunt: a clearly good matchup is the seal's kill plan's
+                # (planner_threats _beast_hunt opens the seal for the fight), a poor one stays sealed
+                party, why = party_for(t, free, all_soldiers, len(home), home_soldiers, _need(t), ratio, cfg)
+                if party is not None:
+                    said.append(f"{head}: behind the AI's cavern seal and the squads would win "
+                                f"({_party_power(t, party):.0f} against {_need(t):.0f}): the seal's kill plan "
+                                "opens the way for the fight")
+                else:
+                    said.append(f"{head}: behind the AI's cavern seal; kept there ({why}): left to the lure and "
+                                "cut-off rules")
             elif b == "gate":
                 said.append(f"{head}: the way to it is behind a shut gate; not hunted")
             else:
@@ -501,7 +551,7 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
     sent = False
     for _, t in ranked:
         head = _head(t)
-        need = need_of(t, memory)
+        need = _need(t)
         if sent:
             said.append(f"{head}: waits; one new hunt a cycle")
             continue
