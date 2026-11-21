@@ -58,6 +58,8 @@ from planner_cleanup import _world_cleanup_rule, note_cleanup  # noqa: E402  (0.
 from planner_captives import _captives_rule, _necro_rule, note_captives  # noqa: E402  (item6) prisoners' outcomes, necromancer sieges
 from planner_weather import _weather_rules, _weather_squad_filter, note_keep_in  # noqa: E402  (0.105.40b) evil weather
 from planner_alarm import govern_alarm, note_alarm_change, reach_alarm_over, reach_raise_held, snatch_alarm  # noqa: E402  (item4) the alarm kept from flapping
+from planner_war_hold import (book_unfought, lone_hunted, note_war_hold, unfought,  # noqa: E402  (r1g5)
+                             unfought_raise_held, war_hold_filter)
 from planner_firebreath import _fire_breather_rule  # noqa: E402  (0.105.40b) no melee squad at a fire breather
 from planner_siege import _siege_rules  # noqa: E402  (item5) siege engines, archer posts, caravan guard, wildlife hunts
 from planner_hazards import _hazards_rule, magma_alarm  # noqa: E402  (0.105.41, item 7) spilt magma, cave-ins, frost, heat
@@ -265,11 +267,30 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             few = few_ordinary(s, cfg, traits) if ids else []                # (0.105.8) B's 31 dead of thirst
             stand_down = (bool(lone and lone_alert_over(s, memory, cfg)) or lockdown_released(memory)
                           or bool(few and few_alert_over(s, memory, cfg)))
+            # (r1g5) B (y262): lowered "a squad on them" 11 s after "no squad has
+            # anyone armed to send": a lone intruder's alarm comes down only while
+            # an AI squad's kill order names them (or once they are gone)
+            if lone and stand_down and not lone_hunted(s, lone):
+                stand_down = False
+                if alert_on and memory.ai_alert_raised:
+                    notes.append(f"{len(lone)} enemy/enemies inside the fort and no squad's kill order names them: "
+                                 "the alarm stays up (it comes down once a squad is on them or they are gone)")
+            # (r1g5) E (y256-259): 812 days of alarm for a titan nobody fought:
+            # after r1g5_unfought_alarm_days the fort fights or lifts the alarm
+            uf = unfought(s, memory, cfg, ids) if ids and alert_on and not stand_down else {}
+            if uf.get("mode"):
+                book_unfought(s, memory, uf)
             # (0.105.48, K1) the "can reach" alarm's maximum time (planner_alarm)
             capped = "" if stand_down or not alert_on else reach_alarm_over(s, memory, cfg, ids)
+            if uf.get("mode") == "lift":
+                capped = uf["why"]
             held = reach_raise_held(s, memory, cfg, fresh) if fresh and not alert_on else ""
+            if fresh and not alert_on and not held:
+                held = unfought_raise_held(s, memory, cfg, fresh)
             # (0.105.48, K16) a snatcher (out of reach like a thief): the alarm, not the gates
             snatch = snatch_alarm(s, memory, cfg) if not ids else {}
+            if uf.get("mode") == "fight":
+                notes.append(f"the alarm stays up: {uf['why']}")
             if capped and not hazard_alert(s, cfg):
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False}, capped, 0))
             elif held:
@@ -1202,6 +1223,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         kept = _guard(_kill_hold_filter, s, memory, cfg, proposals, notes)
         if kept is not None:
             proposals = kept
+        # (r1g5) B, F: no trim, swap or off duty while danger is about
+        kept = _guard(war_hold_filter, s, memory, cfg, proposals, notes)
+        if kept is not None:
+            proposals = kept
     # (0.105.40b) no squad sent out into evil weather at enemies outside (unless enemies are inside)
     if "threats" not in errors or isinstance(s.get("weather"), dict) and s["weather"]:
         kept = _guard(_weather_squad_filter, s, memory, cfg, proposals, notes)
@@ -2084,6 +2109,7 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         _step(note_hauling, s, memory, cfg)                     # (0.105.40b fix) haulers to spare since when
     if "others_on_map" not in errors:
         notes += _step(note_lockdown, s, memory, cfg) or []     # (0.105.3) B's sealed hatch: lone intruders, the cap
+        _step(note_war_hold, s, memory, cfg)                    # (r1g5) the lifted long alarm's enemies forgotten
     if "locations" not in errors:
         _step(note_locations, s, memory, cfg)                   # (0.105.26) moved out of plan()
     if "entrances" not in errors:
