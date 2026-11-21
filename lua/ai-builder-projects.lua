@@ -1804,7 +1804,14 @@ function drop_waiting_shops(p)
     return n
 end
 
-function finish_project(id, decor_only, stalled, give_up)
+-- (r2h7) leave_planned: the stuck sweep's give-up of a level furnishing for
+-- months with pieces of any kind waiting (R3 and 15-16 Nov: refused "N
+-- buildings still waiting" 71 of 71 times, the same levels for up to 146
+-- days): the level is finished and its slot freed, the waiting pieces left
+-- planned (DF builds them when their items come, as decor_only leaves the
+-- statues); with give_up too, the waiting workshops are taken off first. Not
+-- a well level (its well is the point: the well rule orders its parts).
+function finish_project(id, decor_only, stalled, give_up, leave_planned)
     local data = load_projects()
     local p = find(data, id)
     -- (merge32) a dug way in finishes from its dig (nothing to furnish)
@@ -1822,8 +1829,18 @@ function finish_project(id, decor_only, stalled, give_up)
         if n > 0 and not (decor_only and DECOR_ONLY[name]) then left = true end
         if n > 0 and not GIVE_UP_KINDS[name] then only_shops = false end
     end
-    local dropped
-    if give_up and left and only_shops then
+    local dropped, kept
+    if leave_planned and left and not (give_up and only_shops) then
+        if p.kind == 'well' then
+            return {ok = false, rejected = true, error = 'a well level is not given up while its well waits (the well rule orders its parts)'}
+        end
+        if give_up then
+            local okd, n = pcall(drop_waiting_shops, p)
+            dropped = okd and n or 0
+        end
+        kept = math.max(0, f.placed - f.done - (dropped or 0))
+        -- falls through to finish
+    elseif give_up and left and only_shops then
         local okd, n = pcall(drop_waiting_shops, p)
         dropped = okd and n or 0
         -- falls through to finish
@@ -1850,7 +1867,8 @@ function finish_project(id, decor_only, stalled, give_up)
     end
     -- (layout B) a floor level's pile rooms are booked for their shops (ai-builder-floorpiles.lua)
     if p.floor and type(floor_book_piles) == 'function' then pcall(floor_book_piles, p) end
-    return {ok = true, project_id = id, phase = p.phase, burial = burial, dropped = dropped}
+    return {ok = true, project_id = id, phase = p.phase, burial = burial, dropped = dropped,
+            left_planned = kept}   -- (r2h7)
 end
 
 -- Smoothing finished -> engrave the halls (Quickfort only engraves smooth

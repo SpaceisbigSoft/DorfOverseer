@@ -1079,6 +1079,45 @@ local function opening_state(o)
     return row
 end
 
+-- (r2h7) THE one test of "can the seal lock this opening", used by the
+-- openings report (the brain counts only rows it marks lockable) and by
+-- seal_cavern itself, so the two can't disagree again (R3: the planner
+-- counted the cavern well's door and hatch, the bridge refused them 24 of 24
+-- times). o: an opening on record ({x, y, z, kind, source}); row: its
+-- opening_state (read here when nil). Returns lockable (bool), why (the
+-- reason it isn't: a string), blocked (a dwarf beyond it: a name; the
+-- seal waits for them rather than gives up) and the reason's code ('shaft',
+-- 'none', 'blocked', 'skip').
+--   * a cavern well's shaft hatch (kind 'well') never: its watcher and
+--     lever work it (the bucket needs it open unless a danger is near);
+--   * nothing but a door or hatch is lockable (a wall, an empty tile);
+--   * a cavern well's door with a dwarf beyond it (door_blocked), or whose
+--     well's shaft gate keeps the cavern out (door_seal_skip): left open.
+function seal_lockable(o, row)
+    if type(o) ~= 'table' then return false, 'not an opening' end
+    if o.kind == 'well' then
+        return false, 'a cavern well\'s shaft hatch: its own watcher shuts it when a danger comes near', nil, 'shaft'
+    end
+    row = row or opening_state(o)
+    if row.building ~= 'Door' and row.building ~= 'Hatch' then
+        return false, row.building and ('a ' .. tostring(row.building) .. ', not a door or hatch') or 'no door or hatch there',
+            nil, 'none'
+    end
+    if type(o.source) == 'string' and o.source:find('^cavern well') then
+        local okw, W = pcall(reqscript, 'ai-well-safety')
+        if okw and W then
+            local okb, who = pcall(function() return W.door_blocked(o) end)
+            if okb and who then
+                local name = tostring(who)
+                return false, name .. ' is beyond the cavern well\'s door', name, 'blocked'
+            end
+            local oks, why = pcall(W.door_seal_skip, o)
+            if oks and type(why) == 'string' then return false, why, nil, 'skip' end
+        end
+    end
+    return true
+end
+
 -- (0.105.26 seal fix) What the seal holds, from its record: {ids = {building
 -- id = true} (locked by it, or shut by their lever), locked = {id = true}
 -- (the lock), pulled = {id = true} (shut by their lever), levers = {lever id
@@ -1148,15 +1187,11 @@ function openings_report(d, t, txt)
             -- same): its shaft gate keeps the cavern out, or a dwarf is beyond it. R3:
             -- the planner counted "1 door on record, 1 open" and the seal was refused
             -- "no door or hatch on the way down to lock" (A 12, B 9, C 7, E 7 times)
-            if row.id and o.kind ~= 'well' and type(o.source) == 'string' and o.source:find('^cavern well') then
-                local okw, W = pcall(reqscript, 'ai-well-safety')
-                if okw and W then
-                    local oks, why = pcall(W.door_seal_skip, o)
-                    if oks and type(why) == 'string' then row.seal_skip = why:sub(1, 120) end
-                    local okb, who = pcall(W.door_blocked, o)
-                    if okb and who then row.well_blocked = tostring(who):sub(1, 60) end
-                end
-            end
+            -- (r2h7) the seal's own test (seal_lockable): the brain counts these rows only
+            local okl, can, why, blocked, code = pcall(seal_lockable, o, row)
+            row.lockable = (okl and can) and true or false
+            if okl and code == 'blocked' then row.well_blocked = tostring(blocked):sub(1, 60)
+            elseif okl and code == 'skip' then row.seal_skip = tostring(why):sub(1, 120) end
             row.x, row.y, row.z, row.kind, row.source = o.x, o.y, o.z, o.kind, o.source
             table.insert(list, row)
         end
@@ -2041,29 +2076,22 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
     if openings then
         for _, o in pairs(d.openings) do
             if type(o) == 'table' and o.x and o.kind ~= 'well' then
-                -- (0.105.47) a cavern well's door with a dwarf beyond it (its
-                -- gallery, stairs, shaft, the cavern under it): not locked on them
-                local okb, who, dwarf = false, nil, false
-                if type(o.source) == 'string' and o.source:find('^cavern well') then
-                    okb, who = pcall(function() return reqscript('ai-well-safety').door_blocked(o) end)
-                    dwarf = okb and who and true or false
-                    -- (K48-K4) nor a gallery's door while its well's shaft gate is linked:
-                    -- the well beyond it stays the fort's water (the gate keeps the cavern out)
-                    if not (okb and who) then
-                        okb, who = pcall(function() return reqscript('ai-well-safety').door_seal_skip(o) end)
-                    end
-                end
-                if okb and who then
+                -- (0.105.47, K48-K4) a cavern well's door with a dwarf beyond it, or
+                -- whose shaft gate keeps the cavern out: left open. (r2h7) by
+                -- seal_lockable, the test the openings report gives the brain
+                local okl, can, why, blocked, code = pcall(seal_lockable, o)
+                if okl and not can and (code == 'blocked' or code == 'skip') then
                     well_kept = well_kept + 1
-                    if dwarf then
+                    if blocked then
                         well_dwarf = well_dwarf + 1
-                        well_why = tostring(who) .. ' is beyond the cavern well\'s door'
+                        well_why = tostring(why)
                     else
-                        well_why = well_why or tostring(who)
+                        well_why = well_why or tostring(why)
                     end
-                else
+                elseif not okl or can then
                     table.insert(list, {x = o.x, y = o.y, z = o.z})
                 end
+                -- (not lockable for want of a door: nothing to add; the walk below finds nothing there either)
             end
         end
     end
@@ -2148,7 +2176,7 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
         -- open (their shaft gate keeps the cavern out, or a dwarf is beyond):
         -- said as such, not "no door or hatch" (the planner leaves them out too)
         if not dry_run then save_state(d) end
-        return {ok = false, rejected = true, well_kept = well_kept,
+        return {ok = false, rejected = true, well_kept = well_kept, nothing_lockable = true,   -- (r2h7)
                 nothing_to_do = well_dwarf == 0 or nil, waiting = well_dwarf > 0 or nil,
                 error = 'only cavern well doors on the way down, left open: ' .. tostring(well_why):sub(1, 100)}
     end
@@ -2156,6 +2184,7 @@ function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
         if not dry_run then save_state(d) end          -- (the openings found are kept)
         return {ok = false, rejected = true, nothing_to_do = already > 0 and pull_failed == 0,
                 pull_failed = pull_failed > 0 and pull_failed or nil,
+                nothing_lockable = (already == 0 and pull_failed == 0) or nil,   -- (r2h7) the brain stops asking
                 error = pull_failed > 0 and (pull_failed .. ' lever(s) on the way down would not pull: the doors stay open')
                     or already > 0 and 'every door and hatch on the way down is locked already'
                     or 'no door or hatch on the way down to lock'}

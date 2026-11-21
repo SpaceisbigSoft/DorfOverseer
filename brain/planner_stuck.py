@@ -208,9 +208,16 @@ def _remedies(r: dict, proj: dict | None, order: dict | None, days: int, cfg: di
             # bridge refuses a plain finish ("1 buildings still waiting");
             # give_up takes them off (as the building rule does, at its age)
             fw = {k for k, v in _d(fur.get("waiting")).items() if _int(v, 0) > 0}
-            if (fw and fw <= {"Workshop", "Furnace"}
-                    and _int(fur.get("days"), 0) >= int((cfg or {}).get("shop_piece_wait_days", 168))):
+            old_shops = _int(fur.get("days"), 0) >= int((cfg or {}).get("shop_piece_wait_days", 168))
+            if fw and fw <= {"Workshop", "Furnace"} and old_shops:
                 retire["give_up"] = True
+            elif fw:
+                # (r2h7) pieces wait (beds, tables, altars, or shops younger than
+                # shop_piece_wait_days): a plain finish is refused "N buildings still waiting" (71 of
+                # 71 in R3; the same levels re-proposed up to 146 days). The level is
+                # closed and its slot freed, its waiting pieces left planned (DF builds
+                # them when their items come)
+                retire["leave_planned"] = True
             return None, retire, what
         return None, None, what
     if k == "cistern":
@@ -259,6 +266,10 @@ def _skip(r: dict, proj: dict | None, order: dict | None, cfg: dict, dead=None) 
             return "the projects section doesn't show it this cycle"
         if r.get("state") == "decorate":
             return "a level decorating times out by itself"
+        if r.get("what") == "well" and r.get("state") == "furnish":
+            # (r2h7) the well waits for its parts: the well rule orders them (and the
+            # bridge never closes a well level without its well)
+            return "the well rule orders its well's parts"
     if k == "cistern" and cfg.get("cistern_hold"):
         return "the cistern is on hold"
     if k == "squad" and r.get("state") != "kill_done":

@@ -1473,6 +1473,13 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r2h7) the rules refused every time: hunts (brain/planner_hunt.py), residency (planner_visitors)
+PLANNER_CONFIG.update({
+    "r2h7_hunt_hidden_ratio_mult": 1.5,   # a great beast unseen in a cavern is hunted only at this times the hunt ratio
+    "r2h7_residency_neutral_days": 14,    # a neutral fort (no stance) declines a petition to stay this many days after it came
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

@@ -71,7 +71,10 @@ end
 function target_ok(f)
     if f.dead then return false, 'dead' end
     if f.caged then return false, 'caged' end
-    if f.hidden then return false, 'hidden' end
+    -- (r2h7) a hidden unit is no target, but for a great danger (a forgotten
+    -- beast the fort was told of) unseen in a cavern: listed (hidden = true),
+    -- the brain hunts it only on a clearly good matchup (planner_hunt)
+    if f.hidden and not f.great_hidden then return false, 'hidden' end
     if f.citizen or f.resident then return false, 'the fort\'s own' end
     if f.merchant then return false, 'merchant' end
     if f.diplomat then return false, 'diplomat' end
@@ -274,6 +277,14 @@ local function facts(u, T, hostile_wild)
                merchant = is(du.isMerchant, u), diplomat = is(du.isDiplomat, u),
                tame = is(du.isTame, u) or is(du.isPet, u),
                fort_animal = is(du.isAnimal, u) and is(du.isFortControlled, u)}
+    -- (r2h7) a hidden great danger (one DF announced: a forgotten beast below)
+    if f.hidden and not (f.dead or f.caged) then
+        f.great_hidden = is(du.isGreatDanger, u)
+        if f.great_hidden then
+            f.danger = true
+            return f
+        end
+    end
     -- the fort's own, traders, the caged and the dead: nothing more read (cheap)
     if f.dead or f.caged or f.hidden or f.citizen or f.resident or f.merchant
             or f.diplomat or f.tame or f.fort_animal then
@@ -428,14 +439,18 @@ function report(txt, opts)
         end)
         local yes, why = false, nil
         if okf and f then yes, why = target_ok(f) end
+        local pos, layer, region
+        if yes then
+            pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
+            layer = layer_at(pos, layers)
+            region = region_of(layer, outside_at(pos))
+            if f.great_hidden and region ~= 'cavern' then yes = false end      -- (r2h7) the caverns' only
+        end
         if yes then
             total = total + 1
             local key = tostring(u.id)
             seen_now[key] = true
             if d.seen[key] == nil then d.seen[key] = t; changed = true end
-            local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
-            local layer = layer_at(pos, layers)
-            local region = region_of(layer, outside_at(pos))
             local g = group_near(pos)
             local dist = home and (math.max(math.abs(pos.x - home.x), math.abs(pos.y - home.y))
                                    + 3 * math.abs(pos.z - home.z)) or nil
@@ -455,6 +470,7 @@ function report(txt, opts)
                 ambush = f.ambush, thief = f.thief,
                 wounded_visitor = (f.visitor and f.wounded and f.interrupter) and true or false,
                 invader = f.invader or nil,
+                hidden = f.great_hidden or nil,      -- (r2h7) unseen, listed as a great danger below
                 route = classify_route({group = g, main = main, region = region, layer = layer,
                                         sealed = sealed, gate_shut = gate_shut, dist = dist}),
                 near_workers = count_near(pos, by_z),

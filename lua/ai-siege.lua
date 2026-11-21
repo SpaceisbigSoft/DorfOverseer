@@ -563,19 +563,92 @@ function shop_spot(e, inside, T)
     return best
 end
 
+-- (r2h7) R3 and the 15-16 Nov run: "no free 7x7 of roofed floor within 15
+-- tiles of that entrance" A 35+42, D 40, E 29+21 times, every time: a stair
+-- entrance with a 3-wide gatehouse has no such floor beside it. A siege
+-- workshop is 5x5 and need not stand by the gate (its parts are carried to
+-- the engines). Anywhere on the fort's inside then, nearest the entrance
+-- first: a 5x5 of free roofed floor (FLOOR tiles, none of it the opening)
+-- whose ring is wall or free floor, the free ring tiles in one run round it
+-- (so nothing it stands on was a way through: a corridor's two sides are two
+-- runs) and at least one of them beside an edge (not only a corner). A
+-- workshop level's empty 5x5 room, its 3-wide door onto the corridor, is
+-- such a spot. SHOP_SCAN_MAX tiles looked at at most.
+SHOP_SCAN_MAX = 250000
+
+local RING = {}
+do
+    for dx = -3, 3 do table.insert(RING, {dx, -3}) end
+    for dy = -2, 3 do table.insert(RING, {3, dy}) end
+    for dx = 2, -3, -1 do table.insert(RING, {dx, 3}) end
+    for dy = 2, -2, -1 do table.insert(RING, {-3, dy}) end
+end
+
+function shop_spot_anywhere(e, inside, T)
+    local opening = {}
+    for _, k in ipairs(e.inside_list or {}) do opening[k] = true end
+    local function core(x, y, z)
+        local t = T(x, y, z)
+        return t and inside[gkey(x, y, z)] == true and t.walk and t.shape == 'FLOOR' and not t.outside
+            and not t.liquid and not t.occupied and not t.designated and not opening[gkey(x, y, z)] or false
+    end
+    local function fits(cx, cy, z)
+        for dy = -2, 2 do
+            for dx = -2, 2 do
+                if not core(cx + dx, cy + dy, z) then return false end
+            end
+        end
+        -- the ring: each tile wall (not walkable) or free floor; the free ones in one run
+        local open, edge = {}, false
+        for i, d in ipairs(RING) do
+            local x, y = cx + d[1], cy + d[2]
+            local t = T(x, y, z)
+            local walk = t and t.walk or false
+            if walk then
+                if t.occupied or t.liquid or opening[gkey(x, y, z)] then return false end
+                open[i] = true
+                if math.abs(d[1]) ~= 3 or math.abs(d[2]) ~= 3 then edge = true end
+            end
+        end
+        if not edge then return false end
+        local runs, n = 0, #RING
+        for i = 1, n do
+            local prev = i == 1 and n or i - 1
+            if open[i] and not open[prev] then runs = runs + 1 end
+        end
+        return runs <= 1          -- 0: the whole ring open (a hall's middle)
+    end
+    local best, best_d, looked = nil, nil, 0
+    for k in pairs(inside) do
+        looked = looked + 1
+        if looked > SHOP_SCAN_MAX then break end
+        local x = k % 4096
+        local y = (k // 4096) % 4096
+        local z = k // (4096 * 4096)
+        local d = math.abs(x - e.x) + math.abs(y - e.y) + 3 * math.abs(z - e.z)
+        if (not best_d or d < best_d) and fits(x, y, z) then best, best_d = {x = x, y = y, z = z}, d end
+    end
+    return best
+end
+
 function place_shop(entrance_id, dry_run)
     if shop_count() > 0 then return {ok = false, rejected = true, error = 'a siege workshop stands already'} end
     local e, G = entrance_by_id(entrance_id)
     if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
     if not (G.GATES or {}).inside then return {ok = false, rejected = true, error = 'the fort is not mapped yet'} end
-    local sp = shop_spot(e, G.GATES.inside, reader())
+    local T = reader()
+    local sp, near = shop_spot(e, G.GATES.inside, T), true
     if not sp then
-        return {ok = false, rejected = true, error = ('no free 7x7 of roofed floor within %d tiles of that entrance '
-            .. 'for a siege workshop'):format(SHOP_RADIUS)}
+        local ok, s2 = pcall(shop_spot_anywhere, e, G.GATES.inside, T)     -- (r2h7)
+        sp, near = ok and s2 or nil, false
+    end
+    if not sp then
+        return {ok = false, rejected = true, error = 'no free 5x5 of roofed floor in the fort for a siege workshop '
+            .. '(none by the gate, no empty room or hall elsewhere)'}
     end
     local ok, fail = qf('build', {{x = sp.x, y = sp.y, text = 'ws'}}, sp.z, dry_run)
     if not ok then return {ok = false, error = ('quickfort would not place the siege workshop (%s run)'):format(tostring(fail))} end
-    return {ok = true, dry_run = dry_run or nil, at = sp, entrance_id = e.id}
+    return {ok = true, dry_run = dry_run or nil, at = sp, entrance_id = e.id, by_gate = near or nil}
 end
 
 ---------------------------------------------------------------------------

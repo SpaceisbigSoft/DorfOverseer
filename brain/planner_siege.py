@@ -209,8 +209,9 @@ def _engine_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
     ents = _entrances(sg)
     if not has_shop and ents:
         proposals.append(Proposal("siege_shop", {"type": "place_siege_shop", "entrance_id": ents[0]["id"]},
-                                  f"Fortification or Engineering at {lean}: a siege workshop near the gate at "
-                                  f"x{ents[0].get('x')} y{ents[0].get('y')} for ballista parts and arrows", 6))
+                                  f"Fortification or Engineering at {lean}: a siege workshop for ballista parts and "
+                                  f"arrows, by the gate at x{ents[0].get('x')} y{ents[0].get('y')} if there's room, "
+                                  "else on free floor elsewhere in the fort (r2h7: a 5x5 room will do)", 6))
     ai = int(sg.get("ai_engines") or 0)
     if ai < want:
         spot = next((e for e in ents if not int(e.get("engines_near") or 0) and isinstance(e.get("engine_spot"), dict)),

@@ -195,6 +195,20 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
                                   f"clear {len(ids)}", 7))
         return
     if stance != "accept":
+        # (r2h7) the dead band: a neutral fort (Outsiders between the two stances, or a
+        # welcoming one with "accept visitors" off) answered nothing, and DF reported the
+        # petitions ignored (B 21, C 52, E 6, F 7; E 30 waiting up to 78 days). One waiting
+        # `r2h7_residency_neutral_days` is declined: the fort doesn't take them, it says so
+        wait = int(cfg.get("r2h7_residency_neutral_days", 14))
+        old = [e["id"] for e in pending if isinstance(e.get("days"), int) and e["days"] >= wait]
+        if old:
+            ids = old[:batch]
+            proposals.append(Proposal("residency", {"type": "answer_petition", "ids": ids, "accept": False,
+                                                    "residency": True},
+                                      f"{len(old)} petition(s) to stay have waited {wait} days or more and this fort "
+                                      f"neither welcomes nor shuts out visitors (Outsiders "
+                                      f"{traits.get('outsiders', 0)}): decline {len(ids)} rather than leave them "
+                                      "to be ignored", 7))
         return
     # (review) never a vampire; mercenaries and monster hunters only as the
     # standing orders would take them (Militarism)
