@@ -931,6 +931,9 @@ end
 
 -- How far the digging has got, and whether it's stuck.
 REDIG_MAX = 3        -- (0.105.33, L4) times a lost shaft, stair or gallery tile is designated again
+-- (y2) at most this many undug tiles of a level with nothing dug are tested for a
+-- dwarf-reachable side (dig_progress's `reach`); past it the answer is `partial`
+REACH_CHECK_MAX = 600
 
 -- (0.105.48, K7c) read only unless `redig` is true: the report only counts
 -- the lost shaft, stair and gallery tiles it would designate again
@@ -991,12 +994,14 @@ function dig_progress(p, redig, dry_run)
         if wet then table.insert(out, 'damp (water or an aquifer beside it)') end
         return out
     end
+    local undug = {}               -- (y2) tiles with a job or a designation, for `reach`
     local function check(x, y, z, done)
         total = total + 1
         local t = tile_info(x, y, z)
         if t and done(t) then
             dug = dug + 1
         elseif jobs[x .. ',' .. y .. ',' .. z] then
+            table.insert(undug, {x, y, z})
             digging = digging + 1  -- a dwarf is on it now
             if #waiting < 5 then
                 local okr, rw = pcall(reach_words, x, y, z)
@@ -1009,6 +1014,8 @@ function dig_progress(p, redig, dry_run)
             marked = marked + 1    -- marker-only designation: nobody will dig it
         elseif t and not t.designated then
             stuck = stuck + 1      -- still wall, and not designated any more
+        else
+            table.insert(undug, {x, y, z})
         end
     end
     local not_wall = function(t) return t.shape ~= 'WALL' end
@@ -1104,6 +1111,24 @@ function dig_progress(p, redig, dry_run)
     end
     local out = {total = total, dug = dug, stuck = stuck, marked = marked, digging = digging,
                  waiting = #waiting > 0 and waiting or nil}
+    -- (y2) nothing dug yet: is any of its undug tiles (with a job or designated)
+    -- beside ground a citizen walks in? A level's inner tiles read "no open ground
+    -- beside it" until the outer ones are dug, so the 5 `waiting` lines alone never
+    -- show a level cut off. Stops at the first reachable tile (the usual case);
+    -- REACH_CHECK_MAX tiles at most (then `partial`). The brain's dig check gives a
+    -- level up as unreached only on {reachable = 0, partial = nil}.
+    if dug == 0 and #undug > 0 then
+        local reach = {checked = 0, reachable = 0, tiles = #undug}
+        for _, c in ipairs(undug) do
+            if reach.checked >= REACH_CHECK_MAX then reach.partial = true; break end
+            reach.checked = reach.checked + 1
+            local okr, rw = pcall(reach_words, c[1], c[2], c[3])
+            if not okr then reach.partial = true; break end      -- unknown: never "cut off"
+            if rw == 'reachable' then reach.reachable = 1; break end
+        end
+        if next(groups or {}) == nil then reach.partial = true end  -- no citizen's walk group read
+        out.reach = reach
+    end
     if top_waits > 0 then shaft_open = false end      -- (0.105.47)
     if p.shaft then out.shaft_open = shaft_open end
     if redug > 0 then out.redesignated = redug end

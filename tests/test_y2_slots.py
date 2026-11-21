@@ -62,7 +62,8 @@ def fort() -> dict:
 
 def dig_level(id_, kind, **kw):
     p = {"id": id_, "kind": kind, "phase": "dig", "started": {"year": 259, "tick": 100},
-         "dig": {"digging": 1, "dug": 0, "marked": 0, "stuck": 0, "total": 180, "waiting": [UNREACHED]}}
+         "dig": {"digging": 0, "dug": 0, "marked": 0, "stuck": 0, "total": 180, "waiting": [UNREACHED],
+                 "reach": {"checked": 180, "reachable": 0, "tiles": 180}}}     # (the whole level tested: cut off)
     p.update(kw)
     return p
 
@@ -130,6 +131,88 @@ def _():
     rows = {int(r.id): r for r in rep.open.values()}
     assert rows[40].floor.id == 3 and rows[40].floor.hall == 12, dict(rows[40])
     assert rows[41].floor is None
+
+
+# ---- the dig check's evidence: the whole level, never a sample ---------------------------------------
+
+INNER = "x61 y81 z120: Dig, no worker (priority 4), no open ground beside it"
+
+
+@test("dig check: a level whose sampled tiles read unreached only because its outer tiles aren't dug yet "
+      "is not given up; one truly cut off (every tile tested) still is")
+def _():
+    # the bridge tested its tiles and found one beside the dwarves' ground (the stair side)
+    ok = dig_level(20, "bedrooms")
+    ok["dig"].update(digging=89, waiting=[INNER] * 5, reach={"checked": 37, "reachable": 1, "tiles": 89})
+    # an older bridge, no `reach`: 5 lines of 89 jobs, all inner tiles: a sample proves nothing
+    sample = dig_level(21, "bedrooms")
+    sample["dig"].pop("reach")
+    sample["dig"].update(digging=89, waiting=[INNER] * 5)
+    # tested, but past REACH_CHECK_MAX (partial), or no walk group read
+    part = dig_level(22, "storage")
+    part["dig"]["reach"] = {"checked": 600, "reachable": 0, "tiles": 900, "partial": True}
+    cut = dig_level(23, "storage")                                       # F's #55: every tile tested, none reached
+    old = dig_level(24, "storage")                                       # an older bridge, every job named
+    old["dig"].pop("reach")
+    old["dig"].update(digging=2, waiting=[UNREACHED, INNER])
+    for lvl, given_up in ((ok, False), (sample, False), (part, False), (cut, True), (old, True)):
+        assert dig_check([lvl]) == ([lvl["id"]] if given_up else []), (lvl["id"], dig_check([lvl]))
+
+
+@test("dig check: cut off, but the miners are working another open level's dig: it waits (said why)")
+def _():
+    cut = dig_level(23, "storage")
+    other = dig_level(30, "bedrooms")
+    other["dig"].update(dug=40, digging=12, waiting=None, reach=None)
+    s = fort()
+    s["projects"] = {"open": [cut, other]}
+    s.setdefault("labor", {})["miners"] = 3
+    m = Memory()
+    m.dig_seen = {"23": {"dug": 0, "tick": abs_tick(s) - (CFG["h3_dig_check_days"] + 2) * TICKS_PER_DAY}}
+    props, notes = [], []
+    SL._dig_check_rule(digest.normalize(s), m, CFG, props, notes)
+    assert not [p for p in props if p.action.get("type") == "cancel_project"], [p.action for p in props]
+    assert any("digging another level" in n for n in notes), notes
+    other["dig"]["digging"] = 0                                          # nobody digging there either
+    props, notes = [], []
+    SL._dig_check_rule(digest.normalize(s), m, CFG, props, notes)
+    assert [p.action["project_id"] for p in props if p.action.get("type") == "cancel_project"] == [23]
+
+
+@test("dig check lua: dig_progress's reach: an inner tile unreached and the outer one reached says reachable; "
+      "every tile unreached says cut off; nothing dug only")
+def _():
+    lua, B, W = builder()
+    r = lua.execute("""local B = ...
+      -- a 3-tile row x10..12 at z70; the dwarves' ground (walk group 7) at x9 beside the first
+      local walk = {['9,5,70'] = 7, ['30,5,70'] = 8}
+      B.citizen_positions = function() return {{x = 9, y = 5, z = 70}} end
+      B.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+      B.dfhack.maps = B.dfhack.maps or {}
+      B.dfhack.maps.getWalkableGroup = function(pos) return walk[pos.x .. ',' .. pos.y .. ',' .. pos.z] or 0 end
+      B.job_tiles = function() return {} end
+      local dug = {}
+      B.tile_info = function(x, y, z)
+        return {shape = dug[x] and 'FLOOR' or 'WALL', designated = true}
+      end
+      B.layouts.tiles_from_dig = function() return {[0] = {[0] = true}, [1] = {[0] = true}, [2] = {[0] = true}} end
+      local p = {kind = 'storage', phase = 'dig', z = 70, anchor = {x = 10, y = 5}, cells = {dig = {}}}
+      local a = B.dig_progress(p)
+      p.anchor = {x = 20, y = 5}       -- far from the dwarves (x30's group is no citizen's)
+      local b = B.dig_progress(p)
+      dug[20] = true
+      local c = B.dig_progress(p)
+      return a.reach, b.reach, c.reach
+    """, B)
+    a, b, c = r
+    assert a.reachable == 1 and not a.partial, dict(a)
+    assert b.reachable == 0 and b.checked == 3 and b.tiles == 3 and not b.partial, dict(b)
+    assert c is None                                                     # something dug: reached
+    lvl = dig_level(1, "storage")
+    lvl["dig"]["reach"] = {k: v for k, v in b.items()}
+    assert SL.cut_off(lvl, lvl["dig"], [UNREACHED])
+    lvl["dig"]["reach"] = {k: v for k, v in a.items()}
+    assert not SL.cut_off(lvl, lvl["dig"], [UNREACHED])
 
 
 # ---- W3 ----------------------------------------------------------------------------------------------

@@ -36,7 +36,7 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import TICKS_PER_DAY, Proposal, abs_tick
 
-__all__ = ["furnish_sig", "STAGED_DIG_KINDS", "staged_dig", "HANDLED_KINDS", "KEEP_KINDS", "UNOBTAINABLE_KINDS", "need_of", "needs_pass", "_park_rule", "_dig_check_rule",
+__all__ = ["furnish_sig", "STAGED_DIG_KINDS", "staged_dig", "cut_off", "miners_elsewhere", "HANDLED_KINDS", "KEEP_KINDS", "UNOBTAINABLE_KINDS", "need_of", "needs_pass", "_park_rule", "_dig_check_rule",
            "need_slots_free", "slots_rules"]
 
 # Pieces some rule of the AI orders or makes for a waiting level (planner_building's
@@ -166,6 +166,37 @@ def staged_dig(p: dict) -> bool:
     return "shaft_open" in dig or bool(dig.get("held"))
 
 
+def cut_off(p: dict, dig: dict, waiting: list) -> bool:
+    """(y2) Is the whole level out of every dwarf's reach? Only on evidence that
+    covers it: the bridge's `reach` (every undug tile tested, none beside a
+    citizen's ground, nothing left untested). From an older bridge without it,
+    only when the waiting lines name every tile with a job (`digging` of them)
+    and all read unreached. The waiting lines are a sample of 5 at most, and a
+    level's inner tiles read "no open ground beside it" until its outer ones
+    are dug: a sample alone never proves a level cut off."""
+    reach = dig.get("reach")
+    if isinstance(reach, dict):
+        checked, tiles = reach.get("checked"), reach.get("tiles")
+        return (reach.get("partial") is not True and reach.get("reachable") == 0
+                and isinstance(checked, int) and checked > 0 and (not isinstance(tiles, int) or checked >= tiles))
+    digging = int(dig.get("digging") or 0)
+    return (bool(waiting) and 0 < digging <= len(waiting)
+            and all(any(r in w for r in REACH_WORDS) for w in waiting))
+
+
+def miners_elsewhere(s: dict, p: dict, miners) -> bool:
+    """(y2) The fort has miners and another open level's digging is being worked:
+    they may simply be busy there, so the level waits rather than counts as cut off."""
+    if miners == 0:
+        return False
+    for q in _open(s):
+        if q is p or q.get("id") == p.get("id") or q.get("phase") != "dig":
+            continue
+        if int(_d(q.get("dig")).get("digging") or 0) > 0:
+            return True
+    return False
+
+
 def _dig_check_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """A level with nothing dug for h3_dig_check_days (memory.dig_seen: the dig
     rule's last progress), checked: given up when no dwarf can reach any of its
@@ -193,11 +224,16 @@ def _dig_check_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
         what = f"the {p.get('kind')} level (project {p['id']}: 0 of {total} tiles dug in {days} days)"
         waiting = [str(w) for w in _l(dig.get("waiting"))]
         left = total - int(dig.get("stuck") or 0) - int(dig.get("marked") or 0)
-        if waiting and all(any(r in w for r in REACH_WORDS) for w in waiting):
+        if cut_off(p, dig, waiting) and not miners_elsewhere(s, p, miners):
             proposals.append(Proposal("slots", {"type": "cancel_project", "project_id": p["id"], "unreached": True},
                                       f"{what}: no dwarf can reach where its digging starts ({waiting[0]}): give "
                                       "it up and keep off that spot a while, so its building slot goes to what waits",
                                       4))
+        elif waiting and all(any(r in w for r in REACH_WORDS) for w in waiting):
+            why = ("the miners are digging another level" if miners_elsewhere(s, p, miners)
+                   else "some of its tiles may still be reached (its inner tiles open once the outer ones are dug)")
+            notes.append(f"{what}: its waiting tiles read out of reach ({waiting[0]}), but {why}: "
+                         "it is not given up as unreached yet")
         elif left <= 0:
             notes.append(f"{what}: none of its tiles is designated for digging any more: it is given up "
                          "(marker tiles are made real first)")
