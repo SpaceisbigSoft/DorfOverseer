@@ -2604,6 +2604,13 @@ function act_trade_deal(a)
         table.insert(wants, {key = w.key, count = n})
     end
     if #wants == 0 then return reject('trade_deal needs wants') end
+    -- (r2 h5) what any fort can use, bought only when none of the wants is on sale
+    local extra = {}
+    for _, w in ipairs(type(a.extra) == 'table' and a.extra or {}) do
+        local n = int_in(w.count, 1, 500)
+        if type(w.key) ~= 'string' or not n then return reject('trade_deal extra {key, count 1-500}') end
+        table.insert(extra, {key = w.key, count = n})
+    end
     local margin = tonumber(a.margin) or 1.2
     if margin < 1.0 or margin > 3 then return reject('trade_deal margin must be 1.0-3') end
     local T = reqscript('ai-trade')
@@ -2612,16 +2619,24 @@ function act_trade_deal(a)
     if not a.dry_run and a.force ~= true and not T.opened_by_ai() then
         return reject('the player opened this trade screen: the AI leaves the deal to them')
     end
-    local r = T.deal(wants, margin, a.dry_run == true, txt)
+    local r = T.deal(wants, margin, a.dry_run == true, txt, #extra > 0 and extra or nil)
     -- nothing to buy (or turned down before): the screen closed, if asked
     if r.rejected and a.close == true and not a.dry_run and T.opened_by_ai() then
         local c = T.close_screen()
         r.closed = c.closed
     end
-    if r.ok and not r.waiting and not a.dry_run and a.press == true and r.calibrated then
+    -- (r2 h5) pressed too where no place is known: press() looks for the
+    -- Trade label by its word (every fort's guess was retired)
+    if r.ok and not r.waiting and not a.dry_run and a.press == true and (r.calibrated or r.can_search) then
         local p = T.press('Trade', txt)
         r.press = p
         r.answer, r.traded, r.counter, r.closed = p.answer, p.traded, p.counter, p.closed
+        -- not pressed at all (no Trade button found): the AI's screen closed
+        -- (time stands still while it is open), this caravan left to the player
+        if p.rejected and not p.pressed and not p.closed and a.close == true and T.opened_by_ai() then
+            local c = T.close_screen()
+            r.closed = c.closed
+        end
     end
     return r
 end

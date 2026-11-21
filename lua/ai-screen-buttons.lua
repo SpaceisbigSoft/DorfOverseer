@@ -198,3 +198,94 @@ function check_word(x, y, word)
     local v, w = judge(text, word)
     return v, w, text
 end
+
+-- (r2 h5) A button found by its label, when the AI's guess of its place is
+-- wrong. The 14-15 Nov run's only depot click (F, 00:51:04, x74 y15 on a
+-- 150-wide window) opened no trade screen and the guess was retired at once;
+-- the 15-16 Nov run never tried again in any fort (`can_open` false, the
+-- "can't open the trade screen" Needs you 3-38 times a fort): no trade deal in
+-- six forts. The same screens' text was read fine for the meetings (14
+-- liaison meetings answered by the words on the screen), so a button is
+-- looked for by its word where the guess misses.
+
+-- Pure: where `word` stands alone in `rows` (strings): {col, row} (1-based),
+-- never inside a longer word ("Trader"), never followed by one of
+-- `not_before`'s words ("Trade depot", the sheet's title), never preceded by
+-- one of `not_after`'s.
+function label_hits(rows, word, not_before, not_after)
+    local hits = {}
+    for r, row in ipairs(rows or {}) do
+        local from = 1
+        while true do
+            local a, b = row:find(word, from, true)
+            if not a then break end
+            local prev = a > 1 and row:sub(a - 1, a - 1) or ' '
+            local nxt = row:sub(b + 1, b + 1)
+            local ok = not prev:match('%w') and not nxt:match('%w')
+            if ok and not_before then
+                local w = row:sub(b + 1):match('^ ?(%a+)')
+                if w and not_before[w:lower()] then ok = false end
+            end
+            if ok and not_after then
+                local w = row:sub(1, a - 1):match('(%a+) ?$')
+                if w and not_after[w:lower()] then ok = false end
+            end
+            if ok then table.insert(hits, {a, r}) end
+            from = b + 1
+        end
+    end
+    return hits
+end
+
+-- The screen's text in a box, one string a row; nil and 'unreadable' when a
+-- tile can't be read (TrueType), so nothing is clicked blind; nil and 'blank'
+-- when the box holds nothing but blanks (not drawn yet: tried again later).
+function rows_in(x0, y0, x1, y1)
+    local rows = {}
+    local any = false
+    for yy = y0, y1 do
+        local chars = {}
+        for xx = x0, x1 do
+            local ok, t = pcall(function() return dfhack.screen.readTile(xx, yy) end)
+            local ch = ok and t and tonumber(t.ch) or nil
+            if ch == nil then return nil, 'unreadable' end
+            if ch > 32 and ch < 127 then any = true end
+            table.insert(chars, (ch >= 32 and ch < 127) and string.char(ch) or ' ')
+        end
+        table.insert(rows, table.concat(chars))
+    end
+    if not any then return nil, 'blank' end
+    return rows
+end
+
+-- Where `word` stands as a label in the box {x0, y0, x1, y1} of the screen,
+-- nearest (nx, ny) first: a list of {x, y} (the label's middle tile), and
+-- 'found', 'none', 'blank' or 'unreadable'. With `forbid`, a label that judge() finds
+-- by a forbidden word (Seize, Offer) is left out.
+function find_label(word, box, near, opts)
+    opts = opts or {}
+    local gps = df.global.gps
+    local x0, y0 = math.max(0, box[1]), math.max(0, box[2])
+    local x1, y1 = math.min(gps.dimx - 1, box[3]), math.min(gps.dimy - 1, box[4])
+    if x1 < x0 or y1 < y0 then return {}, 'none' end
+    local rows, why = rows_in(x0, y0, x1, y1)
+    if not rows then return {}, why or 'unreadable' end
+    local out = {}
+    for _, h in ipairs(label_hits(rows, word, opts.not_before, opts.not_after)) do
+        local x, y = x0 + h[1] - 1 + #word // 2, y0 + h[2] - 1
+        local keep = true
+        if opts.forbid then
+            local v = judge(text_near(x, y), word)
+            keep = v == 'ok'
+        end
+        if keep then table.insert(out, {x = x, y = y}) end
+    end
+    local nx, ny = near and near[1] or x0, near and near[2] or y0
+    table.sort(out, function(a, b)
+        local da = math.abs(a.x - nx) + 3 * math.abs(a.y - ny)
+        local db = math.abs(b.x - nx) + 3 * math.abs(b.y - ny)
+        if da ~= db then return da < db end
+        return a.y < b.y or (a.y == b.y and a.x < b.x)
+    end)
+    return out, #out > 0 and 'found' or 'none', rows
+end

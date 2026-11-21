@@ -299,9 +299,13 @@ def _():
         env.dfhack.job = {getWorker = function() return {x = 5, y = 5, z = 1} end}
         env.dfhack.units = {getPosition = function(u) return u.x, u.y, u.z end}
         env.dfhack.gui.matchFocusString = function(f) return f == 'dwarfmode/Default' end
-        env.LOAD_WATCH = {n = 0, dep = 3, since = -100000}""", env)
+        env.LOAD_WATCH = {n = 0, dep = 3, since = -100000}
+        env.df.view_sheet_type = {BUILDING = 2, NONE = -1}
+        env.df.global.game.main_interface.view_sheets = {open = false}
+        env.dfhack.timeout = function() end""", env)
     r = env.open_screen(False, None)
-    assert r.ok is False and "here-depot" in r.error, dict(r)
+    # (r2 h5) the guess off the screen isn't clicked: the button is looked for by its word instead
+    assert r.ok and r.clicking and r.search and r.at is None and r.guessed is None, dict(r)
 
 
 DEPOT_SETUP = r"""local env = ...

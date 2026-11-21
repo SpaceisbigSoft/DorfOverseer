@@ -6734,6 +6734,14 @@ def _():
     s["military"]["gear"]["bars"] = {"IRON": 500, "STEEL": 500}
     s["supplies"]["fuel"] = 500
     props = plan(s, Memory())[0]
+    # (r2 h5) needing nothing, the fort still sells its crafts for what any fort can use
+    d = by_rule(props, "trade_deal")
+    assert d and [w["key"] for w in d[0].action["wants"]] == list(PLANNER_CONFIG["h5_trade_fallback_wants"]) \
+        and not by_rule(props, "close_trade") and not by_rule(props, "open_trade"), props
+    cfg = dict(PLANNER_CONFIG, h5_trade_fallback_wants={})
+    import planner_trade
+    props, notes = [], []
+    planner_trade._trade_rules(s, cfg, 10, props, notes, None, None)
     assert by_rule(props, "close_trade") and not by_rule(props, "trade_deal") and not by_rule(props, "open_trade")
     s["trade"].pop("screen")
     s["stocks"].update(drink=0)
