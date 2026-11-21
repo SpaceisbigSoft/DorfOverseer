@@ -1361,3 +1361,15 @@ PLANNER_CONFIG.update({
     "floor_full_retry_days": 28,          # a full floor is offered again after this long
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
 })
+
+# (r1g5) the alarm and the squads in a real threat (brain/planner_war_hold.py)
+PLANNER_CONFIG.update({
+    "r1g5_unfought_alarm_days": 30,       # an AI alarm for enemies no squad goes at: fight or lift after this long
+    "r1g5_alarm_hard_days": 60,           # the most such an alarm stands, fight or not
+    "r1g5_unfought_fight_ratio": 0.25,    # the all-out attack then goes at this matchup or better (else: lifted)
+    "r1g5_army_hold_ticks": 2400,         # no trim, swap or off duty this long after an enemy could reach the dwarves
+    "r1g5_arm_first_unarmed": 2,          # more unarmed soldiers on duty than this (and a quarter): weapons before drafting
+    "r1g5_arm_first_max_days": 56,        # ...held this long at most (gear DF never hands out must not stop the squads)
+    "r1g5_swap_armed_share": 0.75,        # no soldier swap while fewer of the soldiers on duty are armed
+    "r1g5_recall_hopeless_ratio": 0.25,   # a young kill order is called back for the odds only below this
+})

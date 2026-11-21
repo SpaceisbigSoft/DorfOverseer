@@ -10258,7 +10258,7 @@ def _():
     assert len(said) == 1, notes
 
 
-@test("0.105.3 B: the alarm for a lone thief inside is held half a day at most")
+@test("0.105.3 B: the alarm for a lone thief inside is held half a day at most (r1g5: once a squad is on him)")
 def _():
     s = b_thief()
     m = Memory(ai_alert_raised=True)
@@ -10268,6 +10268,9 @@ def _():
     later = copy.deepcopy(s)
     later["date"]["tick"] += PLANNER_CONFIG["lone_intruder_alert_ticks"]
     note_cycle(later, m)
+    # (r1g5) B y262: no squad's kill order names him: the alarm stays up
+    assert not any(x.action == off for x in plan(later, m)[0])
+    later["military"]["squads"][1].update(ai_orders=1, kill_ids=[7527])
     a = [x for x in plan(later, m)[0] if x.action == off]
     assert a and "inside the fort" in a[0].reason, a
     # the player's alarm (not the AI's) is never lowered

@@ -925,6 +925,13 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # back as a called-off one does, under every policy; a hunt's party is
     # the hunt rule's (its own retreat)
     lost = {i for i in held_back if threats[i].get("great_danger")} - off
+    # (r1g5) E: the long alarm nobody fought ends in an all-out attack when
+    # it isn't hopeless (planner_war_hold.unfought): those enemies are no
+    # squad's to be called back from for the odds
+    from planner_war_hold import unfought, unfought_proposals
+    uf = unfought(s, memory, cfg, reach) if reach else {}
+    uf_ids = set(uf.get("ids") or []) if uf.get("mode") == "fight" else set()
+    lost -= uf_ids
     if off or lost:
         # (0.105.26) the squads whose kill order names it come back, whatever
         # else is about (hiding() is false with a goblin in reach, and the
@@ -992,6 +999,11 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             notes.append(f"{len(targets)} enemies can reach the dwarves and no squad has "
                          f"{cfg['min_squad_to_fight']}+ armed soldiers to send: the dwarves keep behind the alarm "
                          "and the gates meanwhile, while the squads are filled and armed")
+    if uf_ids:
+        # (r1g5) the all-out attack: every squad with anyone armed (crossbows
+        # only at a beast no melee squad may face), whatever the policy
+        ordered = {p.action.get("squad_id") for p in proposals if p.action.get("type") == "squad_orders"}
+        proposals.extend(p for p in unfought_proposals(s, uf) if p.action.get("squad_id") not in ordered)
     if cloud:
         _no_melee_beasts(s, memory, cfg, threats, cloud, squads, proposals, notes)
     if held_back and policy != "never":
@@ -1381,6 +1393,13 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # shrank) gives soldiers back to work a few at a time, while all is quiet.
     # Monastery kept 49 soldiers at Militarism -60 (it wanted ~10).
     over = have - want
+    from planner_war_hold import arm_first, armed_count
+    arm_why = arm_first(s, cfg, rules_, memory)
+    if (floor_tag and int(_d(mil.get("gear")).get("on_duty") or 0) > 0
+            and armed_count(s) < int(floor_.get("soldiers") or 0) <= have):
+        # (r1g5) the floor counts armed soldiers: met in members, not in arms
+        notes.append(f"Defence floor {floor_.get('soldiers')}: {have} soldiers but only {armed_count(s)} armed: "
+                     "the floor is met once they are armed (weapons first)")
     # (0.104.66) while civilians badly want to train, the swap turns the squads
     # over instead: the wanted number falls as the keen are drafted (the cap
     # for the keen lifts and drops), and a trim then sent 2 of 38 home (16:03)
@@ -1405,6 +1424,9 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         # is under way (Teacheroar's spirals: soldiers among those who killed)
         notes.append(f"{have} soldiers, the fort wants {want}: no drafting while "
                      + ("a dwarf is berserk" if berserk_now else "tantrums are under way"))
+    elif have < want and arm_why:
+        # (r1g5) A: 22 of 57 armed with 68 steel bars; B: the floor drafted 6, none armed
+        notes.append(f"{have} soldiers, the fort wants {want}{floor_tag}: {arm_why}")
     elif have < want:
         open_ = [(q, min(9, (q.get("size") or 0) - 1) - max(0, (q.get("members") or 0) - (1 if q.get("leader") else 0)))
                  for q in squads]

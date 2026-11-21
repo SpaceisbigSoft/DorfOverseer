@@ -1568,6 +1568,11 @@ def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> No
         return
     if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return
+    # (r1g5) A: 220 swaps, 22 of 57 armed: no swap while the soldiers on duty
+    # are short of weapons, nor while danger is about (planner_war_hold)
+    from planner_war_hold import army_danger, swap_armed_short
+    if swap_armed_short(s, cfg) or army_danger(s, memory, cfg):
+        return
     # (0.104.114, the 38-year soak: 3,122 swaps in 87 hours, a soldier sent
     # home every two minutes, so the squads were always green) at most a
     # tenth of the soldiers swapped in 28 days

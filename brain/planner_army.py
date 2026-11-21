@@ -235,6 +235,11 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
     reach = [i for i in reachable_threats(s, traits, cfg) if i in threats]
     if not reach:
         return False, []
+    # (r1g5) the long alarm's all-out attack (planner_war_hold.unfought): no hiding from it
+    from planner_war_hold import unfought
+    uf = unfought(s, memory, cfg, reach)
+    if uf.get("mode") == "fight":
+        return False, list(uf.get("ids") or [])
     squads = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)]
     able = [q for q in squads if can_fight(q, cfg)]
     policy = rules_["attack_policy"]
