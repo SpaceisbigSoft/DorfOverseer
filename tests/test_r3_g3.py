@@ -134,10 +134,12 @@ def _():
     masterplan.note_result(m, start("bedrooms"), {"ok": True, "not_on_floor": "z51: refused: not natural rock (ROOT) at x1 y2 z51"}, at(1))
     assert elevs(m, "bedrooms", at(2)) == [49, 50]
     assert elevs(m, "bedrooms", at(1 + CFG["r3g3_soil_days"] + 1)) == [51, 49, 50]      # offered again later
-    # nothing else left: the list as it was (never no floor at all for an ordinary level)
+    # (r3 V1) every planned one refused for soil: g1's "more floors" offers the band's others and deeper
+    # ones (the soil refusals count as full), never the soil ones again and never no floor at all
     for e in (49, 50):
         masterplan.note_result(m, start("bedrooms"), {"ok": True, "not_on_floor": f"z{e}: refused: not natural rock (SOIL)"}, at(3))
-    assert elevs(m, "bedrooms", at(4)) == [51, 49, 50]
+    got = elevs(m, "bedrooms", at(4))
+    assert got and not set(got) & {49, 50, 51}, got
     # the switch off, or a bare config (the layout-B tests'): offered as before
     CFG["r3g3_soil_skip"] = False
     assert elevs(m, "bedrooms", at(2)) == [51, 49, 50]

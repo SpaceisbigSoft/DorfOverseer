@@ -795,7 +795,8 @@ function start_project(params, now, dry_run)
     local reserved_open = reserved
     -- (r3 V2) a level sent classic on purpose (floor = false: too big for any run, a holy level with only
     -- soil left, a field custom, a landmark) keeps clear too, while the fort's floors are on
-    local keep_on = floors_on or (type(floor_mode) == 'function' and FLOOR_KINDS ~= nil
+    local keep_on = floors_on or (type(floor_mode) == 'function' and FLOOR_KINDS ~= nil and FLOOR_KINDS[kind]
+        and (params.floor == false or params.join == false)
         and select(2, pcall(floor_mode)) == 'hallway')
     if not site and keep_on and type(floor_keep_boxes) == 'function' then
         local okk, keep = pcall(floor_keep_boxes, params, stairs)
