@@ -20,7 +20,11 @@ from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, Proposal, abs_tick, l
 from strategist import check_answer, detect, instructions, review_message, shown_rules, seen_actions
 import chronicle
 import season as season_mod
-from tokens import TokenBank, ai_plan, budget_settings, event_review_allowed, routine_due, routine_interval_ticks
+from datetime import date as _date
+
+import tokens as tokens_mod
+from tokens import (TokenBank, ai_plan, budget_settings, event_review_allowed, learn_plan_ratio, plan_ratio,
+                    routine_due, routine_interval_ticks)
 import planner_design
 
 CHARS_PER_TOKEN = 2.5            # measured on fort digests with the current tokenizer
@@ -66,7 +70,7 @@ def note_events(state: dict, memory: Memory, bank: TokenBank | None, events: lis
     for k in kinds:
         st = state.get("settings")
         if bank is not None and isinstance(st, dict) and ("token_bank_max" in st or "ai_frequency" in st):
-            bank.top_up(k, now, budget_settings(st))
+            bank.top_up(k, now, budget_settings(st, plan_ratio(bank)))
         if k not in {p["kind"] for p in memory.pending_kinds}:
             memory.pending_kinds.append({"kind": k, "tick": now})
     return kinds
@@ -113,9 +117,10 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         # (0.105.26) a review on a made-up y0 date would schedule, bank and pick the season wrongly
         out.say.append("AI review skipped: the game's date couldn't be read")
         return out
-    settings = budget_settings(s["settings"])
+    # (r4 k3, B3) the plan, the bank's income and size at what reviews have really cost
+    settings = budget_settings(s["settings"], plan_ratio(bank))
     now = abs_tick(state)
-    plan = ai_plan(settings)                     # how often, how long (the two AI sliders)
+    plan = ai_plan(settings, plan_ratio(bank))   # how often, how long (the two AI sliders)
     bank.accrue(now, settings)
 
     kinds = [k["kind"] for k in memory.pending_kinds]
@@ -280,6 +285,8 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     used = reply.budget_tokens
     bank.spend(used, now, reason, today=today)
     learn_token_ratio(memory, used, raw_estimate)
+    if not design_ask:              # (r4 k3, B3) a design call's room is not a review's cost
+        learn_plan_ratio(bank, used, settings, important)
     try:
         answer = check_answer(reply.text, recipes, tools, my_orders, build,
                               shown=shown_rules(proposals, memory.recent_actions),
@@ -359,7 +366,18 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         out.say.append(f"  AI design: {line}")
     for r in answer.rejected:
         out.say.append(f"  AI suggestion thrown out: {r}")
+    # (r4 k3) the review's tokens on its own line, for a digest summing them per
+    # fort per day ("fort" and the real "time" come with every journal line):
+    # tokens_in (all input, cached or not), tokens_out, tokens (what the bank
+    # was charged), the model, the backend, this fort folder, the real day
     out.journal = {"kind": "review", "reason": reason, "model": reply.model, "tokens": used,
+                   "tokens_in": int(reply.input_tokens or 0) + int(reply.cache_write_tokens or 0)
+                   + int(reply.cache_read_tokens or 0),
+                   "tokens_out": int(reply.output_tokens or 0),
+                   "backend": str(getattr(backend, "name", "") or type(backend).__name__),
+                   "folder": tokens_mod.FORT_LABEL or None,
+                   "real_day": (today or _date.today()).isoformat(),
+                   "pc_today": tokens_mod.pc_used_today(today or _date.today()) if tokens_mod.DAY_FILE else None,
                    "usage": {"in": reply.input_tokens, "out": reply.output_tokens,
                              "cache_write": reply.cache_write_tokens, "cache_read": reply.cache_read_tokens},
                    "note": answer.note, "adjust": answer.adjust, "actions": actions,

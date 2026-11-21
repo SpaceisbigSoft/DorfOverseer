@@ -2526,7 +2526,11 @@ def main() -> int:
     UNATTENDED = bool(getattr(args, "unattended", False))   # (0.104.88) for the camera director
     PRESET = (getattr(args, "preset", None) or "").strip() or None    # (0.105.4)
     import tokens as _tokens
-    _tokens.DAY_FILE = LOG_DIR / "tokens-today.json"     # (0.99.1, B10) the daily cap across all forts
+    # (0.99.1, B10) the daily cap across all forts; (r4 k3, B4) one file for the
+    # whole PC, outside every fort folder, and a cap on by default (config.json
+    # "pc_token_file", "pc_token_cap")
+    from dfhack import read_config as _read_config
+    _tokens.configure_pc(_read_config())
 
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")

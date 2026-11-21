@@ -82,7 +82,8 @@ def maybe_tell(state: dict, memory, bank, backend, today=None) -> StoryOutcome:
         return out
     msg = message(state, memory)
     estimate = int((len(INSTRUCTIONS) + len(msg)) / CHARS_PER_TOKEN) + ANSWER_TOKENS
-    ok, why = bank.can_spend(estimate, budget_settings(settings), is_event=False, today=today)
+    from tokens import plan_ratio
+    ok, why = bank.can_spend(estimate, budget_settings(settings, plan_ratio(bank)), is_event=False, today=today)
     memory.story_season = key                # tried this season, whatever happens
     if not ok:
         out.say.append(f"AI chronicle skipped this season: {why}")
