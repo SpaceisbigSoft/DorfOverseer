@@ -51,7 +51,8 @@ PC_CAP: int | None = None          # None: no PC-wide cap (tests); configure_pc 
 FORT_LABEL = ""                    # this fort folder's name, for the file's per-folder counts
 PC_CAP_DEFAULT = 250_000           # tokens a real day, all forts together (one of the panel's steps)
 PC_FILE_NAME = "tokens-today.json"
-LOCK_WAIT_S = 5.0                  # how long one process waits for another's lock
+LOCK_WAIT_S = 15.0                 # how long one process waits for another's lock (r4: Windows under load)
+IO_RETRY_S = 3.0                   # (r4) a read or replace colliding with another process: retried this long
 LOCK_STALE_S = 30.0                # a lock older than this was left by a killed process
 _LAST_SEEN: dict = {}              # the file's last good read (a read failing mid-replace on Windows)
 
@@ -124,7 +125,8 @@ def _pc_lock(path: Path):
         try:
             fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
+            # (r4) Windows: a lock being deleted by its owner reads as PermissionError: busy, not "no rights"
             try:
                 if time.time() - lock.stat().st_mtime > LOCK_STALE_S:
                     lock.unlink()
@@ -148,7 +150,8 @@ def _pc_lock(path: Path):
 
 
 def _read_day(path: Path) -> dict:
-    for _ in range(5):                       # a replace in progress (Windows) fails a read for a moment
+    end = time.monotonic() + IO_RETRY_S
+    while True:                              # a replace in progress (Windows) fails a read for a moment
         if not path.exists():
             return {}
         try:
@@ -160,6 +163,8 @@ def _read_day(path: Path) -> dict:
         except ValueError:
             return {}
         except OSError:
+            if time.monotonic() > end:
+                break
             time.sleep(0.02)
     return dict(_LAST_SEEN.get(str(path)) or {})
 
@@ -202,12 +207,13 @@ def pc_add_today(today: date, used: int, fort: str | None = None) -> None:
             new = {"day": today.isoformat(), "used": _used_in(d, today) + int(used), "forts": forts}
             tmp = DAY_FILE.with_name(f"{DAY_FILE.name}.{os.getpid()}.tmp")
             tmp.write_text(json.dumps(new), encoding="utf-8")
-            for i in range(5):
+            end = time.monotonic() + IO_RETRY_S
+            while True:
                 try:
                     tmp.replace(DAY_FILE)
                     break
                 except PermissionError:      # Windows: another process is reading it this instant
-                    if i == 4:
+                    if time.monotonic() > end:
                         raise
                     time.sleep(0.02)
             _LAST_SEEN[str(DAY_FILE)] = new
