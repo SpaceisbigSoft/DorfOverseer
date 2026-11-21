@@ -1826,6 +1826,9 @@ function undo_well_cells(p)
     for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do
         pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. pri}}, p.z, g.x, g.y, 'undo')
     end
+    for _, c in ipairs(type(p.chamber) == 'table' and p.chamber or {}) do     -- (r2 h2)
+        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. pri}}, c.z, c.x, c.y, 'undo')
+    end
 end
 
 -- --- (0.105.47) cavern wells made safe (lua/ai-well-safety.lua) ------------------
@@ -1898,6 +1901,147 @@ end
 
 -- Start a well: channel the spot now; the well itself is placed when the
 -- hole is dug (furnish), like any other project.
+-- --- (r2 h2) the winter cistern: a well filled by bucket ---------------------
+--
+-- B (R-B 1): the only water was a stagnant brook and pond on the surface that
+-- froze every winter; no drop to water inside the fort, no cavern found (and
+-- none to open without soldiers), no cistern site (no tunnel through solid
+-- rock). Every bedridden dwarf of every winter died of thirst: a patient is
+-- given only water, carried in a bucket from a well or a water source.
+-- So: a small chamber dug in solid rock one level under a floor inside the
+-- fort (under a roof, away from the sky, where water does not freeze), a well
+-- over it, and a pond zone on the well's tile. The DF wiki (Well guide): "If
+-- you designate your well as a pit/pond and have empty buckets, dwarves will
+-- fill the well manually"; each bucket raises the water in the tile below by
+-- 1/7 and the dwarves stop filling at 6/7, so the water never comes up out of
+-- the chamber; a well needs 3/7. The dwarves fill it from the brook (its shore
+-- well) while that is liquid; in winter the chamber's water is still there.
+-- Sealed: every tile round the chamber, and under it, is solid natural rock
+-- (no aquifer, no water, nothing dug or designated), the only way in the
+-- well's own column; at most 6/7 of FILLED_WELL_SIDE^2 tiles of water, a
+-- shallow puddle even if a later dig breached it. No floodgate, no lever, no
+-- tunnel, nothing opened toward a cavern.
+FILLED_WELL_HALF = 1                   -- the chamber's half side: 3x3 tiles (9 tiles, 54/7 of water at the most)
+FILLED_WELL_HALF_MAX = 2               -- at most 5x5 (the brain's h2_winter_cistern_half)
+FILLED_WELL_ZONE = 'AI winter cistern' -- the pond zone's name on the well's tile
+FILLED_WELL_SECONDS = 2                -- the search's time
+
+local function filled_rock(t)
+    return solid_rock(t) and not t.designated and not t.outside and t.subterranean ~= false
+end
+
+-- Why (x, y, z) can't carry a winter cistern of half side h (nil: it can).
+-- z: the well's floor; the chamber on z - 1.
+function filled_well_why(x, y, z, h, reserved)
+    for dy = -h - 1, h + 1 do
+        for dx = -h - 1, h + 1 do
+            local cx, cy = x + dx, y + dy
+            local inner = math.abs(dx) <= h and math.abs(dy) <= h
+            if inside_any(reserved, cx, cy, z - 1) or inside_any(reserved, cx, cy, z - 2) then
+                return 'another project is dug there'
+            end
+            local t = tile_info(cx, cy, z - 1)
+            if not filled_rock(t) then
+                if t and (t.aquifer or t.liquid) then return 'water or an aquifer beside the chamber' end
+                return inner and 'no solid rock for the chamber' or 'the chamber would not be closed all round'
+            end
+            if inner then
+                if not filled_rock(tile_info(cx, cy, z - 2)) then return 'no solid rock under the chamber' end
+                if dx ~= 0 or dy ~= 0 then
+                    -- its roof: the floor (or rock) of the level above, never open
+                    local r = tile_info(cx, cy, z)
+                    if not r or r.outside or r.liquid or r.designated
+                            or not (r.shape == 'FLOOR' or r.shape == 'WALL') then
+                        return 'the chamber\'s roof is not whole'
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- The best spot for a winter cistern: {x, y, z, half, zone}, or nil, why,
+-- cut (the search ran out of time). A free natural floor inside the fort, on
+-- a level the dwarves are on, with solid rock under it (see above), a floor
+-- beside it for the well's builder; in a dining or meeting hall first, then
+-- near the middle of the fort.
+function find_filled_well_spot(reserved, half)
+    local h = math.max(1, math.min(FILLED_WELL_HALF_MAX, math.floor(tonumber(half) or FILLED_WELL_HALF)))
+    local area = fort_scan_area(WELL_SCAN_MARGIN)
+    if not area then return nil, 'no citizens' end
+    local best, best_score, cut
+    local why_not = {}
+    local deadline = os.clock() + FILLED_WELL_SECONDS
+    for i = 1, math.min(FARM_SCAN_LEVELS, #area.levels) do
+        local z = area.levels[i].z
+        for y = area.y1, area.y2 do
+            if os.clock() > deadline then cut = true break end
+            for x = area.x1, area.x2 do
+                local mat = floor_material(x, y, z)
+                if mat and mat ~= 'CONSTRUCTION' then
+                    local t = tile_info(x, y, z)
+                    local under = tile_info(x, y, z - 1)
+                    if t and not t.liquid and not t.feature and not t.outside and not t.building
+                            and not t.designated and not inside_any(reserved, x, y, z)
+                            and area.groups[walk_group(x, y, z)] and not building_at(x, y, z)
+                            and under and under.shape == 'WALL' then
+                        local zones, ok_zone, liked = zone_types(x, y, z), true, false
+                        for _, k in ipairs(zones) do
+                            if WELL_ZONES[k] then liked = true else ok_zone = false end
+                        end
+                        local score = (liked and 0 or 1000) + (i - 1) * 50
+                            + math.abs(x - area.cx) + math.abs(y - area.cy)
+                        if ok_zone and (not best_score or score < best_score)
+                                and well_floor_beside(x, y, z) then
+                            local why = filled_well_why(x, y, z, h, reserved)
+                            if why then
+                                why_not[why] = true
+                            else
+                                best, best_score = {x = x, y = y, z = z, half = h, zone = liked}, score
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if best then return best end
+    local reasons = {}
+    for w in pairs(why_not) do table.insert(reasons, w) end
+    table.sort(reasons)
+    return nil, (cut and 'search cut short: ' or '') .. ('no floor inside the fort over %dx%d tiles of solid rock '
+        .. 'for a winter cistern'):format(2 * h + 1, 2 * h + 1)
+        .. (#reasons > 0 and (' (' .. table.concat(reasons, '; ') .. ')') or ''), cut
+end
+
+-- The chamber's tiles (z - 1) but the one under the well (the channel makes it a ramp).
+function filled_well_chamber(spot)
+    local out = {}
+    for dy = -spot.half, spot.half do
+        for dx = -spot.half, spot.half do
+            if dx ~= 0 or dy ~= 0 then table.insert(out, {x = spot.x + dx, y = spot.y + dy, z = spot.z - 1}) end
+        end
+    end
+    return out
+end
+
+-- (r2 h2) the pond zone on a winter cistern's well, kept filling (quickfort's
+-- `p` zone is a pond with keep_filled on; set again so it surely is)
+function filled_well_keep_filling(p)
+    local a = anchor_of(p)
+    local n = 0
+    pcall(function()
+        for _, zn in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(a.x, a.y, p.z)) or {}) do
+            if zn.type == df.civzone_type.Pond then
+                pcall(function() zn.zone_settings.pond.flag.keep_filled = true end)
+                n = n + 1
+            end
+        end
+    end)
+    return n
+end
+
 function place_well(params, now, dry_run)
     OFFSET = elevation_offset()
     local data = load_projects()
@@ -1966,6 +2110,11 @@ function place_well(params, now, dry_run)
                     error = 'the shaft would open a cavern no dwarf has seen yet: allowed only from the Rules tab '
                         .. '("Cavern well into an unfound cavern")'}
         end
+    elseif params.filled then
+        -- (r2 h2) the winter cistern: a chamber in solid rock filled by bucket
+        spot, why, cut = find_filled_well_spot(reserved, params.half)
+        if not spot then return {ok = false, filled = true, error = why, timed_out = cut or nil} end
+        spot.filled = true
     else
         spot, why, cut = find_well_spot(reserved)
     end
@@ -1995,6 +2144,18 @@ function place_well(params, now, dry_run)
                     .. dig_guard_note(d)}   -- (0.105.40b fix) the guard's why
         end
         table.insert(shaft, zk)
+    end
+    -- (r2 h2) the winter cistern's chamber, dug from the ramp the channel leaves
+    local chamber = {}
+    if spot.filled then
+        for _, c in ipairs(filled_well_chamber(spot)) do
+            local d = quickfort_apply('dig', {{x = 0, y = 0, text = 'd' .. pri}}, c.z, c.x, c.y, 'run', true)
+            if stat(d, 'dig_designated') ~= 1 then
+                return {ok = false, filled = true, error = ('the game would not dig the winter cistern at x%d y%d elevation %d')
+                        :format(c.x, c.y, ez(c.z)) .. dig_guard_note(d)}
+            end
+            table.insert(chamber, c)
+        end
     end
     -- (0.105.24) the well needs a floor on one of its sides (quickfort's well
     -- test): the gallery's or the hall's; else a landing dug beside the shaft
@@ -2074,7 +2235,8 @@ function place_well(params, now, dry_run)
                    stairs = #stairs > 0 and #stairs or nil, urgent = params.urgent == true or nil,
                    gallery = #gallery > 0 and #gallery or nil, from = spot.from, from_gate = spot.from_gate,
                    held = held and 2 or nil, landing = landing and {x = landing.x, y = landing.y} or nil,   -- (0.105.24)
-                   dug_up = up and true or nil}   -- (0.105.47)
+                   dug_up = up and true or nil,   -- (0.105.47)
+                   filled = spot.filled or nil, chamber = #chamber > 0 and #chamber + 1 or nil}   -- (r2 h2)
     if dry_run then
         where.ok, where.dry_run = true, true
         return where
@@ -2092,6 +2254,9 @@ function place_well(params, now, dry_run)
     for _, g in ipairs(gallery) do
         pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. pri}}, spot.z, g.x, g.y)
     end
+    for _, c in ipairs(chamber) do      -- (r2 h2)
+        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = 'd' .. pri}}, c.z, c.x, c.y)
+    end
     for _, c in ipairs(stairs) do
         if not (held and c.z == held.z) then
             pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y)
@@ -2108,8 +2273,13 @@ function place_well(params, now, dry_run)
         up = up,                                        -- (0.105.47) dug from the bottom up
         landing = landing,                              -- (0.105.24) the floor dug beside the shaft's top
         -- (0.105.47) shore: the brain gives up a shore well still being dug before the ice (planner_ice)
-        summary = {well = 1, drop = spot.drop, cavern = spot.cavern, shore = spot.shore}, furniture = {Well = 1},
-        cells = {dig = dig, build = {{x = 0, y = 0, text = 'l'}}, place = {}, zone = {},
+        summary = {well = 1, drop = spot.drop, cavern = spot.cavern, shore = spot.shore,
+                   filled = spot.filled},      -- (r2 h2) the winter cistern
+        furniture = {Well = 1},
+        chamber = #chamber > 0 and chamber or nil,   -- (r2 h2) its tiles one level down
+        -- (r2 h2) the winter cistern's pond zone on the well's tile: the dwarves fill it by bucket
+        cells = {dig = dig, build = {{x = 0, y = 0, text = 'l'}}, place = {},
+                 zone = spot.filled and {{x = 0, y = 0, text = ('p{name="%s"}'):format(FILLED_WELL_ZONE)}} or {},
                  smooth = {}, engrave = {}},
         started = now, designated = 1,
     }

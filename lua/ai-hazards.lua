@@ -939,7 +939,7 @@ function well_water(w, tile_fn)
         local t = tile_fn(w.x, w.y, z)
         if not t then return 'dry', nil end
         if t.material == FROZEN then return 'ice', t.outside end
-        if t.liquid and not t.magma then return 'water', t.outside end
+        if t.liquid and not t.magma then return 'water', t.outside, t.depth end
         if t.shape ~= 'EMPTY' and t.shape ~= 'RAMP_TOP' then return 'dry', t.outside end
     end
     return 'dry', nil
@@ -958,8 +958,18 @@ local function frost_part(cits)
         if tt and tt.material == FROZEN then table.insert(out.on_ice, {id = c.id, name = c.name}) end
     end
     for _, w in ipairs(wells()) do
-        local water, outside = well_water(w)
-        table.insert(out.wells, {id = w.id, x = w.x, y = w.y, z = w.z, water = water, outside = outside or nil})
+        local water, outside, depth = well_water(w)
+        -- (r2 h2) a pond zone on the well's tile: a winter cistern the dwarves
+        -- fill by bucket (lua/ai-builder-wells.lua), and how deep it is
+        local okp, pond = pcall(function()
+            for _, zn in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(w.x, w.y, w.z)) or {}) do
+                if zn.type == df.civzone_type.Pond then return true end
+            end
+            return false
+        end)
+        pond = okp and pond or nil
+        table.insert(out.wells, {id = w.id, x = w.x, y = w.y, z = w.z, water = water, outside = outside or nil,
+                                 pond = pond, depth = pond and depth or nil})
     end
     for _, zn in ipairs(water_zones()) do
         if type(zn) == 'table' and zn.x then

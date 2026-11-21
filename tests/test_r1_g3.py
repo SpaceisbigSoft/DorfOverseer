@@ -141,17 +141,22 @@ def _():
     s["map"]["layers"][0]["discovered"] = False
     s["settings"]["open_caverns"] = "ai"
     s["military"]["squads"] = []
-    p, n = winter_props(s)
+    # (r2 h2) the winter cistern (tests/test_r2_h2.py) is asked first now: here
+    # one was refused a day ago, so the cavern well's own gates are what speak
+    m = memory()
+    m.filled_well_failure = "no floor inside the fort over 3x3 tiles of solid rock for a winter cistern"
+    m.filled_well_failure_at = planner_wells.abs_tick(s) - 1200
+    p, n = winter_props(s, m)
     assert not p, [(x.rule, x.action) for x in p]
     assert any("no cavern well now" in x and "soldier" in x and "no cistern site" in x for x in n), n
     # the switch at never: never, whatever the soldiers
     s["settings"]["open_caverns"] = "never"
     s["military"]["squads"] = [{"id": 1, "members": 4, "power": {"armed": 4}}]
-    p, n = winter_props(s)
+    p, n = winter_props(s, m)
     assert not p and any("Never" in x for x in n), (p, n)
     # at 'ai' with soldiers: the winter need is the AI's reason to open it
     s["settings"]["open_caverns"] = "ai"
-    p, n = winter_props(s)
+    p, n = winter_props(s, m)
     assert p and p[0].action.get("cavern") and p[0].action.get("open_caverns") is True, [x.action for x in p]
     assert "opens Cavern1 for the first time" in p[0].reason, p[0].reason
 

@@ -1061,6 +1061,10 @@ function dig_progress(p, redig, dry_run)
     for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do
         keep(g.x, g.y, p.z, function(t) return t.shape ~= 'WALL' end, 'd')
     end
+    -- (r2 h2) a winter cistern's chamber, one level under the well
+    for _, c in ipairs(type(p.chamber) == 'table' and p.chamber or {}) do
+        if type(c) == 'table' and c.x and c.z then keep(c.x, c.y, c.z, function(t) return t.shape ~= 'WALL' end, 'd') end
+    end
     local out = {total = total, dug = dug, stuck = stuck, marked = marked, digging = digging,
                  waiting = #waiting > 0 and waiting or nil}
     if top_waits > 0 then shaft_open = false end      -- (0.105.47)
@@ -1559,6 +1563,7 @@ function unmark_project_dig(id, dry_run)
         table.insert(spots, {c.x, c.y, c.z})
     end
     for _, g in ipairs(type(p.gallery) == 'table' and p.gallery or {}) do table.insert(spots, {g.x, g.y, p.z}) end
+    for _, c in ipairs(type(p.chamber) == 'table' and p.chamber or {}) do table.insert(spots, {c.x, c.y, c.z}) end   -- (r2 h2)
     local marked = {}
     for _, q in ipairs(spots) do
         local t = tile_info(q[1], q[2], q[3])
@@ -1732,6 +1737,11 @@ function furnish_project(id, buildingplan_on, stalled)
     end
     if p.kind == 'well' and results.build ~= 1 then
         return well_refused(data, p, results, qf_build)
+    end
+    -- (r2 h2) a winter cistern's pond zone: kept filling
+    if p.kind == 'well' and type(p.chamber) == 'table' and type(filled_well_keep_filling) == 'function' then
+        local okf, n = pcall(filled_well_keep_filling, p)
+        results.pond = okf and n or ('failed: ' .. tostring(n))
     end
     -- (0.105.47, I7b) a tomb level's tombs take the fort's dead from the start
     -- (automatic burial was found off on free tombs twice in B)

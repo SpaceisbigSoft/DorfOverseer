@@ -272,6 +272,8 @@ class Memory:
     extra_well_failure: str = ""                         # (0.104.141) why another well (one exists) couldn't be
     cavern_well_failure: str = ""                        # why no cavern well could be placed either
     cavern_well_failure_at: int | None = None            # (K48-K4) when: tried again well_retry_days later
+    filled_well_failure: str = ""                        # (r2 h2) why no winter cistern could be placed
+    filled_well_failure_at: int | None = None            # (r2 h2) when: tried again h2_winter_cistern_retry_days later
     cavern_shaft_stairs: bool = False                     # (0.104.13) the old shaft's give-up was cleared once
     cavern_gallery_retried: bool = False                  # (0.105.4 review) the old cavern refusal cleared once for the gallery
     well_floor_retried: bool = False                      # (0.105.24) the old "would not place the well" cleared once (a floor beside it)
@@ -2336,6 +2338,14 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
             # (r1 g3) a refusal for a full slot list says nothing of the water
             # (the cavern well now follows any other refusal)
             memory.extra_well_failure = str(r.get("error") or "refused")[:300]
+    elif t == "place_well" and a.get("filled"):
+        # (r2 h2) the winter cistern: its refusal says nothing of an ordinary
+        # well or a cavern well (their waits hang on those)
+        if r.get("ok") is True:
+            memory.filled_well_failure, memory.filled_well_failure_at = "", None
+        elif r.get("ok") is False and not r.get("rejected"):
+            memory.filled_well_failure = str(r.get("error") or "refused")[:300]
+            memory.filled_well_failure_at = now
     elif t == "place_well":
         memory.last_fired["well"] = now          # refused or not: wait the full spell
         if a.get("cavern"):

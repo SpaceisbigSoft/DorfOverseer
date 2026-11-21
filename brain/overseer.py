@@ -910,7 +910,8 @@ def short(a: dict) -> str:
     if t == "make_pasture":
         return f"make a {a.get('tiles')}-tile pasture"
     if t == "place_well":
-        return "dig a shaft to a cavern lake for a well" if a.get("cavern") else "dig a well over water"
+        return ("dig a shaft to a cavern lake for a well" if a.get("cavern")
+                else "dig a winter cistern and a well over it" if a.get("filled") else "dig a well over water")
     if t == "farm_plots":
         return (f"lay out {a.get('tiles')} farm tiles" + (" underground" if a.get("underground") else "")   # (0.105.5)
                 + (" (or dig a farm level)" if a.get("dig") else ""))

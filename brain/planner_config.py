@@ -1432,6 +1432,15 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r2 h2) the winter cistern: a well filled by bucket (brain/planner_wells.py
+# _winter_water_rule; lua/ai-builder-wells.lua find_filled_well_spot)
+PLANNER_CONFIG.update({
+    "h2_winter_cistern": True,            # dig one when no water source works in winter (False: never)
+    "h2_winter_cistern_half": 1,          # its chamber's half side: 1 = 3x3 (9 tiles), 2 = 5x5 (the bridge's most)
+    "h2_winter_cistern_retry_days": 28,   # after a refusal (no spot), asked again this many days later
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

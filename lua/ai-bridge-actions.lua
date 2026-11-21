@@ -576,8 +576,12 @@ function act_place_well(a)
     -- (0.105.38) a far bank: up to the brain's water_far_reach, else the map's width
     far_reach_of(a)
     local map_w = math.max(100, map_width())
+    local half = whole_number(a.half)
     return reqscript('ai-builder').place_well({inside_only = a.inside_only == true, cavern = a.cavern == true,
                                                urgent = a.urgent == true,
+                                               -- (r2 h2) the winter cistern: a chamber filled by bucket
+                                               filled = a.filled == true and a.cavern ~= true or nil,
+                                               half = half and math.max(1, math.min(half, 2)) or nil,
                                                -- (0.105.4 review) a cavern nobody has found: the Rules tab's say
                                                open_caverns = a.open_caverns == true,
                                                gallery = gallery and math.max(0, math.min(gallery, 80)) or nil,
