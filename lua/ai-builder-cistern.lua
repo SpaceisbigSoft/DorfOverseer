@@ -11,8 +11,9 @@ local ez = ez
 -- --- the cistern (water step W2): planned only, nothing dug yet ----------------------
 --
 -- A cistern: a 5x5 room of solid rock right under a fort floor, at the level
--- of still water nearby (a pool, lake or cavern lake: never a river, whose
--- water can be under pressure), joined to it by a one-tile tunnel through
+-- of still water nearby (a pool, lake or cavern lake; (r2h1) a river or
+-- brook only down the shaft way, through its diagonal step: its water can
+-- be under pressure, which never passes a diagonal), joined to it by a one-tile tunnel through
 -- solid rock. A floodgate in the tunnel beside the cistern (worked by a
 -- lever on the fort floor above) lets water in and shuts it out; the well
 -- stands on the fort floor over the cistern's middle. Still water only ever
@@ -54,6 +55,17 @@ CISTERN_SECONDS = 3
 local function still_water(t)
     return t ~= nil and t.liquid and not t.magma and not t.salt and t.depth >= 4
         and t.material ~= 'RIVER' and t.material ~= 'BROOK'
+end
+
+-- (r2h1) a river's or brook's water (fresh, 4/7 deep at least): a source
+-- only down the shaft way, through the diagonal step (pressure never passes
+-- a diagonal), never on the room's own level
+local function river_water(t)
+    return t ~= nil and t.liquid and not t.magma and not t.salt and (t.depth or 0) >= 4
+        and (t.material == 'RIVER' or t.material == 'BROOK')
+end
+local function source_water(t, rivers)
+    return still_water(t) or (rivers == true and river_water(t))
 end
 
 local DIR8 = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
@@ -274,15 +286,134 @@ local function tunnel_closed(path, z)
     return true
 end
 
-local function source_kind(w)
-    return w.feature and 'cavern lake' or (w.outside and 'surface pool' or 'underground pool')
+-- (r2h1) The tunnel to a far source by a best-first search toward `goal`
+-- ({x, y}: the survey's nearest tile of the river): the same rules as
+-- tunnel_to_water (each tile's 8 neighbours rock, the room or the tunnel; the
+-- plug's rock, liquid or the tunnel; at least two tiles), and `capped` (the
+-- shaft way: every tile but the plug held down by a wall or floor over it).
+-- A river 90-170 tiles off would make the plain search walk a disc of rock
+-- that wide (tens of seconds on DF's main thread); this one looks at
+-- CISTERN_SEARCH_MAX tiles at most and stops at the deadline. Its `water`
+-- is a river's or still water's (source_water(t, true)). nil when none.
+CISTERN_SEARCH_MAX = 6000
+local function tunnel_to_goal(c, z, maxlen, goal, deadline, need_cap)
+    local function in_room(x, y) return x >= c.x1 and x <= c.x2 and y >= c.y1 and y <= c.y2 end
+    local function h(x, y) return math.abs(x - goal.x) + math.abs(y - goal.y) end
+    local heap = {}
+    local function push(e)
+        table.insert(heap, e)
+        local i = #heap
+        while i > 1 do
+            local pa = i // 2
+            if heap[pa].f <= heap[i].f then break end
+            heap[pa], heap[i] = heap[i], heap[pa]
+            i = pa
+        end
+    end
+    local function pop()
+        local top = heap[1]
+        local last = table.remove(heap)
+        if #heap > 0 then
+            heap[1] = last
+            local i = 1
+            while true do
+                local l, r, m = 2 * i, 2 * i + 1, i
+                if l <= #heap and heap[l].f < heap[m].f then m = l end
+                if r <= #heap and heap[r].f < heap[m].f then m = r end
+                if m == i then break end
+                heap[m], heap[i] = heap[i], heap[m]
+                i = m
+            end
+        end
+        return top
+    end
+    local prev, looked = {}, 0
+    local starts = {}
+    for x = c.x1, c.x2 do table.insert(starts, {x, c.y1 - 1}); table.insert(starts, {x, c.y2 + 1}) end
+    for y = c.y1, c.y2 do table.insert(starts, {c.x1 - 1, y}); table.insert(starts, {c.x2 + 1, y}) end
+    for _, p in ipairs(starts) do
+        local k = p[1] .. ',' .. p[2]
+        if prev[k] == nil then prev[k] = false; push({x = p[1], y = p[2], n = 1, f = 1 + h(p[1], p[2])}) end
+    end
+    while #heap > 0 do
+        looked = looked + 1
+        if looked > CISTERN_SEARCH_MAX or (deadline and looked % 32 == 0 and os.clock() > deadline) then return nil end
+        local e = pop()
+        local x, y, n = e.x, e.y, e.n
+        local t = tile_info(x, y, z)
+        if solid_rock(t) then
+            for _, d in ipairs(DIR4) do
+                local w = tile_info(x + d[1], y + d[2], z)
+                if source_water(w, true) and prev[x .. ',' .. y] then
+                    local ok = true
+                    for _, q in ipairs(DIR8) do
+                        local nx, ny = x + q[1], y + q[2]
+                        local nt = tile_info(nx, ny, z)
+                        if not (solid_rock(nt) or (nt and nt.liquid and not nt.magma) or in_room(nx, ny)
+                                or prev[nx .. ',' .. ny] ~= nil) then
+                            ok = false
+                        end
+                    end
+                    if ok then
+                        local path = {}
+                        local px, py = x, y
+                        while true do
+                            table.insert(path, 1, {x = px, y = py})
+                            local pr = prev[px .. ',' .. py]
+                            if not pr then break end
+                            px, py = pr[1], pr[2]
+                        end
+                        return {path = path, water = {x = x + d[1], y = y + d[2]}}
+                    end
+                end
+            end
+            if n < maxlen and (not need_cap or capped(tile_info(x, y, z + 1))) then
+                local clear = true
+                for _, q in ipairs(DIR8) do
+                    local nt = tile_info(x + q[1], y + q[2], z)
+                    if not (solid_rock(nt) or in_room(x + q[1], y + q[2])) then clear = false break end
+                end
+                if clear then
+                    for _, d in ipairs(DIR4) do
+                        local nx, ny = x + d[1], y + d[2]
+                        local k = nx .. ',' .. ny
+                        if prev[k] == nil and not in_room(nx, ny) then
+                            prev[k] = {x, y}
+                            push({x = nx, y = ny, n = n + 1, f = n + 1 + h(nx, ny)})
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil
 end
+
+-- (r2h1) a river or brook by its tile's material first (a DF river is a
+-- local feature: its tiles carry the feature flag), a cavern lake by a
+-- global feature (a tile reader without the two apart: its `feature`)
+local function source_kind(w)
+    if w.material == 'RIVER' then return 'river' end
+    if w.material == 'BROOK' then return 'brook' end
+    local cavern = w.feature
+    if w.feature_global ~= nil or w.feature_local ~= nil then cavern = w.feature_global == true end
+    return cavern and 'cavern lake' or (w.outside and 'surface pool' or 'underground pool')
+end
+
+CISTERN_RIVER = true             -- (r2h1) a river or brook a source (down the shaft way only)
+CISTERN_RIVER_PENALTY = 20       -- (r2h1) a river's extra: a long tunnel, and its water stops in winter
+CISTERN_RIVER_LEVELS = 10        -- (r2h1) fort levels past the busiest tried for a river's shaft (act_survey_water)
 
 -- The score's extra for a source (lower is better) and why, in words.
 local function source_cost(w, extent, prefs)
     local kind = source_kind(w)
     local cost, why = 0, {}
-    if kind == 'surface pool' then
+    if kind == 'river' or kind == 'brook' then
+        -- (r2h1) no freeze penalty: the cistern is filled while it flows and
+        -- holds its water underground through the winter (that is its use)
+        cost = cost + CISTERN_RIVER_PENALTY
+        if prefs.freezes then table.insert(why, 'it freezes in winter: the cistern is filled while it flows') end
+    elseif kind == 'surface pool' then
         cost = cost + CISTERN_SURFACE_PENALTY
         if prefs.freezes then cost = cost + CISTERN_FREEZE_PENALTY; table.insert(why, 'it freezes in winter') end
     elseif kind == 'cavern lake' then
@@ -296,7 +427,7 @@ end
 
 -- The shaft way in, from one of the room's four outer corners. (13c) Also
 -- whether the deadline cut it short.
-local function shaft_to_water(c, z, water_z, deadline, maxlen)
+local function shaft_to_water(c, z, water_z, deadline, maxlen, river)
     local corners = {{c.x1 - 1, c.y1 - 1, c.x1, c.y1}, {c.x2 + 1, c.y1 - 1, c.x2, c.y1},
                      {c.x1 - 1, c.y2 + 1, c.x1, c.y2}, {c.x2 + 1, c.y2 + 1, c.x2, c.y2}}
     local found, cut = {}, false
@@ -313,6 +444,18 @@ local function shaft_to_water(c, z, water_z, deadline, maxlen)
                     if tun and tunnel_closed(tun.path, zs) then
                         table.insert(found, {tun = tun, zs = zs, shaft = {x = bx, y = by}, corner = {x = rx, y = ry},
                                              rise = rise})
+                    end
+                end
+                -- (r2h1) a river on this level: the goal-directed tunnel to it
+                -- (its own reach), through the diagonal step at the shaft's foot
+                local rg = river and river.goals[zs]
+                if rg and capped(tile_info(bx, by, zs + 1)) then
+                    local tun = tunnel_to_goal({x1 = bx, y1 = by, x2 = bx, y2 = by}, zs, river.len, rg, deadline, true)
+                    if deadline and os.clock() > deadline then cut = true end
+                    if tun and tunnel_closed(tun.path, zs) then
+                        local wt = tile_info(tun.water.x, tun.water.y, zs)
+                        table.insert(found, {tun = tun, zs = zs, shaft = {x = bx, y = by}, corner = {x = rx, y = ry},
+                                             rise = rise, river = river_water(wt) or nil})
                     end
                 end
             end
@@ -374,13 +517,58 @@ function cistern_far_len(maxlen)
     return best and math.min(cap, math.tointeger(best) + CISTERN_HALF + 4) or nil
 end
 
+-- (r2h1) The rivers and brooks the last survey found (region4's: ~90 tiles
+-- from the stair, ten levels down, so no moat or wheel takes it): {goals =
+-- {[z] = {x, y}} (each level's nearest tile, the tunnel's heading), len =
+-- the tunnel's reach for them (the dearest one's reach estimate, else its
+-- distance, and a margin), levels = {z...}} or nil (none, rivers off, far
+-- sources off: CISTERN_FAR_REACH 0). Up to the map's width or the brain's
+-- water_far_reach, as for far still water.
+function cistern_rivers()
+    if not CISTERN_RIVER then return nil end
+    local okw, w = pcall(function() return reqscript('ai-water').last() end)
+    if not okw or type(w) ~= 'table' then return nil end
+    local m = type(w.map) == 'table' and math.tointeger(tonumber(w.map.w)) or 192
+    local cap = math.tointeger(tonumber(CISTERN_FAR_REACH))
+    if cap == 0 then return nil end
+    if not cap or cap < 0 then cap = m end
+    local out, len = {goals = {}, levels = {}}, nil
+    local function add(b, flowing)
+        if type(b) ~= 'table' or not flowing or (tonumber(b.salt_share) or 0) > 0 then return end
+        local n = type(b.nearest) == 'table' and b.nearest or nil
+        local nz = n and math.tointeger(tonumber(n.z))
+        if not nz or not tonumber(n.x) or not tonumber(n.y) then return end
+        local cost = tonumber(b.reach) or tonumber(b.reach_through) or tonumber(b.d)
+        if not cost or cost > cap then return end
+        if not out.goals[nz] then
+            out.goals[nz] = {x = math.tointeger(tonumber(n.x)), y = math.tointeger(tonumber(n.y))}
+            table.insert(out.levels, nz)
+        end
+        local l = math.min(cap, math.tointeger(math.floor(cost)) + CISTERN_HALF + 6)
+        if not len or l > len then len = l end
+    end
+    for _, b in ipairs(type(w.waters) == 'table' and w.waters or {}) do
+        add(b, type(b) == 'table' and b.flow == 'flowing')
+    end
+    for _, b in ipairs(type(w.bodies) == 'table' and w.bodies or {}) do
+        add(b, type(b) == 'table' and (b.kind == 'river' or b.kind == 'brook'))
+    end
+    if not len then return nil end
+    out.len = len
+    return out
+end
+
 function plan_cistern(first, last, opts)
     opts = type(opts) == 'table' and opts or {}
     local maxlen = math.tointeger(tonumber(opts.tunnel)) or CISTERN_MAX_TUNNEL
     if maxlen < 2 then maxlen = CISTERN_MAX_TUNNEL end
     local okf, far_len = pcall(cistern_far_len, maxlen)
     if okf and far_len and far_len > maxlen then maxlen = far_len end
-    local area = fort_scan_area(math.max(CISTERN_RADIUS, maxlen + CISTERN_HALF + 2))
+    -- (r2h1) a river or brook, reached down the shaft way by its own tunnel
+    local okr, river = pcall(cistern_rivers)
+    if not okr or opts.rivers == false then river = nil end
+    local reach_len = math.max(maxlen, river and river.len or 0)
+    local area = fort_scan_area(math.max(CISTERN_RADIUS, reach_len + CISTERN_HALF + 2))
     if not area then return nil, 'no citizens' end
     local prefs = cistern_prefs()
     local deadline = os.clock() + CISTERN_SECONDS
@@ -407,6 +595,7 @@ function plan_cistern(first, last, opts)
                 end
             end
         end
+        if river then for _, zz in ipairs(river.levels) do wet_levels[zz] = true end end    -- (r2h1)
     end
     local inner = fort_scan_area(CISTERN_RADIUS)
     for i = first or 1, math.min(last or CISTERN_LEVELS, #area.levels) do
@@ -417,11 +606,15 @@ function plan_cistern(first, last, opts)
         local water_z, any = {}, false
         local W_ = area.x2 - area.x1 + 1
         local dist, queue = {}, {}
+        local river_any = false       -- (r2h1) a river 1-8 levels over the cistern's level
         for zz = z, z + CISTERN_MAX_RISE do
+            local rl = river and zz > z and river.goals[zz] ~= nil
             for y = area.y1, (wet_levels == nil or wet_levels[zz]) and area.y2 or area.y1 - 1, 2 do
                 for x = area.x1, area.x2, 2 do
-                    if still_water(tile_info(x, y, zz)) then
-                        water_z[zz] = true
+                    local t = tile_info(x, y, zz)
+                    local st_ = still_water(t)
+                    if st_ or (rl and river_water(t)) then
+                        if st_ then water_z[zz] = true else river_any = true end
                         local k = (y - area.y1) * W_ + (x - area.x1)
                         if not dist[k] then dist[k] = 0; table.insert(queue, {x, y}) end
                     end
@@ -429,10 +622,12 @@ function plan_cistern(first, last, opts)
             end
             if water_z[zz] then any = true end
         end
+        if river_any then any = true end
         if any then
             -- (0.105.3) every column's distance to the nearest still water
             -- (8-way spread: Chebyshev tiles), then the sites in reach, nearest first
             local reach = maxlen + CISTERN_HALF + 2
+            if river_any then reach = math.max(reach, river.len + CISTERN_HALF + 2) end
             local head = 1
             while head <= #queue do
                 -- (0.105.4 review) the spread over the wider box under the plan's own deadline
@@ -496,7 +691,7 @@ function plan_cistern(first, last, opts)
                                 end
                             end
                             -- shaft: the source higher up, through a diagonal
-                            local shafts, scut = shaft_to_water(c, z, water_z, deadline, maxlen)
+                            local shafts, scut = shaft_to_water(c, z, water_z, deadline, maxlen, river_any and river or nil)
                             if scut then cut = true end
                             for _, o in ipairs(shafts) do table.insert(options, o) end
                             if #options == 0 then
@@ -512,7 +707,7 @@ function plan_cistern(first, last, opts)
                                     why = 'the still water reachable is only a puddle'
                                 elseif w.outside and ext < CISTERN_MIN_SURFACE_WATER then
                                     why = 'the surface water reachable is too small (it dries up and freezes)'
-                                elseif body_has_river(tun.water.x, tun.water.y, zs) then
+                                elseif not o.river and body_has_river(tun.water.x, tun.water.y, zs) then
                                     why = 'that water joins a river or brook (it can be under pressure)'
                                 else
                                     local cost, kind, whys = source_cost(w, ext, prefs)
@@ -532,7 +727,8 @@ function plan_cistern(first, last, opts)
                                                 intake_z = zs, shaft = o.shaft, corner = o.corner, rise = o.rise,
                                                 source = kind, source_why = #whys > 0 and table.concat(whys, ', ') or nil,
                                                 stagnant = w.stagnant or nil, extent = ext,
-                                                elevation = ez(z), intake_elevation = ez(zs), lever = lever}
+                                                elevation = ez(z), intake_elevation = ez(zs), lever = lever,
+                                                river = o.river or nil}
                                     end
                                 end
                             end
@@ -588,11 +784,34 @@ end
 -- (0.104.168) and, when not, every open spot found: {x, y, z, fix = 'wall' |
 -- 'floor' | nil (nothing the AI can build there), words}, so the AI can close
 -- them itself (cistern_close_gaps); `where` is still the first.
+-- (r2h1) The water works' outlets from this cistern: the muddied farm
+-- level fed from a river-fed cistern (ai-waterworks plan_irrigation, its plan
+-- `cistern_fed`) cuts its plug through the room's wall, its own floodgate in
+-- its tunnel (that tunnel checked by the water works). Its plug and tunnel
+-- are no gap in the cistern's wall: {["x,y,z"] = true}.
+function cistern_outlets(p)
+    local out = {}
+    pcall(function()
+        local st = reqscript('ai-waterworks').load_state()
+        local wk = type(st) == 'table' and type(st.works) == 'table' and st.works.irrigation or nil
+        local q = type(wk) == 'table' and wk.plan or nil
+        if type(q) ~= 'table' or type(q.cistern_fed) ~= 'table' or wk.stage == 'retired' then return end
+        local f = q.cistern_fed
+        if f.x1 ~= p.cistern.x1 or f.y1 ~= p.cistern.y1 or f.z ~= p.cistern.z then return end
+        for _, list in ipairs({{q.plug or {}}, q.upstream or {}, {q.gate or {}}}) do
+            for _, c in ipairs(list) do
+                if c.x and c.y and c.z then out[c.x .. ',' .. c.y .. ',' .. c.z] = true end
+            end
+        end
+    end)
+    return out
+end
+
 function cistern_sealed(p, stage)
     local d_stage_hole = stage == 'hole' or stage == 'well' or stage == 'done'
     local c, z = p.cistern, p.cistern.z
     local zi = p.intake_z or z
-    local open_ = {}
+    local open_ = cistern_outlets(p)
     local function mark(x, y, zz) open_[x .. ',' .. y .. ',' .. zz] = true end
     for yy = c.y1, c.y2 do for xx = c.x1, c.x2 do mark(xx, yy, z) end end
     for _, t in ipairs(p.tunnel_path or {}) do mark(t.x, t.y, zi) end
@@ -1297,6 +1516,15 @@ function cistern_step(dry_run, prefs, tunnel)
     if not d then
         -- (0.105.3) the same tunnel reach the survey planned it with
         local plan, why, cut = plan_cistern(nil, nil, {tunnel = CISTERN_TUNNEL_ASKED})
+        if not plan and not cut then
+            -- (r2h1) a river's shaft way on the fort levels past the busiest (as the survey looked)
+            local okr, rv = pcall(cistern_rivers)
+            if okr and rv then
+                local p2, why2, cut2 = plan_cistern(CISTERN_LEVELS + 1, CISTERN_LEVELS + CISTERN_RIVER_LEVELS,
+                                                    {tunnel = CISTERN_TUNNEL_ASKED})
+                if p2 then plan = p2 else cut = cut2; why = why or why2 end
+            end
+        end
         if not plan then return {ok = false, error = why, timed_out = cut or nil} end
         if dry_run then return {ok = true, dry_run = true, stage = 'dig', plan = plan} end
         d = {stage = 'dig', plan = plan}
@@ -1492,7 +1720,14 @@ function cistern_step(dry_run, prefs, tunnel)
             return cistern_close_gaps(d, p, gaps, dry_run, save_cistern)
         end
         if not dry_run and (d.sealing or d.unsealed_why) then d.sealing, d.unsealed_why = nil, nil; save_cistern(d) end
-        if not still_water(tile_info(p.water.x, p.water.y, zi)) then
+        if p.river then
+            -- (r2h1) a river's water beside the plug (frozen, or low: the plug waits)
+            local wt = tile_info(p.water.x, p.water.y, zi)
+            if not river_water(wt) and not still_water(wt) then
+                return wait(wt and wt.material == 'FROZEN_LIQUID' and 'the river beside the plug is frozen: the plug waits for the thaw'
+                            or 'the river beside the plug is low or gone: the plug waits for its water')
+            end
+        elseif not still_water(tile_info(p.water.x, p.water.y, zi)) then
             return {ok = false, rejected = true, error = 'the cistern\'s source is gone (no still water beside the plug)'}
         end
         if dry_run then return {ok = true, dry_run = true, stage = 'open'} end
@@ -1698,8 +1933,14 @@ function cistern_step(dry_run, prefs, tunnel)
             -- floodgate is shut and the cistern retired; the next one is planned
             -- afresh (this room no longer counts as solid rock)
             local src = tile_info(p.water.x, p.water.y, zi)
-            local dry = st.depth == 0 and not (src and src.liquid)
+            -- (r2h1) a river frozen in winter is not dried up: it flows again in spring
+            local frozen = p.river and src and src.material == 'FROZEN_LIQUID'
+            local dry = st.depth == 0 and not (src and src.liquid) and not frozen
             local now_t = game_tick()
+            if frozen and st.depth == 0 then
+                return wait(('the cistern is filling: 0/7; its source (%s) is frozen: it fills after the thaw%s')
+                            :format(tostring(p.source), why))
+            end
             if dry then
                 d.dry_since = d.dry_since or now_t
                 save_cistern(d)

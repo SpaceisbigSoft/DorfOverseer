@@ -1490,6 +1490,13 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r2h1) the river: the whole-map survey's slice, and a river-fed cistern
+# (lua/ai-water.lua, lua/ai-builder-cistern.lua, brain/planner_wells.py)
+PLANNER_CONFIG.update({
+    "h1_water_slice_seconds": 0.3,        # a survey slice this long while scanning (0.15 before; the bridge caps it at 0.4)
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

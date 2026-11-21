@@ -71,7 +71,9 @@ def _():
         env.WATER(x, 60, 108, fields(flow_size=7, outside=True, river=True))
     env.WATER(60, 50, 106, fields(flow_size=3, outside=True, water_stagnant=True))   # a pond
     for x in range(50, 54):                                   # a cavern lake far down
-        env.WATER(x, 52, 40, fields(flow_size=6, feature_local=True, hidden=True))
+        # (r2h1) a cavern's water is a global feature's (a deep layer); a
+        # local feature's is a river's or a pool's (A4 0.2)
+        env.WATER(x, 52, 40, fields(flow_size=6, feature_global=True, hidden=True))
     env.WATER(51, 51, 90, fields(water_table=True))           # aquifer wall
     env.WATER(51, 52, 30, fields(flow_size=7, liquid_type=True))   # magma
     r = env.scan(1234)

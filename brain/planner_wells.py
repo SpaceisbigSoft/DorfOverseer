@@ -1287,7 +1287,13 @@ def _water_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
             act["far_reach"] = _far_args(cfg)["far_reach"]
         return act
     if w.get("scanning"):
-        proposals.append(Proposal("water", survey(),
+        act = survey()
+        # (r2h1, A4 B3) a longer slice while the survey runs: a 288x288x194
+        # map needs ~90 slices of 0.15 s, a season gave A ~40 cycles
+        sl = cfg.get("h1_water_slice_seconds")
+        if isinstance(sl, (int, float)) and not isinstance(sl, bool) and sl > 0:
+            act["seconds"] = float(sl)
+        proposals.append(Proposal("water", act,
                                   "the water survey goes on (a slice a cycle, so the game doesn't stall)", 7))
     elif w.get("none") or not isinstance(tick, int) or not 0 <= now - tick < cfg["water_survey_ticks"]:
         proposals.append(Proposal("water", survey(),

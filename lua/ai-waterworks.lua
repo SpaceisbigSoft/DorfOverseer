@@ -449,7 +449,8 @@ local function rock(t, warm_ok)
 end
 
 -- (0.105.38 review) a deep layer's tile (a cavern's, or the sea's): a
--- global feature. A local one is a magma pipe's or a pool's, no cavern. A
+-- global feature. A local one is a magma pipe's, a pool's or (r2h1) a
+-- river's or brook's (DF's river is a local feature), no cavern. A
 -- tile reader without the two apart: its `feature` taken for a cavern.
 local function cavern_tile(t)
     if t == nil then return false end
@@ -1120,16 +1121,73 @@ end
 -- W5: a 5x5 room in stone under a fort level, muddied by a little water
 -- let in through a floodgate, dried, then farm plots on the mud.
 IRR_FAR_SECONDS = 0.25   -- (0.105.38 review) the far farm room's search this long at most (then: tried again later)
+-- (r2h1) A river-fed cistern, built and holding water (ai-builder-cistern,
+-- its plan `river`: filled through its diagonal step, so its water is still
+-- and under no pressure), as the farm room's source: the room on the
+-- cistern's level under the well's fort floor, its tunnel and floodgate cut
+-- through the cistern's wall. nil, or {zf, z, edge = water tiles of the
+-- room's edge (not the well's), cistern = {x1, y1, z}, own = {["x,y,z"]: the
+-- cistern's water tiles: the room, its tunnel and shaft}, stops}.
+function cistern_feed()
+    local ok, d = pcall(function() return reqscript('ai-builder').cistern_data() end)
+    if not ok or type(d) ~= 'table' or d.stage ~= 'done' or type(d.plan) ~= 'table' then return nil end
+    local p = d.plan
+    if not p.river or type(p.cistern) ~= 'table' or type(p.well) ~= 'table' then return nil end
+    local c, z = p.cistern, p.cistern.z
+    local zi = p.intake_z or z
+    local out = {zf = p.well.z, z = z, edge = {}, cistern = {x1 = c.x1, y1 = c.y1, z = z}, own = {}}
+    for x = c.x1, c.x2 do for y = c.y1, c.y2 do
+        out.own[key(x, y, z)] = true
+        if (x == c.x1 or x == c.x2 or y == c.y1 or y == c.y2) and not (x == p.well.x and y == p.well.y)
+                and still_water(T(x, y, z)) then
+            table.insert(out.edge, {x = x, y = y, d = 0})
+        end
+    end end
+    for _, q in ipairs(p.tunnel_path or {}) do out.own[key(q.x, q.y, zi)] = true end
+    if p.plug then out.own[key(p.plug.x, p.plug.y, zi)] = true end
+    if type(p.shaft) == 'table' then
+        for zz = z, zi do out.own[key(p.shaft.x, p.shaft.y, zz)] = true end
+    end
+    if #out.edge == 0 then return nil end
+    return out
+end
+
+-- (r2h1) a cistern-fed plan's dug tiles kept off the cistern: none of them
+-- (but the plug, through the room's wall) beside any of the cistern's water
+-- tiles (its room, tunnel, shaft), so the cistern stays closed all round
+local function off_cistern(p, cf)
+    for _, list in ipairs({p.dig or {}, p.wet or {}}) do
+        for _, q in ipairs(list) do
+            if not (q.x == p.plug.x and q.y == p.plug.y and q.z == p.plug.z) then
+                for dx = -1, 1 do for dy = -1, 1 do
+                    if cf.own[key(q.x + dx, q.y + dy, q.z)] then
+                        return ('the dug tile at x%d y%d would open the cistern\'s wall'):format(q.x, q.y)
+                    end
+                end end
+            end
+        end
+    end
+    return nil
+end
+
 function plan_irrigation()
     local fb = fort_box()
     if not fb then return nil, 'no citizens' end
     local why
     local far_deadline, far_out
-    for zf = fb.z_high, math.max(fb.z_low, fb.z_high - 3), -1 do
+    local tries = {}
+    for zf = fb.z_high, math.max(fb.z_low, fb.z_high - 3), -1 do table.insert(tries, {zf = zf}) end
+    -- (r2h1) the river-fed cistern last: the fort's own still water first
+    local okc, cf = pcall(cistern_feed)
+    if okc and cf then table.insert(tries, {zf = cf.zf, cf = cf}) end
+    for _, try in ipairs(tries) do
+        local zf, cf = try.zf, try.cf
         local z = zf - 1
         -- still water on the room's level near the fort (the nearest 12 tiles)
         local waters = {}
+        if cf then waters = cf.edge end
         for dx = -30, 30 do for dy = -30, 30 do
+            if cf then break end
             local t = T(fb.x + dx, fb.y + dy, z)
             if still_water(t) then table.insert(waters, {x = fb.x + dx, y = fb.y + dy, d = math.max(math.abs(dx), math.abs(dy))}) end
         end end
@@ -1137,7 +1195,7 @@ function plan_irrigation()
         while #waters > 12 do table.remove(waters) end
         -- (0.105.38) none near on this level: the survey's still water
         -- further off, the cheapest first, reached by a long tunnel (staged)
-        if #waters == 0 and not far_out then
+        if #waters == 0 and not far_out and not cf then
             local w = water_survey()
             for _, b in ipairs(far_sources(w, function(b)
                     return b.flow == 'stagnant' and b.nearest.z == z and (tonumber(b.salt_share) or 0) == 0 end)) do
@@ -1179,6 +1237,13 @@ function plan_irrigation()
                                        room = {x1 = cx - 2, y1 = cy - 2, x2 = cx + 2, y2 = cy + 2, z = z},
                                        src = {x = wt.x, y = wt.y, z = z},
                                        test = {mode = 'wet', z = z}}
+                            if cf then
+                                -- (r2h1) fed from the river's cistern: its tiles stop the dry
+                                -- run's walk (they are the source), and it names the cistern
+                                p.cistern_fed, p.stops = cf.cistern, {}
+                                for k in pairs(cf.own) do p.stops[k] = true end
+                                p.fed_from = 'the river-fed cistern'
+                            end
                             for x = cx - 2, cx + 2 do for y = cy - 2, cy + 2 do
                                 local stair = x == cx - 2 and y == cy - 2
                                 table.insert(p.dig, {x = x, y = y, z = z, text = stair and 'u' or 'd'})
@@ -1197,6 +1262,10 @@ function plan_irrigation()
                             if not lv then why = why or 'no free floor for the lever' goto skip end
                             lv.name = 'AI irrigation'
                             p.lever = lv
+                            if cf then
+                                local off = off_cistern(p, cf)
+                                if off then why = why or off goto skip end
+                            end
                             local by = bypass(p)     -- (0.105.33) the water never round the floodgate
                             if not by and wt.far then
                                 p.far = {d = #path, kind = 'tunnel'}
