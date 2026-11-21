@@ -1092,8 +1092,16 @@ def _():
     assert len(B.projects_report().open) == 0
     start(kind="bedrooms", rooms=4, room_size=3)
     start(kind="dining", tables=8)
-    r = well()
-    assert not r.ok and r.rejected and "unfinished" in r.error, r.error
+    # (R2 h3) a well is a small need: it waits only once the needs' pool is full too
+    pool = B.NEED_SLOTS
+    try:
+        B.NEED_SLOTS = 0
+        r = well()
+        assert not r.ok and r.rejected and "unfinished" in r.error, r.error
+    finally:
+        B.NEED_SLOTS = pool
+    r = well(dry=True)
+    assert r.ok, r.error
 
 
 @test("wells: never into a cavern, over magma, stagnant or salt water, or a full tile right under the floor")
@@ -1356,8 +1364,13 @@ def _():
     cavern_column()
     start(kind="bedrooms", rooms=4, room_size=3)
     start(kind="dining", tables=8)
-    r = B.place_well(LUA.table_from({"cavern": True}), LUA.table_from({"year": 148, "tick": 100}), False)
-    assert not r.ok and r.rejected, r.error
+    pool = B.NEED_SLOTS
+    try:
+        B.NEED_SLOTS = 0          # (R2 h3) the needs' pool full: the cap as before
+        r = B.place_well(LUA.table_from({"cavern": True}), LUA.table_from({"year": 148, "tick": 100}), False)
+        assert not r.ok and r.rejected, r.error
+    finally:
+        B.NEED_SLOTS = pool
     r = B.place_well(LUA.table_from({"cavern": True, "urgent": True}), LUA.table_from({"year": 148, "tick": 100}), False)
     assert r.ok and r.urgent, r.error
     assert W.get(70, 58, 66).dig_text == "h1" and W.get(71, 58, 66).dig_text == "i1"
