@@ -407,6 +407,26 @@ ACTIONS = {
         if a.max ~= nil and (not max or max < 1 or max > 50) then return reject('thirst_unforbid: max is 1-50') end
         return reqscript('ai-thirst').unforbid_drink(id, a.dry_run == true, max)
     end,
+    -- (R1 g2) a parched dwarf's way to drink opened (the AI's walls and doors,
+    -- else a dig), a patient lifted out of the hospital burrow and the water
+    -- carrying counted, an "unknown" looked into (lua/ai-thirst.lua)
+    thirst_way = function(a)
+        local id = type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or nil
+        if not id then return reject('thirst_way needs unit_id') end
+        local dig = a.max_dig ~= nil and math.tointeger(a.max_dig) or nil
+        if a.max_dig ~= nil and (not dig or dig < 1 or dig > 60) then return reject('thirst_way: max_dig is 1-60') end
+        return reqscript('ai-thirst').open_way(id, a.dry_run == true, dig)
+    end,
+    thirst_patient = function(a)
+        local id = type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or nil
+        if not id then return reject('thirst_patient needs unit_id') end
+        return reqscript('ai-thirst').patient_help(id, a.dry_run == true)
+    end,
+    thirst_probe = function(a)
+        local id = type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or nil
+        if not id then return reject('thirst_probe needs unit_id') end
+        return reqscript('ai-thirst').probe(id, a.dry_run == true)
+    end,
     -- (0.105.47, R2) the training squad: made, filled with volunteers, or
     -- forgotten (lua/ai-training-squad.lua; never counted as soldiers)
     training_squad = function(a)
@@ -899,6 +919,7 @@ for _, name in ipairs({
     'hunt_send', 'hunt_recall',   -- (0.105.45) each dry run checks the target and squads, and gives no order
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
+    'thirst_way', 'thirst_patient', 'thirst_probe',   -- (R1 g2) each dry run plans or counts and changes nothing
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
     'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none
     'open_meeting',    -- (0.105.47) its dry run finds the diplomacy light and clicks nothing

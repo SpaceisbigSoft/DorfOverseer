@@ -171,7 +171,7 @@ _SURVIVAL_ACTIONS = {
     # water, wells, the waterworks' own steps, hazards
     "survey_water", "water_zone", "restrict_water", "place_well", "renew_well_dig", "seal_well_stairs",
     "well_shaft", "well_safety", "well_rescue", "cistern_step", "water_work", "retire_water_zones",
-    "magma_guard", "magma_reclaim", "lure_shut", "thirst_unforbid", "clear_webs", "remove_webs", "clean_contaminants",
+    "magma_guard", "magma_reclaim", "lure_shut", "thirst_unforbid", "thirst_way", "thirst_patient", "thirst_probe", "clear_webs", "remove_webs", "clean_contaminants",
     "quarantine_syndromes", "clear_miasma", "insane_guard",
     # ways in and out for the stranded
     "open_entrance", "dig_way_in", "way_out_open", "way_out_leave", "close_world", "redig_projects", "location_access",

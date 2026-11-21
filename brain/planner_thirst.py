@@ -30,10 +30,28 @@ that already acts on it this cycle is left to it (no second action):
                let go, the nearest first (new: no existing action unforbids
                drink; never with the gates shut against enemies or near one)
   no_path      the gate rule's unstick when a gate is split; else
-               join_levels (areas on one level joined), and said
+               join_levels (areas on one level joined) once, never again
+               soon after one that joined nothing; then (R1 g2) thirst_way:
+               the AI's own walls on the way taken down, its locked gate
+               doors unlocked, else the shortest dig through natural rock
+               (the dig guard); a few tries, then Needs you
   no_drink     brewing and a well (the drink and well rules): said
-  injured      water carried from a well to the bedridden: said (the well rules)
-  cancelled, unknown, drinking   said only once dehydrated
+  injured      (R1 g2) thirst_patient: lifted out of the AI hospital burrow,
+               the water carrying counted (carriers, buckets, water in
+               reach); the fort's part once a cycle: the carrying labour
+               when short, buckets when none, a chief medical dwarf and a
+               diagnoser; a few tries, then Needs you once dehydrated
+  unknown      (R1 g2) thirst_probe from the act line: their burrows, the
+               alarm's, the AI's locked doors near, the drink forbidden or
+               claimed: each finding said (the AI's own undone); a few
+               tries, then Needs you once dehydrated
+  cancelled, drinking   said only once dehydrated
+
+(R1 g2) Every remedy for a dwarf is counted (thirst_book["ladder"]) and
+stops after its tries: a no-op is never asked 37 times (F: join_levels,
+dead_ends 0, while four founders died behind the AI's own wall). The
+bridge's answers are kept (note_thirst, a record hook): what the last try
+changed, what it found missing, so the next step and the Needs you say it.
 
 A drink brought to a dwarf: DF's only job that carries drink to someone is
 GiveWater (a bucket from a well or water zone, for a patient resting in
@@ -50,9 +68,9 @@ from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import (EMERGENCY, LIMIT_EXEMPT, MULTI_PER_CYCLE, NO_COOLDOWN, STEER_PROTECTED, Proposal,
-                          abs_tick)
+                          abs_tick, ask_player, player_rules)
 
-__all__ = ["RULE", "REASONS", "thirst_rows", "thirst_journal", "_thirst_rule"]
+__all__ = ["RULE", "REASONS", "thirst_rows", "thirst_journal", "_thirst_rule", "note_thirst"]
 
 RULE = "thirst"
 for _s in (EMERGENCY, NO_COOLDOWN, LIMIT_EXEMPT, STEER_PROTECTED, MULTI_PER_CYCLE):
@@ -94,11 +112,11 @@ def thirst_rows(s: dict) -> list:
 
 def _book(memory) -> dict:
     if memory is None:
-        return {"acted": {}, "told": {}, "journaled": {}}
+        return {"acted": {}, "told": {}, "journaled": {}, "ladder": {}, "results": {}}
     b = getattr(memory, "thirst_book", None)
     if not isinstance(b, dict):
         b = {}
-    for k in ("acted", "told", "journaled"):
+    for k in ("acted", "told", "journaled", "ladder", "results"):
         if not isinstance(b.get(k), dict):
             b[k] = {}
     try:
@@ -183,8 +201,112 @@ def _existing(proposals: list) -> dict:
     return ex
 
 
-def _remedy(r: dict, s: dict, cfg: dict, ex: dict) -> tuple[dict | None, str]:
-    """(action or None, words) for one dwarf by its reason."""
+# (R1 g2) the per-dwarf actions a ladder counts (a fort-wide one is counted for the dwarf it was asked for)
+LADDER_ACTIONS = ("join_levels", "thirst_way", "thirst_patient", "thirst_probe")
+
+
+def _last(b: dict, key: str) -> dict:
+    return _d(_d(b.get("results")).get(key))
+
+
+def _tries(lad: dict, atype: str) -> int:
+    return int(_d(lad.get("n")).get(atype) or 0)
+
+
+def _no_path_step(r: dict, cfg: dict, ex: dict, b: dict, lad: dict, now: int) -> tuple[dict | None, str, str | None]:
+    """(R1 g2) no_path, one step: join_levels once (unless one lately joined
+    nothing), then thirst_way a few times; then nothing more but Needs you."""
+    uid = r["id"]
+    noop = b.get("join_noop")
+    noop_recent = isinstance(noop, int) and 0 <= now - noop < int(cfg.get("g2_thirst_join_noop_days", 7)) * 1200
+    if "join_levels" in ex["types"]:
+        return None, "areas on one level are joined this cycle", None
+    if "join_levels" in ex.get("shared", ()):
+        return {"type": "join_levels"}, "join the areas of their level that meet only through the stairs", None
+    joined = _d(b.get("acted")).get("join_levels:all")
+    join_recent = isinstance(joined, int) and 0 <= now - joined < int(cfg.get("thirst_retry_ticks", 600))
+    if (_tries(lad, "join_levels") < int(cfg.get("g2_thirst_join_tries", 1)) and not noop_recent
+            and not join_recent):
+        return {"type": "join_levels"}, "join the areas of their level that meet only through the stairs", None
+    way_max = int(cfg.get("g2_thirst_way_tries", 3))
+    last = _last(b, f"thirst_way:{uid}")
+    why_join = ("the last join of the levels joined nothing" if noop_recent and not _tries(lad, "join_levels")
+                else "joining the levels did not reach them")
+    if _tries(lad, "thirst_way") >= way_max or (last.get("ok") is False and last.get("error")):
+        err = last.get("error") or "each try changed nothing"
+        return None, f"the AI could not open a way to drink ({err})", (
+            f"{r.get('name') or 'a dwarf'} at {_where(r)} has no way to drink and the AI could not open one "
+            f"({err}): dig or open a way to them, or bring drink or a well within their reach")
+    words = (f"{why_join}: open the way to drink: the AI's own walls on it taken down, its locked doors unlocked, "
+             "else the shortest dig through natural rock")
+    if last.get("changed"):
+        words += f" (the last try: {last.get('did') or 'changed the way'})"
+    return {"type": "thirst_way", "unit_id": uid, "max_dig": int(cfg.get("g2_thirst_way_dig", 30))}, words, None
+
+
+def _patient_step(r: dict, s: dict, cfg: dict, ex: dict, b: dict, lad: dict) -> tuple[dict | None, str, str | None]:
+    """(R1 g2) a patient: thirst_patient (lifted out of the hospital burrow, the
+    carrying counted) a few times; then Needs you once dehydrated."""
+    uid, timer = r["id"], int(r.get("timer") or 0)
+    last = _last(b, f"thirst_patient:{uid}")
+    miss = [m for m in _l(last.get("missing")) if isinstance(m, str)]
+    if _tries(lad, "thirst_patient") >= int(cfg.get("g2_thirst_patient_tries", 3)):
+        what = {"carriers": "too few dwarves carry water", "buckets": "no free bucket",
+                "water": "no well or water zone they can be brought water from"}
+        lack = ", ".join(what.get(m, m) for m in miss) or "water still doesn't reach them"
+        if timer >= DEHYDRATED:
+            return None, f"the AI's help did not get water to them ({lack})", (
+                f"{r.get('name') or 'a patient'} at {_where(r)} is dehydrated in bed and the AI could not get water "
+                f"to them ({lack}): a well or water zone the carriers reach, a bucket, dwarves on the Orderlies "
+                "work")
+        return None, f"the AI's help is done for now ({lack}); the well and supply rules go on", None
+    if "place_well" in ex["types"]:
+        tail = "; a well is placed this cycle"
+    else:
+        tail = ""
+    return ({"type": "thirst_patient", "unit_id": uid},
+            "let them out of the AI hospital burrow and count what carries water to them (carriers, buckets, a "
+            "well in reach)" + tail, None)
+
+
+def _probe_step(r: dict, cfg: dict, b: dict, lad: dict) -> tuple[dict | None, str, str | None]:
+    """(R1 g2) "unknown": thirst_probe a few times, each finding said; then
+    Needs you once dehydrated."""
+    uid, timer = r["id"], int(r.get("timer") or 0)
+    last = _last(b, f"thirst_probe:{uid}")
+    found = "; ".join(str(x) for x in _l(last.get("findings"))[:4] if isinstance(x, str))
+    if _tries(lad, "thirst_probe") >= int(cfg.get("g2_thirst_probe_tries", 3)):
+        if timer >= DEHYDRATED:
+            return None, f"looked into {_tries(lad, 'thirst_probe')} times" + (f" (found: {found})" if found else ""), (
+                f"{r.get('name') or 'a dwarf'} at {_where(r)} is dehydrated with drink in reach and the AI found "
+                f"nothing it can undo" + (f" ({found})" if found else "") + ": look at them in the game")
+        return None, "looked into already" + (f" (found: {found})" if found else ""), None
+    if timer < int(cfg.get("g2_thirst_probe_timer", 35000)):
+        return None, "nothing seen in the way", None
+    return ({"type": "thirst_probe", "unit_id": uid},
+            "look at what holds them: their burrows, the alarm's, the AI's locked doors near, the drink forbidden "
+            "or claimed" + (f" (last time: {found})" if found else ""), None)
+
+
+def _remedy(r: dict, s: dict, cfg: dict, ex: dict, b: dict | None = None, lad: dict | None = None,
+            now: int = 0) -> tuple[dict | None, str, str | None]:
+    """(action or None, words, Needs you text or None) for one dwarf by its reason."""
+    reason, uid = r["reason"], r["id"]
+    timer = int(r.get("timer") or 0)
+    b = b if b is not None else {"results": {}}
+    lad = lad if lad is not None else {}
+    act, words = _remedy_old(r, s, cfg, ex)
+    if reason == "no_path" and act is not None:
+        return _no_path_step(r, cfg, ex, b, lad, now)
+    if reason == "injured":
+        return _patient_step(r, s, cfg, ex, b, lad)
+    if reason == "unknown":
+        return _probe_step(r, cfg, b, lad)
+    return act, words, None
+
+
+def _remedy_old(r: dict, s: dict, cfg: dict, ex: dict) -> tuple[dict | None, str]:
+    """(action or None, words) for one dwarf by its reason (before R1 g2)."""
     reason, uid = r["reason"], r["id"]
     timer = int(r.get("timer") or 0)
     if reason == "insane":
@@ -255,6 +377,91 @@ def _remedy(r: dict, s: dict, cfg: dict, ex: dict) -> tuple[dict | None, str]:
     return None, "nothing seen in the way"
 
 
+def _queued(s: dict, recipe: str) -> bool:
+    return any(isinstance(o, dict) and o.get("recipe") == recipe and int(o.get("amount_left") or 0) > 0
+               for o in _l(s.get("orders")))
+
+
+def _patient_support(s: dict, cfg: dict, proposals: list, b: dict, now: int, patients: list) -> list:
+    """(R1 g2) The fort's part in getting water to thirsty patients, each at
+    most once a cycle and once every thirst_retry_ticks (memory.thirst_book):
+    the water-carrying labour when the last count found too few carriers,
+    buckets when the fort has none, a chief medical dwarf when the office is
+    empty, a diagnoser when nobody diagnoses. Returns the words said."""
+    retry = int(cfg.get("thirst_retry_ticks", 600))
+    said = []
+    types = {(p.action.get("type"), p.action.get("job"), p.action.get("office"), p.action.get("recipe"))
+             for p in proposals if isinstance(p.action, dict)}
+    jobs = {t[1] for t in types if t[0] == "assign_labor"}
+    offices = {t[2] for t in types if t[0] == "appoint"}
+    recipes = {t[3] for t in types if t[0] == "work_order"}
+    who = patients[0].get("name") or "a patient"
+    n = len(patients)
+
+    def offer(key: str, action: dict, why: str) -> None:
+        last = b["acted"].get(key)
+        if isinstance(last, int) and 0 <= now - last < retry:
+            return
+        b["acted"][key] = now
+        proposals.append(Proposal(RULE, action, f"{n} patient(s) thirsty ({who} first): {why}", 0))
+        said.append(why)
+
+    short = [k for k, v in _d(b.get("results")).items()
+             if k.startswith("thirst_patient:") and isinstance(_d(v).get("carriers"), int)
+             and "carriers" in _l(_d(v).get("missing")) and 0 <= now - int(_d(v).get("tick") or 0) < 4 * retry]
+    if short and "FEED_WATER_CIVILIANS" not in jobs:
+        offer("assign_labor:FEED_WATER_CIVILIANS", {"type": "assign_labor", "job": "FEED_WATER_CIVILIANS", "count": 2},
+              "too few dwarves carry water to the bedridden: two more given the labour")
+    buckets = _d(s.get("supplies")).get("buckets")
+    if buckets == 0 and "wooden_bucket" not in recipes and not _queued(s, "wooden_bucket"):
+        offer("work_order:wooden_bucket", {"type": "work_order", "recipe": "wooden_bucket",
+                                           "amount": int(cfg.get("g2_thirst_buckets", 3))},
+              "no bucket to carry water to them: buckets made")
+    vacant = _l(_d(s.get("society")).get("vacant"))
+    if "CHIEF_MEDICAL_DWARF" in vacant and "CHIEF_MEDICAL_DWARF" not in offices and player_rules(s)["appoint_nobles"]:
+        offer("appoint:CHIEF_MEDICAL_DWARF", {"type": "appoint", "office": "CHIEF_MEDICAL_DWARF"},
+              "nobody is chief medical dwarf: the best-suited appointed")
+    diag = _d(s.get("infection")).get("diagnosers")
+    if diag == 0 and "DIAGNOSE" not in jobs:
+        offer("assign_labor:DIAGNOSE", {"type": "assign_labor", "job": "DIAGNOSE", "count": 1},
+              "nobody outside the military diagnoses: the best civilian at it given the labour")
+    return said
+
+
+def note_thirst(p, r, memory, now: int) -> None:
+    """(R1 g2) A record hook: what the bridge answered to the thirst rule's
+    actions (and to any join_levels), kept for the next step and its words:
+    {tick, ok, changed, did, error, missing, carriers, findings}."""
+    a = p.action if isinstance(getattr(p, "action", None), dict) else {}
+    t = a.get("type")
+    if t not in LADDER_ACTIONS or memory is None:
+        return
+    r = r if isinstance(r, dict) else {}
+    b = _book(memory)
+    if t == "join_levels":
+        changed = bool(r.get("joined") or r.get("widened"))
+        if not changed and r.get("ok") is not False:
+            b["join_noop"] = now
+        if getattr(p, "rule", None) != RULE:
+            return
+    did = []
+    for k, w in (("removed", "the AI's walls taken down"), ("unlocked", "doors unlocked"), ("dug", "tiles marked to dig"),
+                 ("pending", "tiles already marked"), ("acted", "undone"), ("lifted", "out of the hospital burrow")):
+        v = r.get(k)
+        if v is True or (isinstance(v, int) and not isinstance(v, bool) and v > 0):
+            did.append(w if v is True else f"{v} {w}")
+    if t == "join_levels":
+        changed = bool(r.get("joined") or r.get("widened"))
+    else:
+        changed = bool(did)
+    key = f"{t}:{a.get('unit_id') if a.get('unit_id') is not None else 'all'}"
+    b["results"][key] = {"tick": now, "ok": r.get("ok"), "changed": changed, "did": ", ".join(did) or None,
+                         "error": str(r.get("error") or "")[:200] or None,
+                         "missing": [m for m in _l(r.get("missing")) if isinstance(m, str)][:4] or None,
+                         "carriers": r.get("carriers") if isinstance(r.get("carriers"), int) else None,
+                         "findings": [str(f)[:120] for f in _l(r.get("findings"))[:6]] or None}
+
+
 def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """One note a thirsty dwarf (the thirstiest first, `thirst_notes_max`)
     with the reason and the remedy; a remedy action where one exists and no
@@ -271,6 +478,13 @@ def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
             b["told"][str(d["id"])] = now
             notes.append(death_words(d))
     rows = sorted(thirst_rows(s), key=lambda r: -int(r.get("timer") or 0))
+    # (R1 g2) a dwarf no longer thirsty (drank, or gone) starts afresh next time
+    here = {str(r["id"]) for r in rows}
+    for k in [k for k in b["ladder"] if k not in here]:
+        b["ladder"].pop(k, None)
+    for k in [k for k, v in b["results"].items()
+              if not isinstance(_d(v).get("tick"), int) or not 0 <= now - _d(v)["tick"] < YEAR]:
+        b["results"].pop(k, None)
     if not rows:
         return
     note_at = int(cfg.get("thirst_note_timer", 25000))
@@ -281,14 +495,21 @@ def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
     ex = _existing(proposals)
     ex["shelter_dry"] = bool(_d(getattr(memory, "shelter_supply", None)).get("dry")) if memory is not None else False
     acts, said, rest = 0, 0, {}
+    patients: list = []
     shared = set()          # actions for the whole fort (refresh_shelter, join_levels): once a cycle
+    ex["shared"] = shared
     for r in rows:
         timer = int(r.get("timer") or 0)
         reason = r["reason"]
         if timer < note_at:
             continue
         quiet = reason in ("drinking", "unknown", "cancelled") and timer < DEHYDRATED
-        action, words = _remedy(r, s, cfg, ex)
+        lad = b["ladder"].setdefault(str(r["id"]), {"since": now, "n": {}})
+        if not isinstance(lad.get("n"), dict):
+            lad["n"] = {}
+        action, words, needs_you = _remedy(r, s, cfg, ex, b, lad, now)
+        if reason == "injured" and timer >= act_at:
+            patients.append(r)
         proposed = False
         if action is not None and (timer >= act_at or reason in ACT_EARLY) and acts < acts_max:
             whole = action["type"] in ("refresh_shelter", "join_levels")
@@ -296,6 +517,8 @@ def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
             last = b["acted"].get(key)
             if whole and action["type"] in shared:
                 words = "the fort-wide remedy is proposed this cycle"
+                if action["type"] in LADDER_ACTIONS:      # (R1 g2) asked for them too: counted
+                    lad["n"][action["type"]] = int(lad["n"].get(action["type"]) or 0) + 1
             elif isinstance(last, int) and 0 <= now - last < retry:
                 words = f"{words} (tried {max(1, (now - last) // 50)} hour(s) ago; again after {retry // 50})"
             else:
@@ -305,10 +528,16 @@ def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
                 b["acted"][key] = now
                 acts += 1
                 proposed = True
+                if action["type"] in LADDER_ACTIONS:
+                    lad["n"][action["type"]] = int(lad["n"].get(action["type"]) or 0) + 1
                 if whole:
                     shared.add(action["type"])
                 if action["type"] == "release_prisoners":
                     ex["release_ids"].add(r["id"])
+        if needs_you and timer >= act_at:
+            # (R1 g2) every remedy tried: the player's, said each cycle while it holds
+            ask_player(notes, needs_you)
+            continue
         if quiet and not proposed:
             continue
         if said >= notes_max:
@@ -324,3 +553,6 @@ def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
         notes.append("; ".join(bits))
     if rest:
         notes.append(f"{sum(rest.values())} more thirsty: " + ", ".join(f"{k} {v}" for k, v in sorted(rest.items())))
+    if patients:
+        for w in _patient_support(s, cfg, proposals, b, now, patients):
+            notes.append(f"thirsty patients: proposed: {w}")

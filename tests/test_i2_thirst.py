@@ -570,15 +570,16 @@ def _():
     assert not p and "player's" in n[0]
 
 
-@test("brain: insane, mood, cell, burrow, interrupted, no_drink, injured: said, no action; quiet ones quiet")
+@test("brain: insane, mood, cell, burrow, interrupted, no_drink: said, no action; quiet ones quiet")
 def _():
+    # (R1 g2) injured is no longer said only: it gets thirst_patient (tests/test_r1_g2.py)
     rs = [row(1, "insane", insane="melancholy"), row(2, "mood", mood="Fey"), row(3, "cell"),
           row(4, "burrow", burrow_ai=True), row(5, "interrupted", cancel={"by": "human spearman", "why": "Interrupted by a human spearman"}),
-          row(6, "no_drink"), row(7, "injured"), row(8, "drinking", timer=30000), row(9, "unknown", timer=30000),
+          row(6, "no_drink"), row(8, "drinking", timer=30000), row(9, "unknown", timer=30000),
           row(10, "cancelled", timer=30000, cancel={"why": "Dangerous terrain"})]
     p, n = run(state(rs))
     assert not p, p
-    assert len(n) == 7, n
+    assert len(n) == 6, n
     assert any("human spearman interrupts them" in x for x in n)
     squad = Proposal("squad_attack", {"type": "squad_orders", "squad_id": 1, "kill": [99]}, "x", 0)
     p, n = run(state([rs[4]]), proposals=[squad])
