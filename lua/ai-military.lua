@@ -704,8 +704,13 @@ end
 -- (0.104.168) the fill's test, shared with the needs report's count of the
 -- keen who can be drafted (`keen_draftable`): adult, in no squad, no nursing
 -- mother, not breaking down, no noble post, no hospital care asked
+-- (R1 g6) and never a dwarf in a strange mood or gone insane (u.mood set:
+-- R-AD, Melbil, Zas and Fikod were put into squads mid-mood by soldier_swap,
+-- and all three died)
 function draftable(u, mothers, strict)
     local ok, yes = pcall(function()
+        local m = tonumber(u.mood)
+        if m ~= nil and m >= 0 then return false end
         return dfhack.units.isAdult(u) and u.military.squad_id == -1 and not mothers[u.id]
             and not breaking_down(u, strict)
             and #(dfhack.units.getNoblePositions(u) or {}) == 0

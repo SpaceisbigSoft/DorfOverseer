@@ -1238,7 +1238,17 @@ function hospital_store_test()
     return function(it)
         local ok, r = pcall(function()
             local c = dfhack.items.getContainer(it)
-            if not c then return false end
+            if not c then
+                -- (R1 g6) on the hospital zone's floor: the hospital's too (R-AD:
+                -- A's cloth at x109 y174 z163 in zone 582 counted as mood stock)
+                if it.flags.in_inventory or it.flags.in_building then return false end
+                local x, y, z = dfhack.items.getPosition(it)
+                if not x then return false end
+                for _, zn in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(x, y, z)) or {}) do
+                    if zones[zn.id] then return true end
+                end
+                return false
+            end
             if seen[c.id] ~= nil then return seen[c.id] end
             local ans = false
             -- (0.105.36, D6) thread in a bag in the chest: the bag has no holder

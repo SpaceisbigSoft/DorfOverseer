@@ -122,8 +122,8 @@ HOSPITAL_CACHE = HOSPITAL_CACHE or nil
 function hospital_boxes()
     local now = U.abs_tick()
     local c = HOSPITAL_CACHE
-    if c and now - c.at >= 0 and now - c.at < HOSPITAL_TICKS then return c.set end
-    local set = {}
+    if c and now - c.at >= 0 and now - c.at < HOSPITAL_TICKS then return c.set, c.zones or {} end
+    local set, zones = {}, {}
     pcall(function()
         local site = dfhack.world.getCurrentSite()
         for _, loc in ipairs(site and site.buildings or {}) do
@@ -132,6 +132,7 @@ function hospital_boxes()
                 for _, bid in ipairs(ct and ct.building_ids or {}) do
                     local z = df.building.find(bid)
                     if z then
+                        table.insert(zones, z)          -- (R1 g6) the zone itself: its floor too
                         pcall(function()
                             for _, b in ipairs(z.contained_buildings) do
                                 if df.building_type[b:getType()] == 'Box' then set[b.id] = true end
@@ -142,8 +143,31 @@ function hospital_boxes()
             end
         end
     end)
-    HOSPITAL_CACHE = {at = now, set = set}
-    return set
+    HOSPITAL_CACHE = {at = now, set = set, zones = zones}
+    return set, zones
+end
+
+-- (R1 g6) true for an item lying anywhere inside a hospital zone (on its
+-- floor as much as in its chests): R-AD, A's "pig tail cloth" and "alpaca
+-- wool cloth" at x109 y174 z163, inside hospital zone 582 (x104-112
+-- y166-174 z163), were counted "free, in walk" for four moods; no dwarf ever
+-- fetched them, and Udib and Melbil died after 40 days waiting. Counted
+-- 'other', the mood's cloth is made at once.
+function hospital_ground(it)
+    local _, zones = hospital_boxes()
+    if not zones or #zones == 0 then return false end
+    local ok, yes = pcall(function()
+        local x, y, z = dfhack.items.getPosition(it)
+        if not x then return false end
+        for _, zn in ipairs(zones) do
+            local okz, inside = pcall(function()
+                return zn.z == z and dfhack.buildings.containsTile(zn, x, y)
+            end)
+            if okz and inside == true then return true end
+        end
+        return false
+    end)
+    return ok and yes == true
 end
 -- (0.105.36, D5) another fort's chest ids are not this one's
 if dfhack and dfhack.onStateChange then
@@ -169,6 +193,7 @@ function item_standing(it)
     local why = U.item_unfree(it, HELD_OK)
     if why == nil then
         if hospital_stock(it) then return 'other' end       -- (0.105.33) the hospital's, not the mood's
+        if hospital_ground(it) then return 'other' end      -- (R1 g6) on the hospital's floor too
         return 'free'
     end
     return STANDING[why] or 'other'

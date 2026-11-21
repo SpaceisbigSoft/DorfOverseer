@@ -28,11 +28,22 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
     # (0.105.13, 14.1 step 4b) Trade -50 or lower: the fort doesn't trade (the
     # Hermit hold at Trade -100 took goods to a caravan as the others did)
     no_trade = tv <= -50
+    mood_only = False
     if hermit or no_trade:
-        if cs:
+        # (R1 g6) a strange mood waiting on what the fort can't make (silk...):
+        # a life at stake sets the no-trade way aside for those goods only, as
+        # the no-slaughter ban is for a mood's bone (R-AD: D, the Hermit hold,
+        # lost all 11 of its dead to failed moods, 3 of them for silk)
+        from planner_moods import mood_trade_wants
+        if cs and mood_trade_wants(s):
+            mood_only = True
+            notes.append(("a hermit kingdom" if hermit else f"this fort doesn't trade (Trade {tv})")
+                         + ": the caravan is traded with only for what a strange mood waits for, a life at stake")
+        elif cs:
             notes.append("a hermit kingdom: the caravan is left alone, nothing is traded" if hermit else
                          f"this fort doesn't trade (Trade {tv}): the caravan is left alone")
-        cs = []
+        if not mood_only:
+            cs = []
         hermit = True
     nd = _d(s.get("needs"))
     acq = unmet(s, "AcquireObject")
@@ -52,6 +63,8 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
         full = int(fg.get("tiles") or 0) and int(fg.get("used") or 0) >= int(fg.get("tiles") or 0) * 0.95
         # (0.105.13) as many as Trade says: 40 at 0, 10 at -100, 120 at most
         per = cfg["bring_goods_full"] if full else max(10, min(120, round(40 * factor(traits or _traits(s), "trade"))))
+        if mood_only:
+            per = int(cfg.get("g6_mood_trade_goods", 10))      # (R1 g6) enough to pay for a mood's goods
         proposals.append(Proposal("trade", {"type": "bring_goods", "count": min(per, tr["goods"])}
                                   | ({"keep_treasures": True} if keep else {})
                                   | ({"keep_trinkets": True} if keep_trinkets else {}),
@@ -85,8 +98,12 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
         proposals.append(Proposal("open_trade", {"type": "open_trade"},
                                   f"{'the broker' if not trader.get('anyone') else 'a trader'} is at the depot with "
                                   f"the caravan from {cs[0].get('civ')}: open the trade screen", 2))
-    if screen.get("ready") and not hermit:
-        wants = trade_wants(s, cfg, citizens)
+    if screen.get("ready") and (not hermit or mood_only):
+        if mood_only:
+            from planner_moods import mood_trade_wants
+            wants = mood_trade_wants(s)                       # (R1 g6) the mood's goods, nothing else
+        else:
+            wants = trade_wants(s, cfg, citizens)
         if not wants and screen.get("by_ai"):
             proposals.append(Proposal("close_trade", {"type": "close_trade"},
                                       "the fort needs nothing the caravan might sell: close the trade screen", 2))

@@ -193,7 +193,8 @@ def _():
     s = reserve_fort()
     s["supplies"]["cloth_kinds"] = {"plant": 9, "silk": 0, "yarn": 0}
     w = planner_moods.reserve_trade_wants(s, CFG)
-    assert w and w[0]["key"] == "CLOTH" and w[0]["count"] == 4, w
+    # (R1 g6) each fibre by its own key
+    assert w == [{"key": "CLOTH:SILK", "count": 2}, {"key": "CLOTH:YARN", "count": 2}], w
     s["mood_help"]["webs"]["reach"] = 30
     s["supplies"]["shearable_ready"] = 3
     assert planner_moods.reserve_trade_wants(s, CFG) == []

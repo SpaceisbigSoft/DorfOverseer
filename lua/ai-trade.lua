@@ -446,12 +446,22 @@ end
 -- Pure: the merchant goods to take. cands {{idx, cat, n, value}}; wants in
 -- order {{key, count}}; budget in value. Per want the cheapest per unit
 -- first, until the count is met or the budget spent. Returns picks, spent.
+-- (R1 g6) a want of one fibre, CLOTH:SILK / THREAD:YARN..., takes only
+-- goods of that fibre (a cand's `sub`, 'silk' / 'yarn' / 'plant'): a silk
+-- mood was otherwise "met" by the merchants' cheapest (plant) cloth
+function want_matches(key, c)
+    if c.cat == key then return true end
+    local base, fibre = tostring(key):match('^([A-Z_]+):([A-Z]+)$')
+    return base ~= nil and (base == 'CLOTH' or base == 'THREAD') and c.cat == base
+        and type(c.sub) == 'string' and c.sub:upper() == fibre
+end
+
 function pick_buys(cands, wants, budget)
     local picks, spent, used = {}, 0, {}
     for _, w in ipairs(wants) do
         local list = {}
         for _, c in ipairs(cands) do
-            if c.cat == w.key and not used[c.idx] and c.value > 0 then table.insert(list, c) end
+            if want_matches(w.key, c) and not used[c.idx] and c.value > 0 then table.insert(list, c) end
         end
         table.sort(list, function(a, b) return a.value / a.n < b.value / b.n end)
         local got = 0
@@ -498,6 +508,16 @@ function pick_offers(offers, target)
 end
 
 -- Both sides' goods as the deal sees them.
+-- (R1 g6) a cloth or thread's fibre ('silk', 'yarn', 'plant'), ai-moods' own test; nil otherwise
+local FIBRE_TYPES = {CLOTH = true, THREAD = true}
+local function fibre_of(item)
+    local ok, k = pcall(function()
+        if not FIBRE_TYPES[df.item_type[item:getType()]] then return nil end
+        return reqscript('ai-moods').cloth_kind(item)
+    end)
+    return ok and k or nil
+end
+
 local function sides(trade, txt)
     local mer = trade.mer
     local banned = ban_check()
@@ -512,22 +532,27 @@ local function sides(trade, txt)
             local cat
             if is_container(item) and tname ~= 'BIN' then
                 local inside = dfhack.items.getContainedItems(item)
-                local n = 0
+                local n, sub, first = 0, nil, true
                 for _, c in ipairs(inside) do
                     local cc = category(c)
                     if cat == nil then cat = cc elseif cc ~= cat then cat = false end
+                    local f = fibre_of(c)                    -- (R1 g6) one fibre throughout, or none
+                    if first then sub, first = f, false elseif sub ~= f then sub = false end
                     n = n + stack(c)
                 end
                 if cat then table.insert(cands, {idx = i, cat = cat, n = n, value = perceived(item, mer),
+                                                  sub = sub or nil,
                                                   name = (txt or tostring)(dfhack.items.getDescription(item, 0, true))}) end
             elseif not is_container(item) then
                 cat = category(item)
                 if cat then table.insert(cands, {idx = i, cat = cat, n = stack(item), value = perceived(item, mer),
+                                                  sub = fibre_of(item),
                                                   name = (txt or tostring)(dfhack.items.getDescription(item, 0, true))}) end
             end
         elseif parent_ok then
             local cat = category(item)
             if cat then table.insert(cands, {idx = i, cat = cat, n = stack(item), value = perceived(item, mer),
+                                              sub = fibre_of(item),
                                               name = (txt or tostring)(dfhack.items.getDescription(item, 0, true))}) end
         end
     end

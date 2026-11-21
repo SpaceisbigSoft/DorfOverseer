@@ -85,7 +85,8 @@ def _():
     props, notes = plan(s, m)
     sl = [p for p in mood_props(props) if p.action.get("type") == "slaughter_one"]
     assert len(sl) == 1, [p.action for p in mood_props(props)]
-    assert sl[0].action == {"type": "slaughter_one", "oldest": True, "mood_unit": 5}, sl[0].action
+    # (R1 g6) `mood`: the bridge takes any spare animal for a mood
+    assert sl[0].action == {"type": "slaughter_one", "oldest": True, "mood": True, "mood_unit": 5}, sl[0].action
     assert "the fort's Beast-friends ban is set aside to save Logem's mood" in sl[0].reason, sl[0].reason
     assert "one animal only" in sl[0].reason, sl[0].reason
     # no "no bone", no contradictory pair
@@ -121,25 +122,24 @@ def _():
     assert m.mood_slaughter == {}, m.mood_slaughter
 
 
-@test("F: bone out of reach and no butcher's: one Needs you (out of the dwarf's walk), never 'no bone' beside it")
+@test("F: bone out of reach and no butcher's: (R1 g6) a butcher's built for it past the cap, never 'no bone' beside it")
 def _():
     s = fort()
     s["buildings"]["workshops"].pop("Butchers", None)
     s["moods"] = {"list": [mood([dict(BONE_FAR)])]}
     m = beast_friends()
     m.moods_seen = {"5": abs_tick(s)}
-    notes = plan(s, m)[1]
-    asks = [n for n in notes if n.startswith(NEEDS) and "Logem" in n]
-    assert len(asks) == 1, asks
-    assert "where the dwarf can't walk" in asks[0] and "1 bone" in asks[0], asks
-    assert "no butcher's" in asks[0], asks
-    assert "no bone and no spare tame animal" not in asks[0] and "can't supply" not in asks[0], asks
+    props, notes = plan(s, m)
+    shop = [p.action for p in mood_props(props) if p.action.get("type") == "start_project"]
+    assert shop and shop[0]["shops"] == ["Butchers"] and shop[0]["mood"] is True, [p.action for p in mood_props(props)]
+    assert not any("no bone and no spare tame animal" in n or "can't supply" in n for n in notes), notes
 
 
-@test("F: bone truly absent, no butcher's: 'can't supply' says why (no butcher's), not the old pair")
+@test("F: bone truly absent, no tame animal: 'can't supply' says why, not the old pair")
 def _():
     s = fort()
-    s["buildings"]["workshops"].pop("Butchers", None)
+    # (R1 g6) no butcher's now builds one for the mood: no animal at all is the case left
+    s["others_on_map"]["tame_animals"] = 0
     s["moods"] = {"list": [mood([{"index": 0, "item": "NONE", "quantity": 1, "flags": ["bone"], "avail": av()}])]}
     m = Memory()
     m.moods_seen = {"5": abs_tick(s)}
@@ -147,7 +147,7 @@ def _():
     # (0.105.35) a note: the caravans are asked and the AI buys it (no Needs you)
     assert not any(n.startswith(NEEDS) and "Logem" in n for n in notes), notes
     asks = [n for n in notes if "Logem" in n and "can't supply" in n]
-    assert len(asks) == 1 and "no butcher's" in asks[0] and "caravan" in asks[0], asks
+    assert len(asks) == 1 and "only 0 tame animal" in asks[0] and "no way to get it" in asks[0], asks
     assert "can't walk" not in asks[0], asks
 
 
@@ -196,7 +196,7 @@ def _():
 @test("D: a stalled mood that also lacks: one Needs you, the counts added to it")
 def _():
     s = fort()
-    s["buildings"]["workshops"].pop("Butchers", None)
+    s["others_on_map"]["tame_animals"] = 0          # (R1 g6) no butcher's would build one
     s["moods"] = {"list": [mood([{"index": 0, "item": "NONE", "quantity": 1, "flags": ["bone"], "avail": av()}])]}
     m = Memory()
     now = abs_tick(s)

@@ -35,6 +35,7 @@ function load_projects()
 end
 
 OLD_AREAS_MAX = 600       -- (0.104.19) outlines of levels dropped from the list, kept for safety
+MOOD_SHOP_OPEN_MAX = 3    -- (R1 g6) a mood's workshops level takes no slot while fewer urgent workshops levels are open
 
 function save_projects(data)
     -- keep every open project, and only the most recent closed ones;
@@ -688,7 +689,22 @@ function start_project(params, now, dry_run)
     -- sanity or the fort's water doesn't wait for a bedroom level)
     -- (0.104.12) two urgent ones beyond the two (Enxah: soap for festering
     -- wounds and tombs for 35 dead both waited on one extra slot)
-    if #open >= slot_cap(open) + (params.urgent == true and URGENT_EXTRA or (kind == 'farms' and 1 or 0)) then
+    -- (R1 g6) a workshops level a strange mood waits for (params.mood) takes no
+    -- slot: R-AD, A's jeweller's refused 19 times and D's 15 by "already N
+    -- unfinished building projects" while moods wanted a cut gem; two died
+    -- (urgent workshops levels open at most MOOD_SHOP_OPEN_MAX: one stuck
+    -- furnishing is no "coming" shop to the brain, so another would follow)
+    local mood_shop = params.mood == true and kind == 'workshops'
+    if mood_shop then
+        local n = 0
+        for _, q in ipairs(open) do
+            if q.kind == 'workshops' and (q.urgent == true or (type(q.params) == 'table' and q.params.urgent == true)) then
+                n = n + 1
+            end
+        end
+        mood_shop = n < MOOD_SHOP_OPEN_MAX
+    end
+    if not mood_shop and #open >= slot_cap(open) + (params.urgent == true and URGENT_EXTRA or (kind == 'farms' and 1 or 0)) then
         return {ok = false, rejected = true,
                 error = ('already %d unfinished building projects'):format(#open)}
     end
