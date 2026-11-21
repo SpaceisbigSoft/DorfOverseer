@@ -209,7 +209,78 @@ function survey(txt)
             out.offices[p.code] = o
         end
     end
+    -- (r2 h9) the messenger: DF's raws make it [NUMBER:AS_NEEDED], and DF adds a
+    -- slot only when the player fills one on the nobles screen, so no fort had
+    -- a MESSENGER in this list (A5 finding 2: offices of A-F) and Make contact
+    -- could never run. The position itself is read here (the civilisation's
+    -- own list); the appoint action adds the slot as the screen does.
+    pcall(function()
+        local okp, p = pcall(position_by_code, ent, 'MESSENGER')
+        p = okp and p or nil
+        out.messenger = {position = p ~= nil}
+        if not p then return end
+        local slots = 0
+        for _, a in ipairs(ent.positions.assignments) do
+            if a.position_id == p.id then slots = slots + 1 end
+        end
+        out.messenger.slots = slots
+        pcall(function() out.messenger.number = tonumber(p.number) end)
+        if slots == 0 and not out.offices.MESSENGER then
+            local okc, can, why = pcall(appointable, ent, p)
+            out.offices.MESSENGER = {vacant = 0, held = {}, slots = 0, appointed_by = #p.appointed_by, ai = true,
+                                     appointable = okc and can or false, not_why = okc and why or nil,
+                                     no_slot = true}
+        end
+    end)
     return out
+end
+
+-- (r2 h9) the fort government's position of this code, and its index
+function position_by_code(ent, code)
+    for idx, p in ipairs(ent.positions.own) do
+        if p.code == code then return p, idx end
+    end
+end
+
+-- (r2 h9) a vacant slot for an AS_NEEDED position (the messenger), added as
+-- DF's nobles screen does: a new assignment with the next id, nobody in it
+-- (DF's duty lists take it once it is held: sync_held). Returns it and its
+-- index, or nil and why.
+function add_slot(ent, code)
+    local p, pidx = position_by_code(ent, code)
+    if not p then return nil, 'this civilisation gives the fort no ' .. code .. ' position' end
+    local n = 0
+    for _, a in ipairs(ent.positions.assignments) do
+        if a.position_id == p.id then n = n + 1 end
+    end
+    local number = tonumber(p.number) or 1
+    if number >= 0 and n >= number then return nil, 'all ' .. number .. ' ' .. code .. ' slots are in use' end
+    local can, why = appointable(ent, p)
+    if not can then return nil, code:lower() .. " is not the fort's to fill (" .. tostring(why) .. ')' end
+    local a = df.entity_position_assignment:new()
+    a.id = ent.positions.next_assignment_id
+    a.histfig = -1
+    pcall(function() a.histfig2 = -1 end)
+    a.position_id = p.id
+    pcall(function() a.position_vector_idx = pidx end)
+    a.squad_id = -1
+    -- the flags of another slot of the fort's government (DF's 'active')
+    local like
+    pcall(function() like = #ent.positions.assignments > 0 and ent.positions.assignments[0] or nil end)
+    if like then pcall(function() a.flags.active = like.flags.active end) end
+    ent.positions.next_assignment_id = a.id + 1
+    ent.positions.assignments:insert('#', a)
+    return a, #ent.positions.assignments - 1, p
+end
+
+-- (r2 h9) take back a slot add_slot made (nobody could be appointed)
+function drop_slot(ent, a)
+    for i = #ent.positions.assignments - 1, 0, -1 do
+        local v = ent.positions.assignments[i]
+        if v == a or (v and v.id == a.id) then ent.positions.assignments:erase(i) end
+    end
+    if ent.positions.next_assignment_id == a.id + 1 then ent.positions.next_assignment_id = a.id end
+    pcall(function() a:delete() end)
 end
 
 -- (0.104.168) mothers of babies: unit id -> true
@@ -325,6 +396,7 @@ function appoint(code, dry_run, txt)
     local ent = U.fort_entity()
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
     local assignment, a_idx, pos
+    local added_slot = false                    -- (r2 h9) a messenger's slot made for this appointment
     if MILITARY_OFFICES[code] then              -- (0.104.168)
         local r = military_slot(ent, code)
         if not r.ok then return r end
@@ -340,11 +412,37 @@ function appoint(code, dry_run, txt)
                 break
             end
         end
+        if not assignment and CIVILIAN_AWAY_OFFICES[code] then
+            -- (r2 h9) an AS_NEEDED post with no slot yet: one added, as the nobles screen does
+            local p0 = position_by_code(ent, code)
+            if not p0 then
+                return {ok = false, rejected = true, error = 'the fort has no ' .. code .. ' office yet: its civilisation gives it no such position'}
+            end
+            local can, why = appointable(ent, p0)
+            if not can then
+                return {ok = false, rejected = true, error = code:lower() .. " is not the fort's to fill (" .. tostring(why) .. ')'}
+            end
+            if pick_holder(candidates(code), false) == nil then
+                return {ok = false, rejected = true, error = 'no grown citizen to appoint'}
+            end
+            if dry_run then
+                local c0 = pick_holder(candidates(code), false)
+                local u0 = df.unit.find(c0.id)
+                return {ok = true, dry_run = true, office = code, slot_added = true, unit_id = c0.id,
+                        name = u0 and (txt or tostring)(dfhack.units.getReadableName(u0)) or nil}
+            end
+            local why2
+            assignment, a_idx, why2 = add_slot(ent, code)
+            if not assignment then return {ok = false, rejected = true, error = tostring(a_idx)} end
+            pos = why2
+            added_slot = true
+        end
         if not assignment then
             return {ok = false, rejected = true, error = 'the fort has no ' .. code .. ' office yet'}
         end
     end
     local c = pick_holder(candidates(code), MILITARY_OFFICES[code])
+    if not c and added_slot then drop_slot(ent, assignment) end
     if not c then
         if MILITARY_OFFICES[code] then          -- (0.104.168, review) left empty, said
             return {ok = false, rejected = true, nobody_fits = true,
@@ -356,11 +454,16 @@ function appoint(code, dry_run, txt)
     end
     local u = df.unit.find(c.id)
     local hf = u and df.historical_figure.find(u.hist_figure_id)
-    if not hf then return {ok = false, error = 'the chosen dwarf has no historical figure'} end
+    if not hf then
+        if added_slot then drop_slot(ent, assignment) end
+        return {ok = false, error = 'the chosen dwarf has no historical figure'}
+    end
     local name = (txt or tostring)(dfhack.units.getReadableName(u))
-    local out = {ok = true, office = code, name = name, unit_id = u.id, skills = c.skills, dry_run = dry_run or nil}
+    local out = {ok = true, office = code, name = name, unit_id = u.id, skills = c.skills, dry_run = dry_run or nil,
+                 slot_added = added_slot or nil}
     if dry_run then return out end
     local ok = write_appointment(ent, assignment, a_idx, pos, u)
+    if not ok and added_slot then drop_slot(ent, assignment) end
     if not ok then
         return {ok = false, office = code, error = 'DFHack did not see the appointment, so it was undone: '
                 .. 'appoint the ' .. code:lower():gsub('_', ' ') .. ' in the nobles screen'}

@@ -1432,6 +1432,31 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r2 h9) population and the world outside: the population cap's hold, the
+# migrant drought, a caravan that never left, petitions to stay, the messenger
+PLANNER_CONFIG.update({
+    # the cap held for strain (planner_growth._pop_cap_rule): F flipped 29 times, E 11 (100 <-> 20)
+    "h9_pop_cap_min_hold_days": 28,       # a hold (or its end) stands this long before the cap may go the other way
+    "h9_pop_cap_release_days": 14,        # the strain gone this long, without a break, before the hold ends
+    "h9_strain_unhappy_max_days": 168,    # unhappiness alone holds newcomers out at most this long (E: 3 years at 20),
+                                          # unless beds are short (crowding): then the hold stays
+    # no migrants for seasons (brain/planner_outside.py)
+    "h9_drought_days": 224,               # no wave this long (two seasons and a half): the drought is reported, its cause
+    "h9_drought_cooldown_ticks": 112 * 1200,   # one migrant wave called a season at most (the rule's cooldown)
+    "h9_drought_max_calls": 3,            # waves called that brought nobody before the AI stops calling (and says so)
+    "h9_wave_min": 2,                     # a rise of this many citizens at once is a migrant wave (one is a birth)
+    # a caravan that never left (B, y251-y261: its merchants on the map 10 years, no caravan or migrant since)
+    "h9_caravan_stuck_days": 28,          # leaving this long with its merchants still on the map: stuck
+    "h9_caravan_free_max": 2,             # tries at sending its merchants off the map before a Needs you
+    "h9_caravan_cooldown_ticks": 28 * 1200,   # ...one a month (the rule's cooldown)
+    # petitions to stay from a fort between closed and welcoming (A3 finding 3: E 30 waiting, 78 days)
+    "h9_residency_neutral_beds": 2,       # spare beds the fort keeps after taking a visitor in
+    "h9_residency_neutral_food_pd": 10,   # food and drink a dwarf the fort has before it takes one in
+    "h9_residency_neutral_drink_pd": 5,
+    "h9_residency_player_days": 28,       # a petition the AI would agree to but can't (DF keeps the visitor a guest):
+                                          # left this long for you on DF's petitions screen, then declined
+})
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

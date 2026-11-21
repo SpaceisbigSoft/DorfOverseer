@@ -86,6 +86,9 @@ from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern be
 from planner_wells import _winter_water_rule  # noqa: E402  (r1 g3) water that works in winter
 from planner_wellsafe import _well_safety_rule  # noqa: E402  (0.105.47) cavern wells made safe, the stranded under one let out
 from planner_recovery import _migrants_rule, note_recovery, recovery_apply  # noqa: E402  (0.105.46, I4) collapse recovery
+from planner_outside import _drought_rule, note_outside  # noqa: E402  (r2 h9) the migrant drought, a caravan that never left
+from planner_growth import note_pop_cap  # noqa: E402  (r2 h9) the population cap's hold booked
+from planner_visitors import note_residency  # noqa: E402  (r2 h9) petitions to stay first seen
 from planner_meetings import meeting_open_due, meeting_open_said  # noqa: E402,F401  (0.105.47) meetings opened unattended
 from planner_welfare import _welfare_rules  # noqa: E402  (0.105.47, I7b) coffins anywhere, slabs ahead, a cook trained
 from planner_hauling import _hauling_labor_rule, note_hauling  # noqa: E402  (0.105.40 M5) hauling balanced
@@ -801,6 +804,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_join_rule, s, memory, cfg, proposals)
         _guard(_shrink_rule, s, memory, cfg, citizens, proposals)
         _guard(_migrants_rule, s, memory, cfg, proposals, notes)   # (0.105.46, I4) no migrants to a fallen fort
+        _guard(_drought_rule, s, memory, cfg, proposals, notes)    # (r2 h9) no migrants for seasons: why, and what the AI can do
     if can_use("military", "buildings", "orders"):
         _guard(_smelting_rule, s, memory, cfg, rules_, proposals, notes)
 
@@ -2105,6 +2109,9 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
     if "dwarves" not in errors:
         _step(crisis.update, s, memory, cfg, notes)             # (0.104.137) crisis mode
         _step(note_recovery, s, memory, cfg, notes)             # (0.105.46, I4) collapse recovery
+        _step(note_outside, s, memory, cfg)                     # (r2 h9) waves seen, a caravan leaving, the drought
+        _step(note_pop_cap, s, memory, cfg)                     # (r2 h9) the cap's hold (no flip-flop)
+        _step(note_residency, s, memory)                        # (r2 h9) petitions to stay first seen
     if "world" not in errors:
         _step(note_world, s, memory)                            # (0.105.0) grudges, export wishes
     if "missions" not in errors:

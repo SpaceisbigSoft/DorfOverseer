@@ -11,7 +11,7 @@ from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["BASIC_WORKSHOPS", "jail_plan", "tavern_factor", "LEARNING_NEEDS", "good_times", "strain_unhappy_lines", "fort_strain", "_pop_cap_rule", "_join_rule", "_shrink_rule", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "GROWTH", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "settled_times", "growth_wait", "growth_candidates", "TRAIT_NAMES_SHORT"]
+__all__ = ["BASIC_WORKSHOPS", "jail_plan", "tavern_factor", "LEARNING_NEEDS", "good_times", "strain_unhappy_lines", "fort_strain", "_pop_cap_rule", "note_pop_cap", "strain_hold", "_join_rule", "_shrink_rule", "CHARACTER_KINDS", "is_character_level", "character_slot_reserved", "character_slot_filter", "piety_slot", "LADDER_BASE", "LADDER_TRAITS", "_ladder_kind", "_ladder_word", "ladder_score", "GROWTH", "GROWTH_SOLDIERS", "GROWTH_ZONES", "GROWTH_MAX_OF", "GROWTH_AT", "GROWTH_EXTRA_SCORE", "GROWTH_MAX", "growth_want", "settled_times", "growth_wait", "growth_candidates", "TRAIT_NAMES_SHORT"]
 
 
 # Workshops every fort needs; a workshops level is built when any is missing.
@@ -105,13 +105,146 @@ def fort_strain(s: dict, cfg: dict, held: bool = False, traits: dict | None = No
     pop = int(_d(s.get("dwarves")).get("total") or 0)
     few = isinstance(un, (int, float)) and pop > 0 and un * pop / 100 < cfg.get("strain_unhappy_min", 3) - 0.01
     hold_at, ok_at = strain_unhappy_lines(s, cfg, traits)
-    if isinstance(un, (int, float)) and un >= (ok_at if held else hold_at) and not few and not young:
+    # (r2 h9) a young fort is let off the unhappy line only before a hold: a
+    # fort under 20 dwarves turns "young" whenever its drink falls under 15 a
+    # dwarf (established()), and F's hold went off and on with it (29 flips of
+    # the cap between 20 and 100 in y250-y253, at 80-100% unhappy). The meals
+    # line stays off for a young fort (day 17: no meals yet)
+    young_un = young and not held
+    if isinstance(un, (int, float)) and un >= (ok_at if held else hold_at) and not few and not young_un:
         out.append(f"{un:g}% unhappy")
     if isinstance(dr, (int, float)) and dr < cfg["strain_drink" + k + "_pd"]:
         out.append(f"drink {dr:g} a dwarf")
     if isinstance(me, (int, float)) and me < cfg["strain_meals" + k + "_pd"] and not young:
         out.append(f"meals {me:g} a dwarf")
     return out
+
+
+def _h9(cfg: dict, k: str):
+    return cfg[k] if k in cfg else PLANNER_CONFIG[k]
+
+
+def _beds_short(s: dict) -> bool:
+    """Fewer beds than dwarves (the buildings report): crowding."""
+    import outcomes
+    fb = outcomes.measure(s).get("free_beds")
+    return isinstance(fb, (int, float)) and fb < 0
+
+
+def note_pop_cap(s: dict, memory, cfg: dict) -> None:
+    """(r2 h9) The cap's hold booked once a cycle (note_cycle, before plan):
+    plan() reads it through strain_hold on a copy and never writes memory."""
+    rules_ = player_rules(s)
+    so = _d(s.get("society"))
+    if not rules_["set_pop_cap"] or not isinstance(so.get("pop_cap"), int):
+        return
+    mode, _n = growth_mode(s, cfg)
+    holds = rules_["fort_goal"] != "maintain" and mode != "shrink"
+    strain_hold(s, memory, cfg, holds, None, write=True)
+
+
+def strain_hold(s: dict, memory, cfg: dict, holds: bool = True, notes: list | None = None,
+                write: bool = False) -> list:
+    """(r2 h9) The strain that holds newcomers out now, with hysteresis and a
+    minimum hold (memory.pop_cap_hold): the cap flipped 29 times in F and 11 in
+    E between the survival floor (20, the strain hold) and Growth's 100, as
+    drink and moods crossed the lines and back within days.
+      * a hold begins (or ends) and then stands h9_pop_cap_min_hold_days
+        (a hold for drink or meals short begins at once);
+      * it ends only once the strain has been gone h9_pop_cap_release_days
+        without a break (the "ok" lines of fort_strain, held=True);
+      * unhappiness alone holds at most h9_strain_unhappy_max_days, unless
+        beds are short: keeping migrants out did not make E's dwarves happier
+        in three years at 20 (its unhappiness was not from crowding); it holds
+        again only once the fort was no longer that unhappy.
+    Returns the strain words ([] when newcomers may come). Not in Maintain or
+    Extreme-low Growth (holds False): nothing is booked."""
+    import copy as _copy
+    h = getattr(memory, "pop_cap_hold", None)
+    if not isinstance(h, dict):
+        h = {}
+        if write:
+            try:
+                memory.pop_cap_hold = h
+            except Exception:  # noqa: BLE001
+                pass
+    if not write:
+        h = _copy.deepcopy(h)                              # plan() reads, note_pop_cap books
+    d = _d(s.get("date"))
+    now = int(d.get("year") or 0) * TICKS_PER_YEAR + int(d.get("tick") or 0)
+    for k in ("since", "clear_since", "unhappy_since"):
+        if isinstance(h.get(k), int) and h[k] > now:      # an older save loaded
+            h.pop(k, None)
+    regime = h.get("regime")
+    if regime is None and getattr(memory, "strain_hold", False):
+        regime = h["regime"] = "held"                      # an older memory: held, since unknown
+    held = regime == "held"
+    strain = fort_strain(s, cfg, held)
+    if not holds:
+        return strain
+    day = TICKS_PER_DAY
+    unhappy_only = bool(strain) and all("unhappy" in w for w in strain)
+    # unhappiness alone, for long and not from crowding: no longer a hold
+    if not unhappy_only:
+        if not strain or any("unhappy" not in w for w in strain):
+            h.pop("unhappy_since", None)
+        if not any("unhappy" in w for w in fort_strain(s, cfg, False)):
+            h.pop("unhappy_spent", None)                   # the fort got over it: unhappiness may hold again
+    elif h.get("unhappy_spent") and not _beds_short(s):
+        if notes is not None:
+            notes.append(f"unhappiness alone ({'; '.join(strain)}) no longer holds newcomers out: it did for "
+                         f"{int(_h9(cfg, 'h9_strain_unhappy_max_days'))} days and the fort is no happier, with beds "
+                         "for everyone (not crowding); drink or meals short still hold them")
+        strain = []
+    else:
+        if not isinstance(h.get("unhappy_since"), int):
+            h["unhappy_since"] = now
+        if (now - h["unhappy_since"] >= int(_h9(cfg, "h9_strain_unhappy_max_days")) * day
+                and not _beds_short(s)):
+            h["unhappy_spent"] = True
+            h.pop("unhappy_since", None)
+            if notes is not None:
+                notes.append(f"newcomers were held out {int(_h9(cfg, 'h9_strain_unhappy_max_days'))} days for "
+                             f"unhappiness alone ({'; '.join(strain)}) and the fort is no happier; there are beds "
+                             "for everyone, so it isn't crowding: migrants are let in again (drink or meals "
+                             "short still hold them)")
+            strain = []
+    want = "held" if strain else "open"
+    since = h.get("since")
+    stood = not isinstance(since, int) or now - since >= int(_h9(cfg, "h9_pop_cap_min_hold_days")) * day
+    if want == "held":
+        h.pop("clear_since", None)
+    if regime is None:
+        h.update(regime=want, since=now)
+        return strain
+    if want == regime:
+        return strain
+    if want == "open":
+        # the strain is gone: the hold ends once that has lasted, and the hold has stood
+        if not isinstance(h.get("clear_since"), int):
+            h["clear_since"] = now
+        cleared = now - h["clear_since"] >= int(_h9(cfg, "h9_pop_cap_release_days")) * day
+        if cleared and stood:
+            h.update(regime="open", since=now)
+            h.pop("clear_since", None)
+            return []
+        words = h.get("words") or "strained"
+        if notes is not None:
+            notes.append(f"the strain eased {(now - h['clear_since']) // day} day(s) ago: newcomers stay held until "
+                         f"it has lasted {int(_h9(cfg, 'h9_pop_cap_release_days'))} days"
+                         + ("" if stood else f" and the hold has stood {int(_h9(cfg, 'h9_pop_cap_min_hold_days'))}"))
+        return [f"easing, held a while yet ({words})"]
+    # newly strained: the open cap stands its time first, unless drink or
+    # meals are short (survival: a wave into a dry fort dies of thirst)
+    survival = any(w.startswith(("drink", "meals")) for w in strain)
+    if not stood and not survival:
+        if notes is not None:
+            notes.append(f"the fort is strained ({'; '.join(strain)}) but the cap was opened only "
+                         f"{(now - since) // day} day(s) ago: it stays open "
+                         f"{int(_h9(cfg, 'h9_pop_cap_min_hold_days'))} days before it is held again (no flip-flop)")
+        return []
+    h.update(regime="held", since=now, words="; ".join(strain))
+    return strain
 
 
 def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, notes: list) -> None:
@@ -137,8 +270,8 @@ def _pop_cap_rule(s: dict, memory, cfg: dict, citizens: int, proposals: list, no
         cap = n
         strict = cap + 20
         why = f"Growth: the fort grows toward {cap} dwarves"
-    strain = fort_strain(s, cfg, memory.strain_hold)
     holds = rules_["fort_goal"] != "maintain" and mode != "shrink"
+    strain = strain_hold(s, memory, cfg, holds, notes)
     held_why = []
     if s.get("fps_low") and holds:
         # slow game: no newcomers for now. Held at the fort's size when it first

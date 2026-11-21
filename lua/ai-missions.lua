@@ -396,18 +396,74 @@ local function hostile(rel)
     return type(rel) == 'string' and (rel:find('War') ~= nil or rel == 'Skirmishing')
 end
 
-local function sites(R, civ, group, fort_site)
-    local out = {n_hostile = 0, n_neutral = 0, n_unknown = 0, nearest = {}, ruins = {}}
-    -- the fort civ's diplomacy: entity id -> relation name
-    local rel = {}
-    local civ_ent = civ and R.rd('historical_entity.find', function() return df.historical_entity.find(civ) end)
-    local states = civ_ent and R.rd('entity.relations.diplomacy.state',
-        function() return civ_ent.relations.diplomacy.state end)
+-- (r2 h9) How the fort stands with an entity, read both ways. A5 finding 2:
+-- 1210 of 1429 site relations read "unknown" in every fort, because only the
+-- fort civ's own diplomacy list was read, by the site's civ or owner id, and
+-- DF lists there only the few civilisations it has met (B: 4 entries, three
+-- goblin civs and one dwarven). Now: the fort civ's list and the fort's own
+-- government's (plotinfo.group_id), for the site's civ and its owner (a site
+-- government, a band); then the other side's lists for the fort civ or its
+-- government (a tribute the other side accepts is one the fort offers); and
+-- when both sides were read and neither lists the other, DF's NoContact
+-- (never met). 'unknown' (nil here) stays only for what couldn't be read.
+local SWAP = {AcceptingTribute = 'OfferingTribute', OfferingTribute = 'AcceptingTribute'}
+
+local function rel_list(R, ent)
+    if not ent then return nil end
+    local states = R.rd('entity.relations.diplomacy.state', function() return ent.relations.diplomacy.state end)
+    if states == nil then return nil end
+    local out = {}
     for _, st in ipairs(each(states)) do
         local gid = R.rd('diplomacy_state.group_id', function() return st.group_id end)
         local r = R.rd('diplomacy_state.relation', function() return st.relation end)
-        if gid then rel[gid] = enum_name(df.diplomacy_state_type, r) end
+        if gid and r ~= nil then out[gid] = enum_name(df.diplomacy_state_type, r) end
     end
+    return out
+end
+
+function resolver(R, civ, group)
+    R = R or {rd = function(_, fn) local ok, v = pcall(fn); if ok then return v end end, note = function() end}
+    local function find(id)
+        if not id or id < 0 then return nil end
+        return R.rd('historical_entity.find', function() return df.historical_entity.find(id) end)
+    end
+    local mine = rel_list(R, find(civ))
+    local gov = group and group ~= civ and rel_list(R, find(group)) or nil
+    local theirs = {}
+    local function other(id)
+        if theirs[id] == nil then theirs[id] = rel_list(R, find(id)) or false end
+        return theirs[id] or nil
+    end
+    return function(...)
+        local ids = {...}
+        for i = 1, select('#', ...) do
+            local id = ids[i]
+            if id and id >= 0 then
+                if mine and mine[id] then return mine[id] end
+                if gov and gov[id] then return gov[id] end
+            end
+        end
+        local read_other = false
+        for i = 1, select('#', ...) do
+            local id = ids[i]
+            if id and id >= 0 then
+                local o = other(id)
+                if o then
+                    read_other = true
+                    local r = (civ and o[civ]) or (group and o[group])
+                    if r then return SWAP[r] or r end
+                end
+            end
+        end
+        if mine and read_other then return 'NoContact' end
+        return nil
+    end
+end
+
+local function sites(R, civ, group, fort_site)
+    local out = {n_hostile = 0, n_neutral = 0, n_unknown = 0, nearest = {}, ruins = {}}
+    -- the fort's diplomacy, both ways (r2 h9: resolver)
+    local rel_of = resolver(R, civ, group)
     local all = R.rd('world.world_data.sites', function() return df.global.world.world_data.sites end)
     local list = each(all)
     local fx, fy
@@ -461,7 +517,7 @@ local function sites(R, civ, group, fort_site)
             local who = (cur and cur >= 0 and cur) or (civ_id and civ_id >= 0 and civ_id) or nil
             if not who then return nil end                                 -- empty or ruined
             if civ_id == civ or who == civ or who == group then return nil end   -- our own
-            local r = rel[civ_id] or rel[who]
+            local r = rel_of(civ_id, who)
             local x, y = s.pos.x, s.pos.y
             return {id = int(id), owner_civ = int(civ_id ~= -1 and civ_id or who), relation = r or 'unknown',
                     x = x, y = y, site = s}
@@ -673,8 +729,7 @@ function site_hostile(site_id)
     if not okc then cur = nil end
     local who = (cur and cur >= 0 and cur) or (c and c >= 0 and c) or nil
     local ours = who ~= nil and (who == civ or who == group or c == civ)
-    local rel = relations(R, civ)
-    local r = (c and rel[c]) or (cur and rel[cur]) or nil
+    local r = resolver(R, civ, group)(c, cur)      -- (r2 h9) both ways
     return {hostile = hostile(r) and not ours, at_war = type(r) == 'string' and r:find('War') ~= nil and not ours,
             relation = r or 'unknown', owner = who and int(who) or nil, ours = ours or nil,
             civ = (c and c >= 0) and int(c) or nil}      -- (0.105.41, item 8) the owner's civilisation
@@ -719,7 +774,7 @@ function targets(R, civ, group, fort_site, sc)
         if not ok then R.note('world_site.pos'); return nil end
         return int(math.max(math.abs(x - fx), math.abs(y - fy)))
     end
-    local rel = relations(R, civ)
+    local rel_of = resolver(R, civ, group)           -- (r2 h9) both ways
     local ent_names = {}
     local function ent_name(id)
         if not id or id < 0 then return nil end
@@ -733,7 +788,7 @@ function targets(R, civ, group, fort_site, sc)
         local c = R.rd('world_site.civ_id', function() return s.civ_id end)
         local okc, cur = pcall(function() return s.cur_owner_id end)   -- newer saves only
         if not okc then cur = nil end
-        local r = (c and rel[c]) or (cur and rel[cur])
+        local r = rel_of(c, cur)
         return (c and c >= 0 and c) or (cur and cur >= 0 and cur) or nil, cur, r
     end
     -- one target at a site; nil when the site is ours or unknown

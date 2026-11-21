@@ -706,6 +706,13 @@ ACTIONS = {
     call_migrants = function(a)
         return reqscript('ai-recovery').call_migrants(a.dry_run == true)
     end,
+    -- (r2 h9) the merchants of a caravan stuck leaving told to walk off the map
+    -- (lua/ai-recovery.lua free_caravan, brain/planner_outside.py)
+    free_caravan = function(a)
+        local id = math.tointeger(tonumber(a.entity))
+        if not id then return reject('free_caravan needs entity (the caravan\'s civilisation id)') end
+        return reqscript('ai-recovery').free_caravan(id, a.dry_run == true)
+    end,
     -- (0.105.47, J1) a gathering strange mood's workshop and materials put in the AI
     -- shelter while the alarm is up (lua/ai-mood-help.lua; I7a: 5 moods cancelled "Forbidden area")
     mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter({dry_run = a.dry_run == true}) end,
@@ -921,6 +928,7 @@ for _, name in ipairs({
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
     'thirst_way', 'thirst_patient', 'thirst_probe',   -- (R1 g2) each dry run plans or counts and changes nothing
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
+    'free_caravan',    -- (r2 h9) its dry run counts the merchants and tells none to leave
     'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none
     'open_meeting',    -- (0.105.47) its dry run finds the diplomacy light and clicks nothing
     'close_world',     -- (0.105.48, K9) its dry run says whether the World screen would be left, and presses nothing

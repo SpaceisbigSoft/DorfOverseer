@@ -152,4 +152,4 @@ See [docs/military.md](docs/military.md).
 
 ## Versions
 
-Dwarf Fortress 53.17 (Steam) on Windows, with DFHack 53.17-r1 (built and tested against 53.16-r3; run `python brain\selftest.py` after a DFHack update). Answering residency and citizenship petitions through DF's standing orders needs a DFHack newer than 53.16-r3. On 53.16-r3 they wait for you, or arrive as a Needs you.
+Dwarf Fortress 53.17 (Steam) on Windows, with DFHack 53.17-r1 (built and tested against 53.16-r3; run `python brain\selftest.py` after a DFHack update). DF's standing orders for residency and citizenship petitions are out of reach on 53.16-r3 and, as the 15-16 Nov run showed, on 53.17-r1 too (the report reads none of them): the AI answers every petition to stay itself (declines the ones the fort won't take; the ones it would take wait for you on DF's petitions screen a while, then are declined), and citizenship petitions are yours.

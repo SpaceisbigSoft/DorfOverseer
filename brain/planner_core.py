@@ -48,7 +48,9 @@ NO_COOLDOWN = {"threat_alert", "strategist", "squad_attack", "squad_recall", "tr
                "shelter_flee"}                    # (0.105.45) a great danger inside, close to the shelter
 # (0.105.26) a rule whose cooldown key isn't "<rule>_cooldown_ticks" (select()):
 # the prisoners rule waited the 2-day default instead of its 7 days
-COOLDOWN_KEYS = {"prisoners": "prisoner_room_cooldown_ticks"}
+COOLDOWN_KEYS = {"prisoners": "prisoner_room_cooldown_ticks",
+                 # (r2 h9) one called wave a season; a stuck caravan's merchants told once a month
+                 "migrant_drought": "h9_drought_cooldown_ticks", "stuck_caravan": "h9_caravan_cooldown_ticks"}
 # Rules that may act more than once a cycle (select()).
 MULTI_PER_CYCLE = {"stuck_order", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train",
                    "labor", "well_parts",
@@ -292,6 +294,8 @@ class Memory:
     fps_cap: int | None = None                           # the population cap held while the game runs slowly
     strain_hold: bool = False                            # (0.104.106) newcomers held while the fort is strained
     strain_cap: int | None = None                        # (0.104.120) the cap held while strained (its size then)
+    pop_cap_hold: dict = field(default_factory=dict)     # (r2 h9) {regime: held|open, since, clear_since, unhappy_since, unhappy_spent}
+    outside: dict = field(default_factory=dict)          # (r2 h9) the migrant drought and a stuck caravan (brain/planner_outside.py)
     ores_freed: list = field(default_factory=list)       # (0.104.124) ores the masons were given in a crisis
     crisis: dict = field(default_factory=dict)          # (0.104.137) the fort in crisis: since, why
     deaths_seen: list = field(default_factory=list)     # (0.104.137) citizens' deaths (ticks), 12 weeks
