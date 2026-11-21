@@ -1265,8 +1265,9 @@ end
 -- (R2 h3) and a slot back for each parked level (PARK_MAX at most) and for each
 -- small need's level (NEED_SLOTS at most: they have their own pool), so neither
 -- holds an ordinary slot; a level is counted once (parked first, then need, then lent)
+-- (y2 W4) and one back for the lone crossbows Bowyer's level (r2h4 starts it past the cap)
 function slot_cap(open)
-    local lent, again, seen, parked, needs = 0, 0, {}, 0, 0
+    local lent, again, seen, parked, needs, bow = 0, 0, {}, 0, 0, 0
     for _, p in ipairs(open or {}) do
         local lid = p.kind == 'landmark' and type(p.params) == 'table' and p.params.landmark_id or nil
         local dup = lid ~= nil and seen[lid] == true
@@ -1277,6 +1278,9 @@ function slot_cap(open)
             parked = parked + 1
         elseif project_need(p) then
             needs = needs + 1
+        elseif bow == 0 and p.kind == 'workshops'
+                and (p.crossbows == true or (type(p.params) == 'table' and p.params.crossbows == true)) then
+            bow = 1                     -- (y2 W4) the lone crossbows Bowyer's level: no slot once open either
         elseif p.phase == 'furnish' then
             local since = tick_of(p.furnish_started)
             if since and (now_tick() - since) // 1200 >= FURNISH_LEND_DAYS then lent = lent + 1 end
@@ -1288,7 +1292,7 @@ function slot_cap(open)
         if ok and math.tointeger(n) then surface = n end
     end
     return MAX_OPEN_PROJECTS + math.min(FURNISH_LEND_MAX, lent) + parked + math.min(NEED_SLOTS, needs)
-        + again - surface
+        + bow + again - surface
 end
 
 -- (R2 h3) Parks a level being furnished that has waited on the same pieces for the
@@ -1388,6 +1392,11 @@ function projects_report()
                        urgent = (p.urgent == true or (type(p.params) == 'table' and p.params.urgent == true)) or nil,
                        dig_done = p.dig_done}
             if p.phase == 'dig' then r.dig = dig_progress(p) end
+            -- (y2 W1) a floor level (layout B): its floor and the new hall tiles it digs first
+            -- (its rooms open off them: unreached until they are dug)
+            if type(p.floor) == 'table' then
+                r.floor = {id = p.floor.id, hall = math.tointeger(p.floor.hall) or 0}
+            end
             -- (0.92) a hall built for a petition: what it's dedicated to
             local pr = type(p.params) == 'table' and p.params or {}
             if pr.profession or pr.deity_hf or pr.religion then
@@ -1914,17 +1923,51 @@ DECOR_ONLY = {Statue = true}
 -- holds what it already has, a mechanism) and the level finished
 GIVE_UP_KINDS = {Workshop = true, Furnace = true}
 
+-- (y2 W3) never taken off a level whatever the brain asks (the brain's
+-- planner_slots.KEEP_KINDS): a well and its lid, and a way's pieces, which
+-- often belong to another module (a shaft gate's lever, a cistern's floodgate)
+KEEP_KINDS = {Well = true, Hatch = true, Trap = true, Lever = true, Floodgate = true, Door = true, Bridge = true,
+              GrateWall = true, GrateFloor = true, BarsVertical = true, BarsFloor = true, Weapon = true,
+              Support = true, SiegeEngine = true, AnimalTrap = true, GearAssembly = true, AxleHorizontal = true,
+              AxleVertical = true, ScrewPump = true, WaterWheel = true, Windmill = true, Rollers = true}
+
+-- (y2 W3) A test of whether building b is one the level placed itself: a floor
+-- level's own room tiles (own_tile_test), else one of its own build cells
+-- (cells.build, from its anchor) under b. nil when the level has no build cells
+-- (an older record: everything in its area counts, as before).
+function own_build_test(p)
+    local mine = own_tile_test(p)
+    if mine then return mine end
+    local a = anchor_of(p)
+    local cells = cells_of(p, 'build')
+    if type(a) ~= 'table' or #cells == 0 then return nil end
+    local pts = {}
+    for _, c in ipairs(cells) do
+        if type(c) == 'table' and math.tointeger(c.x) and math.tointeger(c.y) then
+            table.insert(pts, {x = a.x + c.x, y = a.y + c.y})
+        end
+    end
+    return function(b)
+        for _, q in ipairs(pts) do
+            if q.x >= b.x1 and q.x <= b.x2 and q.y >= b.y1 and q.y <= b.y2 then return true end
+        end
+        return false
+    end
+end
+
 -- (R2 h3) kinds: the building kinds to take off (GIVE_UP_KINDS when nil): a parked
 -- level's pieces nothing in the fort can make, or that never came in a year
+-- (y2 W3) only pieces the level placed itself (own_build_test), never a KEEP_KINDS one
 function drop_waiting_shops(p, kinds)
     local a, n = p.area, 0
     local list = {}
-    local mine = own_tile_test(p)       -- (layout B)
+    local mine = own_build_test(p)      -- (layout B: its room tiles; else its own build cells)
     kinds = kinds or GIVE_UP_KINDS
     for _, b in ipairs(df.global.world.buildings.all) do
+        local name = df.building_type[b:getType()] or ''
         if b.z == a.z and b.x1 >= a.x1 and b.x2 <= a.x2 and b.y1 >= a.y1 and b.y2 <= a.y2
                 and (not mine or mine(b))
-                and not b.flags.exists and kinds[df.building_type[b:getType()] or '']
+                and not b.flags.exists and kinds[name] and not KEEP_KINDS[name]
                 and is_planned(b) then
             table.insert(list, b)
         end
@@ -1959,7 +2002,8 @@ function finish_project(id, decor_only, stalled, give_up, drop, leave_planned)
         kinds = {}
         for k in pairs(GIVE_UP_KINDS) do kinds[k] = true end
         for _, k in ipairs(drop) do
-            if type(k) == 'string' and df.building_type[k] ~= nil then kinds[k] = true end
+            -- (y2 W3) a KEEP_KINDS piece is never taken off: it stays waiting (refused below)
+            if type(k) == 'string' and df.building_type[k] ~= nil and not KEEP_KINDS[k] then kinds[k] = true end
         end
     end
     local left, only_shops = false, true

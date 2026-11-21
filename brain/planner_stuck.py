@@ -266,6 +266,10 @@ def _skip(r: dict, proj: dict | None, order: dict | None, cfg: dict, dead=None) 
             return "the projects section doesn't show it this cycle"
         if r.get("state") == "decorate":
             return "a level decorating times out by itself"
+        if proj.get("parked") is True:
+            # (y2 W5) parked by the slot rules (planner_slots._park_rule): it holds
+            # no slot and waits on its pieces until h3_park_drop_days, then they drop them
+            return "parked: the slot rules wait on its pieces, then take them off"
         if r.get("what") == "well" and r.get("state") == "furnish":
             # (r2h7) the well waits for its parts: the well rule orders them (and the
             # bridge never closes a well level without its well)

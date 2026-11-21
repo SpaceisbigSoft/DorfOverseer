@@ -947,6 +947,7 @@ for _, name in ipairs({
     'mission_way',   -- (0.105.47) its dry run is open_entrance's (checks the distance) and holds nothing
     'mission_pets',  -- (0.105.47, J17) its dry run names the pets and moves none
     'way_out_open', 'way_out_leave',   -- (0.105.47, J16) each dry run says what it would pull or unlock and changes nothing
+    'park_project',   -- (y2) its dry run checks the level and its sig and saves nothing
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry

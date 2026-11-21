@@ -12,10 +12,11 @@ by that very cap, again and again.
                      stays open, its pieces still ordered (the building rule's
                      furniture orders read every open level), and holds no
                      slot until one of them comes (its waiting list changes:
-                     the bridge counts it again). Pieces nothing in the fort
-                     makes are taken off and the level finished (finish_project
-                     give_up with `drop`), and so are those that never came in
-                     `h3_park_drop_days`: the reason names them.
+                     the bridge counts it again). Pieces that never came in
+                     `h3_park_drop_days` are taken off and the level finished
+                     (finish_project give_up with `drop`; at once only for
+                     UNOBTAINABLE_KINDS): the reason names them. KEEP_KINDS
+                     (a well, a lid, doors, gates, traps and levers...) never.
   * _dig_check_rule  a level with no tile dug for `h3_dig_check_days`: are its
                      tiles designated, can a dwarf reach where it starts, is
                      there a miner, is the alarm keeping them in? Given up at
@@ -35,7 +36,7 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import TICKS_PER_DAY, Proposal, abs_tick
 
-__all__ = ["furnish_sig", "HANDLED_KINDS", "KEEP_KINDS", "need_of", "needs_pass", "_park_rule", "_dig_check_rule",
+__all__ = ["furnish_sig", "STAGED_DIG_KINDS", "staged_dig", "HANDLED_KINDS", "KEEP_KINDS", "UNOBTAINABLE_KINDS", "need_of", "needs_pass", "_park_rule", "_dig_check_rule",
            "need_slots_free", "slots_rules"]
 
 # Pieces some rule of the AI orders or makes for a waiting level (planner_building's
@@ -44,8 +45,21 @@ __all__ = ["furnish_sig", "HANDLED_KINDS", "KEEP_KINDS", "need_of", "needs_pass"
 HANDLED_KINDS = {"Bed", "Door", "Table", "Chair", "Cabinet", "Box", "Statue", "Armorstand", "Weaponrack",
                  "Coffin", "Bookcase", "Chain", "Workshop", "Furnace", "Well", "Hatch", "Slab", "TractionBench",
                  "Cage"}
-# never taken off however long they wait (a well without its well, a lid over a shaft)
-KEEP_KINDS = {"Well", "Hatch"}
+# never taken off however long they wait (a well without its well, a lid over a shaft),
+# (y2 W3) nor a way's pieces: doors, gates and traps (DF's Trap is a lever or a
+# pressure plate too: they work some other module's floodgate, bridge or shaft
+# gate), floodgates, bridges, bars and grates, supports, the water works'
+# machine parts. The bridge keeps the same list (lua finish_project's KEEP_KINDS).
+KEEP_KINDS = frozenset({"Well", "Hatch", "Trap", "Lever", "Floodgate", "Door", "Bridge", "GrateWall", "GrateFloor",
+                        "BarsVertical", "BarsFloor", "Weapon", "Support", "SiegeEngine", "AnimalTrap",
+                        "GearAssembly", "AxleHorizontal", "AxleVertical", "ScrewPump", "WaterWheel", "Windmill",
+                        "Rollers"})
+# (y2 W3) pieces the AI knows it cannot get (no rule of it orders them and DF's
+# own jobs never make them), taken off a parked level at once. Kept empty: an
+# archery target, an altar, a nest box, a hive, an instrument... are all made or
+# built from what the fort has, so they wait h3_park_drop_days like the rest
+# (the 0.105.51 workshops give-up in planner_building handles the shops' pieces).
+UNOBTAINABLE_KINDS: frozenset = frozenset()
 
 
 def furnish_sig(fur: dict) -> str:
@@ -102,11 +116,11 @@ def _park_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None
             continue                    # another rule finishes or gives it up this cycle
         if p.get("parked") is True:
             pdays = p.get("parked_days") if isinstance(p.get("parked_days"), int) else days
-            unmade = sorted(x for x in kinds if x not in HANDLED_KINDS)
+            unmade = sorted(x for x in kinds if x in UNOBTAINABLE_KINDS and x not in KEEP_KINDS)
             if unmade and set(kinds) <= set(unmade):     # (a waiting workshop: the 0.105.51 give-up's, at its age)
                 proposals.append(Proposal("slots", {"type": "finish_project", "project_id": p["id"], "give_up": True,
                                                     "drop": unmade},
-                                          f"{what} has waited {days} days for {pieces}; nothing in the fort makes "
+                                          f"{what} has waited {days} days for {pieces}; the fort can't get "
                                           f"{', '.join(unmade)}: take {'it' if len(unmade) == 1 else 'them'} off "
                                           "the level and finish it", 4))
             elif (pdays >= int(cfg["h3_park_drop_days"]) and not set(kinds) & KEEP_KINDS):
@@ -115,8 +129,11 @@ def _park_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None
                                           f"{what} has waited {days} days for {pieces}, ordered and never come: "
                                           f"take {', '.join(sorted(kinds))} off the level and finish it", 4))
             else:
+                kept = sorted(set(kinds) & KEEP_KINDS)
                 notes.append(f"{what} waits apart for {pieces} ({days} days): it holds no building slot; "
-                             "it takes one again when they come")
+                             "it takes one again when they come"
+                             + (f" ({', '.join(kept)} never taken off)" if kept and pdays >= int(cfg["h3_park_drop_days"])
+                                else ""))
             continue
         if days >= int(cfg["h3_park_days"]):
             proposals.append(Proposal("slots", {"type": "park_project", "project_id": p["id"], "sig": sig},
@@ -129,6 +146,24 @@ def _park_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None
 
 
 REACH_WORDS = ("can't reach", "no open ground beside it")
+# (y2 W1) kinds dug in stages of their own, whose waiting tiles read "can't reach"
+# until the stage before is dug, and which their own rules judge: a well (its
+# channel, a cavern shaft dug from the bottom up, a cistern's chamber), a way in
+# (planner_gates), a landmark (its lower levels reached only down its own stair
+# once the level above is dug: h8_landmark_dig_days in planner_building)
+STAGED_DIG_KINDS = frozenset({"well", "way_in", "landmark"})
+
+
+def staged_dig(p: dict) -> bool:
+    """A level the dig check leaves to its own stage's rules: a STAGED_DIG_KINDS kind,
+    a floor level digging its new hall first (its rooms open off it), a cavern shaft."""
+    if p.get("kind") in STAGED_DIG_KINDS:
+        return True
+    fl = p.get("floor")
+    if isinstance(fl, dict) and (not isinstance(fl.get("hall"), int) or fl.get("hall") > 0):
+        return True                 # (layout B: a hall of unknown size counts as one dug first)
+    dig = _d(p.get("dig"))
+    return "shaft_open" in dig or bool(dig.get("held"))
 
 
 def _dig_check_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
@@ -143,7 +178,7 @@ def _dig_check_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
     taken = {_d(p.action).get("project_id") for p in proposals
              if _d(p.action).get("type") in ("cancel_project", "furnish_project")}
     for p in _open(s):
-        if p.get("phase") != "dig" or not isinstance(p.get("id"), int) or p.get("kind") in ("well", "way_in"):
+        if p.get("phase") != "dig" or not isinstance(p.get("id"), int) or staged_dig(p):
             continue
         dig = _d(p.get("dig"))
         dug, total = int(dig.get("dug") or 0), int(dig.get("total") or 0)

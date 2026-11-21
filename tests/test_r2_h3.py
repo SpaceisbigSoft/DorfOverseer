@@ -208,7 +208,7 @@ def _():
     assert "66" not in m.furnish_seen                                         # forgotten once closed
 
 
-@test("1 brain: parked: pieces nothing makes taken off at once; the rest after h3_park_drop_days; a well kept")
+@test("1 brain: parked: a floodgate never taken off (y2 W3); the rest after h3_park_drop_days; a well kept")
 def _():
     s = fort()
     m = Memory()
@@ -219,10 +219,9 @@ def _():
     lvl = furnish_level(90, "workshops", {"Floodgate": 2}, 60, parked=True, parked_days=5)
     s["projects"] = {"open": [lvl]}
     m.furnish_seen = {"90": {"sig": lvl["furnish"]["sig"], "tick": abs_tick(s) - 60 * TICKS_PER_DAY}}
-    props, _ = park(s, m)
-    assert [p.action for p in props] == [{"type": "finish_project", "project_id": 90, "give_up": True,
-                                          "drop": ["Floodgate"]}], [p.action for p in props]
-    assert "nothing in the fort makes Floodgate" in props[0].reason
+    assert not park(s, m)[0]                     # (y2 W3) a floodgate is a KEEP_KINDS piece: never dropped
+    lvl["parked_days"] = CFG["h3_park_drop_days"] + 1
+    assert not park(s, m)[0]
     # F's bed and box: ordered, so they wait (parked) until h3_park_drop_days
     lvl = furnish_level(66, "bedrooms", {"Bed": 1, "Box": 1}, 711, parked=True, parked_days=100)
     s["projects"] = {"open": [lvl]}
