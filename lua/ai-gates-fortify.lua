@@ -24,6 +24,226 @@ local key, unkey, STAIR_UP, T, interior, moves, inside_or_courtyard, seals, ORTH
 GAP = {plain = 2, narrow = 1, fortified = 1, gatehouse = 1, grand = 2, drawbridge = 2, wagon = 3,
        sealed = 0}
 
+---------------------------------------------------------------------------
+-- (R1 g1) A gate never cuts the fort in two. F (15 Nov, 0.105.55): a gate
+-- line moved in two steps from the founding stair walled the full width of
+-- hallway floor 2's main hall (x110 y148-150 z170) with its doors on the
+-- level below; the cut-off check flooded from every citizen, so with
+-- citizens on both sides of the wall it cut off "0 tiles", and four founders
+-- died of thirst behind it. Now:
+--   * the fort's side of a line is flooded from behind its gate (the tiles
+--     the doors open onto, or for a sealed line the tiles behind its walls),
+--     with the gate shut and the walls built; every door must open onto
+--     that one side (doors that meet only outside the gate split the fort
+--     whenever it shuts);
+--   * whatever of the fort is left off that side (the tiles between the old
+--     opening and a moved-in line count as off it) must hold no citizen,
+--     bed, well, food or drink stockpile or AI level, and at most
+--     GATE_CUT_SLACK tiles beyond the line's own outer side;
+--   * every level a line crosses gets a door of its own;
+--   * no wall on a hallway floor's hall (ai-floorplan claims: the hub and
+--     the runs) or on an AI project's corridor (its links);
+--   * no moved-in line where a hatch is built or planned at the entrance.
+---------------------------------------------------------------------------
+GATE_CUT_SLACK = 30          -- tiles: a nook a gate may leave off the fort's side (as the old check allowed)
+GATE_THING_RING = 1          -- a bed, well or stockpile: its own tiles and this many round them
+
+-- The things a gate must leave on the fort's side (tests replace this):
+-- {citizens = {{x, y, z}...}, boxes = {{what, x1, y1, x2, y2, z}...}}.
+-- Each list read behind its own pcall: what can't be read is left out.
+function gate_far_things()
+    local out = {citizens = {}, boxes = {}}
+    pcall(function()
+        for _, u in ipairs(dfhack.units.getCitizens(true)) do
+            local p = u.pos
+            if p and p.z >= 0 then table.insert(out.citizens, {x = p.x, y = p.y, z = p.z}) end
+        end
+    end)
+    local function add(what, b, ring)
+        if b and b.x1 and b.y1 and b.x2 and b.y2 and b.z then
+            table.insert(out.boxes, {what = what, x1 = b.x1, y1 = b.y1, x2 = b.x2, y2 = b.y2, z = b.z, ring = ring})
+        end
+    end
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.BED) do add('a bed', b, true) end
+    end)
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.WELL) do add('a well', b, true) end
+    end)
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.STOCKPILE) do
+            local okf, food = pcall(function() return b.settings.flags.food end)
+            if okf and food then add('a food or drink stockpile', b, true) end
+        end
+    end)
+    pcall(function()
+        local data = reqscript('ai-builder').load_projects()
+        for _, p in ipairs(type(data) == 'table' and type(data.list) == 'table' and data.list or {}) do
+            local a = type(p) == 'table' and p.area or nil
+            if type(a) == 'table' and p.phase ~= 'cancelled' then
+                add(('AI level %s (%s)'):format(tostring(p.id), tostring(p.kind)),
+                    {x1 = a.x1, y1 = a.y1, x2 = a.x2, y2 = a.y2, z = a.z or p.z}, false)
+            end
+        end
+    end)
+    return out
+end
+
+-- The tiles no gate wall may stand on (tests replace this): key -> what it is.
+-- Every hallway floor's hall (its hub and runs: ai-floorplan claims without
+-- the rooms) and every AI project's corridor (p.links, anchor-relative).
+function gate_keepout()
+    local out = {}
+    pcall(function()
+        local B = reqscript('ai-builder')
+        local FP = reqscript('ai-floorplan')
+        local store = B.load_floors and B.load_floors()
+        for _, f in ipairs(type(store) == 'table' and type(store.floors) == 'table' and store.floors or {}) do
+            local st, z = type(f) == 'table' and f.stair or nil, type(f) == 'table' and math.tointeger(f.z) or nil
+            if type(st) == 'table' and math.tointeger(st.x) and math.tointeger(st.y) and z then
+                local hall = {}
+                for k, v in pairs(f) do hall[k] = v end
+                hall.slots = {}                     -- the hall only: hub and runs, not the rooms
+                local okc, tiles = pcall(FP.claims, hall)
+                local what = ('the hall of hallway floor %s (z%d)'):format(tostring(f.id), z)
+                for x, col in pairs(okc and type(tiles) == 'table' and tiles or {}) do
+                    for y in pairs(col) do out[key(st.x + x, st.y + y, z)] = what end
+                end
+            end
+        end
+    end)
+    pcall(function()
+        local data = reqscript('ai-builder').load_projects()
+        for _, p in ipairs(type(data) == 'table' and type(data.list) == 'table' and data.list or {}) do
+            local a = type(p) == 'table' and (p.anchor or p.stair) or nil
+            local z = type(p) == 'table' and math.tointeger(p.z) or nil
+            if p.phase ~= 'cancelled' and type(a) == 'table' and math.tointeger(a.x) and math.tointeger(a.y) and z then
+                local what = ('the corridor of AI project %s (%s)'):format(tostring(p.id), tostring(p.kind))
+                for _, l in ipairs(type(p.links) == 'table' and p.links or {}) do
+                    if type(l) == 'table' and math.tointeger(l.x) and math.tointeger(l.y) then
+                        out[key(a.x + l.x, a.y + l.y, z)] = out[key(a.x + l.x, a.y + l.y, z)] or what
+                    end
+                end
+            end
+        end
+    end)
+    return out
+end
+
+-- A hatch built or planned at the entrance (on its tiles, straight above or
+-- below them, or on its outside tiles): where, or nil.
+function entrance_hatch(e)
+    local function at(x, y, z)
+        local ok, kind = pcall(building_at, x, y, z)
+        return ok and kind == 'Hatch'
+    end
+    for _, k in ipairs(e.inside_list or {}) do
+        local x, y, z = unkey(k)
+        for dz = -1, 1 do
+            if at(x, y, z + dz) then return ('x%d y%d z%d'):format(x, y, z + dz) end
+        end
+    end
+    for k in pairs(e.outs or {}) do
+        local x, y, z = unkey(k)
+        if at(x, y, z) then return ('x%d y%d z%d'):format(x, y, z) end
+    end
+    return nil
+end
+
+-- The fort's side of a gate, checked. groups: the seeds behind each door
+-- (lists of {x, y, z}); shut: the gate's own tiles and everything outside it
+-- (key -> true; nothing floods through them); outer: the tiles of the fort
+-- left outside the gate on purpose (the opening's own outside tiles, the
+-- tiles between the opening and a moved-in line, a cut's porch): no citizen
+-- there counts, but nothing the fort needs may be there. memo (optional):
+-- the fort flooded before the gate, kept between the lines of one plan.
+-- starts (optional): where citizens stand, as the caller read them (counted
+-- with gate_far_things' own).
+-- Returns nil when the gate leaves the fort whole, else why not.
+function fort_side_check(groups, shut, outer, memo, starts)
+    memo = memo or {}
+    local all = {}
+    for _, g in ipairs(groups) do for _, p in ipairs(g) do table.insert(all, p) end end
+    if #all == 0 then return 'no way on into the fort behind the gate' end
+    -- the fort before the gate: everything the seeds reach with nothing shut
+    local pre, n = memo.pre, memo.pre_n
+    local fits = pre ~= nil
+    if fits then
+        for _, p in ipairs(all) do if not pre[key(p.x, p.y, p.z)] then fits = false break end end
+    end
+    if not fits then
+        pre, n = explore(all)
+        memo.pre, memo.pre_n = pre, n
+    end
+    if n >= MAX_TILES then
+        return 'the fort is too big for the AI to check that walls there would not cut it apart'
+    end
+    -- the fort's side: from behind the first door, the gate shut
+    local side = explore(groups[1], shut)
+    for i = 2, #groups do
+        local joined = false
+        for _, p in ipairs(groups[i]) do
+            if side[key(p.x, p.y, p.z)] then joined = true break end
+        end
+        if not joined then
+            local p = groups[i][1]
+            return ('its doors open onto parts of the fort that meet only outside the gate (x%d y%d z%d): '
+                .. 'shut, it would cut the fort in two'):format(p.x, p.y, p.z)
+        end
+    end
+    -- what is left off the fort's side
+    local cut, n_cut = {}, 0
+    for k in pairs(pre) do
+        if not side[k] and not shut[k] then
+            cut[k] = true
+            if not outer[k] then n_cut = n_cut + 1 end
+        end
+    end
+    -- (outer tiles still in the fort's walk before the gate: off its side too)
+    for k in pairs(outer) do if pre[k] and not side[k] then cut[k] = true end end
+    local things = memo.things
+    if things == nil then
+        local okt, t = pcall(gate_far_things)
+        things = okt and type(t) == 'table' and t or {}
+        memo.things = things
+    end
+    local n_cit, where, counted = 0, nil, {}
+    local cits = {}
+    for _, c in ipairs(things.citizens or {}) do table.insert(cits, c) end
+    for _, c in ipairs(starts or {}) do table.insert(cits, c) end
+    for _, c in ipairs(cits) do
+        local k = key(c.x, c.y, c.z)
+        if cut[k] and not outer[k] and not counted[k] then
+            counted[k] = true
+            n_cit = n_cit + 1
+            where = where or ('x%d y%d z%d'):format(c.x, c.y, c.z)
+        end
+    end
+    if n_cit > 0 then
+        return ('%d citizen%s would be cut off from the fort behind it (at %s)'):format(
+            n_cit, n_cit == 1 and '' or 's', where)
+    end
+    for _, b in ipairs(things.boxes or {}) do
+        local r = b.ring and GATE_THING_RING or 0
+        local on_side, off = false, nil
+        for x = b.x1 - r, b.x2 + r do
+            for y = b.y1 - r, b.y2 + r do
+                local k = key(x, y, b.z)
+                local own = x >= b.x1 and x <= b.x2 and y >= b.y1 and y <= b.y2
+                if own and side[k] then on_side = true end
+                if cut[k] then off = true end
+            end
+        end
+        if off and not on_side then
+            return ('%s would be left outside the gate (at x%d y%d z%d)'):format(tostring(b.what), b.x1, b.y1, b.z)
+        end
+    end
+    if n_cut > GATE_CUT_SLACK then
+        return ('walls there would cut off %d tiles of the fort'):format(n_cut)
+    end
+    return nil
+end
+
 local function nbrs4(k)
     local x, y, z = unkey(k)
     return {key(x + 1, y, z), key(x - 1, y, z), key(x, y + 1, z), key(x, y - 1, z)}
@@ -423,13 +643,9 @@ function plan_sealed(e, starts)
     local plan, why2 = plan_line(e, 'sealed', starts, {}, memo)
     if not plan then return nil, why2 end
     if #plan.walls ~= width or #plan.doors > 0 then return nil, 'the opening could not be walled whole' end
-    -- the cistern's rule: the walls cut nothing of the fort off
-    local wall_only = {}
-    for _, k in ipairs(plan.walls) do wall_only[k] = true end
-    local _, after = explore(starts, wall_only)
-    if (memo.before or 0) - after > #plan.walls then
-        return nil, ('walls there would cut off %d tiles of the fort'):format(memo.before - after - #plan.walls)
-    end
+    -- the cistern's rule: the walls cut nothing of the fort off. (R1 g1)
+    -- plan_line checks it now from the fort's side of the walls (the old
+    -- flood from every citizen read "nothing cut" with citizens both sides)
     plan.sealed = true
     return plan
 end
@@ -461,6 +677,14 @@ function plan_gate(e, style, starts, doors_present)
             return {walls = {}, doors = {}, inner = {}, traps = {}, statues = {}, support = {},
                     hatches = hatches, kept_doors = 0}
         end
+    end
+    -- (R1 g1) a hatch built or planned at this entrance is its gate (F: the
+    -- planned hatch on the stair's top took the hatch spot, and the line
+    -- moved in two steps walled floor 2's hall shut): no line further in
+    local okh, hatch_at = pcall(entrance_hatch, e)
+    if okh and hatch_at then
+        return nil, why .. '; a hatch is built or planned at ' .. hatch_at
+            .. ': it is this entrance\'s gate, so no wall line goes further in'
     end
     local line, outs = e.inside_list, e.outs
     local last
@@ -593,6 +817,51 @@ function plan_line(e, style, starts, doors_present, memo)
             if doors_present[k] then table.insert(gap, k); in_gap[k] = true end
         end
     end
+    -- (R1 g1) a door on every level the line crosses: F's line walled floor
+    -- 2's whole hall on z170 with its doors on z169. Each level without one
+    -- gets its own gap, grown from its tile nearest that level's middle.
+    if gap_n > 0 then
+        local by_z, z_order = {}, {}
+        for _, k in ipairs(list) do
+            local _, _, z = unkey(k)
+            if not by_z[z] then by_z[z] = {}; table.insert(z_order, z) end
+            table.insert(by_z[z], k)
+        end
+        for _, g in ipairs(gap) do
+            local _, _, z = unkey(g)
+            by_z[z] = nil
+        end
+        table.sort(z_order)
+        for _, z in ipairs(z_order) do
+            local lvl = by_z[z]
+            if lvl then
+                local lx, ly = 0, 0
+                for _, k in ipairs(lvl) do
+                    local x, y = unkey(k)
+                    lx, ly = lx + x, ly + y
+                end
+                lx, ly = lx / #lvl, ly / #lvl
+                local function dz2(k) local x, y = unkey(k) return (x - lx) ^ 2 + (y - ly) ^ 2 end
+                local f = lvl[1]
+                for _, k in ipairs(lvl) do if dz2(k) < dz2(f) then f = k end end
+                local mine = {f}
+                table.insert(gap, f)
+                in_gap[f] = true
+                while #mine < gap_n do
+                    local best
+                    for _, g in ipairs(mine) do
+                        for _, nk in ipairs(nbrs4(g)) do
+                            if in_list[nk] and not in_gap[nk] and (not best or dz2(nk) < dz2(best)) then best = nk end
+                        end
+                    end
+                    if not best then break end
+                    table.insert(mine, best)
+                    table.insert(gap, best)
+                    in_gap[best] = true
+                end
+            end
+        end
+    end
     local walls = {}
     for _, k in ipairs(list) do if not in_gap[k] then table.insert(walls, k) end end
     -- inside the gap: the next tiles in (not the opening, not outside)
@@ -707,22 +976,65 @@ function plan_line(e, style, starts, doors_present, memo)
     if not seals(starts, {outs = e.outs}, blocked) then
         return nil, 'walls there would not seal it (the opening is irregular)'
     end
-    local wall_only = {}
-    for _, k in ipairs(walls) do wall_only[k] = true end
-    for _, k in ipairs(plan.support) do wall_only[k] = true end
+    -- (R1 g1) every level a wall stands on has a door of its own
+    if #gap > 0 then
+        local door_z = {}
+        for _, k in ipairs(gap) do
+            local _, _, z = unkey(k)
+            door_z[z] = true
+        end
+        for _, list2 in ipairs({walls, plan.support}) do
+            for _, k in ipairs(list2) do
+                local x, y, z = unkey(k)
+                if not door_z[z] then
+                    return nil, ('a wall at x%d y%d z%d would have no door on its level'):format(x, y, z)
+                end
+            end
+        end
+    end
+    -- (R1 g1) no wall on a hallway floor's hall or an AI project's corridor
     memo = memo or {}
-    if not memo.before then
-        local _, n = explore(starts)
-        memo.before = n
+    if memo.keepout == nil then
+        local okk, ko = pcall(gate_keepout)
+        memo.keepout = okk and type(ko) == 'table' and ko or {}
     end
-    local before = memo.before
-    if before >= MAX_TILES then
-        return nil, 'the fort is too big for the AI to check that walls there would not cut it apart'
+    for _, list2 in ipairs({walls, plan.support}) do
+        for _, k in ipairs(list2) do
+            local what = memo.keepout[k]
+            if what then
+                local x, y, z = unkey(k)
+                return nil, ('a wall at x%d y%d z%d would cross %s'):format(x, y, z, tostring(what))
+            end
+        end
     end
-    local _, after = explore(starts, wall_only)
-    local n_walls = #walls + #plan.support
-    if before - after > n_walls + 30 then
-        return nil, ('walls there would cut off %d tiles of the fort'):format(before - after - n_walls)
+    if #plan.statues > 0 then                       -- (a statue blocks the way like a wall: never on them)
+        local kept = {}
+        for _, k in ipairs(plan.statues) do if not memo.keepout[k] then table.insert(kept, k) end end
+        plan.statues = kept
     end
+    -- (R1 g1) the walls don't cut the fort apart: flooded from behind the
+    -- gate only (not from every citizen, which hid F's cut), the gate shut
+    local shut = {}
+    for k in pairs(e.outs) do shut[k] = true end
+    for _, k in ipairs(list) do shut[k] = true end
+    for _, k in ipairs(plan.support) do shut[k] = true end
+    for _, k in ipairs(plan.statues) do shut[k] = true end
+    local groups = {}
+    for _, g in ipairs(#gap > 0 and gap or list) do
+        local gx, gy, gz = unkey(g)
+        local gt = T(gx, gy, gz)
+        local seeds = {}
+        if gt then
+            moves(gx, gy, gz, gt, function(nx, ny, nz)
+                local nk = key(nx, ny, nz)
+                if not shut[nk] and inside_or_courtyard(T(nx, ny, nz), nk) then
+                    table.insert(seeds, {x = nx, y = ny, z = nz})
+                end
+            end)
+        end
+        if #seeds > 0 then table.insert(groups, seeds) end
+    end
+    local why_cut = fort_side_check(groups, shut, e.outs, memo, starts)
+    if why_cut then return nil, why_cut end
     return plan
 end

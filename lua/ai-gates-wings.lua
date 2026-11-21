@@ -679,6 +679,28 @@ function plan_cut(e, starts, fort_ready)
     if not cut_seals(starts, e, blocked, p.n) then
         return nil, 'hatches on its stairs would not seal it (another way leads in)'
     end
+    -- (R1 g1) the hatches shut must not cut the fort in two: seals() walks
+    -- from the outside and stops at any citizen, so stairs down into two
+    -- parts of the fort that meet only on the porch read as sealed. The
+    -- fort's side is flooded from below the first hatch, the porch and the
+    -- hatches shut: below every other hatch must be on it, and nothing the
+    -- fort needs may be left on the porch or off that side.
+    if type(fort_side_check) == 'function' then
+        local shut, outer, groups = {}, {}, {}
+        for k in pairs(p.tiles or {}) do shut[k] = true; outer[k] = true end
+        for k in pairs(e.outs or {}) do shut[k] = true; outer[k] = true end
+        for k in pairs(blocked) do shut[k] = true end
+        for _, k in ipairs(p.stairs) do
+            local x, y, z = unkey(k)
+            local bt = T(x, y, z - 1)
+            if bt and inside_or_courtyard(bt, key(x, y, z - 1)) and not shut[key(x, y, z - 1)] then
+                table.insert(groups, {{x = x, y = y, z = z - 1}})
+            end
+        end
+        local okc, why = pcall(fort_side_check, groups, shut, outer, {}, starts)
+        if not okc then return nil, 'the AI could not check that hatches there would not cut the fort apart' end
+        if why then return nil, 'hatches on its stairs: ' .. why end
+    end
     return {hatches = p.stairs, porch = p.n}
 end
 
