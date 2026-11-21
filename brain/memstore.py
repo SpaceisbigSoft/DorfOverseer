@@ -187,7 +187,28 @@ def _remember_session(path: Path, wk: str, folder: str) -> None:
         pass
 
 
-def note_world(key: str, world: str | None) -> str | None:
+def note_world(key: str, world: str | None, save_dir: str | None = None) -> str | None:
+    """(r1g9) With `save_dir`: the fort key is the world's and the site's
+    ("Usnuspbuzong#1430", overseer.fort_key), and its logs folder is the one
+    the save folder's own key ("region4#1430", "autosave 2#1430") always
+    had, kept as the key's alias: the folders are chosen exactly as before.
+    Without it, the key is the save folder's own (as below)."""
+    site = key.rpartition("#")[2]
+    if isinstance(save_dir, str) and save_dir and site:
+        head = key.rpartition("#")[0]
+        run = head.rpartition("@")[2] if "@" in head else ""
+        legacy = f"{save_dir}@{run}#{site}" if run else f"{save_dir}#{site}"
+        if legacy != key:
+            folder = _note_world(legacy, world)
+            if folder is None and save_dir.lower().startswith("autosave") and key in ALIASES:
+                folder = ALIASES[key]        # this fort's folder this session: its next autosave stays in it
+            folder = folder or fort_dir(legacy).name
+            ALIASES[key] = folder
+            return folder
+    return _note_world(key, world)
+
+
+def _note_world(key: str, world: str | None) -> str | None:
     """The same fort loaded from a save copied under another folder name
     (region2 for AI Test Run 2) keeps its logs in one folder: the first
     folder used for that world and site is remembered in logs/forts/index.json.

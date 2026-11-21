@@ -121,7 +121,11 @@ local function verase(v, i)      -- i 0-based
     if type(v) == 'table' then table.remove(v, i + 1) else v:erase(i) end
 end
 
+-- (r1g9) the world and the site (ai-util fort_id), not the save folder:
+-- the pass state was dropped at each seasonal autosave (autosave 1, 2, 3)
 local function fort_id()
+    local ok, v = pcall(function() return U.fort_id() end)
+    if ok and type(v) == 'string' then return v end
     local okd, dir = pcall(function() return df.global.world.cur_savegame.save_dir end)
     local oks, site = pcall(function() return df.global.plotinfo.site_id end)
     return tostring(okd and dir or '?') .. '#' .. tostring(oks and site or '?')

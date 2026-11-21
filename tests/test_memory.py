@@ -840,7 +840,7 @@ def _():
     memstore.fort_dir("region2#239").mkdir(parents=True, exist_ok=True)
     fort = {"save_dir": "region2", "site_id": 239, "world": "The Realm", "run_id": "202611011200-ab12"}
     key = overseer.fort_key({"fort": fort})
-    assert key == "region2@202611011200-ab12#239", key
+    assert key == "The Realm@202611011200-ab12#239", key      # (r1g9) the world, not the save folder
     assert memstore.note_world(key, "The Realm") == "run-202611011200-ab12-239"
     auto = overseer.fort_key({"fort": dict(fort, save_dir="autosave 1")})
     assert memstore.fort_dir(auto).name == "run-202611011200-ab12-239"           # its autosave: the same folder

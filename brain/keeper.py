@@ -334,6 +334,24 @@ def quick_edit_off() -> None:
         pass
 
 
+def close_handler(started: str) -> bool:
+    """(r1g9) Windows closing the keeper's console (the window closed, a
+    logoff, a shutdown): said in the log and the status file before Windows
+    ends the process, and the reviver holds from then on (brain/session_end.py):
+    on 16 Nov the keepers started and reloaded games while Windows shut down,
+    and their logs ended on dfhack-run's exit code 0xC000013A, unexplained.
+    Ctrl-C stops the keeper as before. True when installed."""
+    def on_signal(words: str) -> None:
+        log(f"Keeper: {words}: the console is closing. Nothing is started or loaded again; the keeper and its "
+            "overseer end with it.")
+        write_status(started, int(EXTRAS.get("restarts") or 0), f"Keeper stopped: {words} (the console was closed)")
+    try:
+        import session_end
+        return session_end.install(on_signal)
+    except Exception:  # noqa: BLE001  (no handler: the keeper runs as before)
+        return False
+
+
 def single_instance():
     """An open, locked file (logs/keeper.lock) while this keeper runs: a second
     keeper, or a manual overseer.py --autopilot, refuses (two autopilots on
@@ -371,6 +389,7 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
         return 1
     quick_edit_off()
     started = stamp()
+    close_handler(started)
     log(f"Keeper starting: overseer.py {' '.join(command(args.ai, preset)[3:])}. Ctrl-C stops it.")
     if preset:
         log(f"Preset: {preset} asked for: applied to the fort before its first cycle, unless this fort "
@@ -410,6 +429,7 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
             wait = BACKOFF[min(streak, len(BACKOFF) - 1)]
             streak += 1
             restarts += 1
+            EXTRAS["restarts"] = restarts
             if streak >= SHORT_RUNS_LOUD and streak % SHORT_RUNS_LOUD == 0:
                 # (0.105.48, K8) the overseer dies at start every time (a bad
                 # delivery?): the game runs on with no AI; said loudly

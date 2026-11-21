@@ -481,8 +481,11 @@ end
 -- world creation, so the answer is kept for the world loaded (its save
 -- folder and the entity count: a new entity of any kind reads it again)
 local function evil_civ()
+    -- (r1g9) the world by its name (ai-util world_name), not the save folder
     local okk, key = pcall(function()
-        return tostring(df.global.world.cur_savegame.save_dir) .. '#' .. #df.global.world.entities.all
+        local okn, w = pcall(function() return U.world_name() end)
+        if not okn or type(w) ~= 'string' then w = df.global.world.cur_savegame.save_dir end
+        return tostring(w) .. '#' .. #df.global.world.entities.all
     end)
     local m = EVIL_CIV_MEMO
     if okk and m and m.key == key then return m.yes end
@@ -2183,7 +2186,11 @@ local FIRE_FLOW_HOW = {DRAGONFIRE = 'breath', FIREJET = 'jet', FIREBALL = 'fireb
 -- (fix41) the cache belongs to one world: another save loaded in the same
 -- DFHack session has other races under the same numbers (generated beasts)
 function fire_breath_of(race, caste)
-    local okw, world = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    -- (r1g9) the world by its name, not the save folder an autosave renames
+    local okw, world = pcall(function() return U.world_name() end)
+    if not okw or type(world) ~= 'string' then
+        okw, world = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    end
     world = tostring(okw and world or '?')
     if FIRE_BREATH_WORLD ~= world then
         FIRE_BREATH_CACHE, FIRE_BREATH_WORLD = {}, world

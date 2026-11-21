@@ -291,6 +291,24 @@ def df_running(run=None, exe: str | None = None) -> bool:
     return any(DF_EXE.lower() in ln.lower() for ln in lst.splitlines())
 
 
+def any_df_running(run=None) -> bool | None:
+    """(r1g9) Whether any Dwarf Fortress process runs on this PC (Windows'
+    tasklist): True, False, or None when it can't tell (not Windows, the
+    list failed)."""
+    if os.name != "nt" and run is None:
+        return None
+    run = run or subprocess.run
+    try:
+        r = run(["tasklist", "/FI", f"IMAGENAME eq {DF_EXE}", "/FO", "CSV", "/NH"],
+                capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = getattr(r, "stdout", "") or ""
+    if getattr(r, "returncode", 0) != 0 and not out.strip():
+        return None
+    return any(DF_EXE.lower() in ln.lower() for ln in out.splitlines())
+
+
 def own_exe() -> str | None:
     """(0.105.42) This keeper's game's .exe (config's df_launch when it names
     one; None for a steam:// link)."""
@@ -462,6 +480,68 @@ class Reviver:
         self.stalls: dict[str, int] = {}          # title-screen stalls in a row, per folder (not failed loads)
         self.wrong_load: str | None = None        # a load of ours that brought up another fort
         self.close_game = self._close_game
+        # (r1g9) the session ending (Windows shutting down or logging off, the
+        # console's close signal) and any Dwarf Fortress left on the PC
+        import session_end
+        self.session_ending = session_end.ending
+        self.any_df = any_df_running
+        self.all_closed_said = False
+
+    def _held(self, state: str, now: float) -> bool:
+        """(r1g9) Nothing is started, loaded or closed: the fort has fallen
+        (logs/fallen.json, brain/fallen.py: left for the player), or the
+        session is ending (R-AD: C reloaded, A and F relaunched while Windows
+        shut down). True when held (said hourly)."""
+        why, key = None, None
+        try:
+            import fallen
+            m = fallen.idle()
+        except Exception:  # noqa: BLE001
+            m = None
+        if m:
+            why, key = (f"the fort has fallen ({m.get('why') or 'no citizens left'}; logs/fallen.json): the game "
+                        "is left as it is until you act"), "fallen"
+        else:
+            try:
+                e = self.session_ending()
+            except Exception:  # noqa: BLE001
+                e = None
+            if e:
+                why, key = f"{e}: the game is not started again, loaded or closed", "ending"
+        if why is None:
+            return False
+        if state == "down" and self.down_since is None:
+            self.down_since = now
+        self.title_since = self.unknown_since = None
+        if key == "ending":
+            self.down_since = None
+        self.loading = None
+        self._say_hourly(key, now, f"Revive: {why}.")
+        return True
+
+    def _all_closed_hold(self, now: float) -> bool:
+        """(r1g9) This folder's game closed after it ran, and no Dwarf
+        Fortress at all is left on the PC: every game closed together, as
+        Windows does at a shutdown or logoff. No relaunch for
+        g9_all_closed_hold_s from when it went (the console's close signal
+        comes within it when the session is ending). True when held."""
+        try:
+            anyone = self.any_df()
+        except Exception:  # noqa: BLE001
+            anyone = None
+        if anyone is not False or not self.seen_up or self.down_since is None:
+            self.all_closed_said = False
+            return False
+        import session_end
+        hold = session_end.all_closed_hold_s()
+        if now - self.down_since >= hold:
+            return False
+        if not self.all_closed_said:
+            self.all_closed_said = True
+            self.log(f"Revive: this folder's game closed, and no Dwarf Fortress is left running on this PC (all of "
+                     "them closed together: Windows shutting down or logging off?): not started again for "
+                     f"{int(hold)} s after it went.")
+        return True
 
     def _say_hourly(self, key: str, now: float, line: str) -> None:
         """(0.105.48, K17) A line said at most once every SAY_AGAIN_S."""
@@ -675,6 +755,8 @@ class Reviver:
         if state in ("title", "world"):
             self.seen_up = True
         self._watch_load(state, now)
+        if state in ("down", "title", "unknown") and self._held(state, now):
+            return
         if state in ("foreign", "broken"):
             # (0.105.48, K17) another folder's game answers on this port, or
             # dfhack-run itself fails: nothing is loaded, closed or started
@@ -723,6 +805,8 @@ class Reviver:
                                      f"starting?): waiting up to {START_BUSY_S} s before starting it.")
                             self.busy_said = True
                         return
+                if self._all_closed_hold(now):
+                    return
                 cmd = launch_command()
                 if not cmd:
                     if self.last_launch == float("-inf"):

@@ -472,8 +472,12 @@ end
 -- the necromancer towers near the fort (world tiles), kept for the world loaded
 TOWER_MEMO = TOWER_MEMO or nil
 function towers()
+    -- (r1g9) the world by its name (ai-util world_name), not the save folder
+    -- that DF's seasonal autosave renames
     local okk, key = pcall(function()
-        return tostring(df.global.world.cur_savegame.save_dir) .. '#' .. #df.global.world.world_data.sites
+        local okn, w = pcall(function() return U.world_name() end)
+        if not okn or type(w) ~= 'string' then w = df.global.world.cur_savegame.save_dir end
+        return tostring(w) .. '#' .. #df.global.world.world_data.sites
     end)
     if okk and TOWER_MEMO and TOWER_MEMO.key == key then return TOWER_MEMO.list end
     local list = {}

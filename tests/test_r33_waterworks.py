@@ -413,7 +413,7 @@ def _():
     assert env.JOB.mid.x == 50
     F.site, F.x = 2, 120                          # another fort, its citizens elsewhere
     env.scan_step(2, 0)
-    assert env.JOB.fort == "region1:2" and env.JOB.mid.x == 120, env.JOB.fort
+    assert env.JOB.fort == "region1#2" and env.JOB.mid.x == 120, env.JOB.fort   # (r1g9) a fake with no world name: the save folder
 
 
 # --- the planner --------------------------------------------------------------------------

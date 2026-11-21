@@ -2441,10 +2441,15 @@ end
 -- layers never move.
 ---------------------------------------------------------------------------
 
+-- (r1g9) the world and the site (ai-util fort_id), not the save folder DF's
+-- seasonal autosave renames (the layers were walked again every season)
 local function layer_cache_key()
     local x, y, z = dfhack.maps.getTileSize()
-    return ('%s:%d:%d:%d:%d'):format(df.global.world.cur_savegame.save_dir,
-        df.global.plotinfo.site_id, x, y, z)
+    local okf, fort = pcall(function() return reqscript('ai-util').fort_id() end)
+    if not okf or type(fort) ~= 'string' then
+        fort = tostring(df.global.world.cur_savegame.save_dir) .. '#' .. tostring(df.global.plotinfo.site_id)
+    end
+    return ('%s:%d:%d:%d'):format(fort, x, y, z)
 end
 
 function get_layers()
