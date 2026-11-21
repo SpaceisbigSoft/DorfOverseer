@@ -1332,6 +1332,18 @@ PLANNER_CONFIG.update({
     "raid_greed_rich": 60,                # Greed at or past this: the aggressive fort prefers the richest clear win
     "raid_pet_restore_days": 2,           # pets let out for a mission put back this long after, once all are home
 })
+# (r1 g3) Water in winter, and wells that count only when they serve
+# (brain/planner_wells.py _winter_water_rule, _well_rule; planner_shelter
+# _shortfalls; lua/ai-society.lua's shelter water test)
+PLANNER_CONFIG.update({
+    "g3_civs_per_well": 40,               # a shelter's well gives water to this many civilians (a level's wells weighed)
+    "g3_winter_temp_margin": 40,          # autumn, the surface this near freezing (Urist degrees): it will freeze
+    "g3_extra_well_slots": 1,             # building slots over max_open another well may take when wells are short
+    "g3_winter_well_slots": 2,            # ...a winter water source, in the ice season or with patients waiting
+    "winter_water_cooldown_ticks": 3 * 1200,   # the winter water rule asked again at most this often
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall
@@ -1362,15 +1374,4 @@ PLANNER_CONFIG.update({
     "floor_elevs_max": 4,                 # floors offered for one level
     "floor_full_retry_days": 28,          # a full floor is offered again after this long
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
-})
-
-# (r1 g3) Water in winter, and wells that count only when they serve
-# (brain/planner_wells.py _winter_water_rule, _well_rule; planner_shelter
-# _shortfalls; lua/ai-society.lua's shelter water test)
-PLANNER_CONFIG.update({
-    "g3_civs_per_well": 40,               # a shelter's well gives water to this many civilians (a level's wells weighed)
-    "g3_winter_temp_margin": 40,          # autumn, the surface this near freezing (Urist degrees): it will freeze
-    "g3_extra_well_slots": 1,             # building slots over max_open another well may take when wells are short
-    "g3_winter_well_slots": 2,            # ...a winter water source, in the ice season or with patients waiting
-    "winter_water_cooldown_ticks": 3 * 1200,   # the winter water rule asked again at most this often
 })
