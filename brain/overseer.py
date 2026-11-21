@@ -1541,7 +1541,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                         # (layout B) the level went into slots along a floor's main hall
                         outcome_txt = floor_outcome(r) or outcome_txt
                     elif r.get("ok") is True and p.action["type"] == "open_trade" and r.get("clicking"):
-                        outcome_txt = f"clicked the depot's Trade button at {r.get('at')} (the screen is checked next cycle)"
+                        outcome_txt = (f"clicked the depot's Trade button at {r.get('at')} (the screen is checked next cycle)"
+                                       if r.get("at") else    # (r2 h5) no place known: looked for by its word
+                                       "opened the depot's sheet to find its Trade button by its word and click it "
+                                       "(the screen is checked next cycle)")
                     elif r.get("ok") is True and p.action["type"] == "send_mission" and r.get("sending"):   # (0.105.24)
                         outcome_txt = ("the World screen driven to send "
                                        + ("the messenger" if p.action.get("goal") in (None, "make_contact")
@@ -1563,6 +1566,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                                                 + ("given" if c.get("accepted") else "refused") + ")")
                             if r.get("traded") and not r.get("closed"):
                                 outcome_txt += "; the trade screen is still open"
+                        elif isinstance(r.get("press"), dict) and r["press"].get("error"):
+                            # (r2 h5) the press looked for the Trade button by its word: why it didn't press
+                            outcome_txt += f"; not pressed: {r['press']['error']}" + ("; the screen closed" if r.get("closed") else "")
                         elif not r.get("calibrated"):
                             # (0.105.35) kept: the AI presses only a button it has been shown
                             outcome_txt += ("; not pressed: the AI hasn't been shown the Trade button (python "

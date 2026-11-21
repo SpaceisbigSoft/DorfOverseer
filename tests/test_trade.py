@@ -342,7 +342,10 @@ def _():
     assert r.anyone and env.DEP.trade_flags.anyone_can_trade, dict(r)
     lua.execute("local env = ...; env.df.global.plotinfo.caravans = {}", env)
     r = env.call_trader(3000, 1200, False, None)
-    assert r.waiting and not env.DEP.trade_flags.anyone_can_trade, dict(r)
+    # (r2 h5) and the broker's call ended with the caravan gone (nobody left waiting at the depot)
+    assert r.unrequested and not env.DEP.trade_flags.anyone_can_trade and not env.DEP.trade_flags.trader_requested, dict(r)
+    r = env.call_trader(3100, 1200, False, None)
+    assert r.waiting, dict(r)
 
 
 @test("open_screen: the depot's sheet, then a click on its Trade button a few frames later; once a visit")
@@ -383,7 +386,8 @@ def _():
     assert r.waiting and "still unloading" in r.error, dict(r)      # goods only just seen
     lua.execute("local env = ...; env.df.global.cur_year_tick = 1400", env)
     r = env.open_screen(False, None)
-    assert r.ok is False and "here-depot" in r.error, dict(r)       # not shown the button yet
+    # not shown the button yet: (r2 h5) the sheet opened and the button looked for by its word
+    assert r.ok and r.clicking and r.search and r.at is None, dict(r)
     lua.execute("""local env = ...
         env.dfhack.persistent.saveSiteData('ai-overseer/trade-buttons',
             {Depot = {anchor = 'right-top', rx = 20, ty = 10}})""", env)

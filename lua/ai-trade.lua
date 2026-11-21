@@ -83,6 +83,12 @@ local function is_artifact(item)
     return ok and v == true
 end
 
+-- (r2 h5) a caravan's own good (in the depot it is the merchants', not the fort's)
+function merchant_item(item)
+    local ok, v = pcall(function() return item.flags.trader end)
+    return ok and v == true
+end
+
 local function reachable(item, dep)
     return dfhack.maps.canWalkBetween(xyz2pos(dfhack.items.getPosition(item)),
                                       xyz2pos(dep.centerx, dep.centery, dep.z))
@@ -186,6 +192,98 @@ local function goods(dep, limit)
     return out, value, count
 end
 
+-- (r2 h5) A caravan that stays past its leaving: B's y251 caravan said "will
+-- be leaving soon" and never embarked; its merchants were still on the map
+-- ten years later, its 325 goods in the depot, and no caravan (nor, likely,
+-- migrants) came in those years. Each caravan past its time (no longer
+-- Approaching or AtDepot, or its time run out) whose merchants are still on
+-- the map is reported with what holds it: their goods still in the depot,
+-- wagons with a depot they can't reach, merchants who can't walk to the
+-- depot. `days` counts from the first report that saw it so.
+OVERSTAY_KEY = 'ai-overseer/trade-overstay'
+
+local function creature_id(u)
+    local ok, id = pcall(function() return df.creature_raw.find(u.race).creature_id end)
+    return ok and id or nil
+end
+
+-- Pure: the words for what holds a caravan, from its counts
+function overstay_holds(o)
+    local why = {}
+    if (o.goods_in_depot or 0) > 0 then
+        table.insert(why, ('%d of their goods still in the depot'):format(o.goods_in_depot))
+    end
+    if (o.wagons or 0) > 0 and o.depot_wagons == false then
+        table.insert(why, ('%d wagon(s) and a depot the game marks out of the wagons\' reach'):format(o.wagons))
+    end
+    if o.merchants and o.reach_depot and o.reach_depot < o.merchants then
+        table.insert(why, ('%d of %d merchants can\'t walk to the depot'):format(o.merchants - o.reach_depot, o.merchants))
+    end
+    if (o.in_depot or 0) > 0 then
+        table.insert(why, ('%d merchant(s) still at the depot'):format(o.in_depot))
+    end
+    if #why == 0 then table.insert(why, 'nothing seen holding it (a way off the map shut?)') end
+    return why
+end
+
+function overstays(txt, dep)
+    local out = {}
+    local now = trade_now()
+    local seen = U.site_get(OVERSTAY_KEY, {})
+    local keep, changed = {}, false
+    for _, c in ipairs(df.global.plotinfo.caravans) do
+        pcall(function()
+            local state = df.caravan_state.T_trade_state[c.trade_state]
+            local past = (state ~= 'Approaching' and state ~= 'AtDepot') or (tonumber(c.time_remaining) or 1) <= 0
+            if not past or c.flags.tribute then return end
+            local o = {state = tostring(state), time_remaining = c.time_remaining, merchants = 0, wagons = 0,
+                       reach_depot = 0, in_depot = 0, at = {}}
+            for _, u in ipairs(report_units()) do
+                local okm, mine = pcall(function()
+                    return u.flags1.merchant and u.civ_id == c.entity and not dfhack.units.isDead(u)
+                        and not u.flags1.inactive
+                end)
+                if okm and mine then
+                    if creature_id(u) == 'WAGON' then
+                        o.wagons = o.wagons + 1
+                    else
+                        o.merchants = o.merchants + 1
+                        local x, y, z = dfhack.units.getPosition(u)
+                        if #o.at < 3 then table.insert(o.at, {x, y, z}) end
+                        if dep then
+                            if at_depot(u, dep) then o.in_depot = o.in_depot + 1 end
+                            local okw, w = pcall(dfhack.maps.canWalkBetween, xyz2pos(x, y, z),
+                                                 xyz2pos(dep.centerx, dep.centery, dep.z))
+                            if okw and w then o.reach_depot = o.reach_depot + 1 end
+                        end
+                    end
+                end
+            end
+            if o.merchants + o.wagons == 0 then return end
+            if dep then
+                local n = 0
+                for _, ci in ipairs(dep.contained_items) do
+                    if ci.use_mode == df.building_item_role_type.TEMP and merchant_item(ci.item) then n = n + 1 end
+                end
+                o.goods_in_depot = n
+                pcall(function() o.depot_wagons = dep.accessible end)
+            end
+            local ent = df.historical_entity.find(c.entity)
+            o.civ = ent and (txt or tostring)(translate(ent.name, true)) or '?'
+            local k = caravan_key(c) or tostring(c.entity)
+            local since = tonumber(seen[k]) or now
+            if seen[k] == nil then changed = true end
+            keep[k] = since
+            o.days = math.max(0, (now - since) // 1200)
+            o.holds = overstay_holds(o)
+            table.insert(out, o)
+        end)
+    end
+    for k in pairs(seen) do if keep[k] == nil then changed = true end end
+    if changed then pcall(U.site_put, OVERSTAY_KEY, keep) end
+    return out
+end
+
 -- The report's "trade" section.
 function survey(txt)
     local dep = depot()
@@ -200,11 +298,18 @@ function survey(txt)
         local ok, list, value, count = pcall(goods, dep, 500)
         if ok then out.goods, out.goods_value, out.loads = count, value, #list end
         if BANNED_KEPT > 0 then out.banned_kept = BANNED_KEPT end      -- (0.105.41, item 8)
-        local at = 0
+        -- (r2 h5) the fort's goods only: the merchants' own (flags.trader) sat
+        -- in the count, so a fort that never traded (D, Trade -100) and B,
+        -- whose y251 caravan never left (325 "of the fort's goods"), asked to
+        -- unload them 50 and 48 times ("the game kept it in the depot")
+        local at, theirs = 0, 0
         for _, ci in ipairs(dep.contained_items) do
-            if ci.use_mode == df.building_item_role_type.TEMP then at = at + 1 end
+            if ci.use_mode == df.building_item_role_type.TEMP then
+                if merchant_item(ci.item) then theirs = theirs + 1 else at = at + 1 end
+            end
         end
         out.at_depot = at
+        if theirs > 0 then out.merchant_goods = theirs end
     end
     -- the commonest cut gem (to set into crafts at the jeweller's)
     pcall(function()
@@ -249,6 +354,13 @@ function survey(txt)
             out.trader = {requested = dep.trade_flags.trader_requested, anyone = dep.trade_flags.anyone_can_trade,
                           job = j ~= nil, coming = w ~= nil, at_depot = at_depot(w, dep),
                           can_open = buttons().Depot ~= nil}
+            -- (r2 h5) or the depot's Trade button looked for by its word (a few tries a visit)
+            pcall(function() out.trader.can_open = can_open_now() end)
+            if buttons().Depot == nil then
+                out.trader.search = out.trader.can_open and 'by its word' or (UNREADABLE and 'unreadable' or 'used up')
+            end
+            -- (r2 h5) what the last try to open the screen did (no deal in six forts, and nothing said why)
+            if LAST_OPEN then out.trader.last_open = LAST_OPEN end
             -- (0.105.47) where the depot's Trade button is known from: save, pc or guess
             pcall(function() out.trader.button = buttons().Depot.from end)
             -- whether the AI itself opened the depot to anyone (only then does it close it again)
@@ -260,6 +372,11 @@ function survey(txt)
             end
             out.trader.fresh = fresh
         end
+    end)
+    -- (r2 h5) a caravan past its leaving with its merchants still here
+    pcall(function()
+        local o = overstays(txt, dep)
+        if #o > 0 then out.overstay = o end
     end)
     pcall(function()
         local t = df.global.game.main_interface.trade
@@ -332,13 +449,15 @@ end
 -- set down on the depot's tile, so the haulers store them again and dwarves
 -- can own them (DF leaves them there until the next caravan: Enxah, 163).
 function unload(limit, dry_run, txt)
-    local busy_n = 0
+    local busy_n, theirs = 0, 0
     local dep = depot()
     if not dep then return {ok = false, rejected = true, error = 'no trade depot built yet'} end
     if #caravans(txt) > 0 then return {ok = false, rejected = true, error = 'a caravan is coming or at the depot'} end
     local items = {}
     for _, ci in ipairs(dep.contained_items) do
-        if ci.use_mode == df.building_item_role_type.TEMP and ci.item then
+        if ci.use_mode == df.building_item_role_type.TEMP and ci.item and merchant_item(ci.item) then
+            theirs = theirs + 1     -- (r2 h5) the merchants' goods are theirs to pack, never moved
+        elseif ci.use_mode == df.building_item_role_type.TEMP and ci.item then
             -- (0.104.138) one a hauler is already carrying out is left to him
             local busy = false
             pcall(function() busy = ci.item.flags.in_job end)
@@ -348,7 +467,11 @@ function unload(limit, dry_run, txt)
     if #items == 0 and busy_n > 0 then
         return {ok = false, rejected = true, waiting = true, error = busy_n .. ' item(s) are being hauled out of the depot'}
     end
-    if #items == 0 then return {ok = false, rejected = true, error = 'nothing of the fort\'s is in the depot'} end
+    if #items == 0 then
+        return {ok = false, rejected = true, merchant_goods = theirs > 0 and theirs or nil,
+                error = 'nothing of the fort\'s is in the depot' ..
+                        (theirs > 0 and (' (' .. theirs .. ' of the merchants\' own goods are, theirs to take)') or '')}
+    end
     local n = math.min(#items, limit or 50)
     if dry_run then return {ok = true, dry_run = true, items = n, at_depot = #items} end
     local pos, moved, failed = xyz2pos(dep.centerx, dep.centery, dep.z), 0, nil
@@ -581,7 +704,7 @@ end
 
 -- Tick a deal on the open trade screen. wants {{key, count}} in order of
 -- need. Returns what was ticked; dry_run ticks nothing.
-function deal(wants, margin, dry_run, txt)
+function deal(wants, margin, dry_run, txt, extra)
     local trade = trade_screen()
     if not trade.open then return {ok = true, waiting = true, error = 'the trade screen is not open'} end
     if not ready(trade) then
@@ -597,6 +720,12 @@ function deal(wants, margin, dry_run, txt)
     for _, o in ipairs(offers) do have = have + o.value end
     if have == 0 then return {ok = false, rejected = true, error = 'none of the fort\'s crafts are at the depot to pay with'} end
     local buys, spent = pick_buys(cands, wants or {}, math.floor(have / margin))
+    local fallback
+    if #buys == 0 and type(extra) == 'table' and #extra > 0 then
+        -- (r2 h5) none of what the fort needs is on sale: what any fort can use
+        buys, spent = pick_buys(cands, extra, math.floor(have / margin))
+        fallback = #buys > 0 or nil
+    end
     if #buys == 0 then
         return {ok = false, rejected = true, error = 'the merchants have nothing the fort wants that its goods can pay for',
                 offer_value = have, merchant_goods = #cands}
@@ -611,8 +740,10 @@ function deal(wants, margin, dry_run, txt)
         for _, o in ipairs(pays) do trade.goodflag[FORT][o.idx].selected = true end
     end
     return {ok = true, dry_run = dry_run or nil, buy_value = spent, give_value = paid, bought = bought, margin = margin,
+            fallback = fallback,
             given = #given, given_sample = {table.unpack(given, 1, math.min(8, #given))},
-            calibrated = buttons().Trade ~= nil}
+            calibrated = buttons().Trade ~= nil,
+            can_search = UNREADABLE ~= true}      -- (r2 h5) the Trade button looked for by its word
 end
 
 -- --- pressing the screen's buttons --------------------------------------------------
@@ -769,6 +900,19 @@ function save_margin(m)
     U.site_put(MARGIN_KEY, {margin = m})
 end
 
+-- (r2 h5) the trade screen's Trade label, by its word on the bottom rows,
+-- nearest the October place (2 left of the centre, 2 above the bottom); never
+-- one by a Seize or Offer
+function find_trade_button()
+    local ok, B = pcall(reqscript, 'ai-screen-buttons')
+    if not (ok and type(B) == 'table' and B.find_label) then return nil, 'unavailable' end
+    local gps = df.global.gps
+    local okf, hits, how = pcall(B.find_label, 'Trade', {0, gps.dimy - 8, gps.dimx - 1, gps.dimy - 1},
+                                 {gps.dimx // 2 - 2, gps.dimy - 2}, {forbid = true})
+    if not okf then return nil, 'error' end
+    return hits[1], how
+end
+
 -- Press the Trade button on the open screen (where calibrate put it). It
 -- refuses unless something is ticked on both sides; afterwards it reads the
 -- merchants' answer (DF's talk line) and whether the ticked goods left.
@@ -778,7 +922,6 @@ function press(name, txt)
     if not trade.open then return {ok = false, rejected = true, error = 'the trade screen is not open'} end
     if not ready(trade) then return {ok = false, rejected = true, error = 'the merchants are not ready'} end
     local b = buttons()[name]
-    if not b then return {ok = false, rejected = true, error = 'the AI doesn\'t know where the ' .. name .. ' button is yet (calibrate)'} end
     local function ticked(side)
         local n = 0
         for i = 0, #trade.goodflag[side] - 1 do if trade.goodflag[side][i].selected then n = n + 1 end end
@@ -789,18 +932,38 @@ function press(name, txt)
         return {ok = false, rejected = true, error = 'nothing ticked on one side: no trade to press for'}
     end
     local gps = df.global.gps
-    local x, y = button_at(b)
-    if b.default and not (x >= 0 and y >= 0 and x < gps.dimx and y < gps.dimy) then
-        return {ok = false, rejected = true, error = 'the guessed Trade button is off this screen (show it: probe_trade.py --here)'}
+    local x, y, how, refused, refused_why
+    if b then x, y = button_at(b); how = b.default and 'guess' or 'shown' end
+    if b and b.default and not (x >= 0 and y >= 0 and x < gps.dimx and y < gps.dimy) then
+        b = nil      -- (r2 h5) off this screen: looked for by its word instead
     end
     -- (0.105.47 review) a guess pressed only where the screen reads "Trade";
     -- refused: nothing pressed, the ticks taken off and the screen closed
     -- (this caravan not tried again this visit)
-    local word_ok, why, verdict = guess_word_ok(name, b, x, y)
-    if not word_ok then
-        clear(trade)
-        local c = close_screen()
-        return {ok = false, rejected = true, guess_refused = verdict, error = why, closed = c.closed}
+    if b then
+        local word_ok, why, verdict = guess_word_ok(name, b, x, y)
+        if not word_ok and not ((verdict == 'missing' or verdict == 'unreadable') and name == 'Trade') then
+            clear(trade)
+            local c = close_screen()
+            return {ok = false, rejected = true, guess_refused = verdict, error = why, closed = c.closed}
+        end
+        -- (r2 h5) no Trade at the guess (or only blanks there): looked for by its word
+        if not word_ok then b, refused, refused_why = nil, verdict, why end
+    end
+    -- (r2 h5) no place known (or the guess retired, as in all six forts): the
+    -- Trade label found on the screen's bottom rows, only where no Seize or
+    -- Offer stands by it (judge); unreadable text: nothing pressed
+    if not b then
+        local spot, found = find_trade_button()
+        if not spot then
+            if found == 'unreadable' then UNREADABLE = true end
+            return {ok = false, rejected = true, search = found, guess_refused = refused,
+                    error = (refused_why and (refused_why .. '; ') or '') ..
+                            'the AI doesn\'t know where the ' .. name .. ' button is yet (calibrate: probe_trade.py --here)' ..
+                            (found == 'unreadable' and '; the screen\'s text can\'t be read to find it' or
+                             found == 'none' and '; no Trade button found on the screen\'s bottom rows' or '')}
+        end
+        x, y, how = spot.x, spot.y, 'found'
     end
     -- DFHack's confirm tool asks "Are you sure you want to trade the selected
     -- goods?" on a click there (seen in game, 0.56.0): turned off for this one
@@ -855,7 +1018,7 @@ function press(name, txt)
     -- a trade (TRADE_REPLIES) or a counter-offer came up; a gift's or a
     -- seize's line (or goods gone with no trade answer) retires the place at once
     local verdict = after_verdict(talk_before, talk, traded, counter ~= nil or trade.counter_offer == true)
-    if b.default then
+    if how == 'guess' then
         if verdict == 'worked' then
             guess_result(name, b, true)
         elseif verdict == 'wrong' then
@@ -881,7 +1044,7 @@ function press(name, txt)
     if traded or (talk ~= 'NONE' and talk ~= 'Greet' and talk ~= 'HarshGreet') or closed then mark_done(trade.mer) end
     local wrong_line = WRONG_REPLIES[talk] == true
     return {ok = not wrong_line, pressed = name, at = {x, y}, answer = talk, answer_before = talk_before,
-            traded = traded, screen_now = focus, guessed = b.default or nil, verdict = verdict,
+            traded = traded, screen_now = focus, guessed = (how == 'guess') or nil, how = how, verdict = verdict,
             error = wrong_line and ('the merchants answered "' .. tostring(talk) .. '": not a trade') or nil,
             counter = counter, closed = closed,
             counter_offer = trade.counter_offer or nil,
@@ -982,21 +1145,96 @@ function unloading(dep)
     return false
 end
 
+-- (r2 h5) The depot sheet's Trade button found by its word where no place is
+-- known or the guess misses (DF 53.17's sheet: the October place opened no
+-- trade screen in the 14-15 Nov run, and one retired guess shut trading off
+-- for every later caravan in that DF folder). A few tries a caravan visit,
+-- half a day apart; text that can't be read stops the search (nothing is
+-- clicked blind) and the Needs you comes back.
+OPEN_TRIES_PER_VISIT = 3
+OPEN_RETRY_TICKS = 600
+SEARCH_NOT_BEFORE = {depot = true, goods = true, agreement = true, agreements = true}
+TRIES = TRIES or {}
+UNREADABLE = UNREADABLE or nil
+
+local function screen_buttons()
+    local ok, B = pcall(reqscript, 'ai-screen-buttons')
+    return ok and type(B) == 'table' and B.find_label and B or nil
+end
+
+-- the caravan at the depot the AI hasn't traded with this visit, or nil
+local function fresh_caravan()
+    for _, c in ipairs(df.global.plotinfo.caravans) do
+        if c.trade_state == df.caravan_state.T_trade_state.AtDepot and not is_done(c) then return c end
+    end
+end
+
+-- Pure: may the AI still try to open the screen for this visit (a place
+-- known, or the search not used up and the text readable)?
+function may_open(has_place, tries, unreadable)
+    if has_place then return true end
+    return not unreadable and (tries or 0) < OPEN_TRIES_PER_VISIT
+end
+
+function can_open_now()
+    local c = fresh_caravan()
+    local k = c and caravan_key(c)
+    return may_open(buttons().Depot ~= nil, k and TRIES[k] or 0, UNREADABLE == true)
+end
+
+-- the depot sheet's Trade label, nearest the October place: {x, y} or nil, and how
+function find_depot_trade()
+    local B = screen_buttons()
+    if not B then return nil, 'unavailable' end
+    local gps = df.global.gps
+    local ok, hits, how, rows = pcall(B.find_label, 'Trade',
+                                      {math.max(gps.dimx // 3, gps.dimx - 110), 1, gps.dimx - 1, gps.dimy - 2},
+                                      {gps.dimx - 76, 15}, {not_before = SEARCH_NOT_BEFORE})
+    if not ok then return nil, 'error' end
+    return hits[1], how, rows, #hits
+end
+
+-- a failed try this visit: counted, the next one half a day on
+local function failed_try(key, why)
+    if key then TRIES[key] = (TRIES[key] or 0) + 1 end
+    OPEN_AFTER = trade_now() + OPEN_RETRY_TICKS
+    if LAST_OPEN then LAST_OPEN.tries = key and TRIES[key] or nil end
+end
+
+local function close_sheet()
+    pcall(function()
+        local vs = df.global.game.main_interface.view_sheets
+        vs.open = false
+        vs.active_sheet = df.view_sheet_type.NONE
+        vs.active_id = -1
+    end)
+end
+
+-- a few rows of the sheet's text where the button should be (for the report)
+local function sheet_sample(rows)
+    if type(rows) ~= 'table' then return nil end
+    local out = {}
+    for i = 1, math.min(#rows, 24) do
+        local r = rows[i]:gsub('%s+$', '')
+        if r:find('%S') then table.insert(out, r:sub(-70)) end      -- the sheet sits on the right
+        if #out >= 12 then break end
+    end
+    return out
+end
+
 function open_screen(dry_run, txt)
     local trade = trade_screen()
     if trade.open then return {ok = true, open = true, note = 'already open'} end
-    local fresh = false
-    for _, c in ipairs(df.global.plotinfo.caravans) do
-        if c.trade_state == df.caravan_state.T_trade_state.AtDepot and not is_done(c) then fresh = true end
-    end
-    if not fresh then return {ok = true, waiting = true, error = 'the AI has already traded with the caravan(s) at the depot'} end
+    local fc = fresh_caravan()
+    if not fc then return {ok = true, waiting = true, error = 'the AI has already traded with the caravan(s) at the depot'} end
+    local key = caravan_key(fc)
     local dep = depot()
     if not dep then return {ok = false, rejected = true, error = 'no trade depot built yet'} end
     local job = trade_job(dep)
     local w = job and dfhack.job.getWorker(job)
     if not at_depot(w, dep) then return {ok = true, waiting = true, error = 'nobody is at the depot to trade yet'} end
     if OPEN_AFTER and trade_now() < OPEN_AFTER then
-        return {ok = true, waiting = true, error = 'the screen was opened while the merchants unloaded: waiting a while'}
+        return {ok = true, waiting = true, error = 'the screen was opened while the merchants unloaded, or the last try missed: waiting a while'}
     end
     local still, why = unloading(dep)
     if still then return {ok = true, waiting = true, error = why} end
@@ -1007,16 +1245,20 @@ function open_screen(dry_run, txt)
         local gx, gy = button_at(b)
         if not (gx >= 0 and gy >= 0 and gx < gps.dimx and gy < gps.dimy) then b = nil end
     end
-    if not b then
-        return {ok = false, rejected = true,
-                error = 'the AI doesn\'t know where the depot\'s Trade button is yet (probe_trade.py --here-depot)'}
+    -- (r2 h5) no place known: the button looked for by its word on the sheet,
+    -- a few tries a visit (before: refused, a Needs you, every caravan)
+    if not b and not may_open(false, TRIES[key], UNREADABLE == true) then
+        return {ok = false, rejected = true, tries = TRIES[key], last = LAST_OPEN,
+                error = 'the AI doesn\'t know where the depot\'s Trade button is yet' ..
+                        (UNREADABLE and ' and can\'t read the screen\'s text to find it' or
+                         ' and didn\'t find it on the depot\'s sheet') .. ' (probe_trade.py --here-depot)'}
     end
     local okf, plain = pcall(function()
         return dfhack.gui.matchFocusString('dwarfmode/Default') or dfhack.gui.matchFocusString('dwarfmode/ViewSheets')
     end)
     if okf and not plain then return {ok = true, waiting = true, error = 'the player has a menu open'} end
     local vs = df.global.game.main_interface.view_sheets
-    if dry_run then return {ok = true, dry_run = true, at = {button_at(b)}} end
+    if dry_run then return {ok = true, dry_run = true, at = b and {button_at(b)} or nil, search = not b or nil} end
     vs.open = true
     pcall(function() vs.context = df.view_sheets_context_type.REGULAR_PLAY end)
     vs.active_sheet = df.view_sheet_type.BUILDING
@@ -1026,63 +1268,84 @@ function open_screen(dry_run, txt)
     -- the game lays the sheet out when it draws it: the click a few frames
     -- later (dfhack.timeout counts frames even while paused); the result is
     -- seen on the next cycle (the trade report's screen.open)
-    local x, y = button_at(b)
+    local x, y
+    if b then x, y = button_at(b) end
     OPEN_CLICKED_AT, OPENED_FOR = os.time(), nil
     dfhack.timeout(3, 'frames', function()
         -- (0.105.47 review) a guess clicked only where the sheet reads "Trade"
         -- (0.105.48, K3) the AI halted since the sheet opened: no click, the sheet shut
         local okh, halted = pcall(function() return reqscript('ai-status').is_halted() end)
         if okh and halted == true then
-            pcall(function()
-                vs.open = false
-                vs.active_sheet = df.view_sheet_type.NONE
-                vs.active_id = -1
-            end)
+            close_sheet()
             LAST_OPEN = {clicked = false, halted = true, error = 'the AI was halted in the game'}
             return
         end
-        local word_ok, why, verdict = guess_word_ok('Depot', b, x, y)
-        if not word_ok then
-            pcall(function()
-                vs.open = false
-                vs.active_sheet = df.view_sheet_type.NONE
-                vs.active_id = -1
-            end)
-            LAST_OPEN = {clicked = false, guessed = b.default or nil, guess_refused = verdict, error = why}
-            return
+        local how = b and (b.default and 'guess' or 'shown') or nil
+        local refused
+        if b then
+            local word_ok, wwhy, verdict = guess_word_ok('Depot', b, x, y)
+            if not word_ok then
+                if verdict == 'missing' or verdict == 'unreadable' then
+                    -- (r2 h5) the sheet reads no Trade at the guess (or only blanks
+                    -- there): looked for by its word instead (the search itself
+                    -- clicks nothing where the text can't be read)
+                    b, how, refused = nil, nil, verdict
+                else
+                    close_sheet()
+                    LAST_OPEN = {clicked = false, guessed = b.default or nil, guess_refused = verdict, error = wwhy}
+                    return
+                end
+            end
+        end
+        local sample
+        if not b then
+            local spot, found, rows, n = find_depot_trade()
+            sample = sheet_sample(rows)
+            if not spot then
+                close_sheet()
+                if found == 'unreadable' then UNREADABLE = true end
+                LAST_OPEN = {clicked = false, search = found, sheet = sample, guess_refused = refused,
+                             error = found == 'unreadable' and 'the depot sheet\'s text can\'t be read: not clicked blind'
+                                     or found == 'blank' and 'the depot\'s sheet showed no text yet'
+                                     or 'no Trade button found on the depot\'s sheet'}
+                failed_try(key)
+                return
+            end
+            x, y, how = spot.x, spot.y, 'found'
+            if n and n > 1 then how = 'found (nearest of ' .. n .. ')' end
         end
         local okc, err = pcall(click, x, y)
         LAST_OPEN = {clicked = okc, error = not okc and tostring(err) or nil, opened = trade.open,
-                     guessed = b.default or nil}
+                     guessed = (how == 'guess') or nil, how = how, at = {x, y}, sheet = sample}
         if trade.open then
             OPENED_FOR = caravan_key(trade.mer)
-            vs.open = false
-            vs.active_sheet = df.view_sheet_type.NONE
-            vs.active_id = -1
-            guess_result('Depot', b, true)
-        elseif b.default then
-            -- (0.105.47) a guess: the screen may come up a slow frame later
-            -- (opened_by_ai's 0.100 note), so it is judged GUESS_CHECK_FRAMES on.
-            -- Missed: whatever it opened instead is left (the depot's goods
-            -- screen), the sheet closed, the guess counted.
+            close_sheet()
+            if how == 'guess' then guess_result('Depot', b, true) end
+        else
+            -- the screen may come up a slow frame later (opened_by_ai's 0.100
+            -- note), so it is judged GUESS_CHECK_FRAMES on. Missed: whatever it
+            -- opened instead is left (the depot's goods screen), the sheet
+            -- closed, a guess counted, a found place's try counted for the visit.
             dfhack.timeout(GUESS_CHECK_FRAMES, 'frames', function()
-                if trade.open then guess_result('Depot', b, true); return end
+                if trade.open then
+                    if how == 'guess' then guess_result('Depot', b, true) end
+                    if LAST_OPEN then LAST_OPEN.opened = true end
+                    return
+                end
                 pcall(function()
                     if df.global.game.main_interface.assign_trade.open then
                         require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN')
                     end
                 end)
-                pcall(function()
-                    vs.open = false
-                    vs.active_sheet = df.view_sheet_type.NONE
-                    vs.active_id = -1
-                end)
-                guess_result('Depot', b, false, 'clicked and the trade screen did not open')
-                if LAST_OPEN then LAST_OPEN.guess_missed = true end
+                close_sheet()
+                if how == 'guess' then guess_result('Depot', b, false, 'clicked and the trade screen did not open') end
+                if how ~= 'shown' then failed_try(key) end
+                if LAST_OPEN then LAST_OPEN.guess_missed = (how == 'guess') or nil; LAST_OPEN.missed = true end
             end)
         end
     end)
-    return {ok = true, clicking = true, at = {x, y}, guessed = b.default or nil}
+    return {ok = true, clicking = true, at = b and {x, y} or nil, guessed = (b and b.default) or nil,
+            search = not b or nil}
 end
 
 -- --- someone to the depot ---------------------------------------------------------
@@ -1093,6 +1356,19 @@ end
 -- "anyone may trade" (trade_flags.anyone_can_trade), turned back off when
 -- the caravans are gone if the AI turned it on.
 CALL_KEY = 'ai-overseer/trade-call'
+WORKER_STALL_DAYS = 4        -- (r2 h5) a trader on the way this long while the caravan waits: let go
+BROKER_WAIT_FACTOR = 3       -- (r2 h5) the broker on his way: anyone may trade only after this many waits
+
+-- (r2 h5) the fort's broker (DFHack's own office list)
+function is_broker(u)
+    local ok, yes = pcall(function()
+        for _, p in ipairs(dfhack.units.getNoblePositions(u) or {}) do
+            if p.position.code == 'BROKER' then return true end
+        end
+        return false
+    end)
+    return ok and yes == true
+end
 
 local function call_state()
     return U.site_get(CALL_KEY, {})
@@ -1116,9 +1392,23 @@ function call_trader(now, wait, dry_run, txt)
     local st = call_state()
     local cs = caravans(txt)
     if #cs == 0 then
+        local out = {ok = true, waiting = true, error = 'no caravan is coming or at the depot'}
         if st.anyone_by_ai and not dry_run then dep.trade_flags.anyone_can_trade = false end
         if next(st) and not dry_run then U.site_put(CALL_KEY, {}) end
-        return {ok = true, waiting = true, error = 'no caravan is coming or at the depot'}
+        -- (r2 h5) the broker's call ended too: E's last state had a dwarf
+        -- standing at the depot on a TradeAtDepot job with no caravan
+        -- (requested, job, at_depot all true, caravans none); the AI asks again
+        -- when the next caravan comes
+        if not dry_run then
+            if dep.trade_flags.trader_requested then
+                dep.trade_flags.trader_requested = false
+                out.unrequested = true
+            end
+            local j = trade_job(dep)
+            if j and pcall(dfhack.job.removeJob, j) then out.job_removed = true end
+            if out.unrequested or out.job_removed then out.waiting, out.error = nil, nil end
+        end
+        return out
     end
     local job = trade_job(dep)
     local worker = job and dfhack.job.getWorker(job)
@@ -1127,6 +1417,24 @@ function call_trader(now, wait, dry_run, txt)
     end
     if dry_run then return {ok = true, dry_run = true, requested = dep.trade_flags.trader_requested} end
     local out = {ok = true}
+    -- (r2 h5) who is on the way, and since when. A child who took the job
+    -- ("anyone may trade": B's only trader coming in 22,554 ticks was a
+    -- Dwarven Child), or one on the way for WORKER_STALL_DAYS with the caravan
+    -- waiting (C y253: a carpenter "coming" from 5,323 to 31,750 ticks), is
+    -- let go, so another takes the job
+    local wid = worker and worker.id or nil
+    if wid ~= st.worker_id then st.worker_id, st.worker_since = wid, wid and now or nil end
+    if worker and job then
+        local name = (txt or tostring)(dfhack.units.getReadableName(worker))
+        local okc, child = pcall(function() return dfhack.units.isChild(worker) or dfhack.units.isBaby(worker) end)
+        local stalled = st.since and st.worker_since and now - st.worker_since >= WORKER_STALL_DAYS * 1200
+        if (okc and child) or stalled then
+            if pcall(dfhack.job.removeWorker, job, 0) then
+                out.let_go = name .. ((okc and child) and ' (a child)' or (' (on the way ' .. (now - st.worker_since) .. ' ticks)'))
+                worker, st.worker_id, st.worker_since = nil, nil, nil
+            end
+        end
+    end
     if dep.trade_flags.trader_requested then st.flagged = st.flagged or now end
     if not dep.trade_flags.trader_requested then
         -- the flag, as the depot's button sets it; the game makes the job
@@ -1147,7 +1455,12 @@ function call_trader(now, wait, dry_run, txt)
     end
     -- the wait counts from the caravan's arrival at the depot
     for _, c in ipairs(cs) do if c.state == 'AtDepot' then st.since = st.since or now end end
-    if not dep.trade_flags.anyone_can_trade and st.since and now - st.since >= wait then
+    -- (r2 h5) not while the broker himself is on the way (C y250: Sibrek,
+    -- broker, coming, and anyone let in at 1,344 ticks): up to BROKER_WAIT_FACTOR waits
+    local broker_coming = worker ~= nil and is_broker(worker)
+    if broker_coming then out.broker_coming = true end
+    if not dep.trade_flags.anyone_can_trade and st.since and now - st.since >= wait
+            and not (broker_coming and now - st.since < BROKER_WAIT_FACTOR * wait) then
         dep.trade_flags.anyone_can_trade = true
         st.anyone_by_ai = true
         out.anyone = true

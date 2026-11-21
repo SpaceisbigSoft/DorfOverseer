@@ -21,6 +21,11 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
     if not tr.get("depot"):
         return
     cs = [c for c in _l(tr.get("caravans")) if isinstance(c, dict)]
+    # (r2 h5) the caravans really about, whatever the fort's way with them: the
+    # depot is emptied only once they have gone (D, Trade -100, asked to
+    # unload 50 times while one was there: "a caravan is coming or at the depot")
+    real_cs = list(cs)
+    _overstay_notes(tr, cfg, notes)
     # (0.103.18) Hermit Kingdom: no goods to the depot, no broker called, no
     # deal; the caravans come and go (the depot is still emptied after them)
     hermit = memory is not None and has_rule(getattr(memory, "culture", None), "no_trade")
@@ -80,17 +85,20 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
                                   f"a caravan from {cs[0].get('civ')} is {'at the depot' if here else 'coming'}: "
                                   + ("ask for the broker at the depot" if not trader.get("requested") else
                                      "the broker is asked for; if nobody comes within a day, anyone may trade"), 3))
-    if not cs and (tr.get("at_depot") or 0) > 0 and not _d(tr.get("screen")).get("open"):
+    if not real_cs and (tr.get("at_depot") or 0) > 0 and not _d(tr.get("screen")).get("open"):
         # (0.103.9) the caravans have gone and the fort's goods sit in the
         # depot, where nobody can own or use them, until the next one
         proposals.append(Proposal("unload_depot", {"type": "unload_depot", "max": cfg["unload_depot_max"]},
                                   f"the caravans have gone and {tr['at_depot']} of the fort's goods sit in the "
                                   "depot: take them back out (stored again, there to own)", 4))
-    if not cs and trader.get("anyone") and trader.get("anyone_by_ai", True):
+    if not real_cs and ((trader.get("anyone") and trader.get("anyone_by_ai", True))
+                        or trader.get("requested") or trader.get("job")):
+        # (r2 h5) and the broker's call and its job ended (E: a dwarf stood at
+        # the depot on the trade job with no caravan)
         proposals.append(Proposal("call_trader", {"type": "call_trader",
                                                   "wait_ticks": cfg["trade_anyone_after_ticks"]},
-                                  "the caravans have gone: the depot back to the broker only (if the AI opened it "
-                                  "to anyone)", 8))
+                                  "the caravans have gone: the broker's call ended (nobody kept waiting at the "
+                                  "depot) and the depot back to the broker only (if the AI opened it to anyone)", 8))
     screen = _d(tr.get("screen"))
     here = any(str(c.get("state")) == "AtDepot" for c in cs)
     if (here and trader.get("at_depot") and not screen.get("open") and trader.get("can_open")
@@ -104,6 +112,16 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
             wants = mood_trade_wants(s)                       # (R1 g6) the mood's goods, nothing else
         else:
             wants = trade_wants(s, cfg, citizens)
+        # (r2 h5) what any fort can use, bought when nothing the fort needs is
+        # on sale (or it needs nothing): a fort with crafts at the depot sells
+        # to every caravan (the screen was closed on "needs nothing", the deal
+        # refused on "nothing the fort wants"), and the exports carry the
+        # fort's name home. Never in a no-trade fort's mood-only deal.
+        extra = [] if mood_only else [{"key": k, "count": int(n)}
+                                      for k, n in (cfg.get("h5_trade_fallback_wants") or {}).items()
+                                      if int(n) > 0 and not any(w["key"] == k for w in wants)]
+        if not wants and extra:
+            wants, extra = extra, []
         if not wants and screen.get("by_ai"):
             proposals.append(Proposal("close_trade", {"type": "close_trade"},
                                       "the fort needs nothing the caravan might sell: close the trade screen", 2))
@@ -112,7 +130,8 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
         elif wants:
             proposals.append(Proposal("trade_deal", {"type": "trade_deal", "wants": wants,
                                                      "margin": trade_margin_for(traits or _traits(s), cfg),
-                                                     "press": True, "close": True},
+                                                     "press": True, "close": True}
+                                      | ({"extra": extra} if extra else {}),
                                       "the trade screen is open and the merchants are ready: buy "
                                       + ", ".join(f"{w['count']} {w['key'].lower()}" for w in wants[:4])
                                       + " with the fort's crafts", 2))
@@ -126,11 +145,15 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
         # (0.105.35) kept a Needs you: DFHack can't open the trade screen, the
         # AI clicks the depot's Trade button, and only the player can show it
         # where that button is (once). What the AI does meanwhile is said.
+        last = _d(trader.get("last_open"))
+        tried = (f" Its last try: {last.get('error') or ('clicked at ' + str(last.get('at')) + ' and no trade screen opened' if last.get('clicked') else 'nothing clicked')}."
+                 if last else "")
         ask_player(notes, f"a caravan from {cs[0].get('civ')} is at the trade depot "
                           f"and {'the broker' if not trader.get('anyone') else 'a trader'} is there "
                           f"({tr.get('at_depot') or 0} of the fort's goods there), but the AI can't open the "
                           "trade screen: DFHack has no way to, it hasn't been shown where the depot's Trade "
-                          "button is, and its own guess of the place (0.105.47) missed. Meanwhile the AI keeps the goods at the depot and takes them back out when "
+                          "button is, its own guess of the place (0.105.47) missed, and it didn't find the button "
+                          "by its word on the depot's sheet (r2)." + tried + " Meanwhile the AI keeps the goods at the depot and takes them back out when "
                           "the caravan leaves. Once the screen is open (by you), the AI ticks a deal and presses "
                           "Trade; to let it open the screen itself, show it the button once: "
                           "python brain\\probe_trade.py --here-depot")
@@ -162,6 +185,21 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
         proposals.append(Proposal("crafts", {"type": "work_order", "recipe": "stone_crafts", "amount": 10},
                                   f"{why} and there are only {tr.get('goods') or 0} "
                                   "crafts to sell: make some from rock", 6, True))
+
+
+def _overstay_notes(tr: dict, cfg: dict, notes: list) -> None:
+    """(r2 h5) A caravan past its leaving whose merchants are still on the map
+    after `h5_caravan_overstay_days` (B, y251: "will be leaving soon", never
+    embarked, its merchants still there in y261 and no caravan for nine
+    years): said, with what holds it (lua/ai-trade.lua overstays)."""
+    for o in _l(tr.get("overstay")):
+        if not isinstance(o, dict) or int(o.get("days") or 0) < int(cfg.get("h5_caravan_overstay_days", 7)):
+            continue
+        holds = "; ".join(str(h) for h in _l(o.get("holds"))) or "nothing seen holding it"
+        notes.append(f"a caravan from {o.get('civ') or '?'} has stayed {o.get('days')} days past its leaving "
+                     f"({o.get('merchants') or 0} merchant(s), {o.get('wagons') or 0} wagon(s) still on the map, "
+                     f"state {o.get('state')}): held by {holds}. While it stays no other caravan comes "
+                     "(and the fort's exports never reach home)")
 
 
 # (0.104.95) Metals worth far more as crafts than as anything the fort needs:

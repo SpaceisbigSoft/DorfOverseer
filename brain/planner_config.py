@@ -1480,6 +1480,16 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r2 h5) trade: a deal with every caravan (brain/planner_trade.py, lua/ai-trade.lua)
+PLANNER_CONFIG.update({
+    # bought after what the fort needs, when the merchants have it and the crafts pay: a fort with
+    # crafts at the depot sells to every caravan (no deal in about 40 fort-years, 14-16 Nov runs)
+    "h5_trade_fallback_wants": {"FOOD": 20, "DRINK": 20, "CLOTH": 10, "SKIN_TANNED": 5, "THREAD": 5,
+                                "WOOD": 20, "BAR:IRON": 10, "BAR:COAL": 10},
+    "h5_caravan_overstay_days": 7,        # a caravan past its leaving with merchants on the map this long: said
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall
