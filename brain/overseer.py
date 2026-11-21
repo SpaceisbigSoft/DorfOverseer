@@ -57,6 +57,7 @@ import seen as seen_ledger  # noqa: E402  (0.105.46, I1) each full report's sect
 import atlas  # noqa: E402
 import backup  # noqa: E402
 import fort_run as runid  # noqa: E402  (0.105.48, K8) the run id (overseer.fort_run is the preset stamp)
+import fallen  # noqa: E402  (r1g9) a fallen fort: marked once, the AI and the keeper idle
 import health_check  # noqa: E402
 import ledger  # noqa: E402
 import season as season_mod  # noqa: E402
@@ -175,15 +176,31 @@ def fort_key(state: dict) -> str | None:
     f = state.get("fort")
     if not isinstance(f, dict) or "error" in f or not f.get("save_dir") or f.get("site_id") is None:
         return None
+    # (r1g9) the world and the site ("Usnuspbuzong#1430"), never the save
+    # folder's name: DF's seasonal autosave rotates it (autosave 1, 2, 3), and
+    # each new name was a new fort to the overseer (its memory read again, a
+    # new run id, the run check's game time counted three times over). The
+    # logs folder is still chosen by the save folder (memstore.note_world's
+    # save_dir). Without a world name, the save folder as before.
+    world = f.get("world")
+    head = world.strip() if isinstance(world, str) and world.strip() else f["save_dir"]
     # (0.105.0) a scenario copy (marked with a run id in the save) logs apart
-    # from the real fort: "<save>@<run id>#<site>" (the site stays last)
+    # from the real fort: "<world>@<run id>#<site>" (the site stays last)
     run = f.get("run_id")
     if isinstance(run, str) and run:
-        return f"{f['save_dir']}@{run}#{f['site_id']}"
-    return f"{f['save_dir']}#{f['site_id']}"
+        return f"{head}@{run}#{f['site_id']}"
+    return f"{head}#{f['site_id']}"
 
 
-MEMORY_CACHE: dict = {}       # fort -> {"memory", "bank", "tick", "prefer_logs"}: what the last cycle used
+MEMORY_CACHE: dict = {}       # fort -> {"memory", "bank", "tick", "prefer_logs", "folder"}: what the last cycle used
+
+
+def _folder_of(key: str) -> str | None:
+    """(r1g9) The logs folder of the fort key now (memstore.note_world's alias)."""
+    try:
+        return str(memstore.fort_dir(key))
+    except Exception:  # noqa: BLE001
+        return None
 MEMORY_REREAD_GAP = 30 * 1200 # game time jumping further ahead than this (another save?): read it again
 
 
@@ -202,7 +219,9 @@ def load(key: str, bridge=None, prefer_logs: bool = False, state: dict | None = 
     now = (abs_tick(state) if isinstance(d, dict) and isinstance(d.get("year"), int)
            and isinstance(d.get("tick"), int) else None)
     c = MEMORY_CACHE.get(key)
+    folder = _folder_of(key)
     if (THROTTLE_MEMORY_SAVE and c is not None and now is not None and c["prefer_logs"] == prefer_logs
+            and c.get("folder") == folder      # (r1g9) another save's folder (a test copy) is another fort's
             and 0 <= now - c["tick"] <= MEMORY_REREAD_GAP):
         c["tick"] = now
         return c["memory"], c["bank"]
@@ -221,7 +240,8 @@ def load(key: str, bridge=None, prefer_logs: bool = False, state: dict | None = 
     # (0.104.45) not kept when the save couldn't be read: one timeout at 08:36
     # was kept for good, so nothing reached the save for the rest of the night
     if now is not None and not (getattr(memory, "_texts", None) or {}).get("save_unread"):
-        MEMORY_CACHE[key] = {"memory": memory, "bank": bank, "tick": now, "prefer_logs": prefer_logs}
+        MEMORY_CACHE[key] = {"memory": memory, "bank": bank, "tick": now, "prefer_logs": prefer_logs,
+                             "folder": folder}
     else:
         MEMORY_CACHE.pop(key, None)
     return memory, bank
@@ -1195,7 +1215,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
     except Exception:  # noqa: BLE001
         pass
     try:
-        memstore.note_world(key, (state.get("fort") or {}).get("world"))
+        memstore.note_world(key, (state.get("fort") or {}).get("world"),
+                            save_dir=(state.get("fort") or {}).get("save_dir"))   # (r1g9) the folder by the save
     except Exception:  # noqa: BLE001  (the logs folder's name never stops the fort)
         pass
     if PRESET:
@@ -1225,6 +1246,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         # (0.105.46, I1) each section of a full report, ok or {"error"}, tallied for
         # the seen ledger (brain/seen.py): before normalize swaps errors for defaults
         seen_ledger.note_report(state, memstore.fort_dir(key))
+        # (r1g9) a fallen fort (no citizens left, no migrant wave coming), read
+        # from the report as it came (normalize makes a failed section 0): said,
+        # marked and its last report kept once; nothing is planned while it stands
+        fallen_now = bool(autopilot) and fallen.note(state, key, memstore.fort_dir(key), say, journal)
         normalize(state)      # (13c) once, in place: the steps below read the sections as they are
         # (0.105.33 fix, runs) the report's date failed (normalize made it year
         # 0, tick 0): no learning, no note_cycle (it would wipe every cooldown,
@@ -1312,7 +1337,12 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             changed = [a for a in style_after if style_after.get(a) != style_before.get(a)]
             cycle_step(memory, state, "style", outcomes.open_entry, state, memory, "style", "new style: " + ", ".join(
                 f"{a} {style_after[a]}" for a in changed), "weights engine")
-        proposals, plan_notes = cycle_step(memory, state, "plan", lambda: plan(state, memory, cfg)) or ([], [])
+        if fallen_now:
+            # (r1g9) B ran thousands of useless actions over 2.5 game years with 0 citizens
+            proposals, plan_notes = [], ["the fort has fallen: nothing is planned or done until you act (load a "
+                                         "save, or delete logs/fallen.json)"]
+        else:
+            proposals, plan_notes = cycle_step(memory, state, "plan", lambda: plan(state, memory, cfg)) or ([], [])
         try:
             from planner import agenda as _agenda
             if proposals or plan_notes:
@@ -1323,7 +1353,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
 
         # (0.104.3) the season's character decision by script: forts without
         # tokens, or whose AI review made no choice in the season's first two weeks
-        if autopilot and season_mod.due(state, memory) and (backend is None or season_mod.ai_gave_up(state, memory)):
+        if autopilot and not fallen_now and season_mod.due(state, memory) and (
+                backend is None or season_mod.ai_gave_up(state, memory)):
             try:
                 choice = season_mod.pick(state, memory, cfg)
                 said = season_mod.apply(choice, state, memory, memory.adjust)
@@ -1334,7 +1365,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                          "scores": {k: v[0] for k, v in season_mod.score_options(state, memory, cfg).items()}})
             except Exception as e:  # noqa: BLE001  (a season's choice never stops the fort)
                 say(f"Season: no scripted choice ({type(e).__name__}: {e})")
-        if backend is not None:
+        if backend is not None and not fallen_now:
             def _review():
                 outcome = maybe_review(state, memory, bank, backend, bridge.version or {}, notes, proposals=proposals)
                 for line in outcome.say:
@@ -2567,6 +2598,8 @@ def _run(args) -> int:
             if st.get("in_fort") and os.environ.get("DFAI_PIN") and not PIN_SEEN.get("checked"):
                 check_pin(bridge)
             held_pin = pin_hold()
+            # (r1g9) a fallen fort is left alone: not unpaused, no popups taken off
+            fallen_idle = bool(args.autopilot and fallen.idle())
             # (0.105.47, J16) the fort this overseer may leave open as it stops:
             # its own (the pin), in the fort. (0.105.48, K3) halted too: the
             # leave passes the halt (it only opens, lowers and lets out)
@@ -2673,6 +2706,8 @@ def _run(args) -> int:
                 # (0.104.138) DF is saving itself: time stands still for minutes
                 # (2-10 on Teacheroar), nothing to take off or say
                 pass
+            elif stalled and fallen_idle:
+                pass          # (r1g9) F: "time stood still" 65 times over 9 hours on a dead fort
             elif (stalled and args.unattended and args.autopilot and not controls["halted"] and not held_pin
                     and not STOP_FILE.exists() and nowt - stall_said >= stall_wait):
                 # running, but time stands still: DF waits on a popup. Take it off
@@ -2700,7 +2735,7 @@ def _run(args) -> int:
             controls["unattended"] = args.unattended
             controls["save_seasons"] = args.save_seasons
             if (args.unattended and args.autopilot and st.get("in_fort") and st.get("paused")
-                    and not controls["halted"] and not held_pin and not STOP_FILE.exists()):
+                    and not controls["halted"] and not held_pin and not STOP_FILE.exists() and not fallen_idle):
                 paused_since = paused_since or nowt
                 if nowt - paused_since >= UNPAUSE_AFTER_S:
                     r = bridge.act({"type": "unpause"})
@@ -2715,7 +2750,8 @@ def _run(args) -> int:
             if not st.get("in_fort"):
                 msg = "Waiting for a fortress to be loaded..."
             elif st.get("paused") and not answered:
-                msg = ("Game is paused; unpausing it in 30 s (unattended)." if args.unattended and args.autopilot
+                msg = ("The fort has fallen: the game is left paused until you act." if fallen_idle else
+                       "Game is paused; unpausing it in 30 s (unattended)." if args.unattended and args.autopilot
                        and not controls["halted"] and not held_pin else "Game is paused; planning resumes when it runs.")
             else:
                 msg = None

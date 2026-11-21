@@ -1125,10 +1125,15 @@ local function safe(fn, ...)
     return {error = tostring(result)}
 end
 
--- (0.105.33) which fort a per-site memory belongs to: the save folder and the
--- site, so a save of the same site id (another copy, another world) loaded in
--- the same DF session is not taken for the fort seen before
+-- (0.105.33) which fort a per-site memory belongs to, so a save of the same
+-- site id (another world) loaded in the same DF session is not taken for the
+-- fort seen before. (r1g9) The world and the site (ai-util fort_id), not the
+-- save folder: DF's seasonal autosave renames it (autosave 1, 2, 3), and every
+-- cached section was rebuilt each season; another copy of the same world is
+-- told apart by SC_MAP_UNLOADED (the caches are emptied then)
 function fort_key()
+    local ok, v = pcall(function() return reqscript('ai-util').fort_id() end)
+    if ok and type(v) == 'string' then return v end
     local okd, dir = pcall(function() return df.global.world.cur_savegame.save_dir end)
     return tostring(okd and dir or '?') .. '#' .. tostring(df.global.plotinfo.site_id)
 end

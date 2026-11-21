@@ -187,6 +187,41 @@ def _gtick(e: dict) -> int | None:
 
 
 ORDER_OF = re.compile(r"of the AI's (\w+) orders")
+def _fort_site(fort) -> str:
+    """(r1g9) One fort whichever key its journal lines carry: the site id
+    (the part after '#'), so "autosave 1#1430", "autosave 3#1430" and
+    "Usnuspbuzong#1430" are one fort."""
+    f = str(fort)
+    return f.rpartition("#")[2] if "#" in f else f
+
+
+def _covered(points) -> int:
+    """(r1g9) The game time the decisions cover, each stretch once: the
+    decisions in real-time order make runs whose game date never goes back
+    (an older save reloaded, a restore or a fresh run from the embark starts
+    a new one), and the union of the runs' spans is counted. The sum of
+    first-to-last spans per save folder counted the game about three times
+    over (the autosave folders rotate every season), and a replayed stretch
+    twice."""
+    spans, lo, hi = [], None, None
+    for _t, g in sorted(points, key=lambda p: p[0]):
+        if lo is not None and g < hi:
+            spans.append((lo, hi))
+            lo = None
+        if lo is None:
+            lo = hi = g
+        hi = max(hi, g)
+    if lo is not None:
+        spans.append((lo, hi))
+    total, end = 0, None
+    for a, b in sorted(spans):
+        if end is None or a > end:
+            total += b - a
+            end = b
+        elif b > end:
+            total += b - end
+            end = b
+    return total
 
 
 def journal_flags(entries) -> tuple[list[str], list[str]]:
@@ -205,10 +240,8 @@ def journal_flags(entries) -> tuple[list[str], list[str]]:
         r = e.get("result") if isinstance(e.get("result"), dict) else {}
         key = (str(e.get("rule")), run_summary._what(a))
         g = _gtick(e)
-        fort = str(e.get("fort"))
         if g is not None:
-            lo, hi = span.get(fort, (g, g))
-            span[fort] = (min(lo, g), max(hi, g))
+            span.setdefault(_fort_site(e.get("fort")), []).append((str(e.get("time") or ""), g))
         if r.get("waiting"):
             continue                      # work under way (a cistern being dug): not the game saying no
         if r.get("ok") is False:
@@ -230,7 +263,7 @@ def journal_flags(entries) -> tuple[list[str], list[str]]:
             released += 1
     lines = [f"{n} action(s) in the journals"]
     flags = []
-    years = sum(max(0, hi - lo) for lo, hi in span.values()) / TICKS_PER_YEAR
+    years = sum(_covered(ticks) for ticks in span.values()) / TICKS_PER_YEAR
     if years > 0:
         lines.append(f"game time covered: {years:.1f} year(s)")
     for (rule, what), c in done.most_common():

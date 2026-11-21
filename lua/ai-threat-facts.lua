@@ -234,7 +234,12 @@ end
 
 -- The raw half: one table per race and caste.
 function raw_facts(race, caste)
-    local okw, world = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    -- (r1g9) the world by its name (ai-util world_name), not the save folder
+    -- DF's seasonal autosave renames (the cache was dropped every season)
+    local okw, world = pcall(function() return reqscript('ai-util').world_name() end)
+    if not okw or type(world) ~= 'string' then
+        okw, world = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    end
     world = tostring(okw and world or '?')
     if FACTS_WORLD ~= world then FACTS_CACHE, FACTS_WORLD = {}, world end
     local key = tostring(race) .. ':' .. tostring(caste)

@@ -555,9 +555,14 @@ end
 -- unloaded, and keyed by the save's folder too (a world loaded without the
 -- unload seen, or a bridge reloaded, never reads another world's codes)
 ALLOY_CACHE = ALLOY_CACHE or {}
+-- (r1g9) the world by its name (ai-util world_name), not the save folder
+-- DF's seasonal autosave renames
 function alloy_world()
-    local ok, dir = pcall(function() return df.global.world.cur_savegame.save_dir end)
-    return ok and dir ~= nil and tostring(dir) or ''
+    local okw, world = pcall(function() return reqscript('ai-util').world_name() end)
+    if not okw or type(world) ~= 'string' then
+        okw, world = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    end
+    return okw and world ~= nil and tostring(world) or ''
 end
 if dfhack and dfhack.onStateChange then
     dfhack.onStateChange['ai-bridge-alloys'] = function(sc)

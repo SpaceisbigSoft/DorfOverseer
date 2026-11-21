@@ -1189,7 +1189,11 @@ end
 
 -- which save and site this is: the module's copy of the last outcome is
 -- only good for the one it was written in
+-- (r1g9) the world and the site (ai-util fort_id), not the save folder DF's
+-- seasonal autosave renames (the outcome was dropped every season)
 function save_tag()
+    local ok, v = pcall(function() return U.fort_id() end)
+    if ok and type(v) == 'string' then return v end
     local dir, site
     pcall(function() dir = df.global.world.cur_savegame.save_dir end)
     pcall(function() site = df.global.plotinfo.site_id end)

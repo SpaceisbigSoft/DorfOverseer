@@ -10,6 +10,31 @@ TICKS_PER_DAY = 1200
 TICKS_PER_MONTH = 28 * TICKS_PER_DAY
 TICKS_PER_YEAR = 403200
 
+-- (r1g9) Which world and fort is loaded: the world's name and the site id
+-- ("Usnuspbuzong#1430"). Never the save folder's name: DF's seasonal autosave
+-- rotates it (autosave 1, 2, 3), and state keyed on it (the whole-map water
+-- survey, the cleanup's passes, cached sections) was thrown away every
+-- season. Another save of the same world and site (a copy) is told apart by
+-- SC_MAP_UNLOADED, which every module with such state handles. Without a
+-- world name (a test fake), the save folder as before.
+function world_name()
+    local ok, w = pcall(function()
+        local n = df.global.world.world_data.name
+        local s
+        pcall(function() s = dfhack.translation.translateName(n) end)
+        if type(s) ~= 'string' or s == '' then s = n.first_name end
+        return s
+    end)
+    if ok and type(w) == 'string' and w ~= '' then return w end
+    local okd, dir = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    return (okd and dir ~= nil) and tostring(dir) or '?'
+end
+
+function fort_id()
+    local oks, site = pcall(function() return df.global.plotinfo.site_id end)
+    return world_name() .. '#' .. tostring(oks and site or '?')
+end
+
 -- The fort's own entity (the site government), or nil.
 function fort_entity()
     return df.historical_entity.find(df.global.plotinfo.group_id)

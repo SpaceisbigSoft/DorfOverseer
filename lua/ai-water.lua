@@ -795,11 +795,16 @@ end
 SLICE_SECONDS = 0.15
 JOB = JOB or nil
 
--- (0.105.33) the fort a sliced survey belongs to (the world's save and the
--- site): a survey begun in one fort is never finished into another's save
+-- (0.105.33) the fort a sliced survey belongs to: a survey begun in one fort
+-- is never finished into another's save. (r1g9) The world and the site
+-- (ai-util fort_id), not the save folder: DF's seasonal autosave rotates the
+-- folder's name (autosave 1, 2, 3) and the whole-map pass (~300 levels, ~150
+-- cycles) was thrown away each season, so it never finished in A, B, D, E
 local function fort_id()
-    local ok, v = pcall(function()
-        return tostring(df.global.world.cur_savegame.save_dir) .. ':' .. tostring(df.global.plotinfo.site_id)
+    local ok, v = pcall(function() return U.fort_id() end)
+    if ok and type(v) == 'string' then return v end
+    ok, v = pcall(function()
+        return tostring(df.global.world.cur_savegame.save_dir) .. '#' .. tostring(df.global.plotinfo.site_id)
     end)
     return ok and v or nil
 end

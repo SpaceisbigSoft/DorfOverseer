@@ -155,6 +155,14 @@ def _as(default, v):
     return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
+def _run_id(v) -> bool:
+    try:
+        from fort_run import valid
+    except ImportError:          # (a tool without brain/ on the path)
+        return isinstance(v, str) and bool(v)
+    return valid(v)
+
+
 def apply(memory, ledger) -> bool:
     """The save's ledger over the memory. Nothing happens without one (a save
     from before 0.104.0 keeps its memory as it was)."""
@@ -162,6 +170,12 @@ def apply(memory, ledger) -> bool:
         return False
     for name, default in FIELDS.items():
         if name in ledger:
+            if name == "fort_run" and not _run_id(ledger[name]):
+                # (r1g9) a save holding no run id leaves the memory's: the empty
+                # one wiped the id fort_run.settle had just made, so none ever
+                # reached the save (a new id at every autosave, 22 in F; empty
+                # in all six forts after 16 hours)
+                continue
             setattr(memory, name, _as(default, ledger[name]))
     if "memorials_built" in ledger:
         if not isinstance(getattr(memory, "culture", None), dict):

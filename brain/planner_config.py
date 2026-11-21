@@ -1361,3 +1361,9 @@ PLANNER_CONFIG.update({
     "floor_full_retry_days": 28,          # a full floor is offered again after this long
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
 })
+
+# (r1g9) the keeper and a session's end (brain/session_end.py, brain/revive.py)
+PLANNER_CONFIG.update({
+    "g9_all_closed_hold_s": 600,          # this folder's game closed with no Dwarf Fortress left on the PC: no relaunch this long
+    "g9_signal_hold_s": 3600,             # a console close, logoff or shutdown signal: nothing started or loaded this long
+})

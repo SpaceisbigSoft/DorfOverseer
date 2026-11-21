@@ -46,9 +46,14 @@ ITEMS_MAX = 40000       -- input items looked at a report at most (each list)
 
 -- the reaction codes found, by the world's save folder and kind
 CACHE = CACHE or {}
+-- (r1g9) the world by its name (ai-util world_name), not the save folder
+-- DF's seasonal autosave renames
 local function world_key()
-    local ok, dir = pcall(function() return df.global.world.cur_savegame.save_dir end)
-    return ok and dir ~= nil and tostring(dir) or ''
+    local okw, world = pcall(function() return reqscript('ai-util').world_name() end)
+    if not okw or type(world) ~= 'string' then
+        okw, world = pcall(function() return df.global.world.cur_savegame.save_dir end)
+    end
+    return okw and world ~= nil and tostring(world) or ''
 end
 if dfhack and dfhack.onStateChange then
     dfhack.onStateChange['ai-paper'] = function(sc)
