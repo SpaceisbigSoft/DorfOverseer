@@ -17,20 +17,22 @@
   "150": "no hall",
   "151": "no hall",
   "152": {
-   "arms": {},
+   "arms": {
+    "west": 10
+   },
    "fixture_free": {
     "east": 0,
     "north": 0,
     "south": 0,
     "west": 12
    },
-   "rooms": 0
+   "rooms": 4
   },
   "153": "no hall",
   "154": {
    "arms": {
     "east": 18,
-    "south": 50
+    "south": 46
    },
    "fixture_free": {
     "east": 59,
@@ -38,7 +40,7 @@
     "south": 59,
     "west": 7
    },
-   "rooms": 11
+   "rooms": 7
   },
   "161": {
    "arms": {
@@ -93,12 +95,12 @@
   },
   {
    "floor": [
-    3,
-    "south"
+    6,
+    "west"
    ],
    "kind": "bedrooms",
    "not_on_floor": null,
-   "z": 154
+   "z": 152
   },
   {
    "floor": [

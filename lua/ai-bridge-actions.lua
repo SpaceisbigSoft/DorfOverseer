@@ -309,7 +309,7 @@ local FLOOR_LISTS = {    -- key = {the words, the most of them}: a list of disti
     dirs = {{'north', 'south', 'east', 'west'}, 4},
     grow = {{'arm', 'turn'}, 2},
 }
-local FLOOR_BOOLS = {'balance', 'axial', 'neck'}
+local FLOOR_BOOLS = {'balance', 'axial', 'neck', 'spill'}   -- (r3 g2) spill: false keeps a full floor to its arms_max
 local FLOOR_NAMES = {'tag', 'group'}
 
 local function floor_has(words, v)

@@ -1557,6 +1557,14 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r3 g2) floors that fill properly (lua/ai-floorplace.lua spill, need_run; lua/ai-builder-floors.lua; brain/masterplan_floors.py)
+PLANNER_CONFIG.update({
+    "r3g2_floor_spill": True,             # a floor full by its grammar opens another arm out of the hub before 'no room' (False: the hint says spill = false)
+    "r3g2_floor_big": True,               # a level too big for a run: the next of its kind and size asks for a run that holds it, or goes the classic way at once
+    "r3g2_floor_big_keep": 40,            # ...sizes remembered (the newest)
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

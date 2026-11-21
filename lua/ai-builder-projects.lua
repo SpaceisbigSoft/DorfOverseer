@@ -774,23 +774,36 @@ function start_project(params, now, dry_run)
     local plan = type(params.plan) == 'table' and params.plan or nil
     -- (0.105.23, 14.1 step 4c) max_elev: no level above it (the Deep mine keeps under the surface)
     local ceil = math.tointeger(params.max_elev)
-    local site, why2, floor_why, floor_marks
+    local site, why2, floor_why, floor_marks, floor_big
     if floors_on then
-        local okf, s2, L2, marks = pcall(floor_site, params, stairs, reserved, data, ceil and (ceil - OFFSET) or nil)
+        local okf, s2, L2, marks, big = pcall(floor_site, params, stairs, reserved, data, ceil and (ceil - OFFSET) or nil)
         if okf and s2 then
             site, L = s2, L2      -- everything below reads the floor's composed layout
         else
             floor_why = tostring(okf and L2 or s2):sub(1, 300)      -- (nil, why, marks) or the error
             floor_marks = okf and marks or nil
+            floor_big = okf and type(big) == 'table' and big or nil   -- (r3 g2) too big for a run: for the brain
         end
     end
     if not site and floors_on and kind == 'workshops' then          -- the classic way: a standing level extended
         params.join_steps = nil
         local okj, jr, jwhy = pcall(join_workshop_level, params, data, now, dry_run, open, ceil and (ceil - OFFSET) or nil)
-        if okj and jr then jr.not_on_floor = floor_why; return jr end
+        if okj and jr then jr.not_on_floor = floor_why; jr.floor_big = floor_big; return jr end
         if okj then join_why = jwhy or join_why else join_why = 'failed: ' .. tostring(jr) end
     end
+    -- (r3 g2) with the floors on, the classic level keeps clear of the floors' hubs and planned halls
+    local reserved_open = reserved
+    if not site and floors_on and type(floor_keep_boxes) == 'function' then
+        local okk, keep = pcall(floor_keep_boxes, params, stairs)
+        if okk and type(keep) == 'table' and #keep > 0 then
+            reserved = {}
+            for _, r in ipairs(reserved_open) do table.insert(reserved, r) end
+            for _, r in ipairs(keep) do table.insert(reserved, r) end
+        end
+    end
     if not site then site, why2 = choose_site(L, stairs, reserved, plan, ceil and (ceil - OFFSET) or nil) end
+    reserved = reserved_open
+    if not site and floor_big then return {ok = false, error = why2, not_on_floor = floor_why, floor_big = floor_big} end
     if not site then return {ok = false, error = why2, not_on_floor = floor_why} end
 
     -- Dry run: Quickfort must agree that every tile can be designated.
@@ -891,6 +904,7 @@ function start_project(params, now, dry_run)
     end
     return {ok = true, project_id = p.id, kind = kind, z = site.z, elevation = ez(site.z),
             floor = site.floor_result, not_on_floor = floor_why,     -- (layout B)
+            floor_big = floor_big,                                   -- (r3 g2) {need, run_max, kind}: too big for a run
             extends_stairs = site.extend, in_district = site.in_district,
             stair = {x = stair.x, y = stair.y},
             anchor = a, corridor = site.corridor, new_corridor = site.new_corridor,   -- (0.105.33) Spacing

@@ -143,11 +143,12 @@ def _():
 def _():
     # (0.105.55 merge) 4 shops now fit a 30-column run split per shop (F3); a level that truly fits no run:
     # ten shops on one arm with no turns
-    hint = {"elevs": [ROCK_Z], "tag": "industry", "arms_max": 1, "grow": ["arm"], "dirs": ["east"]}
+    # (r3 g2) spill=False: one arm only; the answer is "too big for a run (...)", told apart from "no room"
+    hint = {"elevs": [ROCK_Z], "tag": "industry", "arms_max": 1, "grow": ["arm"], "dirs": ["east"], "spill": False}
     shops = ["Masons", "Carpenters", "Craftsdwarfs", "Mechanics", "Jewelers", "Bowyers", "Clothiers",
              "Leatherworks", "Kitchen", "Still"]
     big = F.start(kind="workshops", shops=shops, floor=dict(hint))
-    assert big.ok and big.floor is None and "no room" in str(big.not_on_floor), F.plain(big)
+    assert big.ok and big.floor is None and "too big for a run" in str(big.not_on_floor), F.plain(big)
     small = F.start(kind="workshops", shops=["Jewelers"], floor=dict(hint))
     assert small.ok and small.floor is not None, \
         (f"the one-shop level is kept off the empty floor for 28 days: {small.not_on_floor!r}; "

@@ -653,6 +653,10 @@ function commit(store, floor, placement, pid, tick)
     end
     if rec.hub ~= 'dug' then rec.hub = 'found' end
     if req.tag ~= nil then rec.full[req.tag] = nil end
+    if type(rec.full_size) == 'table' then             -- (r3 g2) the size goes with its mark
+        if req.tag ~= nil then rec.full_size[req.tag] = nil end
+        if next(rec.full_size) == nil then rec.full_size = nil end
+    end
     rec.full['*'] = nil       -- a hall did start here
     return rec
 end
@@ -732,7 +736,10 @@ end
 -- all), as of `tick`. A floor not in the store yet gets its record (a level
 -- with no hall still has one: '*', no runs). `free`, when given, is the free
 -- run each way as just measured. Returns the store's record, or nil, why.
-function mark_full(store, floor, tag, tick, free)
+-- (r3 g2) `size` ({w, d, n}: the refused level's widest and deepest unit and
+-- its count), when given, is kept in full_size[tag]: a smaller level is
+-- still tried there; a mark with no size clears it (full for any level).
+function mark_full(store, floor, tag, tick, free, size)
     if not usable(store) then return nil, 'no floor store' end
     if type(floor) ~= 'table' then return nil, 'no floor' end
     local rec = own_record(store, floor)
@@ -747,6 +754,13 @@ function mark_full(store, floor, tag, tick, free)
     if type(rec.full) ~= 'table' then rec.full = {} end
     if type(tag) ~= 'string' or tag == '' then tag = '*' end
     rec.full[tag] = tick
+    if type(size) == 'table' and tag ~= '*' then
+        if type(rec.full_size) ~= 'table' then rec.full_size = {} end
+        rec.full_size[tag] = {w = clamp(size.w, 0, 999, 0), d = clamp(size.d, 0, 999, 0), n = clamp(size.n, 0, 999, 0)}
+    elseif type(rec.full_size) == 'table' then
+        rec.full_size[tag] = nil
+        if next(rec.full_size) == nil then rec.full_size = nil end
+    end
     if type(free) == 'table' then
         local kept = {tick = tick}
         for _, dir in ipairs(COMPASS) do

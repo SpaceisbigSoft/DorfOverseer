@@ -37,6 +37,15 @@ FLOOR_WHY_MAX = 300          -- the reasons a level did not go onto a floor, in 
 -- again and the next floor (or the classic search) is tried, as before. In memory only, never saved;
 -- forgotten when the clock goes back or the projects record is another fort's (next_id below the top seen).
 FLOOR_REFUSED_DAYS = 3
+-- (r3 g2) switches: a full floor opens another arm out of the hub (hint spill = false: not);
+-- a level too big for any run of its grammar goes the classic way at once (no other floor tried);
+-- a "no room" mark keeps off only levels as big as the one refused; classic levels keep clear of
+-- the floors' hubs and planned halls (FLOOR_KEEP_ARM columns out each free way from a live hub)
+FLOOR_SPILL = true
+FLOOR_BIG_STOP = true
+FLOOR_FULL_BY_SIZE = true
+FLOOR_KEEP_CLEAR = true
+FLOOR_KEEP_ARM = 12
 FLOOR_REFUSED_MAX = 200      -- notes kept at most (all dropped past it)
 FLOOR_REFUSED = FLOOR_REFUSED or {notes = {}, n = 0, top = 0}
 -- (r3 g1) floors that keep opening. Each a switch (false or 0: as before).
@@ -590,7 +599,24 @@ local function on_floor(c, stair, z, extend, floor, is_new)
             -- a request too big for any run leaves the floor unmarked
             if type(M.place.fits_empty) == 'function' then
                 local okf, fits = pcall(M.place.fits_empty, req, G)
-                if okf and fits == false then return nil, why .. ' (too big for a run)' end
+                if okf and fits == false then
+                    -- (r3 g2) told apart from a full floor: the run it would need (nil: none can
+                    -- take it), in the answer (floor_big) for the brain, and no other floor tried
+                    local need
+                    if type(M.place.need_run) == 'function' then
+                        local okn, n = pcall(M.place.need_run, req, G, function(rm)
+                            local h2 = {}
+                            for k, v in pairs(hint) do h2[k] = v end
+                            h2.run_max = rm
+                            return M.plan.grammar(h2)
+                        end)
+                        if okn then need = math.tointeger(n) end
+                    end
+                    c.big = {need = need, run_max = math.tointeger(G.run_max), kind = c.kind}
+                    return nil, 'too big for a run' .. (need
+                        and (' (needs a run of %d, this one is %d)'):format(need, math.tointeger(G.run_max) or 0)
+                        or ' (no run can take it)')
+                end
             end
             return nil, why, hint.tag, free
         end
@@ -757,6 +783,9 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
     local hint = floor_hint(params)
     local G = M.plan.grammar(hint)
     if type(G) ~= 'table' then return nil, 'no floor grammar' end
+    -- (r3 g2) a floor full by its grammar opens another arm out of the hub before 'no room'
+    -- (ai-floorplace spill), unless the brain's hint says spill = false or FLOOR_SPILL is off
+    G.spill = FLOOR_SPILL ~= false and hint.spill ~= false
     local store, writable = load_floors()
     if type(store) ~= 'table' then return nil, 'the floor record could not be read' end
     if writable == false then return nil, 'the floor record is from a newer version' end
@@ -775,7 +804,13 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
         end
     end
     local plan = type(params.plan) == 'table' and params.plan or nil
-    local c = {M = M, params = params, kind = kind, hint = hint, G = G, store = store,
+    -- (r3 g2) the level's size for the "no room" marks: its widest and deepest unit, its count
+    local size = {w = 0, d = 0, n = #units}
+    for _, u in ipairs(units) do
+        size.w = math.max(size.w, math.tointeger(u.w) or 0)
+        size.d = math.max(size.d, math.tointeger(u.d) or 0)
+    end
+    local c = {M = M, params = params, kind = kind, hint = hint, G = G, store = store, size = size,
                units = units, uinfo = uinfo, req_units = req_units, own_piles = own_piles, pile_cache = {},
                axial = type(uinfo.style) == 'table' and uinfo.style.grand == true
                    and #units == 1 and units[1].mode == 'hall',
@@ -820,9 +855,18 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
                 -- a floor found full lately is left alone for a while
                 local full = type(floor.full) == 'table' and floor.full or {}
                 local skip
+                -- (r3 g2) a "no room" mark kept with the size of the level refused: a smaller level
+                -- (fewer, narrower or shallower units) is tried on the floor all the same
+                local sized = FLOOR_FULL_BY_SIZE ~= false and type(floor.full_size) == 'table' and floor.full_size or {}
+                local function smaller(tag)
+                    local fs = tag ~= '*' and sized[tag] or nil
+                    if type(fs) ~= 'table' then return false end
+                    return size.w < (tonumber(fs.w) or 0) or size.d < (tonumber(fs.d) or 0)
+                        or size.n < (tonumber(fs.n) or 0)
+                end
                 for _, tag in ipairs({'*', hint.tag}) do
                     local t = tag ~= nil and tonumber(full[tag]) or nil
-                    if t and now - t < retry then
+                    if t and now - t < retry and not smaller(tag) then
                         skip = tag == '*' and 'no hall can start here' or ('full for ' .. tostring(tag))
                         break
                     end
@@ -856,7 +900,8 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
                     else
                         table.insert(notes, label .. ': ' .. tostring(L2))
                         if mark then
-                            table.insert(c.marks, {z = z, sx = stair.x, sy = stair.y, tag = mark, free = free})
+                            table.insert(c.marks, {z = z, sx = stair.x, sy = stair.y, tag = mark, free = free,
+                                                   size = mark ~= '*' and size or nil})
                         elseif tostring(L2):sub(1, 8) == 'refused:' then
                             if R.notes[rkey] == nil then R.n = (R.n or 0) + 1 end
                             R.notes[rkey] = {tick = now, why = tostring(L2)}
@@ -864,17 +909,115 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
                     end
                 end
             end
+            -- (r3 g2) too big for any run of this grammar: so on every floor; the classic way at once
+            if c.big and FLOOR_BIG_STOP ~= false then break end
         end
+        if c.big and FLOOR_BIG_STOP ~= false then break end
         if late or os.clock() > c.deadline then late = true break end
         local last_cap = FLOORS_TRY + (#list - 1) * more
         if c.looked >= FLOOR_LEVELS_SCAN + (#list - 1) * more * 2 or c.tried >= last_cap then break end
     end
     if late then table.insert(notes, 'out of time') end
     if #notes == 0 then table.insert(notes, 'no level of the stairs to try') end
-    return nil, table.concat(notes, '; '):sub(1, FLOOR_WHY_MAX), c.marks
+    return nil, table.concat(notes, '; '):sub(1, FLOOR_WHY_MAX), c.marks, c.big
 end
 
--- The site for a new level on a floor; or nil, why, marks (the caller then places it the classic way).
+-- (r3 g2) What a classic level (choose_site) keeps out of while the floors are on: map boxes
+-- {x1, y1, x2, y2, z, why} for check_site's reserved list. For every floor with a hall (or its
+-- hub dug): its hub's 3x3, each run's hall and room rows out to the length it may still grow to
+-- (run_max, from this level's grammar; a run with a turn or closed: its own), and FLOOR_KEEP_ARM
+-- columns out each way no arm has taken yet; and the hub of each elevation this level's hint
+-- offers, on the stair its floors hang on (unless no hall can start there). The floor's own
+-- search never reads these. Never raises: {} on any error.
+FLOOR_KEEP_SIDE = 4          -- rows each side of a planned hall kept (the wall row and the rooms)
+local KEEP_DIRS = {east = {1, 0}, south = {0, 1}, west = {-1, 0}, north = {0, -1}}
+
+function floor_keep_boxes(params, stairs)
+    local out = {}
+    if FLOOR_KEEP_CLEAR == false or type(params) ~= 'table' then return out end
+    local ok = pcall(function()
+        local M = floor_modules()
+        if not M then return end
+        local okl, store = pcall(load_floors)
+        if not okl or type(store) ~= 'table' or type(store.floors) ~= 'table' then store = {floors = {}} end
+        local hint = floor_hint(params)
+        local G = M.plan.grammar(hint)
+        local run_max = type(G) == 'table' and math.tointeger(G.run_max) or 30
+        local side = math.tointeger(FLOOR_KEEP_SIDE) or 4
+        local arm = math.tointeger(FLOOR_KEEP_ARM) or 12
+        local function put(sx, sy, z, ax, ay, bx, by, why)
+            table.insert(out, {x1 = sx + math.min(ax, bx), y1 = sy + math.min(ay, by),
+                               x2 = sx + math.max(ax, bx), y2 = sy + math.max(ay, by), z = z, why = why})
+        end
+        -- run-frame box u1..u2, v1..v2 of a run at (ox, oy) going (dx, dy)
+        local function run_box(sx, sy, z, ox, oy, dx, dy, u1, u2, v1, v2, why)
+            local px, py = -dy, dx
+            put(sx, sy, z, ox + u1 * dx + v1 * px, oy + u1 * dy + v1 * py,
+                ox + u2 * dx + v2 * px, oy + u2 * dy + v2 * py, why)
+        end
+        local done = {}
+        for _, f in ipairs(store.floors) do
+            local st = type(f) == 'table' and type(f.stair) == 'table' and f.stair or nil
+            local sx, sy, z = st and math.tointeger(st.x), st and math.tointeger(st.y), math.tointeger(f.z)
+            if sx and sy and z then
+                local runs = type(f.runs) == 'table' and f.runs or {}
+                local live = f.hub == 'dug'
+                for _, r in ipairs(runs) do
+                    if type(r) == 'table' and (math.tointeger(r.len) or 0) > 0 then live = true end
+                end
+                if live then
+                    local why = ('kept for the main hall of floor %s (elevation %d)'):format(tostring(f.id), ez(z))
+                    done[sx .. ',' .. sy .. ',' .. z] = true
+                    put(sx, sy, z, -1, -1, 1, 1, why)
+                    local kids, used = {}, {}
+                    for _, r in ipairs(runs) do
+                        if type(r) == 'table' and r.parent ~= nil and r.parent ~= 0 then kids[r.parent] = true end
+                    end
+                    for _, r in ipairs(runs) do
+                        local dx, dy = type(r) == 'table' and math.tointeger(r.dx), type(r) == 'table' and math.tointeger(r.dy)
+                        if dx and dy and (dx ~= 0 or dy ~= 0) then
+                            local hub_run = r.parent == nil or r.parent == 0
+                            if hub_run then used[compass(dx, dy)] = true end
+                            local u0 = (math.tointeger(r.node) == 5 and not hub_run) and 3 or 2
+                            local len = math.tointeger(r.len) or 0
+                            if not kids[r.id] and r.closed ~= 'terminus' then len = math.max(len, run_max) end
+                            if len > 0 then
+                                run_box(sx, sy, z, math.tointeger(r.ox) or 0, math.tointeger(r.oy) or 0, dx, dy,
+                                        u0, u0 + len, -1 - side, 1 + side, why)
+                            end
+                        end
+                    end
+                    for name, d in pairs(KEEP_DIRS) do
+                        if not used[name] and arm > 0 then
+                            run_box(sx, sy, z, 0, 0, d[1], d[2], 2, 1 + arm, -1, 1, why)
+                        end
+                    end
+                end
+            end
+        end
+        -- the hubs of the elevations this level's hint offers, on its floors' stair
+        local elevs = type(params.floor) == 'table' and type(hint.elevs) == 'table' and hint.elevs or {}
+        local st = (#elevs > 0 and type(stairs) == 'table' and #stairs > 0)
+            and floor_stairs(stairs, hint, type(params.plan) == 'table' and params.plan or nil)[1] or nil
+        if st then
+            for _, e in ipairs(elevs) do
+                local z = math.tointeger(e) and (math.tointeger(e) - OFFSET) or nil
+                if z and not done[st.x .. ',' .. st.y .. ',' .. z] and z >= (st.z_bottom or z) and z <= (st.z_top or z) then
+                    local f = M.plan.find_floor(store, z, st.x, st.y)
+                    local no_hall = f and type(f.full) == 'table' and f.full['*'] ~= nil
+                    if not no_hall then
+                        put(st.x, st.y, z, -1, -1, 1, 1, ('kept for a floor\'s hub (elevation %d)'):format(ez(z)))
+                    end
+                end
+            end
+        end
+    end)
+    if not ok then return {} end
+    return out
+end
+
+-- The site for a new level on a floor; or nil, why, marks, big (the caller then places it the classic way;
+-- big: (r3 g2) {need, run_max, kind} when the level is too big for any run of its grammar, need nil: no run).
 -- Reads only: nothing is designated and nothing saved.
 --   params   start_project's (kind, the kind's own numbers, style, plan, floor = the brain's hint or nil, urgent)
 --   stairs   find_stairs()'s list (already without the banned ones); reserved: the open projects' areas
@@ -886,9 +1029,9 @@ end
 -- (for the action's answer) and _commit (what floor_commit needs). L2: ai-floorunits.compose's layout.
 function floor_site(params, stairs, reserved, data, ceil_z)
     CACHE = {}
-    local ok, site, L2, marks = pcall(floor_search, params, stairs, reserved, data, ceil_z)
+    local ok, site, L2, marks, big = pcall(floor_search, params, stairs, reserved, data, ceil_z)
     CACHE = nil
     if not ok then error(site, 0) end
     if site then return site, L2 end
-    return nil, L2, marks
+    return nil, L2, marks, big
 end
