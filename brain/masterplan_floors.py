@@ -30,6 +30,8 @@ carries none and the builder's defaults stand.
 
 from __future__ import annotations
 
+import re
+
 import masterplan
 from masterplan import DIRS, _district_of_kind, _peek, _plain
 
@@ -281,6 +283,34 @@ def _spine(memory, action: dict | None, district: dict | None) -> dict | None:
             or _xy(_peek(memory).get("spine")))
 
 
+STAIRS_MAX = 4               # (r3 g1) other stairs named in the hint
+
+
+def _stairs(memory, district: dict | None, spine: dict | None) -> list[dict]:
+    """(r3 g1) The other stairs a floor may hang on, besides the spine: the
+    level's district's own stairwell, the other districts' stairwells, the
+    survey's stairs (the plan's spine and the stair list the bridge reports).
+    STAIRS_MAX at most, none twice."""
+    out: list[dict] = []
+    seen = {(spine["x"], spine["y"])} if spine else set()
+
+    def put(v):
+        xy = _xy(v)
+        if xy and (xy["x"], xy["y"]) not in seen and len(out) < STAIRS_MAX:
+            seen.add((xy["x"], xy["y"]))
+            out.append(xy)
+    plan = _peek(memory)
+    put(_d(district).get("stair"))
+    put(plan.get("spine"))
+    for d in _l(plan.get("districts")):
+        if isinstance(d, dict):
+            put(d.get("stair"))
+    sv = _d(_d(getattr(memory, "atlas", None)).get("survey"))
+    for st in _l(_d(sv.get("site")).get("stairs")):
+        put(st)
+    return out
+
+
 def _dirs(action: dict | None, district: dict | None) -> list[str]:
     """The district's newest wing's way, then its ways, then the action's plan's."""
     out = []
@@ -330,6 +360,80 @@ def _full(floors: dict | None, tag: str, spine: dict | None) -> set:
     return out
 
 
+def _refused(floors: dict | None, spine: dict | None) -> set:
+    """(r3 g1) The elevations the report's last fallback says were refused
+    ("z42: refused: ...", "floor 3: refused: ..."): the builder's own note of
+    them lasts only a few days in memory. Floors on another stair: not these."""
+    out = set()
+    if not isinstance(floors, dict) or "error" in floors:
+        return out
+    last = floors.get("last")
+    if not isinstance(last, dict) or last.get("ok") is not False or not isinstance(last.get("why"), str):
+        return out
+    by_id = {}
+    for f in _l(floors.get("list")):
+        if isinstance(f, dict) and _whole(f.get("elevation")) and f.get("id") is not None:
+            st = _xy(f.get("stair"))
+            if not (st and spine and st != spine):
+                by_id[str(f["id"])] = f["elevation"]
+    for part in last["why"].split(";"):
+        m = re.match(r"\s*(?:z(-?\d+)|floor (\d+))(?: \([^)]*\))?: refused", part)
+        if not m:
+            continue
+        if m.group(1) is not None:
+            out.add(int(m.group(1)))
+        elif m.group(2) in by_id:
+            out.add(by_id[m.group(2)])
+    return out
+
+
+def _no_hall(floors: dict | None, spine: dict | None) -> set:
+    """(r3 g1) The elevations the report says no hall can start on (a fresh
+    '*' mark: "no hall", the stair's hub refused; a floor with no hall left
+    whose hub was refused is one too), on this stair."""
+    out = set()
+    if not isinstance(floors, dict) or "error" in floors:
+        return out
+    for f in _l(floors.get("list")):
+        if not isinstance(f, dict) or not _whole(f.get("elevation")):
+            continue
+        if f.get("no_hall") is not True:
+            continue
+        st = _xy(f.get("stair"))
+        if st and spine and st != spine:
+            continue
+        out.add(f["elevation"])
+    return out
+
+
+def _more_elevs(memory, district: dict | None, have: list[int], ceil: int | None, cfg: dict) -> list[int]:
+    """(r3 g1) The elevations offered beyond the role's own once those are
+    full or refused: the district's band, then deeper down to the plan's
+    range (r3g1_floor_deeper_max at most below the band), the levels of no
+    other district first; never above the ceiling."""
+    b = _band(district)
+    if b is None:
+        return []
+    lo, hi, tg = b
+    plan = _peek(memory)
+    rng = plan.get("range") if isinstance(plan.get("range"), list) and len(plan["range"]) == 2 else None
+    deep = _d(cfg).get("r3g1_floor_deeper_max", 12)
+    deep = max(0, min(60, deep)) if _whole(deep) else 12
+    bottom = lo - deep
+    if rng and _whole(rng[0]):
+        bottom = max(bottom, min(rng[0], lo))
+    others = set()
+    for d in _l(plan.get("districts")):
+        ob = _band(d) if d is not district else None
+        if ob:
+            others.update(range(max(ob[0], ELEV_MIN), min(ob[1], ELEV_MAX) + 1))
+    band = [e for e in _levels(lo, hi, tg)]
+    below = list(range(lo - 1, max(bottom, ELEV_MIN) - 1, -1))
+    order = band + [e for e in below if e not in others] + [e for e in below if e in others]
+    seen = set(have)
+    return [e for e in order if e not in seen and (ceil is None or e <= ceil)]
+
+
 def _elevs_max(cfg: dict | None) -> int:
     n = _d(cfg).get("floor_elevs_max", ELEVS_MAX)
     return max(1, min(ELEVS_CAP, n)) if _whole(n) else ELEVS_MAX
@@ -357,8 +461,21 @@ def elevs_for(memory, kind: str, action: dict | None, traits: dict, floors: dict
         ceil = masterplan.ceiling(memory, traits)
         elevs = [e for e in dict.fromkeys(elevs)
                  if _whole(e) and ELEV_MIN <= e <= ELEV_MAX and (ceil is None or e <= ceil)]
-        full = _full(floors, tag, _spine(memory, action, district))
-        elevs = [e for e in elevs if e not in full] + [e for e in elevs if e in full]
+        spine = _spine(memory, action, district)
+        full = _full(floors, tag, spine)
+        cfg = _d(cfg)
+        if cfg.get("r3g1_floor_skip_no_hall", True) is not False:
+            # (r3 g1) a level no hall can start on, a floor with no hall left, one refused lately: as full
+            full = full | _no_hall(floors, spine) | _refused(floors, spine)
+        good = [e for e in elevs if e not in full]
+        more = []
+        if elevs and cfg.get("r3g1_floor_more_elevs", True) is not False:
+            least = cfg.get("r3g1_floor_open_min", 2)
+            least = least if _whole(least) else 2
+            if len(good) < min(least, _elevs_max(cfg)):
+                # (r3 g1) the planned floors full or refused: the band's others and deeper ones, free first
+                more = [e for e in _more_elevs(memory, district, elevs, ceil, cfg) if e not in full]
+        elevs = good + more + [e for e in elevs if e in full]
         return elevs[:_elevs_max(cfg)]
     except Exception:  # noqa: BLE001
         return []
@@ -453,6 +570,15 @@ def hint(memory, action: dict, s: dict, traits: dict, cfg: dict) -> dict | bool 
         dirs = _dirs(action, district)
         if dirs:
             out["dirs"] = dirs
+        # (r3 g1) every stair the fort's floors may start from, and the tries each one gets
+        tries = cfg.get("r3g1_floor_stair_tries", 1)
+        if _whole(tries) and tries > 0:
+            out["stair_tries"] = min(3, tries)
+            stairs = _stairs(memory, district, spine) if cfg.get("r3g1_floor_stairs", True) is not False else []
+            if stairs:
+                out["stairs"] = stairs
+        elif _whole(tries):
+            out["stair_tries"] = 0
         return out
     except Exception:  # noqa: BLE001
         return None

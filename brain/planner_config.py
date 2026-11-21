@@ -1545,6 +1545,18 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r3 g1) hallway floors that keep opening (brain/masterplan_floors.py elevs_for, hint;
+# lua/ai-builder-floors.lua floor_stairs, floor_search; lua/ai-floorplan.lua dead_floor)
+PLANNER_CONFIG.update({
+    "r3g1_floor_more_elevs": True,        # the planned floors full or refused: the band's others and deeper ones offered
+    "r3g1_floor_open_min": 2,             # ...when fewer than this many of the planned ones are still open
+    "r3g1_floor_deeper_max": 12,          # ...down to this many levels under the district's band (the plan's range at most)
+    "r3g1_floor_skip_no_hall": True,      # a level no hall can start on (no hall, the hub refused) or refused lately: as full
+    "r3g1_floor_stair_tries": 1,          # floors tried on each other stair after the first stair's (0: the first stair's only)
+    "r3g1_floor_stairs": True,            # the hint names the plan's other stairwells and the survey's stairs
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

@@ -17,7 +17,7 @@
   "154": "no hall",
   "155": "no hall",
   "157": "no hall",
-  "159": "not tried",
+  "159": "no hall",
   "164": {
    "arms": {
     "east": 14,
@@ -31,7 +31,7 @@
    },
    "rooms": 11
   },
-  "165": "not tried",
+  "165": "no hall",
   "166": {
    "arms": {
     "east": 14,
@@ -112,7 +112,7 @@
   },
   {
    "floor": [
-    6,
+    7,
     "east"
    ],
    "kind": "bedrooms",
@@ -121,7 +121,7 @@
   },
   {
    "floor": [
-    6,
+    7,
     "south"
    ],
    "kind": "library",

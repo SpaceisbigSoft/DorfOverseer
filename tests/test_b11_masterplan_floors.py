@@ -34,7 +34,8 @@ SITE = {"stairs": [{"x": 100, "y": 100, "z_top": 160, "z_bottom": 130, "elev_top
 STATE = {"date": {"year": 150, "tick": 0, "day": 1, "month": "Granite"}, "dwarves": {"total": 40}}
 CFG: dict = {}
 TAGS = {"homes", "halls", "storage", "industry", "defence"}
-OWN_KEYS = {"elevs", "tag", "group", "zone", "spine", "dirs"}
+OWN_KEYS = {"elevs", "tag", "group", "zone", "spine", "dirs", "stair_tries"}   # (r3 g1) stair_tries
+R3_STAIRS = {"stairs"}         # (r3 g1) the other stairs, when the plan knows any
 
 
 def mem(entrance=None, elevation=None) -> Memory:
@@ -611,14 +612,14 @@ def _():
         h = MF.hint(m, a, {}, t, cfg)
         assert set(h) == OWN_KEYS, h
         h = MF.hint(m, start("bedrooms"), {}, t, cfg)
-        assert set(h) == {"elevs", "tag", "zone", "spine", "dirs"}, h
+        assert set(h) == {"elevs", "tag", "zone", "spine", "dirs", "stair_tries"}, h
         p = m.atlas["plan"]
         p["spine"] = {"top": 60, "bottom": 30}           # a plan with no stair column known
         for d in p["districts"]:
             d.pop("dirs", None)
             d.pop("wings", None)
         h = MF.hint(m, start("bedrooms"), {}, t, cfg)
-        assert set(h) == {"elevs", "tag", "zone"}, h
+        assert set(h) == {"elevs", "tag", "zone", "stair_tries"}, h
 
 
 @test("hint: elevs, tag, group, zone, spine and dirs stay inside the bridge's ranges for 400 random forts")
@@ -673,7 +674,7 @@ def _():
                     assert set(a.get("customs") or []) & {"field_hall", "field_kitchens"}, a
                 else:
                     said["dict"] += 1
-                    assert set(h) <= OWN_KEYS, h
+                    assert set(h) <= OWN_KEYS | R3_STAIRS, h
                     in_ranges(h)
                     ceil = masterplan.ceiling(m, t)
                     assert ceil is None or max(h["elevs"]) <= ceil, (h, ceil)

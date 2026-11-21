@@ -39,6 +39,18 @@ FLOOR_WHY_MAX = 300          -- the reasons a level did not go onto a floor, in 
 FLOOR_REFUSED_DAYS = 3
 FLOOR_REFUSED_MAX = 200      -- notes kept at most (all dropped past it)
 FLOOR_REFUSED = FLOOR_REFUSED or {notes = {}, n = 0, top = 0}
+-- (r3 g1) floors that keep opening. Each a switch (false or 0: as before).
+FLOOR_STAIR_TRIES = 1        -- floors tried on each stair after the first, beyond FLOORS_TRY (the hint's
+                             -- stair_tries says it for the brain): the first stair's no-rooms no longer
+                             -- use up the search before another stair is looked at
+FLOOR_STAIRS_MORE = 4        -- stairs tried at most when the hint names other stairs (`stairs`)
+FLOOR_STAIRS_APART = true    -- a stair within STAIRWELL_APART of one already taken (a 2x2 stair, the
+                             -- shaft's side stair) is the same stairwell: not tried again
+FLOOR_HUB_MARK = true        -- "refused: the stair's hub" marks the level '*' (no hall can start here,
+                             -- full_retry_days) like "no hall", at the cost of its survey only: a floor
+                             -- whose levels were all cancelled and whose hub the fort then used (D's
+                             -- floor 3, refused x39) is skipped, reported no_hall/dead, and looked at
+                             -- again only after full_retry_days
 
 local has, add = has, add
 
@@ -280,16 +292,72 @@ local function hint_band(hint, plan)
     return plan_band(plan)
 end
 
+-- (r3 g1) The number of floors tried on each stair after the first (0: the old search, FLOORS_TRY
+-- in all): the hint's stair_tries, else FLOOR_STAIR_TRIES.
+local function stair_tries(hint)
+    local n = math.tointeger(hint.stair_tries)
+    if n == nil then n = math.tointeger(FLOOR_STAIR_TRIES) or 0 end
+    return math.max(0, math.min(3, n))
+end
+
+-- (r3 g1) The stair list with `st` ({x, y}, a stair the brain knows: a district's stairwell, the
+-- survey's) in it, right after the first (the spine): spine_first finds it where the dwarves walk.
+-- Returns the list and whether it was put in.
+local function with_stair(list, st, band, at)
+    local sx, sy = math.tointeger(type(st) == 'table' and st.x), math.tointeger(type(st) == 'table' and st.y)
+    if not (sx and sy) then return list, false end
+    for i, s in ipairs(list) do
+        if s.x == sx and s.y == sy then
+            if i <= at then return list, false end
+            local out = {}
+            for j = 1, at - 1 do out[#out + 1] = list[j] end
+            out[#out + 1] = s
+            for j = at, #list do if j ~= i then out[#out + 1] = list[j] end end
+            return out, true
+        end
+    end
+    local ok, l2 = pcall(spine_first, list, {spine = {x = sx, y = sy}}, band)
+    if not (ok and type(l2) == 'table' and #l2 > #list and l2[1].x == sx and l2[1].y == sy) then return list, false end
+    local out = {}
+    for j = 1, at - 1 do out[#out + 1] = list[j] end
+    out[#out + 1] = l2[1]
+    for j = at, #list do out[#out + 1] = list[j] end
+    return out, true
+end
+
 -- The stairs a floor may hang on, FLOOR_STAIRS at most: the hint's spine when it is a stair the
--- dwarves use, then the others in their own order.
+-- dwarves use, then the others in their own order. (r3 g1) With stair_tries on: the stairs the
+-- hint names (`stairs`) right after the spine, and FLOOR_STAIRS_MORE at most when it names any;
+-- one stair a stairwell (FLOOR_STAIRS_APART).
 local function floor_stairs(stairs, hint, plan)
     local list = stairs
     if type(hint.spine) == 'table' then
         local ok, l2 = pcall(spine_first, stairs, {spine = hint.spine}, hint_band(hint, plan))
         if ok and type(l2) == 'table' and #l2 > 0 then list = l2 end
     end
+    local more = stair_tries(hint) > 0
+    local named = 0
+    if more and type(hint.stairs) == 'table' and #list > 0 then
+        local band = hint_band(hint, plan)
+        for i, st in ipairs(hint.stairs) do
+            if i > 6 then break end
+            local put
+            list, put = with_stair(list, st, band, 2 + named)
+            if put then named = named + 1 end
+        end
+    end
+    local cap = FLOOR_STAIRS
+    if named > 0 then cap = math.max(cap, math.min(math.tointeger(FLOOR_STAIRS_MORE) or cap, 1 + named)) end
+    local apart = more and FLOOR_STAIRS_APART and (math.tointeger(STAIRWELL_APART) or 6) or 0
     local out = {}
-    for i = 1, math.min(FLOOR_STAIRS, #list) do out[i] = list[i] end
+    for _, s in ipairs(list) do
+        if #out >= cap then break end
+        local alone = true
+        for _, k in ipairs(out) do
+            if math.max(math.abs(k.x - s.x), math.abs(k.y - s.y)) < apart then alone = false break end
+        end
+        if alone then out[#out + 1] = s end
+    end
     return out
 end
 
@@ -511,6 +579,12 @@ local function on_floor(c, stair, z, extend, floor, is_new)
             c.tried = c.tried - 1          -- (it cost only its survey)
             return nil, why, '*', free
         end
+        -- (r3 g1) a hub the fort used for something else: no hall can start here either (marked, so
+        -- the level is not offered again for full_retry_days; B's z38/z42, D's floor 3 x39)
+        if FLOOR_HUB_MARK and why:sub(1, 24) == "refused: the stair's hub" then
+            c.tried = c.tried - 1
+            return nil, why, '*', free
+        end
         if why:sub(1, 7) == 'no room' then
             -- (V3) full only when the request could have gone onto an empty run of this grammar;
             -- a request too big for any run leaves the floor unmarked
@@ -725,10 +799,16 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
                              tostring(floor.id), #(type(floor.slots) == 'table' and floor.slots or {}),
                              #(type(floor.runs) == 'table' and floor.runs or {})}, '|')
     end
-    for _, stair in ipairs(floor_stairs(stairs, hint, plan)) do
+    -- (r3 g1) each stair after the first has stair_tries floors of its own (and twice as many
+    -- levels looked at), so the first stair's full floors leave the others a try
+    local more = stair_tries(hint)
+    local list = floor_stairs(stairs, hint, plan)
+    local try_cap, look_cap = FLOORS_TRY, FLOOR_LEVELS_SCAN
+    for si, stair in ipairs(list) do
+        try_cap, look_cap = FLOORS_TRY + (si - 1) * more, FLOOR_LEVELS_SCAN + (si - 1) * more * 2
         for _, lv in ipairs(floor_levels(stair, hint, c.band, ceil_z)) do
             if os.clock() > c.deadline then late = true break end
-            if c.looked >= FLOOR_LEVELS_SCAN or c.tried >= FLOORS_TRY then break end
+            if c.looked >= look_cap or c.tried >= try_cap then break end
             local z = lv.z
             local key = stair.x .. ',' .. stair.y .. ',' .. z
             if not seen[key] then
@@ -786,7 +866,8 @@ local function floor_search(params, stairs, reserved, data, ceil_z)
             end
         end
         if late or os.clock() > c.deadline then late = true break end
-        if c.looked >= FLOOR_LEVELS_SCAN or c.tried >= FLOORS_TRY then break end
+        local last_cap = FLOORS_TRY + (#list - 1) * more
+        if c.looked >= FLOOR_LEVELS_SCAN + (#list - 1) * more * 2 or c.tried >= last_cap then break end
     end
     if late then table.insert(notes, 'out of time') end
     if #notes == 0 then table.insert(notes, 'no level of the stairs to try') end

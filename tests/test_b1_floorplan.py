@@ -957,8 +957,8 @@ def _():
       table.sort(out)
       return table.concat(out, ' ')
     end""")(SRC)
-    assert names == ("FLOORS_MAX RUNS_MAX SLOTS_MAX VERSION claims commit find_floor grammar mark_full migrate "
-                     "new_floor new_store prune release room_for summary"), names
+    assert names == ("FLOORS_MAX RUNS_MAX SLOTS_MAX VERSION claims commit dead_floor find_floor grammar mark_full "
+                     "migrate new_floor new_store prune release room_for summary"), names   # (r3 g1) dead_floor
     for word in ("dfhack", "reqscript", "df."):
         code = "\n".join(line.split("--")[0] for line in SRC.splitlines())
         assert word not in code, word

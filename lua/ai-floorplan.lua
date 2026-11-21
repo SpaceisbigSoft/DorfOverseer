@@ -388,6 +388,22 @@ local function empty_floor(f)
     return type(f) == 'table' and not has_any(f.runs) and not has_any(f.slots) and f.hub ~= 'dug'
 end
 
+-- (r3 g1) A floor with no hall left: it has a run or a slot, but no slot is
+-- live and every run is released or has no length (its levels were all
+-- cancelled: D's floor 3, `hall 0`, `closed: released`, hub `dug`). The
+-- report's row says `dead`; marked '*' (its hub refused) it is a no_hall row,
+-- so the brain no longer offers its level while the mark is fresh.
+function dead_floor(f)
+    if type(f) ~= 'table' or not (has_any(f.runs) or has_any(f.slots)) then return false end
+    for _, s in ipairs(list_of(f.slots)) do
+        if type(s) == 'table' and not s.dead then return false end
+    end
+    for _, r in ipairs(list_of(f.runs)) do
+        if type(r) == 'table' and r.closed ~= 'released' and is_num(r.len) and r.len > 0 then return false end
+    end
+    return true
+end
+
 -- The tick of a floor's newest mark (nil: none that is a number).
 local function newest_mark(f)
     local top
@@ -905,7 +921,10 @@ function summary(store, ez, now, retry_days)
                 if tag ~= '*' and type(tag) == 'string' and fresh(tick) then full[tag] = true end
             end
             row.full = sorted_keys(full)
-            row.no_hall = (n_runs == 0 and fresh(full_marks['*'])) and true or false
+            -- (r3 g1) a dead floor (no hall left) marked '*' is a level no hall can start on, too
+            local dead = dead_floor(floor)
+            row.no_hall = ((n_runs == 0 or dead) and fresh(full_marks['*'])) and true or false
+            if dead then row.dead = true end
 
             if type(floor.free) == 'table' then
                 row.free = {tick = floor.free.tick}

@@ -401,6 +401,26 @@ function parse_floor(v)
             out[k] = v[k]
         end
     end
+    -- (r3 g1) the floors tried on each stair after the first, and the other stairs a floor may hang on
+    if v.stair_tries ~= nil then
+        local n = type(v.stair_tries) == 'number' and int_in(v.stair_tries, 0, 3) or nil
+        if not n then return nil, 'floor.stair_tries must be a whole number, 0-3' end
+        out.stair_tries = n
+    end
+    if v.stairs ~= nil then
+        local msg = 'floor.stairs must be a list of 1-6 stairs, each x and y 0-999'
+        if type(v.stairs) ~= 'table' then return nil, msg end
+        local list, n = {}, 0
+        for _ in pairs(v.stairs) do n = n + 1 end
+        for _, st in ipairs(v.stairs) do
+            local x = type(st) == 'table' and type(st.x) == 'number' and int_in(st.x, 0, 999) or nil
+            local y = type(st) == 'table' and type(st.y) == 'number' and int_in(st.y, 0, 999) or nil
+            if not x or not y then return nil, msg end
+            table.insert(list, {x = x, y = y})
+        end
+        if #list < 1 or #list > 6 or n ~= #list then return nil, msg end
+        out.stairs = list
+    end
     return out
 end
 

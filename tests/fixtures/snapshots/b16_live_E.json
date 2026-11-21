@@ -48,7 +48,7 @@
    },
    "rooms": 1
   },
-  "153": "not tried",
+  "153": "no hall",
   "154": {
    "arms": {
     "east": 10,
@@ -162,7 +162,7 @@
   },
   {
    "floor": [
-    6,
+    7,
     "east"
    ],
    "kind": "temple",
@@ -171,7 +171,7 @@
   },
   {
    "floor": [
-    6,
+    7,
     "north"
    ],
    "kind": "bedrooms",
@@ -180,7 +180,7 @@
   },
   {
    "floor": [
-    8,
+    9,
     "south"
    ],
    "kind": "library",
@@ -189,7 +189,7 @@
   },
   {
    "floor": [
-    9,
+    10,
     "south"
    ],
    "kind": "storage",
