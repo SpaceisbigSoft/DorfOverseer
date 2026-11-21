@@ -73,7 +73,7 @@ from planner_mood_help import mood_shelter_rule, note_mood_help  # noqa: E402  (
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
-from planner_thirst import _thirst_rule, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
+from planner_thirst import _thirst_rule, note_thirst, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
 from planner_near_gates import _near_gates_rule  # noqa: E402  (0.105.47, I7d) surface work near the gates under a titan
 from planner_ice import _ice_rule  # noqa: E402  (0.105.47, I7d) surface water zones, shore wells, traffic before the ice
 import fields  # noqa: E402  (0.105.47) the Garden fort's surface fields (masterplan's field customs)
@@ -1946,6 +1946,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         _hook("note_quarry_dug", note_quarry_dug, p, r, state, memory, now)         # (item7) the quarry marked, the stone then
         _hook("note_zone_full", note_zone_full, memory, p, r, now)                  # (item7) a zone with no free floor for furniture
         _hook("note_design", note_design, p, r, state, memory, now)                 # (D0) sites kept, a landmark's refusals and fallback
+        _hook("note_thirst", note_thirst, p, r, memory, now)                        # (R1 g2) the thirst remedies' answers
         a = p.action if isinstance(p.action, dict) else {}
         _hook("squads", _squads, p, r, ok, a)
         _hook("booked", _booked, p, r, ok, a)      # the cooldown and the log, after the hooks as before
@@ -1973,7 +1974,7 @@ RECORD_STEPS = ("brief_timeout", "note_labor_given", "record_outcome", "note_ref
                 "note_construct", "note_reserve_swap", "note_gate_stuck", "note_way_out", "note_cleanup",
                 "note_captives", "note_order_loop", "note_mood_help", "note_syndromes", "note_food_level",
                 "note_training", "note_stuck", "note_holdfast", "note_contact_sent", "note_keep_in", "note_quarry_dug",
-                "note_zone_full", "note_design", "squads", "booked", "starts", "asked", "done", "gate",
+                "note_zone_full", "note_design", "note_thirst", "squads", "booked", "starts", "asked", "done", "gate",
                 "done2", "alarm", "tools")
 
 
