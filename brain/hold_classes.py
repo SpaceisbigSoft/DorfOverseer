@@ -13,8 +13,9 @@ in a crisis; let a start_project's kind outrank its rule (a Jeweler's level
 from `gems` passed, and was even boosted as "recovery" in a crisis).
 
 How a step is classed (step_class):
-  * a new level (start_project): urgent, or a strange mood's: survival; a
-    rule classed expansion: expansion; a crisis recovery rule: survival;
+  * a new level (start_project): urgent, or a strange mood's: survival; the
+    strategist's (by="strategist"): expansion (r4 k4); a rule classed
+    expansion: expansion; a crisis recovery rule: survival;
     else by its kind (SURVIVAL_KINDS, never a set piece, a growth hall or a
     landmark level);
   * a step that makes a work safe (shut, retire, recheck): survival, whatever
@@ -246,6 +247,11 @@ def step_class(p) -> str:
     if t == "start_project":
         if a.get("urgent") or rule == "mood":
             return SURVIVAL
+        # (r4 k4, audit A7 B7) a level the token-using strategist chose waits in
+        # a crisis or recovery whatever its kind (a tavern too): the fort's own
+        # recovery levels are the planner's rules' to start then
+        if a.get("by") == "strategist":
+            return EXPANSION
         if RULE_CLASS.get(rule) == EXPANSION or STEP_CLASS.get((rule, t)) == EXPANSION:
             return EXPANSION
         if a.get("set_piece") or a.get("growth") or a.get("landmark"):

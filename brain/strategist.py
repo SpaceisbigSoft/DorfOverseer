@@ -268,7 +268,9 @@ def review_message(state: dict, reason: str, planner_notes: list[str], recent_de
         if sec in SECTIONS and sec in state:
             text, cut = cut_json(state.get(sec), SECTION_CHARS)
             lines.append(f"SECTION {sec} (as you asked{', cut' if cut else ''}) " + text + (" (cut)" if cut else ""))
-    mine = [o for o in _l(s.get("orders")) if isinstance(o, dict) and o.get("by_ai")]
+    # (r4 k4, audit A7 B6) only the orders the strategist made itself (the
+    # bridge's by_strategist), never the planner's (by_ai is every AI order)
+    mine = strategist_orders(s)
     if mine:
         lines.append("YOUR OPEN ORDERS " + "; ".join(
             f"#{o.get('id')} {o.get('recipe') or o.get('job')} {o.get('amount_left')}/{o.get('amount_total')}"
@@ -277,6 +279,13 @@ def review_message(state: dict, reason: str, planner_notes: list[str], recent_de
         # (D0) the design brief (planner_design.design_brief: game text quoted)
         lines.append(design)
     return "\n".join(lines)
+
+
+def strategist_orders(s: dict) -> list:
+    """(r4 k4, B6) The open orders the strategist made itself: the bridge
+    marks them by_strategist (an order the planner made is by_ai only)."""
+    return [o for o in _l(s.get("orders")) if isinstance(o, dict) and o.get("by_ai") is True
+            and o.get("by_strategist") is True]
 
 
 def _j(v) -> str:

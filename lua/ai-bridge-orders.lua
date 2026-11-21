@@ -289,10 +289,21 @@ end
 
 -- Manager orders the AI created, stored in the fort's save, so the AI can
 -- only ever cancel its own orders and never the player's.
+-- (r4 k4, audit A7 B6) `by`: order id -> who in the AI made it, when it is
+-- not the planner ('strategist': the token-using review's own orders). Only
+-- those are shown to the strategist as its own, and only those it may cancel.
 function ai_orders()
     local data = dfhack.persistent.getSiteData(AI_ORDERS_KEY, {ids = {}})
     data.ids = type(data.ids) == 'table' and data.ids or {}
+    data.by = type(data.by) == 'table' and data.by or {}
     return data
+end
+
+-- (r4 k4) An order the AI made, recorded: `by` 'strategist' marks the
+-- strategist's own (any other value: the planner's, unmarked)
+function record_ai_order(data, id, by)
+    data.ids[tostring(id)] = true
+    if by == 'strategist' then data.by[tostring(id)] = 'strategist' end
 end
 
 function save_ai_orders(data)
@@ -301,6 +312,9 @@ function save_ai_orders(data)
     for _, o in ipairs(df.global.world.manager_orders.all) do live[tostring(o.id)] = true end
     for id in pairs(data.ids) do
         if not live[id] then data.ids[id] = nil end
+    end
+    for id in pairs(data.by or {}) do
+        if not live[id] or not data.ids[id] then data.by[id] = nil end
     end
     return pcall(dfhack.persistent.saveSiteData, AI_ORDERS_KEY, data)
 end
@@ -452,7 +466,8 @@ function order_jobs(ids)
 end
 
 function get_orders()
-    local ai_ids = ai_orders().ids
+    local ai_data = ai_orders()
+    local ai_ids, ai_by = ai_data.ids, ai_data.by
     local okj, jobs_of = pcall(order_jobs, ai_ids)
     if not okj then jobs_of = {} end
     local out = {}
@@ -466,6 +481,8 @@ function get_orders()
             amount_total = o.amount_total,
             repeats = df.workquota_frequency_type[o.frequency] ~= 'OneTime',
             by_ai = ai_ids[tostring(o.id)] == true,
+            -- (r4 k4, B6) the strategist's own (a marker apart from the planner's)
+            by_strategist = (ai_ids[tostring(o.id)] == true and ai_by[tostring(o.id)] == 'strategist') or nil,
             jobs = jobs_of[o.id],
         })
         -- (0.101.2) the game's own view of the order: approved by the manager,
@@ -711,7 +728,7 @@ function act_work_order(a)
         return {ok = false, error = 'the game did not accept the work order'}
     end
     local data = ai_orders()
-    data.ids[tostring(new_id)] = true
+    record_ai_order(data, new_id, a.by)
     local saved = save_ai_orders(data)
     -- (0.105.46, I3) approved as it is placed, when the brain says the manager
     -- doesn't get to the AI's orders (it approved them itself before: 674
@@ -997,6 +1014,10 @@ function act_cancel_work_order(a)
     if not data.ids[tostring(id)] then
         return reject(('order %d was not created by the AI (or has finished); the AI only cancels its own orders'):format(id))
     end
+    -- (r4 k4, B6) the strategist cancels only the orders it made itself
+    if a.by == 'strategist' and data.by[tostring(id)] ~= 'strategist' then
+        return reject(('order %d is the planner\'s, not the strategist\'s; the strategist only cancels its own orders'):format(id))
+    end
     local all = df.global.world.manager_orders.all
     for i = #all - 1, 0, -1 do
         local order = all[i]
@@ -1018,6 +1039,7 @@ function act_cancel_work_order(a)
             all:erase(i)
             free_order(order)
             data.ids[tostring(id)] = nil
+            data.by[tostring(id)] = nil
             save_ai_orders(data)
             -- (0.104.34) its jobs that nobody works go with it (DF leaves them)
             local gone = 0
@@ -1027,6 +1049,7 @@ function act_cancel_work_order(a)
         end
     end
     data.ids[tostring(id)] = nil
+    data.by[tostring(id)] = nil
     save_ai_orders(data)
     return {ok = true, order_id = id, cancelled = false,
             note = 'order was already finished or removed'}

@@ -248,7 +248,8 @@ def _():
                    '{"type":"tool","name":"autochop","enabled":true}]}')
     b = FakeBridge()
     overseer.one_cycle(b, autopilot=True, backend=c)
-    assert {"type": "work_order", "recipe": "brew_drink", "amount": 40} in b.acted, b.acted
+    # (r4 k4, B6) sent marked as the strategist's own (the bridge records it apart)
+    assert {"type": "work_order", "recipe": "brew_drink", "amount": 40, "by": "strategist"} in b.acted, b.acted
     assert saved()["memory"]["adjust"] == {"drink_per_dwarf": 25}
     assert len([a for a in b.acted if a["type"] not in ("set_culture", "set_learned", "ledger_set", "join_levels", "census")]) <= 3
 

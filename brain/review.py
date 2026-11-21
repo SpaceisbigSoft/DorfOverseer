@@ -17,7 +17,8 @@ import customs
 import learning
 import memstore
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, Proposal, abs_tick, level_refused
-from strategist import check_answer, detect, instructions, review_message, shown_rules, seen_actions
+from strategist import (check_answer, detect, instructions, review_message, shown_rules, seen_actions,
+                        strategist_orders)
 import chronicle
 import season as season_mod
 from datetime import date as _date
@@ -32,6 +33,10 @@ EXPECTED_ANSWER_TOKENS = 400     # the bank is charged what's actually used
 DESIGN_ANSWER_TOKENS = {"language": 700, "blueprint": 2500}   # (D0) design-track §8
 PENDING_KIND_DAYS = 3            # an event still counts for an event review this long
 MAX_PENDING_EVENTS = 40
+# (r4 k4, audit A7 B6/B7) the actions sent marked by="strategist": its orders
+# are recorded as its own by the bridge, its cancels refused there for any
+# other order, its levels held in a crisis or recovery (hold_classes)
+STRATEGIST_MARKED = {"work_order", "cancel_work_order", "start_project"}
 
 
 @dataclass
@@ -152,7 +157,9 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     # (metal gear needs a named metal; the planner orders that itself)
     recipes = {r for r in (bridge_info.get("recipes") or []) if not str(r).startswith("metal_")}
     tools = set(bridge_info.get("tools") or [])
-    my_orders = {o["id"] for o in s["orders"] if o.get("by_ai") and isinstance(o.get("id"), int)}
+    # (r4 k4, audit A7 B6) the strategist's own orders only (the bridge's by_strategist)
+    my_orders = {o["id"] for o in strategist_orders(s) if isinstance(o.get("id"), int)
+                 and not isinstance(o.get("id"), bool)}
     build = {k: bridge_info.get(k) or [] for k in ("level_kinds", "stockpiles", "workshops")}
     # (0.105.36, X1) not the way in dug for the cut off, nor the second way:
     # a cancel there left them out (the way-in rule read it as dug)
@@ -332,6 +339,11 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         if a["type"] == "civ_alert" and not a["on"] and s.get("civ_alert") and not memory.ai_alert_raised:
             answer.rejected.append("civ_alert off: the player raised this alert; the AI won't lower it")
             continue
+        # (r4 k4, B6/B7) marked as the strategist's: its work orders are tagged
+        # its own in the bridge (and it cancels only those); its levels are
+        # held in a crisis or in recovery (hold_classes.step_class)
+        if a["type"] in STRATEGIST_MARKED:
+            a = dict(a, by="strategist")
         actions.append(a)
         # A new level from the strategist shares the planner's building limits.
         rule = "build" if a["type"] == "start_project" else "strategist"
@@ -472,3 +484,36 @@ def _apply_design(memory, answer, ask: str, now: int) -> list[str]:
             said.append("the drawing was refused: "
                         + "; ".join(planner_design.reason_text(x) for x in answer.blueprint_reasons[:3]))
     return said
+
+
+def hold_review_proposals(state: dict, memory, proposals: list, notes: list, cfg=None) -> list:
+    """(r4 k4, audit A7 B7) The review's proposals through the same crisis and
+    recovery holds as the planner's (plan() runs crisis.apply and
+    planner_recovery.recovery_apply over its own before the review's are put
+    in front): its expansion steps wait (said in `notes`), the rest go. Fails
+    closed: a hold that cannot be checked keeps only the survival and defence
+    steps."""
+    import crisis
+    import hold_classes
+    from planner_recovery import recovery_apply
+    cfg = PLANNER_CONFIG if cfg is None else cfg
+    props = list(proposals or [])
+    if not props:
+        return props
+    try:
+        why = _d(getattr(memory, "crisis", None)).get("why")
+        if why:
+            props = crisis.apply(props, why, notes, cfg)
+        props = recovery_apply(props, memory, notes)
+        return props
+    except Exception as e:  # noqa: BLE001  (fails closed: expansion waits)
+        kept = []
+        for p in props:
+            try:
+                if hold_classes.step_class(p) != hold_classes.EXPANSION:
+                    kept.append(p)
+            except Exception:  # noqa: BLE001
+                pass
+        notes.append(f"strategist: the crisis/recovery check failed ({type(e).__name__}); "
+                     f"{len(props) - len(kept)} expansion step(s) wait")
+        return kept
