@@ -85,7 +85,7 @@ REASONS = {
     "mood": "in a strange mood: they drink once the artifact is done",
     "chained": "in chains: only water carried from a well reaches them",
     "jailed": "in the jail: only water carried from a well reaches them",
-    "cell": "in the AI's killer cell",
+    "cell": "held in an AI cell (a killer's, a werebeast's moon cell) or the calm-down room",
     "stranded": "shut outside with no way in",
     "drinking": "on the way to a drink",
     "interrupted": "their Drink job dropped",
@@ -213,10 +213,26 @@ def _tries(lad: dict, atype: str) -> int:
     return int(_d(lad.get("n")).get(atype) or 0)
 
 
-def _no_path_step(r: dict, cfg: dict, ex: dict, b: dict, lad: dict, now: int) -> tuple[dict | None, str, str | None]:
+def _no_path_step(r: dict, cfg: dict, ex: dict, b: dict, lad: dict, now: int,
+                  s: dict | None = None) -> tuple[dict | None, str, str | None]:
     """(R1 g2) no_path, one step: join_levels once (unless one lately joined
-    nothing), then thirst_way a few times; then nothing more but Needs you."""
+    nothing), then thirst_way a few times; then nothing more but Needs you.
+    (X1, V8) neither while the gates are shut or the alarm is up for an enemy
+    that can reach the dwarves (s: the state)."""
     uid = r["id"]
+    # (X1, V8) never a level joined, a way dug, taken down or unlocked while the gates are shut
+    # against an enemy or the alarm is up for one that can reach the dwarves
+    # (the bridge refuses it too): said, and the player's once dehydrated
+    st = s if isinstance(s, dict) else {}
+    reach = int(_d(st.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0)
+    armed = bool(_d(st.get("entrances")).get("armed"))
+    if armed or (reach > 0 and st.get("civ_alert")):
+        why = "the gates are shut against enemies" if armed else "the alarm is up for an enemy that can reach the dwarves"
+        needs = None
+        if int(r.get("timer") or 0) >= DEHYDRATED:
+            needs = (f"{r.get('name') or 'a dwarf'} at {_where(r)} is dehydrated with no way to drink, and {why}: "
+                     "the AI opens no way through the fort's defences now; bring drink to them or open a way yourself")
+        return None, f"{why}: no way is opened till it is over", needs
     noop = b.get("join_noop")
     noop_recent = isinstance(noop, int) and 0 <= now - noop < int(cfg.get("g2_thirst_join_noop_days", 7)) * 1200
     if "join_levels" in ex["types"]:
@@ -297,11 +313,15 @@ def _remedy(r: dict, s: dict, cfg: dict, ex: dict, b: dict | None = None, lad: d
     lad = lad if lad is not None else {}
     act, words = _remedy_old(r, s, cfg, ex)
     if reason == "no_path" and act is not None:
-        return _no_path_step(r, cfg, ex, b, lad, now)
+        return _no_path_step(r, cfg, ex, b, lad, now, s)
     if reason == "injured":
         return _patient_step(r, s, cfg, ex, b, lad)
     if reason == "unknown":
         return _probe_step(r, cfg, b, lad)
+    if reason == "cell" and r.get("cell") == "moon" and timer >= DEHYDRATED:
+        # (X1, V5) the moon cell lets nobody out for thirst: the player's
+        return act, words, (f"{r.get('name') or 'a werebeast'} at {_where(r)} is dehydrated in the AI's moon cell: "
+                            "bring water to the cell, or let them out once the moon has waned")
     return act, words, None
 
 
@@ -319,6 +339,17 @@ def _remedy_old(r: dict, s: dict, cfg: dict, ex: dict) -> tuple[dict | None, str
             return None, "the prisoners' water rule lets them go this cycle"
         return {"type": "release_prisoners", "ids": [uid]}, "let them go before they die of thirst"
     if reason == "cell":
+        # (X1, V5) any AI holding cell (a killer's, a werebeast's moon cell) or
+        # the tantrum's calm-down room: held on purpose, no way opened out of it
+        kind = r.get("cell")
+        if kind == "calm":
+            return None, ("the AI's calm-down room lets them out to drink" if timer < DEHYDRATED else
+                          "the AI's calm-down room should have let them out to drink: look at it")
+        if kind == "moon":
+            return None, ("held in the AI's moon cell for the full moon: no way is opened out of it; it lets them "
+                          "out when the moon wanes" if timer < DEHYDRATED else
+                          "held in the AI's moon cell and dehydrated: bring them water, or let them out once the "
+                          "moon has waned")
         return None, ("the AI's cell lets them out to drink" if timer < DEHYDRATED else
                       "the AI's cell should have let them out to drink: look at it")
     if reason == "stranded":
