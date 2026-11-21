@@ -81,6 +81,7 @@ from planner_garden import _garden_court_rule, garden_pace  # noqa: E402,F401  (
 from planner_floor_notes import floors_view, floors_line, _floor_notes  # noqa: E402,F401  (layout B) what the floors are doing, in words
 from planner_killzone import _killzone_rule  # noqa: E402  (0.105.45) kill zones at the gates and cavern openings
 from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern beast lured into a pocket, cut off
+from planner_wells import _winter_water_rule  # noqa: E402  (r1 g3) water that works in winter
 from planner_wellsafe import _well_safety_rule  # noqa: E402  (0.105.47) cavern wells made safe, the stranded under one let out
 from planner_recovery import _migrants_rule, note_recovery, recovery_apply  # noqa: E402  (0.105.46, I4) collapse recovery
 from planner_meetings import meeting_open_due, meeting_open_said  # noqa: E402,F401  (0.105.47) meetings opened unattended
@@ -989,6 +990,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_excess_shops_rule, s, cfg, proposals)
         _guard(_water_rules, s, cfg, proposals, notes)
         _guard(_cistern_rule, s, memory, cfg, proposals, notes, rules_)
+        _guard(_winter_water_rule, s, memory, cfg, proposals, notes, rules_)   # (r1 g3) water in winter
         _guard(_waterworks_rule, s, memory, cfg, proposals, notes)    # (0.105.0)
         _guard(_feeder_rule, s, cfg, proposals)
         _guard(_stone_rule, s, memory, cfg, proposals, notes)

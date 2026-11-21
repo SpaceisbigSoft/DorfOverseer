@@ -590,7 +590,7 @@ def _():
 @test("brain: plan() carries the rule through the planner (the fixture fort with a titan at the gate)")
 def _():
     base = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-    base["shelter_plan"] = splan([cand(165, 30, drink=100, tiles=500, food=500), cand(160, 45, wells=1, tiles=500, food=500)])   # room and food for its 194 (0.105.48)
+    base["shelter_plan"] = splan([cand(165, 30, drink=100, tiles=500, food=500), cand(160, 45, wells=5, tiles=500, food=500)])   # room and food for its 194 (0.105.48); (r1 g3) a well for every 40
     base["civ_alert_shelter"] = "ai"
     s = normalize(base)
     props, notes = full_plan(s, Memory())

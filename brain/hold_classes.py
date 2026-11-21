@@ -86,7 +86,7 @@ _SURVIVAL_RULES = {
     # water and wells
     "water", "water_traffic", "water_zone", "well", "well_dig", "well_lid", "well_parts", "well_rescue",
     "well_safety", "well_shaft", "cistern", "cistern_parts", "cistern_shut", "frost_water_zone", "frost_well",
-    "ice_shore_well", "ice_traffic", "ice_zones", "thirst", "waterworks_shut", "waterworks_check",
+    "ice_shore_well", "ice_traffic", "ice_zones", "winter_water", "thirst", "waterworks_shut", "waterworks_check",
     "waterworks_power_run", "magma_guard", "magma_reclaim", "magma_shut", "lure_shut",
     # drink and food
     "drink", "drink_fruit", "booze_variety", "food", "food_barrels", "food_standing", "food_store",

@@ -754,7 +754,9 @@ PLANNER_CONFIG = {
     "waterworks_irrigation_cooldown_ticks": 1200, "waterworks_pump_cooldown_ticks": 1200,
     "waterworks_check_cooldown_ticks": 3 * 1200,   # (0.105.0 review) a done work's leak check every 3 days
     "cistern_hold": False,             # (0.104.144) on hold (the player: the first design would flood the fort); released 0.104.145 (the second)
-    "dwarves_per_well": 70,            # (0.104.141) another well for every this many dwarves (0: one well)
+    # (r1 g3) 40 (was 70): E had one cavern well for 80-94 dwarves; a well
+    # serves the patients and the thirsty of about 40 (R-CE, A3 B8)
+    "dwarves_per_well": 40,            # (0.104.141) another well for every this many dwarves (0: one well)
     "extra_well_retry_days": 84,       # (0.104.141) another well that couldn't be placed: tried again a season on
     # (0.105.3) Hammerstirred (2 Nov): no well in either fort; the water was all
     # further off than the AI looked (the pool 53-66 tiles, the pond 51 from the
@@ -1360,4 +1362,15 @@ PLANNER_CONFIG.update({
     "floor_elevs_max": 4,                 # floors offered for one level
     "floor_full_retry_days": 28,          # a full floor is offered again after this long
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
+})
+
+# (r1 g3) Water in winter, and wells that count only when they serve
+# (brain/planner_wells.py _winter_water_rule, _well_rule; planner_shelter
+# _shortfalls; lua/ai-society.lua's shelter water test)
+PLANNER_CONFIG.update({
+    "g3_civs_per_well": 40,               # a shelter's well gives water to this many civilians (a level's wells weighed)
+    "g3_winter_temp_margin": 40,          # autumn, the surface this near freezing (Urist degrees): it will freeze
+    "g3_extra_well_slots": 1,             # building slots over max_open another well may take when wells are short
+    "g3_winter_well_slots": 2,            # ...a winter water source, in the ice season or with patients waiting
+    "winter_water_cooldown_ticks": 3 * 1200,   # the winter water rule asked again at most this often
 })

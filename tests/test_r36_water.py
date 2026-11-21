@@ -197,6 +197,7 @@ def well_state(lid):
 def _():
     s = well_state({"project_id": 9, "gate": "closed", "x": 1, "y": 1, "elevation": -40,
                     "watch_near": {"name": "a giant cave spider"}})
+    s["dwarves"]["total"] = 40      # (r1 g3) one well for every 40: no extra well asked here
     m = Memory()
     m.well_failure = "no clean water inside the fort to channel a well over"
     m.cavern_shaft_stairs = True

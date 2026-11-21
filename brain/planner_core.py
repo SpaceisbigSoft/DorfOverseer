@@ -2244,7 +2244,8 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
     if isinstance(sh, dict) and sh.get("ok") is not False and isinstance(sh.get("tiles"), int):
         memory.shelter_supply = {"tick": now, "tiles": sh["tiles"],
                                  **{k: sh[k] for k in ("drink_short", "no_water", "no_food", "drink_units",
-                                                       "food_units", "well_tiles", "dry", "widened_for_drink")
+                                                       "food_units", "well_tiles", "dry", "widened_for_drink",
+                                                       "water_short")
                                     if sh.get(k) is not None}}
     # (0.105.52) the AI's alarm lowered for the thirsty (a shelter with no
     # drink even over the whole fort): not sounded again for half a day
@@ -2286,7 +2287,9 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
         memory.last_fired["extra_well"] = now
         if r.get("ok") is True:
             memory.extra_well_failure = ""
-        elif r.get("ok") is False:
+        elif r.get("ok") is False and not r.get("rejected"):
+            # (r1 g3) a refusal for a full slot list says nothing of the water
+            # (the cavern well now follows any other refusal)
             memory.extra_well_failure = str(r.get("error") or "refused")[:300]
     elif t == "place_well":
         memory.last_fired["well"] = now          # refused or not: wait the full spell
