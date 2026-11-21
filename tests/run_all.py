@@ -135,7 +135,7 @@ def show(name: str, r: dict) -> bool:
 
 def main(argv: list[str]) -> int:
     jobs = os.cpu_count() or 2
-    if "-j" in argv:
+    while "-j" in argv:                               # (r4) the last -j wins (the runner's, then the caller's)
         i = argv.index("-j")
         jobs = int(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
