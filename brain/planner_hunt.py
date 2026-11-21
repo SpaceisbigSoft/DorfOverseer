@@ -278,7 +278,7 @@ def party_for(t: dict, free: list, all_soldiers: int, home_squads: int, home_sol
     return None, f"the squads free are too weak ({best_power:.0f} against {need:.0f}, {ratio:g}x needed)"
 
 
-def _blocked(s: dict, memory, cfg: dict, rules_: dict, mode: str) -> str | None:
+def _blocked(s: dict, memory, cfg: dict, rules_: dict, mode: str, allow: set | None = None) -> str | None:
     """Why no new hunt may start now (None: it may)."""
     if mode == "off":
         return "hunting is off on the Rules tab"
@@ -294,7 +294,7 @@ def _blocked(s: dict, memory, cfg: dict, rules_: dict, mode: str) -> str | None:
     if s.get("civ_alert") is True or (memory is not None and getattr(memory, "ai_alert_raised", False)):
         if not thief_alarm_over(s, memory, cfg):
             return "the alarm is up"
-    siege = _siege_why(s, cfg)
+    siege = _siege_why(s, cfg, allow)
     if siege:
         return siege
     f = getattr(memory, "fight", None) if memory is not None else None
@@ -335,9 +335,61 @@ def thief_alarm_over(s: dict, memory, cfg: dict) -> bool:
         return False
 
 
-def _siege_why(s: dict, cfg: dict) -> str | None:
+def military_reach(s: dict, cfg: dict) -> list | None:
+    """(r3) The threats the military rules fight (planner_core.reachable_threats:
+    wildlife, a lone thief and the like left out), or None when unreadable."""
+    if "others_on_map" in _d(s.get("_errors")):
+        return None
+    try:
+        return list(reachable_threats(s, _traits(s), cfg))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def lone_beast(s: dict, cfg: dict, targets: dict, proposals: list, memory=None) -> int | None:
+    """(r3, the player's choice of 21 Nov: "hunting - do as you suggest") The
+    one creature the military rules would fight that they leave alone: the
+    only threat in reach of the dwarves (no stand-in ids for unlisted ones),
+    no invader, listed as a hunt target, no squad sent at it this cycle by
+    any rule, the alarm down (an alarm up for it means the military and
+    shelter rules have it). Its id, or None."""
+    if not cfg.get("r3_hunt_lone_beasts", True):
+        return None
+    reach = military_reach(s, cfg)
+    if not reach or len(reach) != 1:
+        return None
+    tid = reach[0]
+    t = targets.get(tid)
+    if not isinstance(t, dict) or t.get("invader"):
+        return None
+    o = _d(s.get("others_on_map"))
+    if any(isinstance(x, dict) and x.get("id") == tid and x.get("invader") for x in _l(o.get("threats"))):
+        return None
+    if s.get("civ_alert") is True or (memory is not None and getattr(memory, "ai_alert_raised", False)):
+        return None
+    for p in proposals:
+        a = p.action if isinstance(p.action, dict) else {}
+        if tid in _l(a.get("kill")) or a.get("target_id") == tid or tid in _l(a.get("target_ids")):
+            return None
+    return tid
+
+
+def _guard_near(s: dict, cfg: dict) -> set:
+    """(r3) The wild animals in the wildlife guard's distance (its own rows,
+    planner_siege._kept_near): the guard's, never a hunt as well."""
+    try:
+        from planner_siege import _kept_near, field_of
+        if not field_of(s):
+            return {"*"}                 # no field watch read: the guard's, as before
+        return set(_kept_near(s, cfg))
+    except Exception:  # noqa: BLE001  (unreadable: every reachable wild animal left to the guard)
+        return {"*"}
+
+
+def _siege_why(s: dict, cfg: dict, allow: set | None = None) -> str | None:
     """A siege or invaders on the map, or a threat that can reach the dwarves
-    (the military rules' fight: the squads stay for it)."""
+    (the military rules' fight: the squads stay for it). (r3) `allow`: the
+    lone beast the hunt may take (lone_beast) does not count."""
     if "others_on_map" in _d(s.get("_errors")):
         return "the threats on the map couldn't be read"
     threats = [t for t in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(t, dict)]
@@ -348,7 +400,7 @@ def _siege_why(s: dict, cfg: dict) -> str | None:
         reach = reachable_threats(s, _traits(s), cfg)
     except Exception:  # noqa: BLE001  (an odd others_on_map: no hunt rather than none of the rule)
         return "the threats on the map couldn't be read"
-    if reach:
+    if reach and not (allow and set(reach) <= set(allow)):
         return f"{len(reach)} enemy/enemies can reach the dwarves: the squads stay for them"
     return None
 
@@ -430,17 +482,21 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
     squads = {q["id"]: q for q in squads_l}
     # the hunters come home with the switch off or a siege on the map
     recall_all = None
+    # (r3) the lone beast the military rules leave (and the one a hunt is after) don't call the hunters home
+    lone = lone_beast(s, cfg, targets, proposals, memory)
+    allow = {lone} if lone is not None else set()
+    allow |= {_id(h.get("target_id")) for h in hunts if _id(h.get("target_id")) is not None}
     if mode == "off":
         recall_all = "hunting is off on the Rules tab"
     else:
-        sw = _siege_why(s, cfg)
+        sw = _siege_why(s, cfg, allow)
         if sw and "couldn't be read" not in sw:
             recall_all = f"{sw}: the hunters come home"
     hunted = _retreat(s, memory, cfg, targets, squads, hunts, proposals, notes, recall_all)
     for q in squads_l:
         if _id(q.get("hunting")) is not None:
             hunted.add(q["hunting"])
-    why_not = _blocked(s, memory, cfg, rules_, mode)
+    why_not = _blocked(s, memory, cfg, rules_, mode, allow)
     if why_not:
         if targets_l:
             notes.append(f"hunt: {len(targets_l)} target(s) on the map, none hunted now: {why_not}")
@@ -481,6 +537,13 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
     ranked = []
     from planner_core import thief_rows, crowded_thief
     crowd_ids = {x.get("id") for x in thief_rows(s) if crowded_thief(x, cfg)}
+    # (r3) "can reach the dwarves" is nearly every target on a map with one walk
+    # area, so it no longer decides alone: a target in reach is the military
+    # rules' only when they fight it (military_reach), the wildlife guard's only
+    # in its distance; the rest (a thief, a wild animal far off, the lone beast)
+    # is the hunt's, at the hunt's bar
+    mil = set(military_reach(s, cfg) or [])
+    guard = _guard_near(s, cfg)
     for t in targets_l:
         tid, head = t["id"], _head(t)
         r = _d(t.get("route"))
@@ -496,10 +559,16 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
         if tid in ordered:
             said.append(f"{head}: a squad is sent at it this cycle by another rule; not hunted as well")
             continue
-        if t.get("can_reach_dwarves") is True:
-            # (0.105.47, I7d 2e) a wild animal that can walk to the dwarves is
-            # the field watch's (planner_siege wildlife_hunts, which also takes
-            # one at grips with a dwarf): never ordered from both rules
+        if t.get("can_reach_dwarves") is True and cfg.get("r3_hunt_reachable", True):
+            # (0.105.47, I7d 2e) a wild animal near the dwarves is the field
+            # watch's (planner_siege wildlife_hunts): never ordered from both rules
+            if t.get("why") == "hostile_wild" and ("*" in guard or tid in guard or near > 0):
+                said.append(f"{head}: a wild animal near the dwarves: the wildlife guard's (field watch), not a hunt")
+                continue
+            if tid in mil and tid != lone:
+                said.append(f"{head}: it can reach the dwarves: the military rules' fight, not a hunt")
+                continue
+        elif t.get("can_reach_dwarves") is True:
             if t.get("why") == "hostile_wild":
                 said.append(f"{head}: a wild animal that can reach the dwarves: the wildlife guard's "
                             "(field watch), not a hunt")

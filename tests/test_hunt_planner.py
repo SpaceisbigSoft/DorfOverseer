@@ -148,9 +148,10 @@ def _():
 @test("skipped: in reach of the dwarves, called off (military or hunt), behind the seal, no way, already hunted")
 def _():
     sq = [squad(1, 5, 900), squad(2, 5, 900)]
-    p, n = run(state([target(can_reach_dwarves=True, thief=True)], sq,
-                     threats=[]))
-    assert not sends(p) and any("military rules' fight" in x for x in n), n
+    # (r3) in reach and fought by the military rules (two threats in reach: no lone beast)
+    p, n = run(state([target(can_reach_dwarves=True, kinds=["Troll"])], sq,
+                     threats=[{"id": 500, "can_reach_dwarves": True}, {"id": 501, "can_reach_dwarves": True}]))
+    assert not sends(p) and any("can reach the dwarves" in x for x in n), n
     m = Memory()
     m.called_off = {"500": 1}
     s = state([target(great_danger=True, kinds=["Titan"])], sq, threats=[{"id": 500, "can_reach_dwarves": False}])

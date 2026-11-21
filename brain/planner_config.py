@@ -1525,6 +1525,19 @@ PLANNER_CONFIG.update({
 # (R2 h3) building slots (brain/planner_slots.py; lua/ai-builder-projects.lua slot_cap,
 # need_slot_free, park_project): a level waiting on the same pieces parked, the small
 # needs' pool, a dig that never began re-checked
+# (r3, 21 Nov: the player's choices "hunting - do as you suggest", "welfare - do what you think is best")
+PLANNER_CONFIG.update({
+    "r3_hunt_reachable": True,            # a target in reach of the dwarves is the military rules' only when they fight it
+    "r3_hunt_lone_beasts": True,          # the one threat in reach the military rules leave (alarm down) may be hunted
+    "r3_welfare_burial": True,            # burial waits and memorial slabs follow Welfare (halved at +100)
+    "r3_welfare_days_min": 3,             # ...never under this many days
+    "r3_welfare_slab_step": 40,           # one more slab order a go for each this much Welfare above 0
+    "r3_welfare_grief": True,             # stress care widened after a citizen's death
+    "r3_grief_days": 14,                  # ...for this many days
+    "r3_grief_welfare_min": 0,            # ...to the very unhappy from this Welfare
+    "r3_grief_wide_welfare": 50,          # ...and to the plain unhappy from this Welfare
+})
+
 PLANNER_CONFIG.update({
     "h3_park_days": 30,                   # a level being furnished, the same pieces missing this long: parked (holds no slot)
     "h3_park_drop_days": 336,             # ...parked this long on pieces it can't get: they are taken off and the level finished

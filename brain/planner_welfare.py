@@ -54,7 +54,7 @@ from planner_core import (TICKS_PER_DAY, Proposal, _has_shop, abs_tick, player_r
                           AGENDA_THEMES, COOLDOWN_KEYS)
 from planner_config import PLANNER_CONFIG
 
-__all__ = ["_welfare_rules", "tombable_dead", "burial_fallback_due", "cook_train_due"]
+__all__ = ["_welfare_rules", "tombable_dead", "burial_fallback_due", "cook_train_due", "welfare_days", "welfare_slabs"]
 
 AGENDA_THEMES["burial_corner"] = AGENDA_THEMES["burial_coffins"] = "bury the dead"
 AGENDA_THEMES["burial_others"] = "the dead DF won't bury out to the dump"
@@ -72,6 +72,37 @@ TOMB_RULES = ("tombs_ghosts", "build", "tombs")
 
 def _c(cfg: dict, k: str):
     return cfg[k] if k in cfg else PLANNER_CONFIG[k]
+
+
+def _welfare(s: dict) -> float:
+    try:
+        from planner_core import _traits
+        v = _traits(s).get("welfare", 0)
+    except Exception:  # noqa: BLE001
+        v = 0
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+
+
+def welfare_days(s: dict, cfg: dict, key: str) -> int:
+    """(r3, Welfare's say in burial) A burial wait in days by the Welfare
+    slider: halved at Welfare +100, doubled at -100 (planner_core.factor),
+    never under `r3_welfare_days_min` nor over twice the base. Welfare off
+    (`r3_welfare_burial` False): the base."""
+    base = int(_c(cfg, key))
+    if not cfg.get("r3_welfare_burial", PLANNER_CONFIG.get("r3_welfare_burial", True)):
+        return base
+    d = round(base * 2 ** (-_welfare(s) / 100.0))
+    return int(max(int(_c(cfg, "r3_welfare_days_min")), min(2 * base, d)))
+
+
+def welfare_slabs(s: dict, cfg: dict) -> int:
+    """(r3) Memorial slab orders a go: one more for each `r3_welfare_slab_step`
+    of Welfare above 0."""
+    base = int(_c(cfg, "slabs_ahead_max"))
+    w = _welfare(s)
+    if not cfg.get("r3_welfare_burial", PLANNER_CONFIG.get("r3_welfare_burial", True)) or w <= 0:
+        return base
+    return base + int(w // max(1, int(_c(cfg, "r3_welfare_slab_step"))))
 
 
 def _book(memory) -> dict:
@@ -128,12 +159,13 @@ def burial_fallback_due(s: dict, cfg: dict, memory=None) -> tuple[int, str]:
     tombs_open = any(p.get("kind") == "tombs" for p in open_)
     days = (now - since) // TICKS_PER_DAY
     refused = _tomb_refused_at(memory) if memory is not None else None
-    if days >= _c(cfg, "burial_fallback_days"):
+    fb_days = welfare_days(s, cfg, "burial_fallback_days")
+    if days >= fb_days:
         return short, (f"the dead have outnumbered the free tombs for {days} days and the tomb level under way "
                        "isn't done" if tombs_open else
                        f"the dead have outnumbered the free tombs for {days} days and no tomb level came")
-    if (refused is not None and 0 <= now - refused < _c(cfg, "burial_fallback_days") * TICKS_PER_DAY
-            and days >= _c(cfg, "burial_fallback_refused_days") and not tombs_open):
+    if (refused is not None and 0 <= now - refused < fb_days * TICKS_PER_DAY
+            and days >= welfare_days(s, cfg, "burial_fallback_refused_days") and not tombs_open):
         return short, "the tomb level's search failed (no safe level found)"
     if short >= _c(cfg, "burial_fallback_unburied") and not tombs_open:
         return short, (f"{short} more dead than free tombs and no tomb level under way (a body left unburied "
@@ -182,7 +214,7 @@ def _burial_rules(s: dict, cfg: dict, proposals: list, notes: list, memory, rule
         b = _d(s.get("buildings"))
         su = _d(s.get("supplies"))
         if _has_shop(b, "Masons"):
-            n = min(int(_c(cfg, "slabs_ahead_max")), wanted)
+            n = min(welfare_slabs(s, cfg), wanted)
             proposals.append(Proposal("slabs_ahead", {"type": "engrave_memorials", "max": n},
                                       f"{int(d.get('unreachable_dead') or 0)} of the fort's dead lie where nobody can "
                                       f"reach them (or their bodies are gone), {wanted} with no memorial slab: engrave "

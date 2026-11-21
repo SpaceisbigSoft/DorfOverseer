@@ -361,6 +361,17 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
                                   4))
 
 
+def grief_on(s: dict, cfg: dict, memory) -> bool:
+    """(r3) A citizen died in the last `r3_grief_days` days (crisis.deaths_recent)."""
+    if memory is None or not cfg.get("r3_welfare_grief", True):
+        return False
+    try:
+        from crisis import deaths_recent
+        return deaths_recent(s, memory, int(cfg.get("r3_grief_days", 14))) >= 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory=None) -> None:
     """(0.102.4) A dwarf breaking down gets what the AI can give (DF wiki,
     Keeping your dwarves unstressed): out of the squad (not its leader, not
@@ -370,7 +381,14 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
     if proposals is None:
         return
     welfare = _traits(s).get("welfare", 0) or 0
-    labels = ("miserable", "very_unhappy") if welfare >= 50 else ("miserable",)
+    # (r3, Welfare's say in grief) for `r3_grief_days` after a citizen's death,
+    # from Welfare `r3_grief_welfare_min` the very unhappy are cared for too,
+    # and from `r3_grief_wide_welfare` the plain unhappy as well (the
+    # bereaved: B, Welfare +80, was the unhappiest fort after its deaths)
+    grieving = grief_on(s, cfg, memory)
+    labels = (("miserable", "very_unhappy")
+              if welfare >= 50 or (grieving and welfare >= cfg.get("r3_grief_welfare_min", 0))
+              else ("miserable",))
     # (0.105.47, I7b) never a child (a Dwarven Baby was asked a bedroom four
     # times: "already has one"); and the long-term stress read for every
     # listed dwarf, not only those the insane section names: the very
@@ -389,7 +407,8 @@ def _stress_care(s: dict, cfg: dict, worst: list, proposals: list | None, memory
     # miss, after the crisis; never let out of a squad for it
     have_ids = {x.get("id") for x in crisis}
     mild = ([x for x in worst if x.get("id") is not None and x.get("id") not in have_ids
-             and x.get("stress") in UNHAPPY_LABELS] if unhappy_wide(s, cfg) else [])
+             and x.get("stress") in UNHAPPY_LABELS]
+            if unhappy_wide(s, cfg) or (grieving and welfare >= cfg.get("r3_grief_wide_welfare", 50)) else [])
     mild.sort(key=lambda x: (UNHAPPY_LABELS.index(x.get("stress")), -_lt(x)))
     # (0.105.40b) the near-breaking (long-term stress high: planner_insane)
     # first, at a higher priority; one the needs list left out comes from the
