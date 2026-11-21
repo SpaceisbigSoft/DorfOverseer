@@ -122,7 +122,7 @@ HOSPITAL_CACHE = HOSPITAL_CACHE or nil
 function hospital_boxes()
     local now = U.abs_tick()
     local c = HOSPITAL_CACHE
-    if c and now - c.at >= 0 and now - c.at < HOSPITAL_TICKS then return c.set, c.zones or {} end
+    if c and now - c.at >= 0 and now - c.at < HOSPITAL_TICKS then return c.set, c.rects or {} end
     local set, zones = {}, {}
     pcall(function()
         local site = dfhack.world.getCurrentSite()
@@ -132,7 +132,12 @@ function hospital_boxes()
                 for _, bid in ipairs(ct and ct.building_ids or {}) do
                     local z = df.building.find(bid)
                     if z then
-                        table.insert(zones, z)          -- (R1 g6) the zone itself: its floor too
+                        -- (R1 g6) the zone's floor too; (X2, V6) only plain data is kept for the
+                        -- day: a zone removed meanwhile is freed DF memory. It is found again by id.
+                        pcall(function()
+                            table.insert(zones, {id = z.id, z = z.z, x1 = z.x1, y1 = z.y1,
+                                                 x2 = z.x2, y2 = z.y2})
+                        end)
                         pcall(function()
                             for _, b in ipairs(z.contained_buildings) do
                                 if df.building_type[b:getType()] == 'Box' then set[b.id] = true end
@@ -143,7 +148,7 @@ function hospital_boxes()
             end
         end
     end)
-    HOSPITAL_CACHE = {at = now, set = set, zones = zones}
+    HOSPITAL_CACHE = {at = now, set = set, rects = zones}   -- (X2, V6) plain data only
     return set, zones
 end
 
@@ -161,7 +166,11 @@ function hospital_ground(it)
         if not x then return false end
         for _, zn in ipairs(zones) do
             local okz, inside = pcall(function()
-                return zn.z == z and dfhack.buildings.containsTile(zn, x, y)
+                if zn.z ~= z then return false end
+                if zn.x1 and (x < zn.x1 or x > zn.x2 or y < zn.y1 or y > zn.y2) then return false end
+                local b = df.building.find(zn.id)        -- (X2, V6) fresh: nil once removed
+                if not b or b.z ~= z then return false end
+                return dfhack.buildings.containsTile(b, x, y)
             end)
             if okz and inside == true then return true end
         end

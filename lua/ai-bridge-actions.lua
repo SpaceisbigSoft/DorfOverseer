@@ -2139,41 +2139,89 @@ end
 -- any spare tame animal will do: R-AD/R-CE, 15-16 Nov, the "three of a kind,
 -- adult" rule refused 93 times in D and 200+ in C and E while five moods died
 -- for one bone. Still never a pet, a war or hunting animal, a named one, a
--- caged one, nor one of the last breeding pair of its kind (the only adult
--- male while the kind has an adult female, and the reverse). The AI's kept
--- breeders and mousers only when nothing else will do; adults before young
--- (more bone and a hide), the most numerous kind, the oldest. animals:
--- {id, race, male, born, adult, kept}. Returns the pick, its race and kind size.
-function slaughter_pick_mood(animals)
-    local by_race = {}
-    for _, a in ipairs(animals) do
-        local r = by_race[a.race] or {n = 0, am = 0, af = 0, list = {}}
-        r.n = r.n + 1
-        if a.adult then
-            if a.male then r.am = r.am + 1 else r.af = r.af + 1 end
-        end
-        table.insert(r.list, a)
-        by_race[a.race] = r
+-- caged one (act_slaughter_one leaves those out), nor one of the last
+-- breeding pair of its kind. The AI's kept breeders and mousers only when
+-- nothing else will do; adults before young (more bone and a hide), the most
+-- numerous kind, the oldest. animals: {id, race, male, female, born, adult,
+-- kept} (female: nil means "not male"; false with male false: neither sex).
+-- (X2, V4) The pair counts every age: a calf grows up to breed (R-AD's herd
+-- of one adult bull and four heifer calves lost the bull: no calf was born
+-- again). Never the only male of a kind while it has a female, adult or not,
+-- nor the only female while it has a male. Among the rest, a pick that
+-- leaves the kind an adult pair (breeding now) when it had one comes before
+-- one that leaves it a pair only once the young grow up. mates (optional):
+-- the kind's other animals that breed but are never taken (pets, war and
+-- hunting animals, named ones): {race, male, female, adult}; they count for
+-- the pairs only. Returns the pick, its race and kind size.
+function slaughter_pick_mood(animals, mates)
+    local function sex_of(a)
+        if a.male then return 'm' end
+        if a.female == false then return nil end
+        return 'f'
     end
-    local best, best_race, best_r
+    local by_race = {}
+    local function row(race)
+        local r = by_race[race] or {n = 0, m = 0, f = 0, am = 0, af = 0, list = {}}
+        by_race[race] = r
+        return r
+    end
+    local function count(r, a)
+        local s = sex_of(a)
+        if s == 'm' then
+            r.m = r.m + 1
+            if a.adult then r.am = r.am + 1 end
+        elseif s == 'f' then
+            r.f = r.f + 1
+            if a.adult then r.af = r.af + 1 end
+        end
+    end
+    for _, a in ipairs(animals) do
+        local r = row(a.race)
+        r.n = r.n + 1
+        count(r, a)
+        table.insert(r.list, a)
+    end
+    for _, a in ipairs(mates or {}) do
+        if a.race ~= nil and by_race[a.race] then count(by_race[a.race], a) end
+    end
+    local function b(v) return v and true or false end
+    local best, best_race, best_r, best_pair
     for race, r in pairs(by_race) do
         for _, a in ipairs(r.list) do
-            local pair_kept = a.adult and ((a.male and r.am == 1 and r.af >= 1) or (not a.male and r.af == 1 and r.am >= 1))
-            if not pair_kept then
+            local s = sex_of(a)
+            -- the kind's last male (or female) while it has the other sex: never
+            local last = (s == 'm' and r.m == 1 and r.f >= 1) or (s == 'f' and r.f == 1 and r.m >= 1)
+            if not last then
+                -- an adult pair left (when the kind had one), or no adult pair to break
+                local am, af = r.am, r.af
+                if a.adult and s == 'm' then am = am - 1 elseif a.adult and s == 'f' then af = af - 1 end
+                local pair = not (r.am >= 1 and r.af >= 1) or (am >= 1 and af >= 1)
                 local better = best == nil
                 if not better then
-                    if (a.kept and true or false) ~= (best.kept and true or false) then better = not a.kept
-                    elseif (a.adult and true or false) ~= (best.adult and true or false) then better = a.adult == true
+                    if b(a.kept) ~= b(best.kept) then better = not a.kept
+                    elseif pair ~= best_pair then better = pair
+                    elseif b(a.adult) ~= b(best.adult) then better = a.adult == true
                     elseif r.n ~= best_r.n then better = r.n > best_r.n
                     elseif (a.born or 0) ~= (best.born or 0) then better = (a.born or 0) < (best.born or 0)
                     else better = a.id < best.id end
                 end
-                if better then best, best_race, best_r = a, race, r end
+                if better then best, best_race, best_r, best_pair = a, race, r, pair end
             end
         end
     end
     if not best then return nil end
     return best, best_race, best_r.n
+end
+
+-- (X2, V4) an animal that breeds but is never taken for a mood (a pet, a war
+-- or hunting animal, a named one): {race, male, female, adult}, for the pairs
+local function mate_row(u)
+    local r = df.creature_raw.find(u.race)
+    local m, f, ad = false, nil, false
+    pcall(function() m = dfhack.units.isMale(u) == true end)
+    if not m then pcall(function() f = dfhack.units.isFemale(u) == true end) end
+    pcall(function() ad = dfhack.units.isAdult(u) == true end)
+    return {race = r and r.creature_id or tostring(u.race), male = m, female = f, adult = ad}
 end
 
 function act_slaughter_one(a)
@@ -2209,18 +2257,36 @@ function act_slaughter_one(a)
             local born = 0
             pcall(function() born = u.birth_year * 403200 + u.birth_time end)
             local adult = true
+            local female
             if for_mood then
                 local oka, ad = pcall(dfhack.units.isAdult, u)
                 adult = oka and ad == true
+                -- (X2, V4) neither sex (female false, male false) is no one's mate
+                if not dfhack.units.isMale(u) then
+                    local okf, fe = pcall(dfhack.units.isFemale, u)
+                    if okf and type(fe) == 'boolean' then female = fe end
+                end
             end
             table.insert(cands, {id = u.id, unit = u, race = race and race.creature_id or tostring(u.race),
-                                 male = dfhack.units.isMale(u), born = born, adult = adult, kept = is_kept == true})
+                                 male = dfhack.units.isMale(u), female = female, born = born, adult = adult,
+                                 kept = is_kept == true})
         end
     end
     if marked > 0 then return {ok = false, rejected = true, waiting = true, error = ('%d animal(s) already wait for the butcher'):format(marked)} end
     local pick, race, n
     if for_mood then
-        pick, race, n = slaughter_pick_mood(cands)
+        -- (X2, V4) the animals never taken that still breed (pets, war and
+        -- hunting animals, named ones; not caged) count for the pairs
+        local mates, is_cand = {}, {}
+        for _, c in ipairs(cands) do is_cand[c.id] = true end
+        for _, u in ipairs(df.global.world.units.active) do
+            pcall(function()
+                if is_cand[u.id] or u.flags1.caged or not dfhack.units.isAnimal(u)
+                        or not dfhack.units.isFortControlled(u) or dfhack.units.isDead(u) then return end
+                table.insert(mates, mate_row(u))
+            end)
+        end
+        pick, race, n = slaughter_pick_mood(cands, mates)
         if not pick then
             return {ok = false, rejected = true, error = 'no tame animal to spare even for a strange mood (only pets, war or ' ..
                     'hunting animals, named or caged ones, or a kind\'s last breeding pair)'}
