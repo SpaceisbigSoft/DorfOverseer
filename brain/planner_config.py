@@ -1544,6 +1544,19 @@ PLANNER_CONFIG.update({
     "h3_dig_check_days": 21,              # a level with no tile dug this long: why (designations, reach, miners) and unstuck or cancelled
 })
 
+# (r3 g3) floors: placement sense and the record (brain/floor_soil.py, brain/planner_floors.py,
+# brain/planner_floor_notes.py; lua/ai-builder-floorstore.lua floor_fallback's reason tally)
+PLANNER_CONFIG.update({
+    "r3g3_soil_skip": True,               # an elevation a floor was refused at for soil or roots is kept and skipped
+    "r3g3_soil_days": 14,                 # ...not offered to any level for this many days (unless nothing else is left)
+    "r3g3_sacred_roles": ["worship", "crypt"],   # the holy levels (temple, memorial, library, garden; tombs)
+    "r3g3_sacred_soil_days": 336,         # ...never on an elevation refused for soil this recently, nor on the survey's soil levels
+    "r3g3_sacred_surface_gap": 3,         # ...and at least this many levels under the surface
+    "r3g3_sacred_deeper": 4,              # ...the floors taken out made up from at most this many elevations under the band
+    "r3g3_journal_floor_hint": True,      # the floor hint actually sent journaled with the start_project action
+    "r3g3_floor_reasons": True,           # the FLOORS digest line counts the classic placements by reason
+})
+
 
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({

@@ -742,12 +742,22 @@ def _floors_note(memory, action: dict, result: dict) -> str | None:
         return None
 
 
+def _soil_note(memory, action: dict, result: dict, state: dict) -> None:
+    """(r3 g3) floor_soil.note, guarded: the elevations a floor was refused at for soil or roots."""
+    try:
+        import floor_soil
+        floor_soil.note(memory, action, result, state)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def note_result(memory, action: dict, result: dict, state: dict) -> str | None:
     """After a start_project: which district got the level, or a miss. A
     district that keeps missing grows by GROW_BY levels when the site allows.
     Returns a line for the chronicle when a level opened a district or it grew
     (layout option B: else the line of the level's floor, noted first)."""
     floor_line = _floors_note(memory, action, result)
+    _soil_note(memory, action, result, state)
     line = _note_district(memory, action, result, state)
     return floor_line if line is None else line
 
