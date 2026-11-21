@@ -381,6 +381,9 @@ local env = setmetatable({}, {__index = _G})
 local F = {site = 1430, save = 'autosave 1', world = 'Usnuspbuzong', put = {}, handlers = {}}
 env.F = F
 env.SC_MAP_UNLOADED = 5
+-- a clock that moves a step at each look: one block a slice whatever the PC's clock resolution
+local now = 0
+env.os = setmetatable({clock = function() now = now + 1; return now end}, {__index = os})
 env.reqscript = function() return {site_put = function(k, v) F.put[k] = v end, site_get = function() return nil end} end
 env.dfhack = {onStateChange = F.handlers,
               units = {getCitizens = function() return {{}} end, getPosition = function() return 50, 50, 100 end},

@@ -1330,6 +1330,12 @@ PLANNER_CONFIG.update({
     "raid_greed_rich": 60,                # Greed at or past this: the aggressive fort prefers the richest clear win
     "raid_pet_restore_days": 2,           # pets let out for a mission put back this long after, once all are home
 })
+# (r1g9) the keeper and a session's end (brain/session_end.py, brain/revive.py)
+PLANNER_CONFIG.update({
+    "g9_all_closed_hold_s": 600,          # this folder's game closed with no Dwarf Fortress left on the PC: no relaunch this long
+    "g9_signal_hold_s": 3600,             # a console close, logoff or shutdown signal: nothing started or loaded this long
+})
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall
@@ -1362,8 +1368,3 @@ PLANNER_CONFIG.update({
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
 })
 
-# (r1g9) the keeper and a session's end (brain/session_end.py, brain/revive.py)
-PLANNER_CONFIG.update({
-    "g9_all_closed_hold_s": 600,          # this folder's game closed with no Dwarf Fortress left on the PC: no relaunch this long
-    "g9_signal_hold_s": 3600,             # a console close, logoff or shutdown signal: nothing started or loaded this long
-})
