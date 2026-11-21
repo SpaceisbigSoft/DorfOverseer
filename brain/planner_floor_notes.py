@@ -141,10 +141,33 @@ def _floor_notes(s: dict, memory, cfg: dict, notes: list) -> None:
         return
 
 
+# (r3 g3) the report's why_n buckets (lua/ai-builder-floorstore.lua FLOOR_WHY_BUCKETS) in words, in this order
+REASON_WORDS = (("no_room", "no room"), ("too_big", "too big for a run"), ("no_hall", "no hall"),
+                ("hub", "the stair's hub"), ("soil", "soil or roots"), ("full", "full for the district"),
+                ("other", "other"))
+
+
+def _reasons(f: dict) -> str:
+    """" (no room 35, too big for a run 2, the stair's hub 10)": the classic
+    placements by reason, the counts the record keeps (a level counts once
+    for each reason its floors gave); "" with none or the switch
+    r3g3_floor_reasons off."""
+    try:
+        from planner_config import PLANNER_CONFIG
+        if not PLANNER_CONFIG.get("r3g3_floor_reasons", True):
+            return ""
+        n = _d(f.get("why_n"))
+        said = [f"{words} {_int(n.get(k))}" for k, words in REASON_WORDS if _int(n.get(k)) > 0]
+        return f" ({', '.join(said)})" if said else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def floors_line(s: dict) -> str:
     """FLOORS 3 floors, 41 rooms on 310 tiles of hall | 2 levels with no room
-    for a hall | classic placements 2 | last: dining not on a floor (floor 3:
-    no room). Each part after the first only when there is something to say;
+    for a hall | classic placements 2 (no room 2, the stair's hub 1) | last:
+    dining not on a floor (floor 3: no room). (r3 g3) The reasons in
+    brackets from the section's `why_n`. Each part after the first only when there is something to say;
     "" with no section, an error in it, or nothing in `list` and no fallbacks."""
     try:
         f = floors_view(s)
@@ -159,7 +182,7 @@ def floors_line(s: dict) -> str:
         if no_hall:
             parts.append(f"{_n(no_hall, 'level')} with no room for a hall")
         if fallbacks:
-            parts.append(f"classic placements {fallbacks}")
+            parts.append(f"classic placements {fallbacks}" + _reasons(f))
         last = _failed_last(f)
         if last is not None:
             parts.append(f"last: {_word(last.get('kind')) or 'a level'} not on a floor{_why(last, WHY_LINE)}")

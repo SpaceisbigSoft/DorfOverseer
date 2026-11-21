@@ -530,11 +530,22 @@ def _grammar_keys(memory, action: dict, traits: dict, cfg: dict) -> dict:
         return {}
 
 
+def _soil_filter(memory, kind, action, elevs, s, traits, cfg) -> list:
+    """(r3 g3) floor_soil.filter_elevs, guarded: elevs as given on any error."""
+    try:
+        import floor_soil
+        out = floor_soil.filter_elevs(memory, kind, action, elevs, s, traits, cfg)
+        return out if isinstance(out, list) else elevs
+    except Exception:  # noqa: BLE001
+        return elevs
+
+
 def hint(memory, action: dict, s: dict, traits: dict, cfg: dict) -> dict | bool | None:
     """A start_project's "floor" value: a dict (the floors offered, the tag,
     the zone, the stair, the ways, and floor_grammar's numbers); False for a
     level placed the classic way on purpose (a kind that never goes on a
-    floor, `join` false, a landmark's level, a level by the fields); None to
+    floor, `join` false, a landmark's level, a level by the fields; (r3 g3) a
+    holy level whose floors are all soil or near the surface); None to
     say nothing (no master plan yet, nothing to offer: the builder's own
     default). Reads memory, the action, s["floors"] and cfg; never raises."""
     try:
@@ -556,6 +567,9 @@ def hint(memory, action: dict, s: dict, traits: dict, cfg: dict) -> dict | bool 
         elevs = elevs_for(memory, kind, action, traits, _d(s).get("floors"), cfg)
         if not elevs:
             return None
+        elevs = _soil_filter(memory, kind, action, elevs, s, traits, cfg)
+        if not elevs:
+            return False               # (r3 g3) a holy level with only soil or the surface to go to: classic
         out = _grammar_keys(memory, action, traits, cfg)
         for k in ("elevs", "tag", "group", "zone", "spine", "dirs"):
             out.pop(k, None)

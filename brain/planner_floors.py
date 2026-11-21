@@ -16,6 +16,8 @@ proposed it (a rule, the strategist). A dict or False (classic on purpose)
 is passed on; None, a missing masterplan_floors or any error leaves the
 action without a `floor` key, and the builder then makes its own plain
 hint. The Rules switch (settings `floor_layout` = "classic") turns it off.
+(r3 g3) The hint sent goes on the level's journal line beside its action,
+as `floor_hint` (journal_hint), so the journal shows the floors offered.
 
 floor_outcome and not_on_floor_words are the journal line's words for the
 builder's answer: the floor a level went onto, or why it did not.
@@ -39,11 +41,18 @@ def _traits_of(s: dict) -> dict:
         return {}
 
 
+# (r3 g3) the floor hint floor_action last put on a level, for the journal line
+# that follows the send (journal_hint); taken there, cleared by every call
+LAST_SENT: dict = {}
+
+
 def floor_action(action: dict, s: dict, memory, cfg: dict = PLANNER_CONFIG) -> dict:
     """The start_project as sent to the bridge: a copy with `floor` set from
     masterplan_floors.hint (a dict, or False). Any other action, a level that
     already has `floor`, a fort at "classic", a hint of None, or an error:
-    the action as it is (the same object). Never raises."""
+    the action as it is (the same object). Never raises. (r3 g3) The hint
+    set is kept in LAST_SENT for journal_hint."""
+    LAST_SENT.clear()
     try:
         if not isinstance(action, dict) or action.get("type") != "start_project" \
                 or not isinstance(action.get("kind"), str) or "floor" in action:
@@ -57,9 +66,32 @@ def floor_action(action: dict, s: dict, memory, cfg: dict = PLANNER_CONFIG) -> d
             return action
         b = dict(action)
         b["floor"] = h
+        LAST_SENT.update({"type": action.get("type"), "kind": action.get("kind"), "floor": h})
         return b
     except Exception:  # noqa: BLE001  (the builder's own default stands)
         return action
+
+
+def journal_hint(action: dict, cfg: dict = PLANNER_CONFIG) -> dict:
+    """(r3 g3) The journal line's extra key for the send just made:
+    {"floor_hint": <the hint floor_action put on it (a dict, or False)>}, so
+    the journal, the ledger and seen.py see the floors a level was offered.
+    The line's `action` stays the proposal's own (as planner.record and
+    masterplan.note_result have it). {} when no hint was sent for this
+    action (another action, one with its own `floor`, a dry run's line) or
+    the switch r3g3_journal_floor_hint is off. Takes the hint: a second call
+    gets {}. Never raises."""
+    try:
+        sent = dict(LAST_SENT)
+        LAST_SENT.clear()
+        if not sent or not isinstance(action, dict) or "floor" in action \
+                or not _d(cfg).get("r3g3_journal_floor_hint", True):
+            return {}
+        if action.get("type") != sent.get("type") or action.get("kind") != sent.get("kind"):
+            return {}
+        return {"floor_hint": sent.get("floor")}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _whole(v):

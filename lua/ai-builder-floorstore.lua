@@ -183,9 +183,41 @@ function floor_commit(site, project_id)
     return a, b
 end
 
+-- (r3 g3) The reasons a level went the classic way, in buckets: each
+-- bucket counted once a level (one text holds a reason a floor tried).
+-- The order matters: "no room (too big for a run)" is too_big, not no_room.
+FLOOR_WHY_BUCKETS = {
+    {'too_big', 'too big'},
+    {'hub', "the stair's hub"},
+    {'soil', 'not natural rock %(ROOT'},
+    {'soil', 'not natural rock %(SOIL'},
+    {'soil', 'not natural rock %(GRASS'},
+    {'soil', 'not natural rock %(PLANT'},
+    {'soil', 'not natural rock %(TREE'},
+    {'soil', 'not natural rock %(MUSHROOM'},
+    {'no_hall', 'no hall'},
+    {'full', 'full for '},
+    {'no_room', 'no room'},
+}
+
+function floor_why_buckets(why)
+    local found = {}
+    if type(why) ~= 'string' then return found end
+    for seg in (why .. ';'):gmatch('([^;]*);') do
+        if seg:find('%S') then
+            local b = 'other'
+            for _, row in ipairs(FLOOR_WHY_BUCKETS) do
+                if seg:find(row[2]) then b = row[1] break end
+            end
+            found[b] = true
+        end
+    end
+    return found
+end
+
 -- A level that went the classic way (never called on a dry run): counted,
 -- kept as `last`, and the floors found full marked so the next level does
--- not try them again at once. Never raises.
+-- not try them again at once; (r3 g3) its reasons tallied in `why_n`. Never raises.
 function floor_fallback(kind, why, elevation, marks)
     local ok, a, b = pcall(function()
         local FP, fwhy = floorplan()
@@ -195,6 +227,10 @@ function floor_fallback(kind, why, elevation, marks)
         local tick = now_tick()
         apply_marks(FP, store, marks, tick)
         store.fallbacks = (math.tointeger(store.fallbacks) or 0) + 1
+        if type(store.why_n) ~= 'table' then store.why_n = {} end
+        for b in pairs(floor_why_buckets(why)) do
+            store.why_n[b] = (math.tointeger(store.why_n[b]) or 0) + 1
+        end
         store.last = {tick = tick, ok = false, kind = type(kind) == 'string' and kind or nil,
                       elevation = math.tointeger(elevation),
                       why = why ~= nil and tostring(why):sub(1, FLOOR_WHY_MAX) or nil}
@@ -468,6 +504,13 @@ function floors_report()
     local out = empty_floors(math.tointeger(store.v) or version)
     out.fallbacks = math.tointeger(store.fallbacks) or 0
     out.last = type(store.last) == 'table' and store.last or nil
+    if type(store.why_n) == 'table' then                 -- (r3 g3) the classic placements by reason
+        local n = {}
+        for k, v in pairs(store.why_n) do
+            if type(k) == 'string' and math.tointeger(v) then n[k] = math.tointeger(v) end
+        end
+        if next(n) then out.why_n = n end
+    end
     for _, row in ipairs(rows) do
         if type(row) == 'table' then
             local others = {}

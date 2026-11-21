@@ -49,6 +49,7 @@ from planner_thirst import thirst_journal  # noqa: E402  (0.105.46, I2) deaths o
 from planner_recovery import recovery_journal  # noqa: E402  (0.105.46, I4) collapse recovery
 from planner_shopslots import shop_level_action  # noqa: E402  (0.105.54) workshops onto shared levels
 from planner_floors import floor_action, floor_outcome, not_on_floor_words  # noqa: E402  (layout B) hallway-first floors
+from planner_floors import journal_hint as floor_journal_hint  # noqa: E402  (r3 g3) the hint sent, journaled
 from planner_meetings import meeting_open_due, meeting_open_said, meeting_reopen_wait  # noqa: E402  (0.105.47) meetings opened unattended
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 from planner_holdfast import note_thief_targets  # noqa: E402  (0.105.47, R2 item 7)
@@ -1587,8 +1588,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 else:
                     would.append(f"would {short(p.action)}: {p.reason}")
                     say(f"  would do ({p.rule}): {p.reason} -> {json.dumps(p.action)}")
+                # (r3 g3) the level's line carries the floor hint it was sent with
                 journal({"kind": "decision", "fort": key, "date": state["date"], "rule": p.rule,
-                         "reason": p.reason, "action": p.action,
+                         "reason": p.reason, "action": p.action, **floor_journal_hint(p.action),
                          "mode": "autopilot" if acting else "dry-run", "result": r})
         finally:
             if results:
