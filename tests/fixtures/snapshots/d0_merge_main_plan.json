@@ -698,8 +698,8 @@
  ],
  "enxah-0.104.52-y73-winter.json:War-hold": [
   {
-   "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:bb446e0af587c2c6587e4bda",
+   "notes": "sha256:8b663b55d962e247c281516d",
+   "props": "sha256:74641a4b01012b26db8fc724",
    "rules": [
     "build",
     "hospital",
@@ -710,7 +710,6 @@
     "mandate",
     "fat_ban",
     "soap",
-    "squad_fill",
     "instrument_orders",
     "pop_cap",
     "train",
@@ -730,8 +729,8 @@
    ]
   },
   {
-   "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:66e45e0306b3cccad18d0eb8",
+   "notes": "sha256:80e7b445551e3b6dccee50ec",
+   "props": "sha256:84d86219d5261fd58a06ab23",
    "rules": [
     "build",
     "hospital",
@@ -742,7 +741,6 @@
     "mandate",
     "fat_ban",
     "soap",
-    "squad_fill",
     "instrument_orders",
     "pop_cap",
     "train",
@@ -761,8 +759,8 @@
    ]
   },
   {
-   "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:bb446e0af587c2c6587e4bda",
+   "notes": "sha256:80e7b445551e3b6dccee50ec",
+   "props": "sha256:74641a4b01012b26db8fc724",
    "rules": [
     "build",
     "hospital",
@@ -773,7 +771,6 @@
     "mandate",
     "fat_ban",
     "soap",
-    "squad_fill",
     "instrument_orders",
     "pop_cap",
     "train",
@@ -2592,14 +2589,13 @@
  ],
  "region2-0.83-y62-spring.json:War-hold": [
   {
-   "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:a9c2ff05cfbff0d2a4772a69",
+   "notes": "sha256:40e4e68a3b179d3830c98a0e",
+   "props": "sha256:501a93761223da83794e696b",
    "rules": [
     "hospital",
     "staff",
     "cistern",
     "build",
-    "squad_make",
     "fishery",
     "train",
     "train",
@@ -2623,14 +2619,13 @@
    ]
   },
   {
-   "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:de0ec768fc714455d01b4147",
+   "notes": "sha256:40e4e68a3b179d3830c98a0e",
+   "props": "sha256:6d56b78b03e0d005e6f5edb1",
    "rules": [
     "hospital",
     "staff",
     "cistern",
     "build",
-    "squad_make",
     "fishery",
     "train",
     "train",
@@ -2653,14 +2648,13 @@
    ]
   },
   {
-   "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:a9c2ff05cfbff0d2a4772a69",
+   "notes": "sha256:40e4e68a3b179d3830c98a0e",
+   "props": "sha256:501a93761223da83794e696b",
    "rules": [
     "hospital",
     "staff",
     "cistern",
     "build",
-    "squad_make",
     "fishery",
     "train",
     "train",
