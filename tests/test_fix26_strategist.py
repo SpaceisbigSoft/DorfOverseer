@@ -310,7 +310,9 @@ def _():
     assert len(c.calls) == 1, out.say
     instr, msg, _ = c.calls[0]
     assert "CHARACTER DECISION" in instr and "THE PLANNER PROPOSES NOW" in msg
-    assert [p.action for p in out.proposals] == [{"type": "work_order", "recipe": "brew_drink", "amount": 5}]
+    # (r4 k4, B6) the strategist's order goes marked as its own
+    assert [p.action for p in out.proposals] == [{"type": "work_order", "recipe": "brew_drink", "amount": 5,
+                                                  "by": "strategist"}]
     assert m.steer[shown]["mode"] == "raise" and "mood" not in m.steer
     assert m.strategist_wants == ["needs", "infection"]
     assert m.culture["season_choice"]["choice"] == "focus:drink"

@@ -82,7 +82,7 @@ from quirks import update as update_quirks  # noqa: E402
 from weights import choose_all  # noqa: E402
 from culture import note_events as culture_events  # noqa: E402
 from digest import _d, _l, normalize, project_text  # noqa: E402
-from review import maybe_review, note_events  # noqa: E402
+from review import hold_review_proposals, maybe_review, note_events  # noqa: E402
 from storyteller import maybe_tell  # noqa: E402
 from tokens import TokenBank  # noqa: E402
 import perf  # noqa: E402  (0.105.40)
@@ -1411,6 +1411,12 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                     ai_props = _deep_surface_filter(state, _plan_traits(state), memory, list(ai_props), notes)
                 except Exception:  # noqa: BLE001  (never stops the cycle; the bridge's own checks still hold)
                     pass
+                # (r4 k4, audit A7 B7) the crisis and recovery holds, as for the planner's own
+                held_notes = []
+                ai_props = hold_review_proposals(state, memory, list(ai_props), held_notes, cfg)
+                for line in held_notes:
+                    say(f"  AI review: {line}")
+                notes.extend(n for n in held_notes if n not in notes)
                 _note_adjust(state, memory, outcome.journal, cfg)
                 return list(ai_props)
             # (0.105.48, K6) the strategist's review on its own: failing, the plan goes on without it
