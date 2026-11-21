@@ -558,17 +558,32 @@ local function drop_run(S, run, nobs)
     bump(S)
 end
 
-local function grow_arm(C, S, item)
+-- spill: (r3 g2) the floor is full by its grammar: an arm past arms_max (up to one each way out of
+-- the hub), begun wherever the survey's free run holds the item (not only run_min columns)
+local function grow_arm(C, S, item, spill)
     local G = C.G
-    if S.hub_runs >= G.arms_max and #S.runs > 0 then return false end
+    if spill then
+        if S.hub_runs >= #DIR_ORDER then return false end
+    elseif S.hub_runs >= G.arms_max and #S.runs > 0 then
+        return false
+    end
     if #S.runs >= RUNS_MAX then C.record_full = true; return false end
-    for _, n in ipairs(arm_dirs(C, S)) do
+    local dirs = arm_dirs(C, S)
+    if spill then
+        -- every free way, the longest free run first (the grammar's own ways were tried already)
+        local G1 = {}
+        for k, v in pairs(G) do G1[k] = v end
+        G1.run_min, G1.dirs = G.lead + item.wmin + G.ahead, {}
+        local C1 = setmetatable({G = G1}, {__index = C})
+        dirs = arm_dirs(C1, S)
+    end
+    for _, n in ipairs(dirs) do
         local nobs = #S.fixed
         local run = add_run(S, {id = S.next_id, key = 'arm:' .. n, parent = 0, ox = 0, oy = 0,
                                 dx = DIRS[n][1], dy = DIRS[n][2], len = 0, len0 = 0, new = true,
                                 tag = C.req.tag, node = 3, neck = false, walked = 0})
         if G.neck and not C.necked and column_state(C.env, run, run.u0) == 'rock' then run.neck = true end
-        local ok = reach(C, S, run) >= run.u0 + G.run_min - 1
+        local ok = reach(C, S, run) >= run.u0 + (spill and 1 or G.run_min) - 1
         if ok then
             if run.neck then C.necked = true end
             ok = try_run(C, S, run, item)
@@ -719,6 +734,12 @@ local function place_item(C, S, item)
     for _, run in ipairs(ordered_runs(C, S, false)) do
         if try_run(C, S, run, item) then return true end
         if C.late then return false end
+    end
+    -- (r3 g2) every run full and the grammar grows no more: another arm out of the hub (the far
+    -- side, the free ways the survey found) before 'no room'. Only with G.spill = true
+    -- (ai-builder-floors sets it unless the hint says spill = false).
+    if C.G.spill == true and #S.runs > 0 and not C.late then
+        if grow_arm(C, S, item, true) then return true end
     end
     return false
 end
@@ -1194,7 +1215,7 @@ function fits_empty(req, G)
     if type(req) ~= 'table' or type(G) ~= 'table' then return false end
     local G1 = {}
     for k, v in pairs(G) do G1[k] = v end
-    G1.arms_max, G1.grow, G1.tries = 1, {}, 1000
+    G1.arms_max, G1.grow, G1.tries, G1.spill = 1, {}, 1000, false
     local env = {bounds = nil, seed = 0}
     function env.open() return 'rock' end
     function env.blocked() return false end
@@ -1202,4 +1223,35 @@ function fits_empty(req, G)
     function env.late() return false end
     local P = place({id = 0, runs = {}, slots = {}}, req, G1, env)
     return type(P) == 'table'
+end
+
+local RUN_MAX_TOP = 80        -- ai-floorplan's highest run_max
+
+-- (r3 g2) The shortest run_max (G's own up to RUN_MAX_TOP) at which the request fits onto one
+-- empty run of this grammar (fits_empty), or nil when even the longest run cannot take it (it is
+-- too deep or too wide for any hall: the classic way at once). Pure.
+-- remake(n), when given: the grammar as it would be with run_max n (ai-floorplan.grammar gives a
+-- short run's lead and gap back as the run grows); else G with only run_max changed.
+function need_run(req, G, remake)
+    if type(req) ~= 'table' or type(G) ~= 'table' then return nil end
+    local lo = math.tointeger(G.run_max) or 30
+    local function fits_at(n)
+        local G1
+        if type(remake) == 'function' then G1 = remake(n) end
+        if type(G1) ~= 'table' then
+            G1 = {}
+            for k, v in pairs(G) do G1[k] = v end
+            G1.run_max = n
+        end
+        if (tonumber(G1.run_min) or 0) > n then G1.run_min = n end
+        return fits_empty(req, G1)
+    end
+    if fits_at(lo) then return lo end
+    if lo >= RUN_MAX_TOP or not fits_at(RUN_MAX_TOP) then return nil end
+    local a, b = lo, RUN_MAX_TOP           -- fits_at(a) false, fits_at(b) true
+    while b - a > 1 do
+        local m = (a + b) // 2
+        if fits_at(m) then b = m else a = m end
+    end
+    return b
 end

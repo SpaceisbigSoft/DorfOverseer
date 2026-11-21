@@ -30,7 +30,7 @@ function check_site(L, extra, ax, ay, z, reserved, skip, exempt)
         return false, 'too close to the map edge'
     end
     for _, r in ipairs(reserved or {}) do
-        if overlaps(area, r) then return false, 'overlaps another AI project' end
+        if overlaps(area, r) then return false, r.why or 'overlaps another AI project' end   -- (r3 g2) a floor's kept box says so
     end
     local function dug(x, y) return has(L.tiles, x, y) or has(extra, x, y) end
     local function check(x, y)

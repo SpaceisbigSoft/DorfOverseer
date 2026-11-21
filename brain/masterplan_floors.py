@@ -453,9 +453,119 @@ def hint(memory, action: dict, s: dict, traits: dict, cfg: dict) -> dict | bool 
         dirs = _dirs(action, district)
         if dirs:
             out["dirs"] = dirs
-        return out
+        if cfg.get("r3g2_floor_spill", True) is False:
+            out["spill"] = False           # (r3 g2) a full floor stays at its arms_max
+        return _fit_big(memory, action, out, cfg)
     except Exception:  # noqa: BLE001
         return None
+
+
+# --- (r3 g2) levels too big for a run ---------------------------------------------------
+# The builder answers a level too big for any run of its grammar with `floor_big` ({need,
+# run_max}: the run it would need, need None when no run up to 80 can take it). note_result
+# keeps it by the level's kind and size in plan["floors"]["big"]; the next hint for a level of
+# that kind and size asks for a run that holds it (run_max = need), or says False (the classic
+# way at once, no floor tried) when none can.
+
+SIZE_KEYS = ("rooms", "room_size", "tables", "beds", "cells", "size", "plots", "plot_w", "dormitory")
+RUN_TOP = 80                 # the bridge's highest run_max
+
+
+def size_key(action: dict | None) -> str | None:
+    """A level's kind and size, as one key: "storage|room_size=7|piles=2"; None for no kind."""
+    a = _d(action)
+    kind = a.get("kind")
+    if not isinstance(kind, str) or not kind:
+        return None
+    parts = [kind]
+    for k in SIZE_KEYS:
+        v = a.get(k)
+        if isinstance(v, (bool, int, float, str)):
+            parts.append(f"{k}={v}")
+    for k in ("piles", "shops"):
+        if isinstance(a.get(k), list):
+            parts.append(f"{k}={len(a[k])}")
+    if _d(a.get("style")).get("grand") is True or a.get("set_piece"):
+        parts.append("grand")
+    return "|".join(parts)[:120]
+
+
+def _big_table(memory, make: bool = False) -> dict | None:
+    plan = _peek(memory)
+    table = _stored(plan)
+    if table is None:
+        return None
+    big = table.get("big")
+    if not isinstance(big, dict):
+        if not make:
+            return None
+        big = table["big"] = {}
+    return big
+
+
+def note_big(memory, action: dict, result: dict, cfg: dict | None = None) -> str | None:
+    """A start_project answered with `floor_big`: the size kept (the newest
+    r3g2_floor_big_keep); a level of that size that later went onto a floor
+    takes the note away. Returns a chronicle line the first time a size is
+    found too big, else None. Never raises."""
+    try:
+        cfg = cfg if isinstance(cfg, dict) else {}
+        if cfg.get("r3g2_floor_big", True) is False:
+            return None
+        if not isinstance(action, dict) or not isinstance(result, dict) or action.get("type") != "start_project":
+            return None
+        if action.get("dry_run") is True or result.get("dry_run") is True:
+            return None
+        key = size_key(action)
+        if key is None:
+            return None
+        fb = result.get("floor_big")
+        if isinstance(result.get("floor"), dict):
+            big = _big_table(memory)
+            if big is not None:
+                big.pop(key, None)
+            return None
+        if not isinstance(fb, dict):
+            return None
+        need = fb.get("need") if _whole(fb.get("need")) and 12 <= fb["need"] <= RUN_TOP else None
+        ensure(memory, {}, None)
+        big = _big_table(memory, make=True)
+        if big is None:
+            return None
+        first = key not in big
+        big.pop(key, None)
+        big[key] = {"need": need}
+        keep = cfg.get("r3g2_floor_big_keep", 40)
+        keep = keep if _whole(keep) and keep > 0 else 40
+        for k in list(big)[:-keep]:
+            del big[k]
+        if not first:
+            return None
+        kind = action.get("kind")
+        return (f"a {kind} level of that size needs a hall of {need} to stand on a floor" if need is not None
+                else f"a {kind} level of that size is too big for any floor's hall: such levels are placed the old way")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _fit_big(memory, action: dict, out: dict, cfg: dict):
+    """The hint for a level whose size was found too big: run_max raised to the
+    run it needs, or False (classic at once) when no run can take it."""
+    try:
+        if cfg.get("r3g2_floor_big", True) is False:
+            return out
+        big = _big_table(memory)
+        key = size_key(action)
+        if not big or key is None or not isinstance(big.get(key), dict):
+            return out
+        need = big[key].get("need")
+        if not _whole(need):
+            return False
+        if need > (out.get("run_max") if _whole(out.get("run_max")) else 0):
+            out["run_max"] = min(RUN_TOP, need)
+        return out
+    except Exception:  # noqa: BLE001
+        return out
 
 
 # --- after the answer; in words -------------------------------------------------------
@@ -463,7 +573,15 @@ def hint(memory, action: dict, s: dict, traits: dict, cfg: dict) -> dict | bool 
 def note_result(memory, action: dict, result: dict) -> str | None:
     """After a start_project that went onto a floor: the level kept in
     plan["floors"]["placed"] (the newest 80). Returns a chronicle line when
-    it began a new floor's main hall, else None. Never raises."""
+    it began a new floor's main hall, else None. (r3 g2) A level too big for
+    a run is kept first (note_big). Never raises."""
+    try:
+        from planner_config import PLANNER_CONFIG
+        big_line = note_big(memory, action, result, PLANNER_CONFIG)
+        if big_line:
+            return big_line
+    except Exception:  # noqa: BLE001
+        pass
     try:
         if not isinstance(action, dict) or not isinstance(result, dict) or action.get("type") != "start_project":
             return None

@@ -116,7 +116,8 @@ local function apply_marks(FP, store, marks, tick)
                 and type(m.tag) == 'string' then
             local ok = pcall(function()
                 local f = FP.find_floor(store, m.z, m.sx, m.sy) or FP.new_floor(store, m.z, m.sx, m.sy, tick)
-                FP.mark_full(store, f, m.tag, tick, type(m.free) == 'table' and m.free or nil)
+                FP.mark_full(store, f, m.tag, tick, type(m.free) == 'table' and m.free or nil,
+                             type(m.size) == 'table' and m.size or nil)      -- (r3 g2) the size refused
             end)
             if ok then n = n + 1 end
         end

@@ -608,7 +608,9 @@ def _():
 
 @test("3b. a grand hall closes a run's end (axial): recorded as a slot that closes the run, nothing placed over it")
 def _():
-    hint = dict(elevs=[ROCK_Z], tag="halls", run_max=20, axial=True, dirs=["east"], arms_max=1, grow=["arm"])
+    # (r3 g2) spill=False: one arm only, as arms_max says (a full floor would else open another arm)
+    hint = dict(elevs=[ROCK_Z], tag="halls", run_max=20, axial=True, dirs=["east"], arms_max=1, grow=["arm"],
+                spill=False)
     for _ in range(2):
         r = start(kind="bedrooms", rooms=4, room_size=3, floor=dict(hint))
         assert r.ok and r.floor is not None, plain(r)
@@ -688,7 +690,7 @@ def _():
       "floor (full for its tag) until full_retry_days have passed")
 def _():
     hint = dict(elevs=[ROCK_Z], tag="homes", run_max=20, arms_max=1, grow=["arm"], dirs=["east"],
-                full_retry_days=3)
+                full_retry_days=3, spill=False)    # (r3 g2) spill=False: the floor is full at its one arm
     for _ in range(2):
         r = start(kind="bedrooms", rooms=4, room_size=3, floor=dict(hint))
         assert r.ok and r.floor is not None, plain(r)
@@ -698,7 +700,9 @@ def _():
     st = store()
     assert st["fallbacks"] == 1 and st["last"]["ok"] is False and st["floors"][0]["full"].get("homes") == 0, st
     E.tick = 2 * 1200
-    r = start(kind="bedrooms", rooms=2, room_size=3, floor=dict(hint))
+    # (r3 g2) the mark keeps the size refused: a level as big is kept off (a smaller one is tried:
+    # tests/test_r3_g2.py)
+    r = start(kind="bedrooms", rooms=4, room_size=3, floor=dict(hint))
     assert r.floor is None and str(r.not_on_floor) == "floor 1: full for homes", plain(r)
     # another district's level is not kept off the floor by the homes' mark
     r = start(kind="jail", cells=2, floor=dict(hint, tag="defence", arms_max=2))

@@ -220,11 +220,13 @@ def _():
 @test("a level too big for any run of the floor's grammar answers 'no room' but does not mark the floor full "
       "for its tag: a one-shop level right after goes onto the same empty floor")
 def _():
-    hint = {"elevs": [ROCK_Z], "tag": "industry", "arms_max": 1, "grow": ["arm"], "dirs": ["east"]}
+    # (r3 g2) spill=False: one arm only (a full floor would else open more arms and take them all);
+    # the answer is "too big for a run (...)" now, told apart from "no room"
+    hint = {"elevs": [ROCK_Z], "tag": "industry", "arms_max": 1, "grow": ["arm"], "dirs": ["east"], "spill": False}
     shops = ["Masons", "Carpenters", "Craftsdwarfs", "Mechanics", "Jewelers", "Bowyers", "Clothiers",
              "Leatherworks", "Kitchen", "Still"]
     big = F.start(kind="workshops", shops=shops, floor=dict(hint))
-    assert big.ok and big.floor is None and "no room" in str(big.not_on_floor), F.plain(big)
+    assert big.ok and big.floor is None and "too big for a run" in str(big.not_on_floor), F.plain(big)
     assert "too big" in str(big.not_on_floor), big.not_on_floor
     rec = F.floor_rec(ROCK_Z)
     assert rec is None or "industry" not in (rec.get("full") or {}), rec
@@ -236,7 +238,7 @@ def _():
       "next 'no room' marks it and a third is skipped as full for industry")
 def _():
     hint = {"elevs": [ROCK_Z], "tag": "industry", "arms_max": 1, "grow": ["arm"], "dirs": ["east"],
-            "run_max": 12, "lead": 0, "ahead": 0, "piles_new": 0, "sides": "one"}
+            "run_max": 12, "lead": 0, "ahead": 0, "piles_new": 0, "sides": "one", "spill": False}   # (r3 g2) one arm
     a = F.start(kind="workshops", shops=["Masons", "Carpenters"], floor=dict(hint))
     assert a.ok and a.floor is not None, a.not_on_floor
     b = F.start(kind="workshops", shops=["Jewelers"], spare=0, floor=dict(hint))
