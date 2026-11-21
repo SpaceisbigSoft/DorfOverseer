@@ -353,6 +353,7 @@ class Memory:
     defence_floor: dict = field(default_factory=dict)    # (0.105.54) {peak {power, tick, why}}: the biggest threat seen (planner_defence_floor)
     order_loop: dict = field(default_factory=dict)       # (0.105.46, I3) {misses: {"recipe|MATERIAL": {tick, missing, what, snap}}, approved, approved_ids} (order_check)
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
+    furnish_seen: dict = field(default_factory=dict)     # (R2 h3) project id -> {"sig" (its missing pieces), "tick" (since)} (planner_slots)
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)
     culture: dict = field(default_factory=dict)          # culture history (see culture.py)
     culture_pushed: str = ""                              # what was last written into the save

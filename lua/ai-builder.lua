@@ -30,6 +30,18 @@ URGENT_EXTRA = 2          -- (0.104.12) urgent projects beyond the limit
 -- guildhall petition and the craft shops were refused for want of a slot
 FURNISH_LEND_DAYS = 14
 FURNISH_LEND_MAX = 3
+-- (R2 h3) a level parked by the brain (park_project: the same pieces missing for
+-- h3_park_days; A1: E's Millstone levels 500-640 days, F's bedrooms 711 days on one
+-- bed and one box) holds no building slot while those same pieces are missing;
+-- it counts again as soon as one comes (its waiting list changes). PARK_MAX at most.
+PARK_MAX = 6
+-- (R2 h3) the small needs (a paper shop, a mood's workshop, a well, a still or a
+-- kitchen while drink or meals are short: the brain's `need`) take a slot of
+-- their own, NEED_SLOTS of them, outside the ordinary cap (A3 B3: "already N
+-- unfinished building projects" was the commonest refusal of paper_shop,
+-- mood_reserve and well). R1 g6's mood workshops pool (MOOD_SHOP_OPEN_MAX) is this pool.
+NEED_SLOTS = 3
+NEED_KINDS = {paper = true, mood = true, well = true, drink = true, meals = true}
 MAX_LEVELS_BELOW = 15      -- how far below the staircase's bottom it may extend
 STAIR_SAMPLE_LEVELS = 12   -- z-levels sampled when looking for the main staircase
 STAIRS_TO_TRY = 5          -- staircases tried, most used first

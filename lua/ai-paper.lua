@@ -241,11 +241,32 @@ local function free(it)
     return not (f.forbid or f.garbage_collect or f.rotten or f.trader or f.removed or f.in_job or f.dump)
 end
 
-local function material_has(it, want, words, seen)
+-- (R2 h3) a reagent's reaction class wanted (REACTION_CLASS), '' if none
+local function wanted_class(rg)
+    local ok, v = pcall(function() return rg.reaction_class end)
+    return ok and v ~= nil and tostring(v) or ''
+end
+
+-- rclass (R2 h3): the reagent's reaction class, matched against the material's
+-- own classes when it names one (a press reagent of REACTION_CLASS form counted
+-- nothing before: the six forts' press inputs stayed 0)
+local function material_has(it, want, words, seen, rclass)
     local okk, key = pcall(function() return tostring(it:getMaterial()) .. ':' .. tostring(it:getMaterialIndex()) end)
     key = okk and key or nil
     if key and seen[key] ~= nil then return seen[key] end
     local found = false
+    if rclass and rclass ~= '' then
+        pcall(function()
+            local mi = dfhack.matinfo.decode(it)
+            for _, c in ipairs(mi.material.reaction_class) do
+                if tostring(c.value or c) == rclass then found = true end
+            end
+        end)
+        if found then
+            if key then seen[key] = true end
+            return true
+        end
+    end
     pcall(function()
         local mi = dfhack.matinfo.decode(it)
         for _, p in ipairs(mi.material.reaction_product.id) do
@@ -269,13 +290,14 @@ function count_inputs(rx, kind)
     local list_name = okt and item_type_name(t) or nil
     if not list_name or list_name == 'NONE' then return 0 end
     local want = wanted_product(rg)
+    local rclass = want == '' and wanted_class(rg) or ''
     local words = KINDS[kind] and KINDS[kind].words or {}
     local n, looked, seen = 0, 0, {}
     pcall(function()
         for _, it in ipairs(df.global.world.items.other[list_name]) do
             looked = looked + 1
             if looked > ITEMS_MAX then break end
-            if free(it) and material_has(it, want, words, seen) then
+            if free(it) and material_has(it, want, words, seen, rclass) then
                 local oks, sz = pcall(function() return it:getStackSize() end)
                 n = n + (oks and sz or 1)
             end

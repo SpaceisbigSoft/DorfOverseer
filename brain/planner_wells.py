@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
+from planner_slots import need_slots_free  # noqa: E402  (R2 h3) the small needs' pool
 
 
 def _far_args(cfg: dict) -> dict:
@@ -219,7 +220,8 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         # so "a well for every 70" returned here without a word in all six
         # forts: another well takes g3_extra_well_slots over it
         slots = (pr.get("max_open") or 2) + int(cfg.get("g3_extra_well_slots", 1) or 0)
-        if len(open_) >= slots:
+        # (R2 h3) or a place in the small needs' pool (the bridge's need_slots_free)
+        if len(open_) >= slots and not need_slots_free(s):
             notes.append(f"{cit} dwarves share {wells} well(s) (one for every {per} wanted): another waits for a "
                          "free building slot")
             return
@@ -1652,7 +1654,7 @@ def _winter_water_rule(s: dict, memory, cfg: dict, proposals: list, notes: list,
     pressing = bool(patients or parched or jailed(s) or season)
     max_open = pr.get("max_open") or 2
     extra = int(cfg.get("g3_winter_well_slots", 2) if pressing else cfg.get("g3_extra_well_slots", 1))
-    if len(open_) >= max_open + extra:
+    if len(open_) >= max_open + extra and not need_slots_free(s):      # (R2 h3) the needs' pool
         notes.append(f"{need}: a winter water source waits for a free building slot")
         return
     over_cap = len(open_) >= max_open

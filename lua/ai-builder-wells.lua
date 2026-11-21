@@ -1905,7 +1905,9 @@ function place_well(params, now, dry_run)
     -- (0.104.13) a well the injured or the parched wait for takes an urgent
     -- slot, like soap and tombs (Enxah: "no well yet: waiting for a free
     -- building slot" while patients died of thirst)
-    if #open >= slot_cap(open) + (params.urgent == true and URGENT_EXTRA or 0) then
+    -- (R2 h3) a well is a small need: it takes the needs' pool (NEED_SLOTS) past the cap
+    if #open >= slot_cap(open) + (params.urgent == true and URGENT_EXTRA or 0)
+            and not (type(need_slot_free) == 'function' and need_slot_free(open, {need = 'well'}, 'well')) then
         return {ok = false, rejected = true,
                 error = ('already %d unfinished building projects'):format(#open)}
     end
@@ -2103,6 +2105,7 @@ function place_well(params, now, dry_run)
         area = {x1 = spot.x - 1, y1 = spot.y - 1, x2 = spot.x + 1, y2 = spot.y + 1, z = spot.z},
         corridor = 0, stairs = {}, dig_done = 'open', shaft = #shaft > 0 and shaft or nil,
         shaft_stairs = #stairs > 0 and stairs or nil, urgent = params.urgent == true or nil,
+        need = 'well',                                  -- (R2 h3) counted in the needs' pool, not the cap
         gallery = #gallery > 0 and gallery or nil,      -- (0.105.3)
         held = held,                                    -- (0.105.4 review)
         up = up,                                        -- (0.105.47) dug from the bottom up

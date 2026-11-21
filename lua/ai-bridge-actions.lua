@@ -521,6 +521,14 @@ function act_start_project(a)
     p.floor = floor
     p.urgent = a.urgent == true or nil       -- a well's or a mood's workshop: one slot more
     p.mood = (a.mood == true and a.kind == 'workshops') or nil   -- (R1 g6) a waiting mood's shop: no slot taken
+    -- (R2 h3) a small need (paper, mood, well, drink, meals): the needs' own pool of slots
+    if a.need ~= nil then
+        local kinds = reqscript('ai-builder').NEED_KINDS or {}
+        if type(a.need) ~= 'string' or not kinds[a.need] then
+            return reject('need must be one of: paper, mood, well, drink, meals')
+        end
+        p.need = a.need
+    end
     -- (0.105.23, 14.1 step 4c) the Deep mine: no level above this elevation (one under the surface)
     if a.max_elev ~= nil then
         p.max_elev = int_in(a.max_elev, -400, 400)
@@ -692,8 +700,27 @@ end
 function act_finish_project(a)
     local id = project_id(a)
     if not id then return reject('project_id must be a whole number') end
+    -- (R2 h3) drop: the building kinds a given-up level may lose besides its workshops
+    local drop
+    if a.drop ~= nil then
+        if type(a.drop) ~= 'table' then return reject('drop must be a list of building kinds') end
+        drop = {}
+        for i, k in ipairs(a.drop) do
+            if i > 12 then break end
+            if type(k) ~= 'string' or not k:match('^%a+$') then return reject('drop must be a list of building kinds') end
+            table.insert(drop, k)
+        end
+    end
     return reqscript('ai-builder').finish_project(id, a.decor_only == true, a.stalled == true,
-                                                 a.give_up == true)   -- (0.105.51)
+                                                 a.give_up == true, drop)   -- (0.105.51)
+end
+
+-- (R2 h3) a level waiting on the same pieces for weeks parked: no building slot held
+function act_park_project(a)
+    local id = project_id(a)
+    if not id then return reject('project_id must be a whole number') end
+    if a.sig ~= nil and type(a.sig) ~= 'string' then return reject('sig must be text') end
+    return reqscript('ai-builder').park_project(id, a.sig, a.dry_run == true)
 end
 
 -- The fort's culture, written by the overseer so the panel's Culture page can

@@ -917,8 +917,12 @@ def short(a: dict) -> str:
     if t == "start_project":
         what = a.get("name") and f"memorial for {a['name']}" or a.get("kind")
         return f"dig a new {what} level"
+    if t == "finish_project" and a.get("give_up") and a.get("drop"):       # (R2 h3)
+        return f"finish level #{a.get('project_id')} without its waiting {', '.join(str(x) for x in a['drop'])}"
     if t == "finish_project" and a.get("give_up"):       # (0.105.51)
         return f"finish level #{a.get('project_id')} without its waiting workshops"
+    if t == "park_project":                              # (R2 h3)
+        return f"let level #{a.get('project_id')} wait for its pieces without a building slot"
     if t in ("furnish_project", "finish_project", "engrave_project", "cancel_project"):
         return f"{t.split('_')[0]} level #{a.get('project_id')}"
     if t == "cancel_work_order":
