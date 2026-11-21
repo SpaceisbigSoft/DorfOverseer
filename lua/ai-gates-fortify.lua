@@ -92,8 +92,23 @@ end
 -- The tiles no gate wall may stand on (tests replace this): key -> what it is.
 -- Every hallway floor's hall (its hub and runs: ai-floorplan claims without
 -- the rooms) and every AI project's corridor (p.links, anchor-relative).
+-- (X1, S8) and every tile the thirst rule opened for a dwarf cut off from
+-- drink (ai-thirst open_way's record, ai-overseer/thirst-ways): the thirst
+-- rule only opens a way whose far end stays shut from the outside with the
+-- gates shut (its flood check), so the gate never needs a wall there, and a
+-- wall put back would cut the dwarf off again (the two would loop)
+THIRST_WAYS_KEY = 'ai-overseer/thirst-ways'
 function gate_keepout()
     local out = {}
+    pcall(function()
+        local d = reqscript('ai-util').site_get(THIRST_WAYS_KEY, {})
+        for _, t in ipairs(type(d) == 'table' and type(d.tiles) == 'table' and d.tiles or {}) do
+            if type(t) == 'table' and math.tointeger(t.x) and math.tointeger(t.y) and math.tointeger(t.z) then
+                out[key(t.x, t.y, t.z)] = out[key(t.x, t.y, t.z)]
+                    or ('the way opened for a thirsty dwarf (x%d y%d z%d)'):format(t.x, t.y, t.z)
+            end
+        end
+    end)
     pcall(function()
         local B = reqscript('ai-builder')
         local FP = reqscript('ai-floorplan')
