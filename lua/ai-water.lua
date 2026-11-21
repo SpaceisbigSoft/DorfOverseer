@@ -11,11 +11,14 @@
 --
 -- * `waters`: every body on the map, each one a connected run of map blocks
 --   holding the same kind of liquid, by kind:
---     river, brook       flowing surface water (flow = 'flowing')
+--     river, brook       flowing surface water (flow = 'flowing'): by the
+--                        tile's RIVER/BROOK material, tested before the
+--                        feature flag (r2h1: DF's river is a local feature)
 --     lake, pond, pool   still water (flow = 'stagnant'; `underground` when
 --                        under a roof outside the caverns: a dug or natural pool)
 --     sea                salt water under the sky
---     cavern             water in a cavern layer (`cavern`: which one)
+--     cavern             water in a cavern layer (`cavern`: which one): a
+--                        global feature's only (r2h1)
 --     aquifer            wall tiles that seep water
 --     magma              by `magma`: pipe (a magma pipe's column), volcano (a
 --                        pipe open to the sky), cavern (a pool in a cavern:
@@ -301,8 +304,16 @@ local function scan_block(job, bx, by, bz, want_ground, near)
                 else
                     local tt = block.tiletype[lx][ly]
                     local _, mat = tt_names(tt)
+                    -- (r2h1) the RIVER/BROOK material first: a DF river is a
+                    -- local feature (feature_init_outdoor_riverst), so testing
+                    -- the flag first filed every river as cavern water (A4 0.2:
+                    -- region4's river at z160, 1,528 tiles, kind 'cavern').
+                    -- Cavern water: a global feature's (a deep layer's) whose
+                    -- kind is a cavern or unknown; other local-feature water
+                    -- is a pool (under the sky: surface)
+                    local cav = d.feature_global and (gk == 'cavern' or gk == nil)
                     if near then
-                        local kind = feat and 'cavern' or RIVER_MATS[mat] and 'river'
+                        local kind = RIVER_MATS[mat] and 'river' or cav and 'cavern'
                             or d.outside and 'surface' or 'pool'
                         local b = bodies[kind]
                         b.tiles = b.tiles + 1
@@ -319,7 +330,7 @@ local function scan_block(job, bx, by, bz, want_ground, near)
                             b.nearest = {x = x, y = y, z = bz, d = dist, depth = fs}
                         end
                     end
-                    local cls = feat and 'c' or RIVER_MATS[mat] and 'f'
+                    local cls = RIVER_MATS[mat] and 'f' or cav and 'c'
                         or (d.outside and d.water_salt) and 's' or d.outside and 'l' or 'u'
                     if not frozen then add_cell(job, cls, bx, by, bz, x, y, d, mat) end
                 end
@@ -793,6 +804,15 @@ end
 -- level} while it goes on (the next call carries on), or the finished
 -- survey (kept in the save) when done.
 SLICE_SECONDS = 0.15
+-- (r2h1) the brain may ask a longer slice while the whole map is scanned
+-- (h1_water_slice_seconds): a 288x288x194 map needs ~90 slices of 0.15 s and
+-- a season gave A ~40 cycles (A4 B3); never more than this a call
+SLICE_MAX_SECONDS = 0.4
+function slice_seconds(seconds)
+    local s = tonumber(seconds)
+    if not s or s ~= s or s <= 0 then return SLICE_SECONDS end
+    return math.min(SLICE_MAX_SECONDS, s)
+end
 JOB = JOB or nil
 
 -- (0.105.33) the fort a sliced survey belongs to: a survey begun in one fort

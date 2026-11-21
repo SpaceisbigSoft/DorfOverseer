@@ -2660,7 +2660,8 @@ function act_survey_water(a)
     local W = reqscript('ai-water')
     local now = abs_tick()
     if not WATER_PLAN then
-        local r = W.scan_step(now)
+        -- (r2h1) the brain's slice length while scanning (capped in ai-water)
+        local r = W.scan_step(now, W.slice_seconds and W.slice_seconds(a.seconds) or nil)
         if not r.ok then return r end
         if not r.done then return {ok = true, done = false, scanning = true, left = r.left} end
         WATER_PLAN = {i = 1}
@@ -2671,11 +2672,22 @@ function act_survey_water(a)
     local i = WATER_PLAN.i
     -- (0.105.3) Hammerstirred (2 Nov): the brain's cistern_tunnel_max (the pool 53-66 tiles off)
     local tun = whole_number(a.tunnel)
-    local okp, plan, why = pcall(B.plan_cistern, i, i, {tunnel = tun and math.max(2, math.min(tun, map_width())) or nil})
+    -- (r2h1) after the busiest levels, one call for the next CISTERN_RIVER_LEVELS
+    -- fort levels when the survey found a river: its shaft way needs a cistern
+    -- 1-8 levels under it (region4's at z160, the dwarves' busiest higher up)
+    local nlev = B.CISTERN_LEVELS or 6
+    local last_i = i
+    if i > nlev then last_i = nlev + (B.CISTERN_RIVER_LEVELS or 10) end
+    local okp, plan, why = pcall(B.plan_cistern, i, last_i, {tunnel = tun and math.max(2, math.min(tun, map_width())) or nil})
     if okp and plan and (not WATER_PLAN.best or plan.score < WATER_PLAN.best.score) then WATER_PLAN.best = plan end
     if okp and not plan and why then WATER_PLAN.why = WATER_PLAN.why or why end
     if not okp then WATER_PLAN.why = tostring(plan):sub(1, 160) end
-    if i < (B.CISTERN_LEVELS or 6) then
+    local river_pass = false
+    if i == nlev and B.cistern_rivers then
+        local okr, rv = pcall(B.cistern_rivers)
+        river_pass = okr and rv ~= nil
+    end
+    if i < nlev or river_pass then
         WATER_PLAN.i = i + 1
         return {ok = true, done = false, planning = true, level = i}
     end
