@@ -30,7 +30,8 @@ How to set it up (pick one):
   An API key (e.g. from the monthly credits a Max plan includes):
     1. pip install anthropic
     2. Put ANTHROPIC_API_KEY=sk-ant-... in a file named .env in the project folder
-    3. Run this check again.
+    3. Set "strategist_backend": "api" in config.json (without it the key is never used)
+    4. Run this check again.
 """
 
 TEST_INSTRUCTIONS = ("You are testing a connection. Answer with exactly this JSON and nothing else: "

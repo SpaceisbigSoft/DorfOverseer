@@ -337,6 +337,7 @@ class Memory:
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}
     strategist_wants: list = field(default_factory=list)   # (0.104.89) report sections it asked to see in full next time
     token_ratio: float = 1.0                     # (0.104.89) a review's real cost against its estimate, learned
+    ai_backoff: dict = field(default_factory=dict)   # (r4 k2, B8) a failing backend: {fails, until, wait_days, rate_limited, error}
     maintain_pop: int | None = None                      # Maintain: the population being kept
     last_expel_tick: int | None = None                   # when a dwarf was last sent away
     last_join_tick: int | None = None                    # (0.104.108) when areas on a level were last looked at for joining

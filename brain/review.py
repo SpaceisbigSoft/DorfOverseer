@@ -136,6 +136,13 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         reason, important = "design", False
     else:
         return out
+    # (r4 k2, B8) after a failed call, nothing is asked until the back-off's day
+    # (an older save loaded: a wait longer than the cap from now is over)
+    bo = backoff_state(memory)
+    until = bo.get("until") if isinstance(bo.get("until"), (int, float)) else 0
+    most = max(1, int(PLANNER_CONFIG.get("r4k2_backoff_max_days", 28) or 1))
+    if bo.get("fails") and now < until <= now + most * TICKS_PER_DAY:
+        return out
 
     # (metal gear needs a named metal; the planner orders that itself)
     recipes = {r for r in (bridge_info.get("recipes") or []) if not str(r).startswith("metal_")}
@@ -250,26 +257,36 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     try:
         reply = backend.ask(instr, msg, important=important, effort=effort, **ask_kw)
     except Exception as e:  # noqa: BLE001 - any connection problem: log it, carry on with the planner
+        bo = note_failure(memory, now, e)
+        wait = (f" Not asked again for {bo['wait_days']} game day(s) (failure {bo['fails']} in a row"
+                + (", a rate or usage limit" if bo["rate_limited"] else "") + ").")
         if design_ask:
             _design_failed(memory, design_ask, now, f"the call failed ({type(e).__name__})")
         if reason == "design":
-            out.say.append(f"AI review ({reason}) failed: {type(e).__name__}: {str(e)[:200]}")
-            out.journal = {"kind": "review_failed", "reason": reason, "error": f"{type(e).__name__}: {e}"[:500]}
+            out.say.append(f"AI review ({reason}) failed: {type(e).__name__}: {str(e)[:200]}" + wait)
+            out.journal = {"kind": "review_failed", "reason": reason, "error": f"{type(e).__name__}: {e}"[:500],
+                           "backoff": dict(bo)}
             return out
         if not important:
             bank.last_routine_tick = now - routine_interval_ticks(plan) + TICKS_PER_DAY
         if season_due:
             season_mod.wait(memory, now)
-        out.say.append(f"AI review ({reason}) failed: {type(e).__name__}: {str(e)[:200]}")
-        out.journal = {"kind": "review_failed", "reason": reason, "error": f"{type(e).__name__}: {e}"[:500]}
+        out.say.append(f"AI review ({reason}) failed: {type(e).__name__}: {str(e)[:200]}" + wait)
+        out.journal = {"kind": "review_failed", "reason": reason, "error": f"{type(e).__name__}: {e}"[:500],
+                       "backoff": dict(bo)}
         return out
 
+    cleared = note_success(memory)
     used = reply.budget_tokens
     bank.spend(used, now, reason, today=today)
     learn_token_ratio(memory, used, raw_estimate)
-    answer = check_answer(reply.text, recipes, tools, my_orders, build,
-                          shown=shown_rules(proposals, memory.recent_actions),
-                          **({"design_ctx": dctx} if dctx else {}))
+    try:
+        answer = check_answer(reply.text, recipes, tools, my_orders, build,
+                              shown=shown_rules(proposals, memory.recent_actions),
+                              **({"design_ctx": dctx} if dctx else {}))
+    except Exception as e:  # noqa: BLE001  (r4 k2, B5) never: check_answer reads each part on its own
+        from strategist import Answer
+        answer = Answer(rejected=[f"the reply could not be checked ({type(e).__name__}): nothing used"])
     design_said = []
     if design_ask:
         # (D0) counted to the design share: the whole call, or its design part
@@ -348,11 +365,47 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
                    "steer": answer.steer, "want": answer.want,
                    "season": answer.season if season_due else None,
                    "rejected": answer.rejected, "bank_left": int(bank.balance)}
+    if cleared:
+        out.journal["backoff_cleared"] = cleared
+        out.say.append(f"  AI connection back after {cleared['fails']} failed call(s)")
     if design_ask:
         out.journal["design"] = {"ask": design_ask, "language": answer.design is not None,
                                  "blueprint": answer.blueprint is not None,
                                  "reasons": [planner_design.reason_text(x) for x in answer.blueprint_reasons]}
     return out
+
+
+def backoff_state(memory) -> dict:
+    """(r4 k2, B8) The back-off record ({} when the last call worked)."""
+    bo = getattr(memory, "ai_backoff", None)
+    return bo if isinstance(bo, dict) else {}
+
+
+def note_failure(memory, now: int, e: BaseException) -> dict:
+    """(r4 k2, B8) A failed call: counted, and the next try waits first_days,
+    doubling with each failure in a row up to max_days; a rate or usage limit
+    waits at least limit_days."""
+    from backends import is_rate_limit
+    cfg = PLANNER_CONFIG
+    first = max(1, int(cfg.get("r4k2_backoff_first_days", 2) or 1))
+    most = max(first, int(cfg.get("r4k2_backoff_max_days", 28) or first))
+    prev = backoff_state(memory)
+    fails = int(prev.get("fails") or 0) + 1 if isinstance(prev.get("fails"), int) else 1
+    limited = is_rate_limit(e)
+    wait = min(most, first * 2 ** min(fails - 1, 20))
+    if limited:
+        wait = max(wait, min(most, int(cfg.get("r4k2_backoff_limit_days", 7) or 0)))
+    bo = {"fails": fails, "wait_days": wait, "until": now + wait * TICKS_PER_DAY, "since": prev.get("since", now),
+          "rate_limited": limited, "error": f"{type(e).__name__}: {e}"[:200]}
+    memory.ai_backoff = bo
+    return bo
+
+
+def note_success(memory) -> dict | None:
+    """(r4 k2, B8) A call that worked ends the back-off; returns what it was."""
+    bo = backoff_state(memory)
+    memory.ai_backoff = {}
+    return {"fails": bo["fails"], "since": bo.get("since")} if bo.get("fails") else None
 
 
 def _landmark_project_ids(s: dict) -> set:

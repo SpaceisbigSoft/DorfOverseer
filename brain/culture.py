@@ -340,7 +340,7 @@ def check_style(obj) -> tuple[dict, list[str]]:
         elif k == "entry_doors" and isinstance(v, bool):
             out[k] = v
         else:
-            rejected.append(f"set_style: {k}={v!r} is not allowed")
+            rejected.append(f"set_style: {str(k)[:30]}={repr(v)[:60]} is not allowed")   # (r4 k2, B5) cut short
     return out, rejected
 
 
