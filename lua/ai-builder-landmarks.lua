@@ -1722,7 +1722,13 @@ function landmarks_report()
             -- (E1) the openings: 'open' when a step can be taken now
             if st == 'building' and type(l.open) == 'table' then
                 local ok, os_ = pcall(opening_stage, l, data)
-                if ok and os_ and os_ ~= 'dig' then stage = os_ end
+                if ok and os_ and os_ ~= 'dig' then stage = os_
+                elseif ok and os_ == nil then
+                    -- (r2 h8) no step to take now: it goes on through its levels'
+                    -- projects (the saved stage stayed 'open' after the openings
+                    -- were done, and the brain asked a step again and again)
+                    stage = 'levels'
+                end
             end
         end
         local why

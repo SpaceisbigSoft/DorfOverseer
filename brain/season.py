@@ -315,6 +315,27 @@ def first_needs(state: dict, memory, cfg: dict | None = None) -> dict | None:
     return None
 
 
+def training_weight(state: dict, cfg: dict | None = None) -> float:
+    """(r2 h8) How much the longing to train counts toward the season's
+    barracks, by Militarism: every fort's dwarves long to train (soldiers and
+    keen civilians alike: A6, 14-15 Nov, the choice was barracks in A 35 of
+    36 seasons, D 20, E 21, F 15, the Hermit hold and the Garden fort among
+    them). A peaceable fort's trainees get the training squad and the
+    barracks rule; the season's character goes to what the fort is.
+    h8_training_need_base at Militarism 0, h8_training_need_per_100 more a
+    +100, within h8_training_need_min..max."""
+    from planner import PLANNER_CONFIG
+    cfg = cfg or PLANNER_CONFIG
+
+    def num(k, d):
+        v = cfg.get(k, PLANNER_CONFIG.get(k, d))
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else d
+    m = _d(_d(state.get("settings")).get("traits")).get("militarism", 0)
+    m = float(m) if isinstance(m, (int, float)) and not isinstance(m, bool) else 0.0
+    w = num("h8_training_need_base", 0.25) + num("h8_training_need_per_100", 0.75) * m / 100
+    return max(num("h8_training_need_min", 0.1), min(num("h8_training_need_max", 1.5), w))
+
+
 def score_options(state: dict, memory, cfg: dict | None = None) -> dict:
     """Each menu option's score for this fort this season, with its reason."""
     from planner import PLANNER_CONFIG, level_refused
@@ -343,7 +364,8 @@ def score_options(state: dict, memory, cfg: dict | None = None) -> dict:
     for kind, needs in RAISE_NEEDS.items():
         sh = _share(s, needs, pop)
         if sh > 0:
-            add(f"raise:{kind}", sh * 0.6, f"{round(sh * 100)}% of the dwarves long for {NEED_WORDS[kind]}")
+            w = training_weight(s, cfg) if kind == "barracks" else 1.0
+            add(f"raise:{kind}", sh * 0.6 * w, f"{round(sh * 100)}% of the dwarves long for {NEED_WORDS[kind]}")
     have = {"tavern": loc.get("INN_TAVERN"), "library": loc.get("LIBRARY"), "temple": loc.get("TEMPLE")}
     for kind, n in have.items():
         if n:

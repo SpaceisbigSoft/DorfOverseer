@@ -1432,6 +1432,16 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r2 h8) landmarks kept through a slow dig, the season's training need by Militarism
+PLANNER_CONFIG.update({
+    "h8_landmark_dig_days": 336,          # a landmark's level with nothing dug is given up only after this (not unreached_dig_days)
+    "h8_training_need_base": 0.25,        # the season's barracks: the longing to train counts this much at Militarism 0...
+    "h8_training_need_per_100": 0.75,     # ...this much more a +100 Militarism (x1.0 at +100, x1.375 at the War-hold's +150)
+    "h8_training_need_min": 0.1,          # ...never under this (a Monastery or Garden fort's trainees)
+    "h8_training_need_max": 1.5,          # ...nor over this
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

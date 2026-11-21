@@ -33,7 +33,7 @@ SITE_MAX = 20           # the site's leanings on one trait, summed, at most this
 NOT_LEANED = ("militarism", "growth")
 
 PRECIOUS = ("GOLD", "SILVER", "PLATINUM", "ALUMINUM")
-WAR_WORDS = ("war",)
+WAR_WORDS = ("war", "totalwar")   # (r2 h8) DF says "TotalWar" (diplomacy_state_type)
 
 
 def own_leanings(seed: str) -> dict:

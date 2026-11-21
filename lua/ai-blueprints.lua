@@ -786,6 +786,25 @@ local function merge(keys, h, w, c0, r0)
     return cells
 end
 
+-- (r2 h8) A level's zone in more than one rectangle (a cross, a ring, a
+-- star): Quickfort makes each cell with an extent its own zone, "separate
+-- from adjacent cells, even if they have the same type" (internal/quickfort/
+-- building.lua), and each m{location=temple} its own temple: B's two god
+-- halls made 27 temples each, the great halls 34 dining halls. A label on
+-- the zone key (m/<label>{...}) makes Quickfort merge every cell of it into
+-- one zone (its global_label), so one temple.
+ZONE_LABEL = 'aizone'
+
+function one_zone(cells, level)
+    if #cells <= 1 then return cells end
+    local label = ZONE_LABEL .. tostring(math.tointeger(level) or 1)
+    for _, c in ipairs(cells) do
+        local key, rest = tostring(c.text):match('^(%a)(.*)$')
+        if key and rest:sub(1, 1) ~= '/' then c.text = key .. '/' .. label .. rest end
+    end
+    return cells
+end
+
 local function mark(set, x, y)
     set[x] = set[x] or {}
     set[x][y] = true
@@ -946,7 +965,7 @@ function to_layouts(bp, q)
         for _, cc in ipairs(L.dig) do table.insert(floors, cc) end
         L.dig = floors
         L.place = merge(pilekeys, h, w, c0, r0)
-        if zkind ~= 'tomb' then L.zone = merge(zonekeys, h, w, c0, r0) end
+        if zkind ~= 'tomb' then L.zone = one_zone(merge(zonekeys, h, w, c0, r0), i) end
         -- smoothing and engraving (rock)
         if not surface then
             local sm_floor, en_floor, walls = {}, {}, {}

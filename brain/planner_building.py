@@ -737,6 +737,22 @@ def _redig_rule(open_: list, proposals: list) -> None:
                               "designate them again", 3))
 
 
+def barracks_wanted(s: dict, traits: dict, memory) -> bool:
+    """A militant fort (Militarism 50+), one with soldiers, or (r2 h8) one
+    whose season's choice is barracks (R-F: 16 seasons of `raise:barracks`
+    in a fort under Militarism 50 with no soldiers, and no barracks ever
+    started: the choice could not act)."""
+    if (traits.get("militarism", 0) or 0) >= 50 or _d(s.get("military")).get("soldiers"):
+        return True
+    if memory is None:
+        return False
+    try:
+        import season
+        return season.raised(memory, abs_tick(s)) == "barracks"
+    except Exception:  # noqa: BLE001  (an odd memory: the old gate alone)
+        return False
+
+
 def room_size(traits: dict) -> int:
     """Fort size trait -> bedroom size: small 2x2, normal 3x3, large 4x4."""
     size = traits.get("size", 0)
@@ -927,10 +943,20 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         # (0.105.22) or nothing dug at all in unreached_dig_days: no dwarf gets
         # to it (B's tomb level, 11 times on one stair column, 336 days each,
         # while 41 ghosts rose); its spot is kept off-limits a while (`unreached`)
-        none_dug = (int(dig.get("dug") or 0) == 0 and age >= cfg["unreached_dig_days"]
+        # (r2 h8) a landmark's level is not given up at the 56-day mark: its
+        # lower levels are reached only down its own stair once the level
+        # above is dug, and its levels are designated together (D's Long
+        # Descent: levels 43-46 cancelled at 59-67 days, 0 dug, then the whole
+        # landmark started again elsewhere, three times; A's chronicle hall
+        # twice). It waits h8_landmark_dig_days before it counts as unreached.
+        unreached_days, slow_days = cfg["unreached_dig_days"], cfg["slow_dig_days"]
+        if p.get("kind") == "landmark":
+            lm_days = int(cfg.get("h8_landmark_dig_days", 336))
+            unreached_days, slow_days = max(unreached_days, lm_days), max(slow_days, lm_days)
+        none_dug = (int(dig.get("dug") or 0) == 0 and age >= unreached_days
                     and int(dig.get("total") or 0) > 0)
         if (p.get("phase") == "dig" and int(dig.get("total") or 0) > 0
-                and ((age >= cfg["slow_dig_days"] and int(dig.get("dug") or 0) * 2 < int(dig.get("total") or 0))
+                and ((age >= slow_days and int(dig.get("dug") or 0) * 2 < int(dig.get("total") or 0))
                      or none_dug)):
             # (0.105.26) `unreached` (its spot kept off-limits) only where nothing
             # was dug at all: a slow dig was reached, and a cavern well given up
@@ -1440,7 +1466,7 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
             reason = f"no library for {citizens} dwarves (scholars and curious dwarves need one): build one"
             cands.append((action, reason))
             action, reason = None, ""
-        if (allow["barracks"] and (traits.get("militarism", 0) >= 50 or _d(s.get("military")).get("soldiers"))
+        if (allow["barracks"] and barracks_wanted(s, traits, memory)
               and not zones.get("Barracks")
               and "barracks" not in kinds_open):
             beds = max(4, min(20, math.ceil(citizens / 10 * factor(traits, "militarism") / 2)))

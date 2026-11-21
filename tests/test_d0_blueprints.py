@@ -522,7 +522,7 @@ def _():
     levels = lua_list(out.levels)
     assert not cells(levels[0].zone)
     z = cells(levels[3].zone)
-    assert z and all(t.startswith("m{location=temple}") for _, _, t in z), z
+    assert z and all(re.sub(r"^(\w)/aizone\d+", r"\1", t).startswith("m{location=temple}") for _, _, t in z), z
     covered = set()
     for x, y, t in z:
         m = re.search(r"\((\d+)x(\d+)\)$", t)
@@ -533,9 +533,10 @@ def _():
     assert sorted(t for _, _, t in cells(tomb.zone)) == ["T{citizens=true}"] * 6
     assert {(x, y) for x, y, _ in cells(tomb.zone)} == {(x, y) for x, y, t in cells(tomb.build) if t == "n"}
     meet = lua_list(BP.to_layouts(to_lua(GOOD["good_meeting"]), 0).levels)[0]
-    assert all(t.startswith('m{name="The Long Table"}') for _, _, t in cells(meet.zone))
+    # (r2 h8) a zone in several rectangles carries one Quickfort label (m/aizone1{...}): one zone
+    assert all(re.sub(r"^(\w)/aizone\d+", r"\1", t).startswith('m{name="The Long Table"}') for _, _, t in cells(meet.zone))
     lib = lua_list(BP.to_layouts(to_lua(GOOD["good_library"]), 0).levels)[0]
-    assert all(t.startswith("m{location=library}") for _, _, t in cells(lib.zone))
+    assert all(re.sub(r"^(\w)/aizone\d+", r"\1", t).startswith("m{location=library}") for _, _, t in cells(lib.zone))
     assert {t for _, _, t in cells(lib.build)} == {"~c", "t", "c"}
 
 
