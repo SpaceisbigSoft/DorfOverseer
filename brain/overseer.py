@@ -2522,6 +2522,25 @@ def main() -> int:
             lock.close()
 
 
+def fallen_probe(bridge):
+    """(x3, V7) For fallen.idle while a mark stands: the loaded fort's raw
+    pulse report (before normalize: a failed section is not read as 0) and
+    its key, or None when it can't be read. Asked only while a mark stands."""
+    def read():
+        try:
+            try:
+                rep = bridge.state(include_units=False, tier="pulse")
+            except TypeError:
+                rep = bridge.state(include_units=False)     # an older bridge (or a fake one)
+        except (BridgeError, DFHackError):
+            return None
+        if not isinstance(rep, dict):
+            return None
+        key = fort_key(rep)
+        return (rep, key) if key else None
+    return read
+
+
 def _leave_open(bridge) -> None:
     """(0.105.47, J16) The AI stopping: the fort left open if no enemy is in
     reach (brain/planner_way_out.py leave_open). Never raises."""
@@ -2617,8 +2636,11 @@ def _run(args) -> int:
             if st.get("in_fort") and os.environ.get("DFAI_PIN") and not PIN_SEEN.get("checked"):
                 check_pin(bridge)
             held_pin = pin_hold()
-            # (r1g9) a fallen fort is left alone: not unpaused, no popups taken off
-            fallen_idle = bool(args.autopilot and fallen.idle())
+            # (r1g9) a fallen fort is left alone: not unpaused, no popups taken off.
+            # (x3, V7) only the fort and date the mark names: another fort, an
+            # earlier save or citizens back (DF loads every save paused, and no
+            # cycle runs while paused) end it here, and the loop runs as usual
+            fallen_idle = bool(args.autopilot and fallen.idle(st, fallen_probe(bridge), say, journal))
             # (0.105.47, J16) the fort this overseer may leave open as it stops:
             # its own (the pin), in the fort. (0.105.48, K3) halted too: the
             # leave passes the halt (it only opens, lowers and lets out)

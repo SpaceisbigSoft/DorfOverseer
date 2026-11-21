@@ -253,7 +253,7 @@ def _():
 def _():
     src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
     loop = src[src.index("def main() -> int:"):]
-    assert "fallen_idle = bool(args.autopilot and fallen.idle())" in loop
+    assert "fallen_idle = bool(args.autopilot and fallen.idle(st, fallen_probe(bridge), say, journal))" in loop   # (x3, V7) the loaded fort checked
     stall = loop.index("elif stalled and fallen_idle:")
     assert stall < loop.index('r = bridge.act({"type": "unpause", "unstick": True})'), "the unstick comes first"
     unp = loop[:loop.index('r = bridge.act({"type": "unpause"})')]

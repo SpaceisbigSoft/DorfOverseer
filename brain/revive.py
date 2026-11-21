@@ -496,6 +496,12 @@ class Reviver:
         try:
             import fallen
             m = fallen.idle()
+            # (x3, V7) a mark left by another fort than the pinned one holds nothing:
+            # the pinned fort is started and loaded as usual (the overseer's loop
+            # then takes that mark off, seeing another fort loaded)
+            import pin
+            if m and not fallen.holds_for(m, pin.current()):
+                m = None
         except Exception:  # noqa: BLE001
             m = None
         if m:
