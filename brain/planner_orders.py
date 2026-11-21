@@ -200,16 +200,20 @@ def _stuck_orders_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
         # are never cancelled as stuck (nor booked, so never banned): the
         # order waits for the stills and kitchens (E: 9 brew cancels, bans of
         # 28-112 days, drink 1,458 -> 183 while dwarves died of thirst)
-        if supply_order_kept(s, what, cfg):
-            continue
+        # (x4, S7) but their stalled extra copies still go: one order of each
+        # recipe (and material) stays standing, the trim books no stuck hold
+        kept = supply_order_kept(s, what, cfg)
         lst.sort()
         if len(lst) > 1:
             for since, k, w in lst[:-1]:
                 days = stuck_days(w, now)    # (r1g8) the alarm's days don't count
                 if days >= cfg["order_stuck_days"]:
                     out.append((0, k, what, f"{len(lst)} of the AI's {what} orders and this one hasn't moved in "
-                                            f"{days} days: cancel it (one is kept)", False))
+                                            f"{days} days: cancel it (one is kept"
+                                            + (f"; {kept}: the one that moved last stands" if kept else "") + ")", False))
             lst = lst[-1:]
+        if kept:
+            continue
         since, k, w = lst[0]
         days = stuck_days(w, now)
         # (0.105.22) the last slab or coffin for the waiting dead stays (B: 19

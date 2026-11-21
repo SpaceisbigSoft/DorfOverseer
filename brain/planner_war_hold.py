@@ -51,10 +51,10 @@ from __future__ import annotations
 import dataclasses
 
 from digest import _d, _l
-from planner_core import TICKS_PER_DAY, GEAR_METALS, Proposal, abs_tick, reachable_threats, _traits
+from planner_core import TICKS_PER_DAY, GEAR_METALS, GEAR_WEAPONS, Proposal, abs_tick, reachable_threats, _traits
 
 __all__ = ["UNFOUGHT_WHY", "lone_hunted", "unfought", "unfought_raise_held", "book_unfought", "army_danger",
-           "war_hold_filter", "arm_first", "armed_count", "swap_armed_short", "recall_hold", "note_war_hold"]
+           "war_hold_filter", "arm_first", "arm_check", "armed_count", "great_among_civilians", "fight_bar_unfought", "swap_armed_short", "recall_hold", "note_war_hold"]
 
 UNFOUGHT_WHY = "no squad has gone at"
 
@@ -153,6 +153,102 @@ def _ratio(s: dict, memory, rows: list, squads: list) -> float:
     return float(judge(rows, squads, lambda t: float(ff.get(fight_key(t)) or 1.0))["ratio"])
 
 
+def _inside_near(s: dict, cfg: dict, t: dict) -> bool:
+    """(x4) This enemy is inside the fort (the walked area: DF's intruders
+    inside, or the row's own `inside`) and within `r1x4_inside_near_tiles`
+    of a dwarf: among the civilians."""
+    inside = {x for x in _l(_d(s.get("entrances")).get("intruders_inside")) if _int(x)}
+    if not (t.get("id") in inside or t.get("inside") is True):
+        return False
+    d = t.get("distance_to_nearest_dwarf")
+    near = float(_c(cfg, "r1x4_inside_near_tiles", 30))
+    # no distance read: inside is taken as near (the safe side for the civilians)
+    return not isinstance(d, (int, float)) or isinstance(d, bool) or d <= near
+
+
+def great_among_civilians(s: dict, cfg: dict, rows: list) -> str:
+    """(x4) The name of a great danger (titan, forgotten beast, megabeast...)
+    among these rows that is inside the fort near a dwarf ("" if none): the
+    long alarm is never lifted for it (S3: the 60-day lift sent the civilians
+    back to work beside a titan)."""
+    from planner_core import GREAT_LIKE_KINDS
+    for t in rows:
+        if not isinstance(t, dict):
+            continue
+        kinds = set(t.get("kinds") if isinstance(t.get("kinds"), list) else [])
+        great = t.get("great_danger") is True or bool(kinds & (GREAT_LIKE_KINDS - {"Undead", "NightCreature"}))
+        if great and _inside_near(s, cfg, t):
+            return str(t.get("name") or "a great danger").split(",")[0][:40]
+    return ""
+
+
+def fight_bar_unfought(s: dict, cfg: dict, rows: list) -> tuple[float, str]:
+    """(x4) The all-out attack's bar: the matchup's own sortie bar
+    (planner_matchup.fight_bar: about even odds, a clear win for a fire
+    breather or powers the AI can't read), at least
+    `r1g5_unfought_fight_ratio`; times `r1x4_unfought_inside_factor` when
+    every one of them is inside the fort near a dwarf: there they kill
+    civilians whatever the squads do, and a fight begun below even odds ends
+    at its first losses (`r1x4_poor_odds_losses`), so the lower bar costs a
+    few soldiers at most, not the army."""
+    from planner_matchup import fight_bar
+    bar = max(float(fight_bar(rows, cfg)["bar"]), float(_c(cfg, "r1g5_unfought_fight_ratio", 1.0)))
+    if rows and all(_inside_near(s, cfg, t) for t in rows):
+        f = float(_c(cfg, "r1x4_unfought_inside_factor", 0.5))
+        return bar * f, f"{bar * f:g}x at least: inside among the civilians"
+    return bar, f"{bar:g}x at least"
+
+
+def _poor_odds(cfg: dict, ratio) -> bool:
+    """(x4) A fight begun below about even odds (`fight_even_ratio`)."""
+    return isinstance(ratio, (int, float)) and not isinstance(ratio, bool) and \
+        ratio < float(_c(cfg, "fight_even_ratio", 1.0))
+
+
+def _keep(out: dict, s: dict, memory, cfg: dict, great: str, names: str, days: int, was: str) -> dict:
+    """(x4) The long alarm kept instead of lifted: a great danger inside near
+    the civilians. The shelter keeps them (g4's planner_shelter picks it away
+    from the danger; planner_society._shelter_supply_rule refills it with the
+    drink and food inside the fort); what it holds is said."""
+    held = shelter_holds(s, memory, cfg)
+    out.update(mode="keep", why=(f"{was}, but {great} is inside the fort near the dwarves: the alarm stays up after "
+                                 f"{days} days (lifted, the civilians would go back to work beside it); the shelter "
+                                 f"keeps them, away from it: {held}"))
+    return out
+
+
+def shelter_holds(s: dict, memory, cfg: dict) -> str:
+    """(x4) What the civilians' shelter holds, in words: g4's levels and
+    their drink and food (planner_shelter.shelter_supplies, _shortfalls),
+    else the last fill's record (memory.shelter_supply, refilled each day
+    while short by planner_society._shelter_supply_rule)."""
+    try:
+        from planner_shelter import plan_ready, shelter_levels_now, shelter_supplies, _needs, _shortfalls
+        plan = plan_ready(s)
+        levels = shelter_levels_now(s)
+        sup = shelter_supplies(plan, levels) if plan and levels else None
+        if isinstance(sup, dict):
+            civs = int(_d(s.get("dwarves")).get("total") or 0)
+            short = _shortfalls(int(sup.get("tiles") or 0), int(sup.get("drink") or 0), int(sup.get("wells") or 0),
+                                int(sup.get("food") or 0), _needs(civs, cfg))
+            where = "levels " + ", ".join(str(z) for z in levels)
+            if short:
+                return (f"{where} short of {'; '.join(str(x) for x in short)[:80]}: it is made again each day to "
+                        "take in drink and food (the shelter rules), and moved where they are")
+            return f"{where}, with drink and food for them"
+    except Exception:  # noqa: BLE001
+        pass
+    rec = _d(getattr(memory, "shelter_supply", None)) if memory is not None else {}
+    short = [str(rec[k]) for k in ("no_water", "drink_short", "no_food") if rec.get(k)]
+    if rec.get("dry") and not short:
+        short = ["no drink in it"]
+    if short:
+        return f"{'; '.join(short)[:80]} at its last fill: it is made again each day to take in drink and food"
+    if rec:
+        return "drink and food in it at its last fill (made again while the alarm stands)"
+    return "it is filled with the drink and food inside the fort while the alarm stands"
+
+
 def unfought(s: dict, memory, cfg: dict, ids: list) -> dict:
     """{mode, why, ids, ratio}: what the AI's long alarm for these enemies (in
     reach) does now. mode "" (nothing: too young, someone fights them, not
@@ -169,6 +265,7 @@ def unfought(s: dict, memory, cfg: dict, ids: list) -> dict:
     if not listed:
         return out
     rows = [rows_by[i] for i in listed]
+    great = great_among_civilians(s, cfg, rows)          # (x4) never lifted for one of these
     age = now - on
     limit = int(float(_c(cfg, "r1g5_unfought_alarm_days", 30)) * TICKS_PER_DAY)
     hard = int(float(_c(cfg, "r1g5_alarm_hard_days", 60)) * TICKS_PER_DAY)
@@ -185,14 +282,22 @@ def unfought(s: dict, memory, cfg: dict, ids: list) -> dict:
         went = int(rec.get("soldiers") or 0)
         now_n = int(_d(s.get("military")).get("soldiers") or 0)
         lost = went and (went - now_n) * 3 >= went
+        # (x4) begun below even odds: its first real losses end it (was: a third of the army)
+        poor = _poor_odds(cfg, rec.get("ratio")) and went and \
+            went - now_n >= int(_c(cfg, "r1x4_poor_odds_losses", 1))
         turned = losses_turned(out_on, kill_start(memory), cfg) if out_on else ""
-        if lost or turned:
-            out.update(mode="lift", why=(f"{UNFOUGHT_WHY} {names} and won: the all-out fight turned bad ("
-                                         + (turned or f"{went - now_n} of {went} soldiers lost")
-                                         + f"); after {days} days the alarm comes down: the gates keep shutting on "
+        if lost or turned or poor:
+            bad = (turned or f"{went - now_n} of {went} soldiers lost"
+                   + (f", at {float(rec.get('ratio')):.2f}x" if poor and not lost else ""))
+            if great:
+                return _keep(out, s, memory, cfg, great, names, days, f"the all-out fight on {names} turned bad ({bad})")
+            out.update(mode="lift", why=(f"{UNFOUGHT_WHY} {names} and won: the all-out fight turned bad ({bad}"
+                                         f"); after {days} days the alarm comes down: the gates keep shutting on "
                                          "them, work resumes away from them (a new enemy sounds it again)"))
             return out
         if age >= hard and not out_on:
+            if great:
+                return _keep(out, s, memory, cfg, great, names, days, "the all-out attack has ended")
             out.update(mode="lift", why=(f"{UNFOUGHT_WHY} {names} for {days} days since the all-out attack "
                                          "ended: the alarm comes down (the gates keep shutting on them, work "
                                          "resumes away from them)"))
@@ -200,6 +305,9 @@ def unfought(s: dict, memory, cfg: dict, ids: list) -> dict:
         out.update(mode="fight", why=f"the all-out attack on {names} goes on")
         return out
     if age >= hard:
+        if great:
+            return _keep(out, s, memory, cfg, great, names, days,
+                         f"the alarm has stood {days} days for {names} ({_c(cfg, 'r1g5_alarm_hard_days', 60)} at most)")
         out.update(mode="lift", why=(f"the alarm has stood {days} days for {names} "
                                      f"({_c(cfg, 'r1g5_alarm_hard_days', 60)} at most): it comes down (the "
                                      "gates keep shutting on them, work resumes away from them)"))
@@ -211,17 +319,24 @@ def unfought(s: dict, memory, cfg: dict, ids: list) -> dict:
     mil = [] if never else _militia(s)
     ratio = _ratio(s, memory, rows, mil)
     out["ratio"] = ratio
-    bar = float(_c(cfg, "r1g5_unfought_fight_ratio", 0.25))
+    bar, bar_why = fight_bar_unfought(s, cfg, rows)
     if never:
+        if great:
+            return _keep(out, s, memory, cfg, great, names, days,
+                         f"{UNFOUGHT_WHY} {names} in {days} days of alarm (Rules tab: never send squads)")
         out.update(mode="lift", why=(f"{UNFOUGHT_WHY} {names} in {days} days of alarm (Rules tab: never send "
                                      "squads): the alarm comes down so work resumes; the gates keep shutting on "
                                      "them, and it sounds again for a new enemy"))
     elif mil and ratio >= bar:
         out.update(mode="fight", why=(f"{UNFOUGHT_WHY} {names} in {days} days of alarm: every squad with anyone "
-                                      f"armed goes (the call for the armed; {ratio:.2f}x, {bar:g}x at least)"))
+                                      f"armed goes (the call for the armed; {ratio:.2f}x, {bar_why})"))
+    elif great:
+        return _keep(out, s, memory, cfg, great, names, days,
+                     f"{UNFOUGHT_WHY} {names} in {days} days of alarm and the squads can't beat it "
+                     f"({ratio:.2f}x with every armed squad, {bar_why})")
     else:
-        out.update(mode="lift", why=(f"{UNFOUGHT_WHY} {names} in {days} days of alarm and a fight is hopeless "
-                                     f"({ratio:.2f}x with every armed squad, {bar:g}x at least): the alarm comes "
+        out.update(mode="lift", why=(f"{UNFOUGHT_WHY} {names} in {days} days of alarm and the squads can't beat "
+                                     f"them ({ratio:.2f}x with every armed squad, {bar_why}): the alarm comes "
                                      "down so work resumes; the gates keep shutting on them, and it sounds "
                                      "again for a new enemy"))
     return out
@@ -236,7 +351,8 @@ def book_unfought(s: dict, memory, uf: dict) -> None:
     rec = dict(_rec(memory))
     on, now = _alarm_on_tick(memory), abs_tick(s)
     if uf["mode"] == "fight" and not (rec.get("on") == on and _int(rec.get("fought"))):
-        rec.update(on=on, fought=now, soldiers=int(_d(s.get("military")).get("soldiers") or 0))
+        rec.update(on=on, fought=now, soldiers=int(_d(s.get("military")).get("soldiers") or 0),
+                   ratio=round(float(uf.get("ratio") or 0.0), 3))       # (x4) poor odds: first losses end it
     elif uf["mode"] == "lift":
         rec["lifted"] = now
         rec["lifted_ids"] = sorted({i for i in list(_l(rec.get("lifted_ids"))) + list(uf.get("ids") or [])
@@ -283,7 +399,7 @@ def note_war_hold(s: dict, memory, cfg: dict) -> None:
         rec.pop("lifted", None)
     on = _alarm_on_tick(memory)
     if rec.get("on") is not None and rec.get("on") != on:
-        for k in ("on", "fought", "soldiers"):
+        for k in ("on", "fought", "soldiers", "ratio"):
             rec.pop(k, None)
     _set_rec(memory, rec)
 
@@ -362,19 +478,11 @@ def _weapon_bars(s: dict) -> tuple[str, int]:
     return best
 
 
-def arm_first(s: dict, cfg: dict, rules_: dict, memory=None) -> str:
-    """Why no more soldiers are drafted now ("" if they may be): more than
+def _arm_base(s: dict, cfg: dict, rules_: dict) -> str:
+    """The arming hold's own test (r1g5), without its limits: more than
     `r1g5_arm_first_unarmed` (and a quarter) of the soldiers on duty are
-    unarmed, and the fort has a forge and the weapon-grade bars to arm them:
-    the gear rule makes (or hands out) their weapons first. Held
-    `r1g5_arm_first_max_days` at most (memory: since when, note_war_hold):
-    gear DF never hands out must not stop the squads growing for good."""
+    unarmed, and the fort has a forge and the weapon-grade bars to arm them."""
     if not rules_.get("make_gear", True):
-        return ""
-    since = _d(_d(getattr(memory, "atlas", None)).get("arm_first")).get("since") if memory is not None else None
-    now = abs_tick(s)
-    if (_int(since) and _int(now)
-            and now - since >= float(_c(cfg, "r1g5_arm_first_max_days", 56)) * TICKS_PER_DAY):
         return ""
     g = _d(_d(s.get("military")).get("gear"))
     if "error" in g or not g.get("forges"):
@@ -394,9 +502,113 @@ def arm_first(s: dict, cfg: dict, rules_: dict, memory=None) -> str:
             "first (their weapons made or handed out) before more soldiers are drafted")
 
 
+def _war_now(s: dict, memory, cfg: dict) -> str:
+    """(x4) Why the fort needs numbers now ("" if not): an enemy can reach the
+    dwarves or is inside, a great danger is on the map, or a siege
+    (planner_holdfast's record). Unarmed soldiers still wrestle."""
+    try:
+        if reachable_threats(s, _traits(s), cfg):
+            return "enemies can reach the dwarves"
+    except Exception:  # noqa: BLE001
+        pass
+    if [x for x in _l(_d(s.get("entrances")).get("intruders_inside")) if _int(x)]:
+        return "an enemy is inside the fort"
+    try:
+        from planner_core import great_present
+        if great_present(s):
+            return "a great danger is on the map"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from planner_matchup import siege_days
+        if siege_days(s, memory) > 0:
+            return "the fort is under siege"
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+WEAPON_RECIPES = frozenset(GEAR_WEAPONS.values())
+
+
+def _cannot_make(s: dict, memory, cfg: dict, since) -> str:
+    """(x4, V3) Why the weapons the hold waits for won't be made soon ("" if
+    they can): no built forge (a forge stands only on its anvil), no charcoal
+    or coke and no magma forge, no citizen who may forge weapons (the
+    labour), or the AI's weapon orders stand still (a suspended job, nobody
+    with the labour, `r1x4_arm_stall_days` unmoved), or the hold has waited
+    `r1x4_arm_no_order_days` with no weapon order and none spare to hand out."""
+    b = _d(s.get("buildings"))
+    shops = {**_d(b.get("workshops")), **_d(b.get("furnaces"))} if b.get("workshops") is not None else None
+    magma = int((shops or {}).get("MagmaForge") or 0)
+    if shops is not None and int(shops.get("MetalsmithsForge") or 0) + magma <= 0:
+        return "no forge is built (each stands on an anvil)"
+    fuel = _d(s.get("supplies")).get("fuel")
+    if magma <= 0 and _int(fuel) and fuel <= 0:
+        return "no charcoal or coke for the forge, and no magma forge"
+    holders = _d(_d(s.get("order_desk")).get("labor_holders")).get("FORGE_WEAPON")
+    if _int(holders) and holders <= 0:
+        return "no citizen may forge weapons (nobody has the weaponsmith's labour)"
+    now = abs_tick(s)
+    rows = [o for o in _l(s.get("orders")) if isinstance(o, dict) and o.get("by_ai")
+            and str(o.get("recipe")) in WEAPON_RECIPES and int(o.get("amount_left") or 0) > 0]
+    watch = _d(getattr(memory, "order_watch", None)) if memory is not None else {}
+    stall = float(_c(cfg, "r1x4_arm_stall_days", 4)) * TICKS_PER_DAY
+    stalled = []
+    for o in rows:
+        j = _d(o.get("jobs"))
+        if int(j.get("working") or 0) > 0:
+            continue
+        w = _d(watch.get(str(o.get("id"))))
+        from planner_core import watch_since
+        still = (_int(now) and _int(w.get("since")) and now - watch_since(w) >= stall)
+        if int(j.get("suspended") or 0) > 0 or (_int(j.get("holders")) and j["holders"] <= 0) or still:
+            stalled.append(o)
+    if rows and len(stalled) == len(rows):
+        return f"the AI's {len(rows)} weapon order(s) stand still (no weapon made for days)"
+    g = _d(_d(s.get("military")).get("gear"))
+    spare = int(_d(g.get("spare")).get("weapons") or 0) + int(g.get("weapon_gaps_fillable") or 0)
+    if (not rows and not spare and _int(since) and _int(now)
+            and now - since >= float(_c(cfg, "r1x4_arm_no_order_days", 4)) * TICKS_PER_DAY):
+        return "no weapon order of the AI's has gone in and none is spare to hand out"
+    return ""
+
+
+def arm_check(s: dict, cfg: dict, rules_: dict, memory=None) -> tuple[str, str]:
+    """(held, lifted): why no more soldiers are drafted now, or why the
+    arming hold that would stand is lifted (each "" if not). The hold
+    (r1g5): weapons first, `r1g5_arm_first_max_days` at most (memory: since
+    when, note_war_hold). (x4, V3) Only while those weapons can be made soon
+    (_cannot_make), and never while the fort needs numbers (_war_now)."""
+    base = _arm_base(s, cfg, rules_)
+    if not base:
+        return "", ""
+    since = _d(_d(getattr(memory, "atlas", None)).get("arm_first")).get("since") if memory is not None else None
+    now = abs_tick(s)
+    if (_int(since) and _int(now)
+            and now - since >= float(_c(cfg, "r1g5_arm_first_max_days", 56)) * TICKS_PER_DAY):
+        return "", f"the soldiers have waited {(now - since) // TICKS_PER_DAY} days for weapons"
+    war = _war_now(s, memory, cfg)
+    if war:
+        return "", f"{war}: the fort needs numbers (unarmed soldiers still wrestle)"
+    cant = _cannot_make(s, memory, cfg, since)
+    if cant:
+        return "", f"the weapons can't be made soon: {cant}"
+    return base, ""
+
+
+def arm_first(s: dict, cfg: dict, rules_: dict, memory=None) -> str:
+    """Why no more soldiers are drafted now ("" if they may be): arm_check's hold."""
+    try:
+        return arm_check(s, cfg, rules_, memory)[0]
+    except Exception:  # noqa: BLE001   (never stops the drafting)
+        return ""
+
+
 def _rule_arm_first(s: dict, cfg: dict, rules_: dict) -> bool:
-    """arm_first's test without its time limit."""
-    return bool(arm_first(s, cfg, rules_, None))
+    """arm_first's own test without its limits (the clock since when runs on
+    through a siege or a stall, so the 56 days are never begun again)."""
+    return bool(_arm_base(s, cfg, rules_))
 
 
 def swap_armed_short(s: dict, cfg: dict) -> bool:
@@ -439,6 +651,12 @@ def recall_hold(s: dict, memory, cfg: dict, q: dict, rows: list, ratio: float | 
         both = list({t.get("id", id(t)): t for t in list(rows) + reach}.values())
         ratio = _ratio(s, memory, both, [x for x in _squads(s) if _on_them(x) and _kill(x) & _kill(q)] or [q])
     if ratio < float(_c(cfg, "r1g5_recall_hopeless_ratio", 0.25)):
+        return ""
+    # (x4) at poor odds (below about even) the first real losses end the hold
+    # (was: a third of the soldiers lost, the whole army spent on a titan)
+    n0 = kill_start(memory).get(str(q.get("id")))
+    if (_poor_odds(cfg, ratio) and _int(n0)
+            and n0 - int(q.get("members") or 0) >= int(_c(cfg, "r1x4_poor_odds_losses", 1))):
         return ""
     return (f"sent {(now - since) // 50} game hour(s) ago and not losing ({ratio:.1f}x): held "
             f"{hold // 50} hours before the odds alone call it back")

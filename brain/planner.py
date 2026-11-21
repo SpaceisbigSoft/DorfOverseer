@@ -292,6 +292,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             snatch = snatch_alarm(s, memory, cfg) if not ids else {}
             if uf.get("mode") == "fight":
                 notes.append(f"the alarm stays up: {uf['why']}")
+            elif uf.get("mode") == "keep":
+                notes.append(uf["why"])          # (x4) a great danger inside near the civilians: never lifted
             if capped and not hazard_alert(s, cfg):
                 proposals.append(Proposal("threat_alert", {"type": "civ_alert", "on": False}, capped, 0))
             elif held:

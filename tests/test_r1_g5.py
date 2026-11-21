@@ -144,15 +144,23 @@ def e_fort(days, squads=None, **kw):
 
 
 @test("E y256-259: the fire-spitting titan inside, no squad sent, the alarm up 31 days, a fight hopeless: the "
-      "alarm comes down (was: up 812 days) and is not raised again for it")
+      "alarm comes down (was: up 812 days) and is not raised again for it; (x4) not while it is near the dwarves")
 def _():
     s, m = e_fort(20)
     assert not offs(plan(s, m)[0])                       # 20 days: not yet
+    # (x4, S3) beside the civilians (E: "0 steps from the shelter"): the alarm stays, the shelter keeps them
     s, m = e_fort(31)
     note_cycle(s, m)
     p, notes = plan(s, m)
+    assert not offs(p), [x.reason for x in offs(p)]
+    assert any("near the dwarves: the alarm stays up" in n and "shelter" in n for n in notes), \
+        [n for n in notes if "alarm" in n][:4]
+    # inside but far from every dwarf: lifted
+    s, m = e_fort(31, distance_to_nearest_dwarf=80)
+    note_cycle(s, m)
+    p, notes = plan(s, m)
     o = offs(p)
-    assert o and o[0].reason.startswith(wh.UNFOUGHT_WHY) and "hopeless" in o[0].reason, \
+    assert o and o[0].reason.startswith(wh.UNFOUGHT_WHY) and "can't beat" in o[0].reason, \
         [x.reason for x in p if x.rule == "threat_alert"]
     assert not by(p, "squad_attack")                     # no melee squad at a fire breather
     # lowered: the same titan does not raise it again; a new enemy does
@@ -170,11 +178,12 @@ def _():
     assert [x for x in plan(more, m)[0] if x.action == ON]
 
 
-@test("long alarm: a web-spinning beast no melee squad may face, crossbows at 0.4x (short of even odds): after "
-      "30 days every squad with anyone armed that may go at it goes (the all-out attack); the alarm stays")
+@test("long alarm: a web-spinning beast no melee squad may face, crossbows at 0.6x (short of even odds, but it "
+      "is inside among the dwarves: x4's bar 0.5x there): after 30 days every squad with anyone armed that may "
+      "go at it goes (the all-out attack); the alarm stays")
 def _():
-    xb = sq(2, 6, 6, 20.0, ai_uniform="metal crossbow")
-    xb["power"] = {"power": 20.0, "armed": 6, "melee_power": 0, "ranged_power": 20.0}
+    xb = sq(2, 6, 6, 30.0, ai_uniform="metal crossbow")
+    xb["power"] = {"power": 30.0, "armed": 6, "melee_power": 0, "ranged_power": 30.0}
     melee = sq(1, 6, 6, 20.0)
     s, m = e_fort(31, [melee, xb], fire_breather=False, webs=True, name="Webspinner, Forgotten Beast",
                   kinds=["ForgottenBeast"], size=900000)
@@ -184,21 +193,31 @@ def _():
     a = by(p, "squad_attack")
     assert [x.action["squad_id"] for x in a if 20001 in x.action.get("kill", [])] == [2], [x.action for x in a]
     assert not offs(p)
-    # the fight turned bad (a third of the soldiers lost): the alarm comes down
+    # the fight turned bad (a third of the soldiers lost): the all-out attack ends; (x4) the alarm stays
+    # while the beast is inside near the dwarves, else it comes down
     later = copy.deepcopy(s)
     later["military"]["squads"][1].update(ai_orders=1, kill_ids=[20001], members=2)
     later["military"]["soldiers"] = 8
     later["date"]["tick"] += 300
-    p2, _ = plan(later, m)
-    o = offs(p2)
-    assert o and "turned bad" in o[0].reason, [x.reason for x in p2 if x.rule == "threat_alert"]
+    assert wh.unfought(later, m, CFG, [20001])["mode"] == "keep"
+    p2, n2 = plan(later, m)
+    assert not offs(p2) and any("turned bad" in n for n in n2), [n for n in n2 if "alarm" in n][:4]
+    far = copy.deepcopy(later)
+    far["others_on_map"]["threats"][0]["distance_to_nearest_dwarf"] = 80
+    p3, _ = plan(far, m)
+    o = offs(p3)
+    assert o and "turned bad" in o[0].reason, [x.reason for x in p3 if x.rule == "threat_alert"]
 
 
-@test("long alarm: never more than r1g5_alarm_hard_days, whoever is on it")
+@test("long alarm: never more than r1g5_alarm_hard_days, whoever is on it; (x4) unless a great danger is inside "
+      "near the dwarves")
 def _():
-    s, m = e_fort(61, [sq(1, 6, 6, 20.0, ai_orders=1, kill_ids=[20001])], fire_breather=False)
+    s, m = e_fort(61, [sq(1, 6, 6, 20.0, ai_orders=1, kill_ids=[20001])], fire_breather=False,
+                  distance_to_nearest_dwarf=80)
     o = offs(plan(s, m)[0])
     assert o and "has stood 61 days" in o[0].reason, o
+    s, m = e_fort(61, [sq(1, 6, 6, 20.0, ai_orders=1, kill_ids=[20001])], fire_breather=False)
+    assert not offs(plan(s, m)[0])
 
 
 # --- (3) the squads left as they are while danger is about ----------------------------------

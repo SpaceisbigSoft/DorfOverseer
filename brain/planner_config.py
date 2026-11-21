@@ -1388,7 +1388,11 @@ PLANNER_CONFIG.update({
 PLANNER_CONFIG.update({
     "r1g5_unfought_alarm_days": 30,       # an AI alarm for enemies no squad goes at: fight or lift after this long
     "r1g5_alarm_hard_days": 60,           # the most such an alarm stands, fight or not
-    "r1g5_unfought_fight_ratio": 0.25,    # the all-out attack then goes at this matchup or better (else: lifted)
+    # (x4) was 0.25 (the enemy four times stronger): the all-out attack goes at the matchup's own
+    # sortie bar (planner_matchup.fight_bar: about even, fight_even_ratio, a clear win for a fire
+    # breather or unread powers) and never below this; times r1x4_unfought_inside_factor where the enemy is
+    # inside the fort near a dwarf
+    "r1g5_unfought_fight_ratio": 1.0,
     "r1g5_army_hold_ticks": 2400,         # no trim, swap or off duty this long after an enemy could reach the dwarves
     "r1g5_arm_first_unarmed": 2,          # more unarmed soldiers on duty than this (and a quarter): weapons before drafting
     "r1g5_arm_first_max_days": 56,        # ...held this long at most (gear DF never hands out must not stop the squads)
@@ -1410,6 +1414,16 @@ PLANNER_CONFIG.update({
     "g3_extra_well_slots": 1,             # building slots over max_open another well may take when wells are short
     "g3_winter_well_slots": 2,            # ...a winter water source, in the ice season or with patients waiting
     "winter_water_cooldown_ticks": 3 * 1200,   # the winter water rule asked again at most this often
+})
+
+
+# (x4) the arming hold, the all-out attack and the long alarm's lift (brain/planner_war_hold.py)
+PLANNER_CONFIG.update({
+    "r1x4_unfought_inside_factor": 0.5,   # the all-out attack's bar times this while the enemy is inside, near a dwarf
+    "r1x4_poor_odds_losses": 1,           # a fight begun below even odds: this many soldiers lost ends it (not a third)
+    "r1x4_inside_near_tiles": 30,         # inside the fort and this near a dwarf: "among the civilians" (a great danger: the long alarm stays)
+    "r1x4_arm_stall_days": 4,             # the AI's weapon orders stood still this long: the arming hold ends
+    "r1x4_arm_no_order_days": 4,          # ...or held this long with no weapon order of the AI's and none spare to hand out
 })
 
 
