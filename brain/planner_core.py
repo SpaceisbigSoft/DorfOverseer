@@ -353,6 +353,7 @@ class Memory:
     lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)
     holdfast: dict = field(default_factory=dict)         # (0.105.47, R2 item 7) {kill, guards, named, walls}: planner_holdfast
     defence_floor: dict = field(default_factory=dict)    # (0.105.54) {peak {power, tick, why}}: the biggest threat seen (planner_defence_floor)
+    ranged_need: dict = field(default_factory=dict)      # (r2h4) {tick, why}: a fire breather or a flier was met (crossbows wanted: planner_military)
     order_loop: dict = field(default_factory=dict)       # (0.105.46, I3) {misses: {"recipe|MATERIAL": {tick, missing, what, snap}}, approved, approved_ids} (order_check)
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)
@@ -1140,7 +1141,8 @@ RECIPE_SHOPS["collect_webs"] = "Loom"        # (0.105.47, J1) webs collected for
 # meals and beds waited five years with no still, kitchen or carpenter, were
 # cancelled as stuck and ordered again: 338 cancels in a night)
 WOOD_ELSEWHERE = {"wooden_crossbow": "Bowyers", "wooden_bolts": "Bowyers", "wooden_cups": "Craftsdwarfs",
-                  "wood_crafts": "Craftsdwarfs", "bone_crafts": "Craftsdwarfs"}
+                  "wood_crafts": "Craftsdwarfs", "bone_crafts": "Craftsdwarfs",
+                  "bone_bolts": "Craftsdwarfs"}      # (r2h4) bone bolts: carved at the craftsdwarf's
 
 
 def recipe_shop(recipe) -> str | None:

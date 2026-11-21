@@ -1453,6 +1453,16 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r2h4) crossbows: the Bowyer's workshop, crossbows of wood or metal, bolts of wood, bone or metal
+# (brain/planner_military.py _ranged_squad_rule, _bowyer_rule; brain/planner_army.py _bolts_rule)
+PLANNER_CONFIG.update({
+    "h4_bowyer_min_militarism": -100,     # a fort with a squad and Militarism above this gets a Bowyer's workshop
+    "h4_ranged_need_days": 4 * 336,       # a fire breather or a flier met: crossbows wanted this long after
+    "h4_bone_bolts_keep": 10,             # bone bolts only while this many bones are left (moods, crafts)
+    "h4_crossbow_order_max": 5,           # crossbows in one order at most (wood or metal)
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

@@ -593,6 +593,7 @@ SHORT_WORDS = {
     "assign_weapons": "give the soldiers the free weapons the game won't hand out",  # (0.104.60)
     "assign_quivers": "give the crossbow soldiers quivers",
     "squad_bolts": "bolts for a crossbow squad",
+    "assign_bolts": "hand the free bolts to the crossbow squads",   # (r2h4)
     "cut_entrance": "hatches on the stairs down from a wide opening",
     "farm_thresholds": "set which crops the farms favour (autofarm)",
     "pull_gate": "pull the AI gate lever",

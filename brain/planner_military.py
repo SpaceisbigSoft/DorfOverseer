@@ -15,7 +15,7 @@ from planner_core import *  # noqa: F401,F403
 from planner_gates import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_matchup import facts_mult, judge, matchup  # noqa: F401  (0.105.45) a threat against the squads
 
-__all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "no_shelter", "SHELTER_RETRY_DAYS", "SHELTER_RETRY_THREAT_DAYS", "_shelter_due", "_no_shelter_note", "weak_squad", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "watched_gate_levers", "_training_rotation", "_ranged_squad_rule", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
+__all__ = ["called_off_ids", "FIGHT_FACTOR_MAX", "lone_intruders", "hunted_outside", "few_ordinary", "few_alert_over", "ai_gates_shut", "lockdown_released", "lone_alert_over", "note_lockdown", "_lone_squad", "quick_clear", "PASTURE_ACTIONS", "_pasture_hold", "gate_invaders", "main_gate", "_gate_guard_rule", "_gate_dogs_rule", "GEAR_HELD", "_shelter_possible", "no_shelter", "SHELTER_RETRY_DAYS", "SHELTER_RETRY_THREAT_DAYS", "_shelter_due", "_no_shelter_note", "weak_squad", "soldier_share", "_gate_rules", "_free_gate_levers", "_lever_far_enough", "_link_wanted", "_lever_rule", "_trap_rule", "_gatehouse_rule", "_lever_hatches_ok", "_near_spot", "soldiers_wanted", "civilian_cap", "crossing_value", "_crossing_rule", "ALERT_DANGERS", "alert_ages", "_alerts_rule", "_war_animal_rule", "hazard_alert", "_hazard_rules", "_military_rules", "watched_gate_levers", "_training_rotation", "_ranged_squad_rule", "note_ranged_need", "crossbows_wanted", "_bowyer_rule", "_crossbow_order", "WEAPON_IDS", "_uniform_weapon_rule", "_anvil_rule", "idle_hands"]
 
 
 GEAR_HELD = {"weapons": "armed", "body": "armored", "helms": "helmed", "shields": "shielded", "pants": "legged",
@@ -1525,7 +1525,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                 break
         from planner_defence_floor import peaceful_ranged
         _ranged_squad_rule(s, g, squads, templates, cfg, proposals, getattr(memory, "squads_made", None),
-                           peaceful_ranged(s, traits))
+                           peaceful_ranged(s, traits), memory=memory, traits=traits)
         _uniform_weapon_rule(s, g, squads, rules_, proposals)
     elif isinstance(g.get("squads"), int) and g["squads"] > (g.get("squads_with_uniform") or 0):
         n_bare = g["squads"] - (g.get("squads_with_uniform") or 0)
@@ -1657,8 +1657,92 @@ def _training_rotation(s: dict, memory, squads: list, train_to: str, off: str, c
     return set(mine)
 
 
+def note_ranged_need(s: dict, memory, cfg: dict | None = None, traits: dict | None = None) -> str:
+    """(r2h4) A fire breather or a flier that can reach the dwarves now
+    (reachable_threats: no wildlife, nothing down in the underworld):
+    remembered (memory.ranged_need {tick, why}), as only crossbows answer
+    them (a fire breather: planner_firebreath; a flier: planner_matchup).
+    The words, or ""."""
+    from planner_matchup import fire_breather
+    reach = set(reachable_threats(s, _d(traits), cfg or PLANNER_CONFIG))
+    for t in _l(_d(s.get("others_on_map")).get("threats")):
+        if not isinstance(t, dict) or t.get("id") not in reach:
+            continue
+        why = ("a fire breather" if fire_breather(t) else "a flier" if t.get("flier") else "")
+        if why:
+            words = f"{why} ({t.get('name') or t.get('race') or 'a beast'})"
+            if memory is not None:
+                try:
+                    memory.ranged_need = {"tick": abs_tick(s), "why": words}
+                except Exception:                     # (an old memory object): this cycle only
+                    pass
+            return words
+    return ""
+
+
+def crossbows_wanted(s: dict, memory, cfg: dict, traits: dict | None, manned: list) -> str:
+    """(r2h4) Why the fort wants crossbows (and so a Bowyer's workshop), or "".
+    No fort ever had a ranged soldier (audit A2 7: `ranged: 0` in all 14
+    squads): a fort with a squad and Militarism above the lowest
+    (`h4_bowyer_min_militarism`), or one that met a fire breather or a flier
+    in the last `h4_ranged_need_days`."""
+    now = note_ranged_need(s, memory, cfg, traits)
+    if now:
+        return f"{now} is on the map: only crossbows answer it"
+    rn = _d(getattr(memory, "ranged_need", None)) if memory is not None else {}
+    tick = rn.get("tick")
+    if isinstance(tick, int) and abs_tick(s) - tick <= cfg.get("h4_ranged_need_days", 1344) * TICKS_PER_DAY:
+        return f"the fort met {rn.get('why') or 'a fire breather or a flier'}: only crossbows answer it"
+    mil = _d(traits).get("militarism")
+    mil = mil if isinstance(mil, (int, float)) and not isinstance(mil, bool) else 0
+    if manned and mil > cfg.get("h4_bowyer_min_militarism", -100):
+        return f"Militarism {mil:g} and {len(manned)} squad(s): a crossbow squad shoots from behind the gates"
+    return ""
+
+
+def _bowyer_rule(s: dict, cfg: dict, proposals: list, why: str) -> bool:
+    """(r2h4) The Bowyer's workshop for crossbows and wooden bolts: asked as
+    a lone shop with `crossbows` (the builder gives it no project slot: B
+    and E's ordinary `industry` ask lost to "already N unfinished building
+    projects" every time, and B met its beast with 0 armed soldiers). Not
+    while one is being built. True when asked."""
+    from planner_moods import _shop_coming
+    if _has_shop(s.get("buildings") or {}, "Bowyers") or _shop_coming(s, "Bowyers"):
+        return False
+    if "Bowyers" not in BUILDABLE_SHOPS:
+        return False
+    proposals.append(Proposal("crossbow_shop", {"type": "start_project", "kind": "workshops", "shops": ["Bowyers"],
+                                                "crossbows": True},
+                              f"{why}; no bowyer's workshop: build one (crossbows and wooden bolts)", 3))
+    return True
+
+
+def _crossbow_order(s: dict, g: dict, cfg: dict, proposals: list, members: int, short: int, shop: bool,
+                    wood: int) -> bool:
+    """(r2h4) Crossbows for the crossbow soldiers short of one: wooden at the
+    bowyer's, else metal at the forge while bars are plenty (no bowyer's
+    needed). True when ordered."""
+    n = min(short, cfg.get("h4_crossbow_order_max", 5))
+    if shop and wood >= n:
+        proposals.append(Proposal("arms", {"type": "work_order", "recipe": "wooden_crossbow", "amount": n},
+                                  f"{members} crossbow soldiers and {g.get('ranged_armed') or 0} with a "
+                                  f"crossbow: make {n} at the bowyer's", 3, True))
+        return True
+    bars = _d(g.get("bars"))
+    metal = next((m for m in GEAR_METALS if (bars.get(m) or 0) >= n + cfg["bolt_bars_keep"]), None)
+    if metal and g.get("forges"):
+        proposals.append(Proposal("arms", {"type": "work_order", "recipe": "metal_crossbow", "amount": n,
+                                           "material": f"INORGANIC:{metal}"},
+                                  f"{members} crossbow soldiers and {g.get('ranged_armed') or 0} with a "
+                                  f"crossbow" + ("" if shop else " and no bowyer's workshop")
+                                  + f": forge {n} in {metal.lower().replace('_', ' ')}", 3, True))
+        return True
+    return False
+
+
 def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dict, proposals: list,
-                       squads_made: list | None = None, peaceful: bool = False) -> None:
+                       squads_made: list | None = None, peaceful: bool = False, memory=None,
+                       traits: dict | None = None) -> None:
     """Crossbows: with two squads or more, one (the newest the AI dresses)
     becomes a crossbow squad, in the fort's crossbow uniform with bolts for
     combat and training; then crossbows and bolts for it, wooden at the
@@ -1715,9 +1799,16 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
                                   f"{len(ranged)} crossbow squads: {q.get('name') or 'an older squad'} goes back "
                                   "to close combat", 4))
         return
+    # (r2h4) the Bowyer's workshop before the crossbow squad needs it
+    try:
+        want_why = crossbows_wanted(s, memory, cfg, traits, manned)
+    except Exception:                                  # never stops the rule
+        want_why = ""
     if not ranged:
+        if want_why:
+            _bowyer_rule(s, cfg, proposals, want_why)
         return
-    if not ranged or "ranged_armed" not in g:
+    if "ranged_armed" not in g:
         return
     members = sum(int(q.get("members") or 0) for q in ranged)
     wood = int(_d(s.get("stocks")).get("wood") or 0)
@@ -1728,15 +1819,14 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
     # the crossbows in bins as none)
     if isinstance(g.get("crossbows_total"), int) and not isinstance(g.get("crossbows_total"), bool):
         have = max(have, g["crossbows_total"])
-    short = members - have - queued(s, {"wooden_crossbow"})
+    short = members - have - queued(s, {"wooden_crossbow", "metal_crossbow"})
     if short > 0:
-        if shop and wood >= short:
-            proposals.append(Proposal("arms", {"type": "work_order", "recipe": "wooden_crossbow", "amount": min(short, 5)},
-                                      f"{members} crossbow soldiers and {g.get('ranged_armed') or 0} with a "
-                                      f"crossbow: make {min(short, 5)} at the bowyer's", 3, True))
+        # (r2h4) wood at the bowyer's, else metal at the forge
+        if _crossbow_order(s, g, cfg, proposals, members, short, shop, wood):
             return
     want = members * cfg["bolts_per_soldier"]
-    bshort = want - int(g.get("bolts") or 0) - 25 * (queued(s, {"wooden_bolts"}) + queued(s, {"metal_bolts"}))
+    bshort = want - int(g.get("bolts") or 0) - 25 * (queued(s, {"wooden_bolts"}) + queued(s, {"metal_bolts"})
+                                                     + queued(s, {"bone_bolts"}))
     if bshort > 0:
         jobs = min(5, max(1, -(-bshort // 25)))
         bars = _d(g.get("bars"))
@@ -1750,6 +1840,12 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
             proposals.append(Proposal("arms", {"type": "work_order", "recipe": "wooden_bolts", "amount": jobs},
                                       f"{g.get('bolts') or 0} bolts for {members} crossbow soldiers ({want} wanted): "
                                       f"make {jobs} lot(s) of wooden bolts", 4, True))
+        elif (_has_shop(s["buildings"], "Craftsdwarfs")
+              and int(_d(s.get("needs")).get("bones") or 0) >= jobs + cfg.get("h4_bone_bolts_keep", 10)):
+            # (r2h4) bone bolts at the craftsdwarf's: no forge bars, no bowyer's
+            proposals.append(Proposal("arms", {"type": "work_order", "recipe": "bone_bolts", "amount": jobs},
+                                      f"{g.get('bolts') or 0} bolts for {members} crossbow soldiers ({want} wanted): "
+                                      f"make {jobs} lot(s) of bone bolts", 4, True))
     # (0.100) a crossbow soldier carries bolts in a quiver and picks a spare
     # one up himself: leather quivers until there is one for each
     sup = _d(s.get("supplies"))
@@ -1762,11 +1858,10 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
             proposals.append(Proposal("arms", {"type": "work_order", "recipe": "leather_quiver", "amount": n},
                                       f"{members} crossbow soldiers, {sup['quivers']} spare quiver(s) and "
                                       f"{int(sup.get('quivers_worn') or 0)} worn: make {n} of leather", 4, True))
-    if (short > 0 or bshort > 0) and not shop:
-        open_ = [p for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)]
-        if not _workshops_busy(open_):
-            proposals.append(Proposal("industry", {"type": "start_project", "kind": "workshops", "shops": ["Bowyers"]},
-                                      "a crossbow squad and no bowyer's workshop: build one (crossbows and bolts)", 4))
+    if not shop:
+        # (r2h4) asked whatever the shortage (bolts are used up, crossbows
+        # break), as a lone shop that takes no project slot (_bowyer_rule)
+        _bowyer_rule(s, cfg, proposals, want_why or f"a crossbow squad of {members}")
 
 
 WEAPON_IDS = {"axe": "ITEM_WEAPON_AXE_BATTLE", "spear": "ITEM_WEAPON_SPEAR", "mace": "ITEM_WEAPON_MACE"}

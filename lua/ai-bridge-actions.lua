@@ -521,6 +521,10 @@ function act_start_project(a)
     p.floor = floor
     p.urgent = a.urgent == true or nil       -- a well's or a mood's workshop: one slot more
     p.mood = (a.mood == true and a.kind == 'workshops') or nil   -- (R1 g6) a waiting mood's shop: no slot taken
+    -- (r2h4) the crossbow squad's Bowyer's workshop alone: no slot taken (B and E: refused by
+    -- "already N unfinished building projects" while their crossbow squads had no crossbow)
+    p.crossbows = (a.crossbows == true and a.kind == 'workshops' and type(p.shops) == 'table' and #p.shops == 1
+                   and p.shops[1] == 'Bowyers') or nil
     -- (0.105.23, 14.1 step 4c) the Deep mine: no level above this elevation (one under the surface)
     if a.max_elev ~= nil then
         p.max_elev = int_in(a.max_elev, -400, 400)
@@ -1468,6 +1472,13 @@ function act_assign_quivers(a)
     local n = int_in(a.limit or 10, 1, 50)
     if not n then return reject('assign_quivers: limit 1-50') end
     return reqscript('ai-military').assign_quivers(a.dry_run == true, n)
+end
+
+-- (r2h4) the free bolts onto the crossbow squads' ammunition entries
+function act_assign_bolts(a)
+    local n = int_in(a.limit or 20, 1, 50)
+    if not n then return reject('assign_bolts: limit 1-50') end
+    return reqscript('ai-military').assign_bolts(a.dry_run == true, n)
 end
 
 function act_squad_bolts(a)

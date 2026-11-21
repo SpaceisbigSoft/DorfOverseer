@@ -82,7 +82,10 @@ local function fight_focus(u)
     return ok and low or nil
 end
 
-function pick_soldiers(cands, n, avoid)
+-- (r2h4) `ranged`: places in a crossbow squad: among the keen alike (and the
+-- rest alike), a dwarf with crossbow or bow skill (`rskill`) first, the most
+-- skilled first (A, C, D, E's crossbow squads were filled by melee skill)
+function pick_soldiers(cands, n, avoid, ranged)
     local list = {}
     for _, c in ipairs(cands) do
         if not (avoid and avoid[c.id]) then table.insert(list, c) end
@@ -91,6 +94,7 @@ function pick_soldiers(cands, n, avoid)
     table.sort(list, function(a, b)
         if keen(a) ~= keen(b) then return keen(a) end
         if keen(a) and a.fight_focus ~= b.fight_focus then return a.fight_focus < b.fight_focus end
+        if ranged and (a.rskill or 0) ~= (b.rskill or 0) then return (a.rskill or 0) > (b.rskill or 0) end
         -- dwarves who long to fight or train (the Fight / MartialTraining
         -- needs) come first: soldiering meets those needs. (0.104.64) always
         -- first, before any veteran: a soldier the AI let go to meet his other
@@ -724,7 +728,7 @@ local function candidates(strict)
     local mothers = nursing_mothers()
     for _, u in ipairs(report_citizens(true)) do
         if draftable(u, mothers, strict) then
-            local combat, best = 0, 0
+            local combat, best, rskill = 0, 0, 0
             local soul = u.status.current_soul
             if soul then
                 for _, sk in ipairs(soul.skills) do
@@ -735,10 +739,12 @@ local function candidates(strict)
                     end
                     if is_combat then combat = combat + sk.rating
                     elseif sk.rating > best then best = sk.rating end
+                    -- (r2h4) the crossbow squad's own skills
+                    if (name == 'CROSSBOW' or name == 'BOW') and sk.rating > rskill then rskill = sk.rating end
                 end
             end
             table.insert(out, {id = u.id, combat = combat, best_craft = best, unit = u, wants_fight = wants_fight(u),
-                               fight_focus = fight_focus(u)})
+                               fight_focus = fight_focus(u), rskill = rskill})
         end
     end
     return out
@@ -863,7 +869,9 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
     local okh, hands = pcall(last_hands)          -- (0.105.54) never the last farmer or brewer
     if not okh then hands = nil end
     local kept = 0
-    for _, c in ipairs(pick_soldiers(cands, count, avoid)) do
+    -- (r2h4) a crossbow squad's places go to those who shoot best
+    local okr, shoots = pcall(function() return squad_is_ranged(sq, ai_uniforms()[tostring(squad_id)]) end)
+    for _, c in ipairs(pick_soldiers(cands, count, avoid, okr and shoots or nil)) do
         tried = tried + 1
         local place = places[k]
         local mine = hands and hands.of[c.id]
@@ -2266,6 +2274,7 @@ end
 for _, name in ipairs({'stray_report', 'free_stray_gear', 'weapon_gaps', 'fix_weapon_colours', 'weapon_def',
                        'weapon_is_ranged', 'weapon_fits', 'assign_weapons', 'gear_report', 'gaps_why',
                        'quiver_report', 'assign_quivers', 'squad_ammo', 'squad_bolts', 'unforbid_spares',
-                       'fix_gear_gaps', 'kit_report', 'assign_kit', 'army_gear', 'flask_report'}) do
+                       'fix_gear_gaps', 'kit_report', 'assign_kit', 'army_gear', 'flask_report',
+                       'free_bolts', 'bolts_free_count', 'assign_bolts'}) do   -- (r2h4) the bolts handed out
     _ENV[name] = function(...) return gear()[name](...) end
 end

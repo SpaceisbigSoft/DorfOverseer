@@ -218,8 +218,24 @@ def _bolts_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                                       f"{q.get('name') or 'a crossbow squad'} has crossbows and no bolts set: "
                                       "bolts for combat and training", 3))
             return
+        g = _d(_d(s.get("military")).get("gear"))
+        # (r2h4) DF hands bolts to an entry only when its equipment update
+        # runs: 0 assigned in every crossbow squad of the 15-16 Nov run, with
+        # 300-500 bolts in stock; the bridge (0.105.56+, `units`, gear
+        # `bolts_free`) hands the free ones out itself (assign_bolts)
+        free = g.get("bolts_free")
+        if (isinstance(a, dict) and isinstance(a.get("units"), int) and isinstance(free, int)
+                and not isinstance(free, bool)):
+            short = int(a.get("wanted") or 0) - a["units"]
+            if short > 0 and free > 0:
+                proposals.append(Proposal("bolts", {"type": "assign_bolts", "limit": min(20, max(1, -(-short // 25)))},
+                                          f"{q.get('name') or 'a crossbow squad'} has {a['units']} of the "
+                                          f"{a.get('wanted')} bolts it asks for and {free} lie free: hand them out "
+                                          "(DF doesn't by itself)", 3))
+                return
+            continue
         if (isinstance(a, dict) and int(a.get("wanted") or 0) > 0 and int(a.get("assigned") or 0) == 0
-                and int(_d(_d(s.get("military")).get("gear")).get("bolts") or 0) > 0):
+                and int(g.get("bolts") or 0) > 0):
             notes.append(f"{q.get('name') or 'a crossbow squad'} has bolts set but none handed out yet "
                          "(they must lie in a stockpile, not a workshop)")
 

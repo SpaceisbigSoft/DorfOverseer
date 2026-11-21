@@ -45,7 +45,7 @@ GEAR_KEY = {"metal_battle_axe": "weapons", "metal_spear": "weapons", "metal_mace
             "metal_pick": "weapons", "metal_mail_shirt": "body", "metal_breastplate": "body",
             "metal_helm": "helms", "metal_shield": "shields", "metal_greaves": "pants",
             "metal_high_boots": "boots", "metal_gauntlets": "gloves"}
-METAL_RECIPES = set(GEAR_KEY) | {"metal_bolts", "metal_chain", "metal_anvil", "metal_crafts", "metal_amulet",
+METAL_RECIPES = set(GEAR_KEY) | {"metal_bolts", "metal_crossbow", "metal_chain", "metal_anvil", "metal_crafts", "metal_amulet",
                                  "metal_bracelet", "metal_ring", "metal_earring", "metal_table", "metal_chair",
                                  "metal_door", "metal_cabinet", "metal_chest", "metal_coffin",
                                  "metal_armor_stand", "metal_weapon_rack", "ballista_arrowheads",
@@ -69,7 +69,7 @@ SHOP_LABOUR = {"Masons": "STONE_CARVER", "Mechanics": "MECHANIC", "Carpenters": 
                "WoodFurnace": "BURN_WOOD", "Kiln": "POTTERY", "Jewelers": "CUT_GEM"}
 ARMOUR = {"metal_mail_shirt", "metal_breastplate", "metal_helm", "metal_shield", "metal_greaves",
           "metal_high_boots", "metal_gauntlets"}
-WEAPONS = {"metal_battle_axe", "metal_spear", "metal_mace", "metal_pick", "metal_bolts", "ballista_arrowheads",
+WEAPONS = {"metal_battle_axe", "metal_spear", "metal_mace", "metal_pick", "metal_bolts", "metal_crossbow", "ballista_arrowheads",
            "metal_trap_blades"}
 CRAFTS = {"metal_crafts", "metal_amulet", "metal_bracelet", "metal_ring", "metal_earring"}
 
