@@ -502,8 +502,11 @@ def note_failure(memory, now: int, e: BaseException) -> dict:
     wait = min(most, first * 2 ** min(fails - 1, 20))
     if limited:
         wait = max(wait, min(most, int(cfg.get("r4k2_backoff_limit_days", 7) or 0)))
+    overage = getattr(e, "overage", False) is True
+    if overage:
+        wait = most          # (r4 merge) extra usage in play: off for the longest wait; the player looks
     bo = {"fails": fails, "wait_days": wait, "until": now + wait * TICKS_PER_DAY, "since": prev.get("since", now),
-          "rate_limited": limited, "error": f"{type(e).__name__}: {e}"[:200]}
+          "rate_limited": limited, "overage": overage, "error": f"{type(e).__name__}: {e}"[:200]}
     memory.ai_backoff = bo
     return bo
 

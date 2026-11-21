@@ -62,8 +62,13 @@ class BackendUnavailable(RuntimeError):
 
 class RateLimited(RuntimeError):
     """(r4 k2, B8) The service said no for now (a rate or usage limit): the
-    review backs off (review.maybe_review) rather than asking every game day."""
+    review backs off (review.maybe_review) rather than asking every game day.
+    (r4 merge) overage=True: pay-as-you-go extra usage was in play; the longest wait."""
     rate_limited = True
+
+    def __init__(self, *args, overage: bool = False):
+        super().__init__(*args)
+        self.overage = overage
 
 
 def is_rate_limit(e: BaseException) -> bool:
@@ -285,6 +290,11 @@ class SubscriptionBackend:
         async for msg in query(prompt=message, options=options):
             if isinstance(msg, ResultMessage):
                 result = msg
+            elif _overage_event(msg):
+                # (r4 merge) pay-as-you-go "extra usage" would be (or is being) used: the player
+                # spends no extra money, so the call is dropped at once and the AI stays off
+                raise RateLimited("the subscription would use pay-as-you-go extra usage: call dropped, "
+                                  "the AI stays off (the player spends no extra money)", overage=True)
             elif _rate_limit_event(msg):
                 limited = msg       # (r4 k2, B8) the SDK's RateLimitEvent: the plan's limit is reached
         if result is None:
@@ -303,6 +313,30 @@ class SubscriptionBackend:
                      output_tokens=u.get("output_tokens", 0) or 0,
                      cache_write_tokens=u.get("cache_creation_input_tokens", 0) or 0,
                      cache_read_tokens=u.get("cache_read_input_tokens", 0) or 0)
+
+
+def _info_get(info, k):
+    v = getattr(info, k, None)
+    if v is None and isinstance(info, dict):
+        v = info.get(k)
+    return v
+
+
+def _overage_event(msg) -> bool:
+    """(r4 merge) A RateLimitEvent saying pay-as-you-go "extra usage" is in play: the
+    window that applies is the overage one, or the plan's limit is reached and overage
+    is allowed (the answer would be billed as extra usage). Any doubt counts as in play."""
+    if type(msg).__name__ != "RateLimitEvent":
+        return False
+    info = getattr(msg, "rate_limit_info", None) or getattr(msg, "info", None) or msg
+    raw = _info_get(info, "raw") if not isinstance(info, dict) else info
+    raw = raw if isinstance(raw, dict) else {}
+    kind = _info_get(info, "rate_limit_type") or raw.get("rateLimitType")
+    status = _info_get(info, "status") or raw.get("status")
+    over = _info_get(info, "overage_status") or raw.get("overageStatus")
+    if kind == "overage" or raw.get("isUsingOverage") is True:
+        return True
+    return status == "rejected" and over in ("allowed", "allowed_warning")
 
 
 def _rate_limit_event(msg) -> bool:

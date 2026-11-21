@@ -204,7 +204,9 @@ def _review(shadow):
     s, m = _ai(REAL), Memory()
     props, notes = plan(copy.deepcopy(s), m)
     from planner import STEER_PROTECTED
-    rule = next(p.rule for p in props if p.rule not in STEER_PROTECTED and p.rule != "build")
+    from steer_guard import hold_refused          # (r4 merge) a rule k1's guard lets a model hold
+    rule = next(p.rule for p in props if p.rule not in STEER_PROTECTED and p.rule != "build"
+                and not hold_refused(p.rule))
     style_before = copy.deepcopy(m.culture)
     c = Fake(_answer(rule))
     info = {"recipes": sorted(RECIPES), "tools": sorted(TOOLS), "level_kinds": KINDS, "stockpiles": [],
