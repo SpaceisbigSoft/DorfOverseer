@@ -1330,6 +1330,11 @@ PLANNER_CONFIG.update({
     "raid_greed_rich": 60,                # Greed at or past this: the aggressive fort prefers the richest clear win
     "raid_pet_restore_days": 2,           # pets let out for a mission put back this long after, once all are home
 })
+# (r1g8) drink and food in a crisis, and ghosts
+PLANNER_CONFIG.update({
+    "r1g8_dry_containers_min": 3,         # brewing waits on containers: the least barrels/pots worth ordering from what wood or stone there is
+})
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall
@@ -1360,9 +1365,4 @@ PLANNER_CONFIG.update({
     "floor_elevs_max": 4,                 # floors offered for one level
     "floor_full_retry_days": 28,          # a full floor is offered again after this long
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
-})
-
-# (r1g8) drink and food in a crisis, and ghosts
-PLANNER_CONFIG.update({
-    "r1g8_dry_containers_min": 3,         # brewing waits on containers: the least barrels/pots worth ordering from what wood or stone there is
 })

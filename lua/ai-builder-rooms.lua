@@ -923,7 +923,10 @@ function ghost_hfs()
     local out = {}
     pcall(function()
         local race, civ = df.global.plotinfo.race_id, df.global.plotinfo.civ_id
-        for _, u in ipairs(df.global.world.units.active) do
+        -- the report's one walk of the units when in a report (ai-util's cache)
+        local list = df.global.world.units.active
+        pcall(function() list = reqscript('ai-util').units_active() end)
+        for _, u in ipairs(list) do
             pcall(function()
                 if dfhack.units.isGhost(u) and u.race == race and u.civ_id == civ and (u.hist_figure_id or -1) >= 0 then
                     out[u.hist_figure_id] = true
