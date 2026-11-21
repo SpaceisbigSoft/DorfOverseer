@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.58'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.59'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -793,7 +793,11 @@ function start_project(params, now, dry_run)
     end
     -- (r3 g2) with the floors on, the classic level keeps clear of the floors' hubs and planned halls
     local reserved_open = reserved
-    if not site and floors_on and type(floor_keep_boxes) == 'function' then
+    -- (r3 V2) a level sent classic on purpose (floor = false: too big for any run, a holy level with only
+    -- soil left, a field custom, a landmark) keeps clear too, while the fort's floors are on
+    local keep_on = floors_on or (type(floor_mode) == 'function' and FLOOR_KINDS ~= nil
+        and select(2, pcall(floor_mode)) == 'hallway')
+    if not site and keep_on and type(floor_keep_boxes) == 'function' then
         local okk, keep = pcall(floor_keep_boxes, params, stairs)
         if okk and type(keep) == 'table' and #keep > 0 then
             reserved = {}

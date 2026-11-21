@@ -17,7 +17,7 @@
 -- No reqscript while this part loads (the modules are fetched inside floor_site, behind pcall);
 -- the sibling parts' functions (load_floors, floor_pile_units) are asked for by type() first.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floors'] = '0.105.58'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floors'] = '0.105.59'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 FLOOR_SECONDS = 1.5          -- the floor search's share of a start_project (the classic search keeps its own 4 s)
 FLOORS_TRY = 3               -- floors `place` is really tried on, for one level
@@ -965,6 +965,14 @@ function floor_keep_boxes(params, stairs)
                 for _, r in ipairs(runs) do
                     if type(r) == 'table' and (math.tointeger(r.len) or 0) > 0 then live = true end
                 end
+                -- (r3 V3) a dead floor (every level gone, its runs released) or one marked
+                -- "no hall can start here" ('*') keeps nothing: it will never use that ground
+                local dead = (type(f.full) == 'table' and f.full['*'] ~= nil)
+                if not dead and M.plan and type(M.plan.dead_floor) == 'function' then
+                    local okf, isd = pcall(M.plan.dead_floor, f)
+                    dead = okf and isd == true
+                end
+                if dead then live = false end
                 if live then
                     local why = ('kept for the main hall of floor %s (elevation %d)'):format(tostring(f.id), ez(z))
                     done[sx .. ',' .. sy .. ',' .. z] = true

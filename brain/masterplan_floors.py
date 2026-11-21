@@ -439,7 +439,8 @@ def _elevs_max(cfg: dict | None) -> int:
     return max(1, min(ELEVS_CAP, n)) if _whole(n) else ELEVS_MAX
 
 
-def elevs_for(memory, kind: str, action: dict | None, traits: dict, floors: dict | None, cfg: dict) -> list[int]:
+def elevs_for(memory, kind: str, action: dict | None, traits: dict, floors: dict | None, cfg: dict,
+              extra_full: set | None = None) -> list[int]:
     """The floors (elevations) offered to a new level of this kind, in order:
     the action's plan band when it is not the kind's district band (a custom,
     the deep band), else its role's list from the table; floors the report
@@ -467,6 +468,8 @@ def elevs_for(memory, kind: str, action: dict | None, traits: dict, floors: dict
         if cfg.get("r3g1_floor_skip_no_hall", True) is not False:
             # (r3 g1) a level no hall can start on, a floor with no hall left, one refused lately: as full
             full = full | _no_hall(floors, spine) | _refused(floors, spine)
+        if extra_full:
+            full = full | {e for e in extra_full if _whole(e)}   # (r3 V1) refused lately for soil: as full
         good = [e for e in elevs if e not in full]
         more = []
         if elevs and cfg.get("r3g1_floor_more_elevs", True) is not False:
@@ -540,6 +543,18 @@ def _soil_filter(memory, kind, action, elevs, s, traits, cfg) -> list:
         return elevs
 
 
+def _soil_recent(memory, s, cfg) -> set:
+    """(r3 V1) The elevations refused lately for soil or roots (floor_soil),
+    so elevs_for counts them as full when it decides to offer more."""
+    try:
+        if _d(cfg).get("r3g3_soil_skip") is not True:
+            return set()
+        import floor_soil
+        return set(floor_soil.remembered(memory, floor_soil._now(s), _d(cfg).get("r3g3_soil_days", 14)))
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def hint(memory, action: dict, s: dict, traits: dict, cfg: dict) -> dict | bool | None:
     """A start_project's "floor" value: a dict (the floors offered, the tag,
     the zone, the stair, the ways, and floor_grammar's numbers); False for a
@@ -564,7 +579,7 @@ def hint(memory, action: dict, s: dict, traits: dict, cfg: dict) -> dict | bool 
         cfg = cfg if isinstance(cfg, dict) else {}
         tag, district = _tag_district(memory, kind, action)
         zone = _home(memory, kind, action)[2]
-        elevs = elevs_for(memory, kind, action, traits, _d(s).get("floors"), cfg)
+        elevs = elevs_for(memory, kind, action, traits, _d(s).get("floors"), cfg, _soil_recent(memory, s, cfg))
         if not elevs:
             return None
         elevs = _soil_filter(memory, kind, action, elevs, s, traits, cfg)

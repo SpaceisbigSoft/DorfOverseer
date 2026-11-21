@@ -72,6 +72,14 @@ def floor_action(action: dict, s: dict, memory, cfg: dict = PLANNER_CONFIG) -> d
         return action
 
 
+def forget_sent() -> None:
+    """(r3 V4) Drop a hint set by floor_action whose send never reached its
+    journal line (bridge.act raised something unforeseen): the overseer calls
+    this before each proposal, so a later unsent line of the same kind (a dry
+    run, another fort) never claims it."""
+    LAST_SENT.clear()
+
+
 def journal_hint(action: dict, cfg: dict = PLANNER_CONFIG) -> dict:
     """(r3 g3) The journal line's extra key for the send just made:
     {"floor_hint": <the hint floor_action put on it (a dict, or False)>}, so

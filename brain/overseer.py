@@ -50,6 +50,7 @@ from planner_recovery import recovery_journal  # noqa: E402  (0.105.46, I4) coll
 from planner_shopslots import shop_level_action  # noqa: E402  (0.105.54) workshops onto shared levels
 from planner_floors import floor_action, floor_outcome, not_on_floor_words  # noqa: E402  (layout B) hallway-first floors
 from planner_floors import journal_hint as floor_journal_hint  # noqa: E402  (r3 g3) the hint sent, journaled
+from planner_floors import forget_sent as floor_forget_sent  # noqa: E402  (r3 V4)
 from planner_meetings import meeting_open_due, meeting_open_said, meeting_reopen_wait  # noqa: E402  (0.105.47) meetings opened unattended
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 from planner_holdfast import note_thief_targets  # noqa: E402  (0.105.47, R2 item 7)
@@ -1472,6 +1473,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         no_answer = False            # (0.104.138) an action the game didn't answer: the rest wait
         try:
             for p in allowed:
+                floor_forget_sent()           # (r3 V4) no hint left over from an earlier send that never reached its line
                 r = None
                 if no_answer and acting:
                     say(f"  held: {short(p.action)} (the game didn't answer the last action; next cycle)")
