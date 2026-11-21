@@ -1853,7 +1853,10 @@ def world_facts(state: dict, memory) -> dict:
         pass
     civs = [c for c in _l(_d(st.get("diplomacy")).get("civs")) if isinstance(c, dict)]
     if civs:
-        f["goblin_wars"] = sum(1 for c in civs if c.get("race") == "GOBLIN" and str(c.get("relation")) == "War")
+        # (r2 h8) DF's diplomacy_state_type says "TotalWar" (Peace, TotalWar, NoContact,
+        # AcceptingTribute, OfferingTribute, Skirmishing): "War" alone never comes
+        f["goblin_wars"] = sum(1 for c in civs if c.get("race") == "GOBLIN"
+                               and str(c.get("relation")) in ("War", "TotalWar"))
         f["elf_peace"] = 1 if any(c.get("race") == "ELF" and str(c.get("relation")) == "Peace" for c in civs) else 0
     dp = _d(st.get("diplomacy"))
     ty = memory.tree_year if isinstance(getattr(memory, "tree_year", None), dict) else {}

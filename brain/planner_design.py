@@ -65,6 +65,9 @@ ACTIVE = ("due", "sites", "drawing", "fallback", "building")
 LANDMARK_MODES = ("guided", "architect")     # (0.105.47, D1) Guided starts landmarks too (library pieces)
 NAME_RE = re.compile(r"^[A-Za-z' ]{1,40}$")    # the bridge's memorial rule (act_start_project)
 SURFACE_KINDS = ("ziggurat", "tower")
+LEVELS_WAIT_TICKS = 7 * TICKS_PER_DAY       # (r2 h8) a rock landmark's step answered "through its levels": not asked again this soon
+BUILT_KEYS_MAX = 64                         # (r2 h8) the (kind, for) pairs of landmarks built, kept past the list's own cut
+STANDING_PHASES = ("furnish", "decorate", "done")   # (r2 h8) a level in one of these stands (dug out)
 
 # kind -> (w, h, levels, ground): the envelope asked for when the AI draws
 LANDMARK_ENV = {
@@ -344,6 +347,8 @@ def _wish(lang: dict | None, memory, traits: dict, guided: bool = False) -> dict
     lm = landmarks_of(memory)
     done = {(_d(e).get("kind"), _d(e).get("for")) for e in _l(lm and lm.get("list"))
             if _d(e).get("status") in ("built", "court") + ACTIVE}      # (0.105.47) court: the garden court's
+    # (r2 h8) one built once is built: kept past the list's own cut (LANDMARK_LIST_MAX)
+    done |= {(k[0], k[1]) for k in _l(lm and lm.get("built_keys")) if isinstance(k, list) and len(k) == 2}
     if guided:
         done |= {(_d(e).get("kind"), _d(e).get("for")) for e in _l(lm and lm.get("list"))}
     tried = {_d(e).get("kind") for e in _l(lm and lm.get("list"))}
@@ -481,6 +486,55 @@ def _fallback(s, e, memory, traits, now, proposals, notes) -> None:
     _propose_level(e, proposals)
 
 
+def mark_built(memory, e: dict, now: int, partial: bool = False) -> None:
+    """(r2 h8) A landmark built (or a part of it standing): its (kind, for)
+    kept, so no second copy of it is ever started."""
+    e.update(status="built", done=now)
+    if partial:
+        e["partial"] = True
+    lm = landmarks_of(memory, create=True)
+    keys = [k for k in _l(lm.get("built_keys")) if isinstance(k, list) and len(k) == 2]
+    key = [e.get("kind"), e.get("for")]
+    if key not in keys:
+        keys.append(key)
+    lm["built_keys"] = keys[-BUILT_KEYS_MAX:]
+
+
+def _project_phases(s: dict) -> dict:
+    """The report's open and decorating projects: id -> phase."""
+    pr = _d(s.get("projects"))
+    out = {}
+    for p in _l(pr.get("open")) + _l(pr.get("decorating")):
+        if isinstance(p, dict) and p.get("id") is not None:
+            out[p["id"]] = str(p.get("phase") or "")
+    return out
+
+
+def copy_state(s: dict, lid) -> str | None:
+    """(r2 h8) A landmark copy the bridge started (its id): 'stands' once
+    one of its levels is dug out (furnished, decorating or done), 'digging'
+    while a level of it is still being dug, else None (nothing of it is
+    left under way: cancelled, or no longer reported)."""
+    if lid is None:
+        return None
+    rep = None
+    for x in _l(_d(s.get("landmarks")).get("list")):
+        if isinstance(x, dict) and x.get("id") == lid:
+            rep = x
+            break
+    if rep is None:
+        return None
+    if rep.get("status") in ("built", "done") or rep.get("done"):
+        return "stands"
+    phases = _project_phases(s)
+    seen = [phases.get(pid) for pid in _l(rep.get("project_ids")) if pid in phases]
+    if any(ph in STANDING_PHASES for ph in seen):
+        return "stands"
+    if any(ph == "dig" for ph in seen):
+        return "digging"
+    return None
+
+
 def _free_slot(s, e, memory, traits, now, proposals, notes, why: str) -> None:
     """(0.105.37 fix) A started landmark that can't go on (a level cancelled,
     its openings stalled, its steps failing): taken off the active slot. The
@@ -488,8 +542,21 @@ def _free_slot(s, e, memory, traits, now, proposals, notes, why: str) -> None:
     tries its next site; with none left (or tried LANDMARK_TRIES times) it is
     dropped with a note. What was built stays."""
     name = game_text(e.get("name"), 40)
+    # (r2 h8) a part of it stands (a level dug out): it counts as built, and
+    # its other levels go on as they are; never a second copy elsewhere
+    # (B: the same chronicle hall built three times; A: six)
+    if e.get("part_built") or copy_state(s, e.get("landmark_id")) == "stands":
+        mark_built(memory, e, now, partial=True)
+        e.update(step_fails=0)
+        notes.append(f"design: the landmark {name} stands in part ({why}): kept as it is, not started again")
+        return
     e["tries"] = int(e.get("tries") or 0) + 1
     e["reasons"] = [{"code": "DROPPED", "words": why[:160]}]
+    if e.get("landmark_id") is not None:
+        old = [x for x in _l(e.get("old_copies")) if x is not None]
+        if e["landmark_id"] not in old:
+            old.append(e["landmark_id"])
+        e["old_copies"] = old[-LANDMARK_TRIES - 2:]
     e.update(landmark_id=None, step_fails=0)
     e.pop("missing_since", None)
     if e.get("site") is not None:
@@ -579,9 +646,12 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
     if st == "building":
         rep = _report_entry(s, e)
         if rep is not None and (rep.get("status") in ("built", "done") or rep.get("done")):
-            e.update(status="built", done=now)
+            mark_built(memory, e, now)
             notes.append(f"design: the landmark {game_text(e.get('name'), 40)} is built")
             return
+        # (r2 h8) one of its levels dug out: a part of it stands from now on
+        if rep is not None and rep.get("status") != "dropped" and copy_state(s, e.get("landmark_id")) == "stands":
+            e["part_built"] = True
         # (0.105.37 fix) a level cancelled (the bridge reports it dropped), its
         # openings or rails stalled, or its steps failing again and again: the
         # slot is freed (the next site, else the library piece, else dropped)
@@ -602,8 +672,15 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
             _free_slot(s, e, memory, traits, now, proposals, notes, stuck)
             return
         # (E1) a rock landmark's openings: proposed when the report says a step can be taken
-        if rep is not None and ((e.get("env", [0, 0, 0, "rock"])[3] == "surface" and rep.get("stage") not in (None, "done"))
-                                or rep.get("stage") == "open"):
+        # (r2 h8) not while the bridge said lately that it goes on through its
+        # levels' projects (an older bridge kept reporting "open" after the
+        # openings were done: A 11, B 10-15 refusals, and five in a row freed
+        # the slot and started a second copy)
+        levels_at = e.get("levels_at")
+        levels_wait = isinstance(levels_at, int) and 0 <= now - levels_at < LEVELS_WAIT_TICKS
+        surface = e.get("env", [0, 0, 0, "rock"])[3] == "surface"
+        if rep is not None and ((surface and rep.get("stage") not in (None, "done"))
+                                or (rep.get("stage") == "open" and not levels_wait)):
             proposals.append(Proposal("landmark_step", {"type": "landmark_step", "landmark_id": e["landmark_id"]},
                                       f"design: {game_text(e.get('name'), 40)}: {step_words(rep)}", 6))
         return
@@ -625,6 +702,17 @@ def run_landmarks(s: dict, traits: dict, cfg: dict, proposals: list, notes: list
                                                    "purpose": e["kind"], "n": SITES_N},
                                       f"design: look for sites for {game_text(e.get('name'), 40)}", 6))
             return
+    # (r2 h8) an earlier copy of this landmark (its slot freed): built once a
+    # level of it stands; while one of its levels is still dug, no new copy
+    states = [copy_state(s, lid) for lid in _l(e.get("old_copies"))]
+    if "stands" in states:
+        mark_built(memory, e, now, partial=True)
+        notes.append(f"design: the landmark {game_text(e.get('name'), 40)} stands in part where it was first "
+                     "started: not started again")
+        return
+    if "digging" in states:
+        notes.append(f"design: the landmark {game_text(e.get('name'), 40)} waits: its earlier copy is still being dug")
+        return
     sites = _sites_for(memory, e, now)
     if not sites:
         e["status"] = "due"           # the sites ran out of date: asked again next cycle
@@ -755,8 +843,9 @@ def note_design(p, r: dict, state: dict, memory, now: int) -> list[str]:
         if e is None or e.get("status") != "fallback":
             return []
         if r.get("ok") is True:
-            e.update(status="built", started=now, done=now, project_ids=_l(r.get("project_ids"))
+            e.update(started=now, project_ids=_l(r.get("project_ids"))
                      or ([r["project_id"]] if r.get("project_id") is not None else []))
+            mark_built(memory, e, now)
             landmarks_of(memory, create=True)["last_started"] = now
             out.append(f"design: {e.get('name')} started as a library level")
         elif r.get("ok") is False:
@@ -834,10 +923,15 @@ def note_design(p, r: dict, state: dict, memory, now: int) -> list[str]:
         return out
     if t == "landmark_step":
         if r.get("ok") is True and r.get("done"):
-            e.update(status="built", done=now)
+            mark_built(memory, e, now)
             out.append(f"design: the landmark {e.get('name')} is built")
         elif r.get("ok") is True or r.get("waiting"):
             e["step_fails"] = 0
+        elif r.get("stage") == "levels":
+            # (r2 h8) "a rock landmark is built through its levels' projects":
+            # not a failure (it goes on); not asked again for a while
+            e["step_fails"] = 0
+            e["levels_at"] = now
         elif r.get("ok") is False:
             # (0.105.37 fix) counted: after LANDMARK_STEP_FAILS in a row the
             # slot is freed (run_landmarks)

@@ -393,10 +393,10 @@
   "check": "sha256:b813d7bef53ecef9d4c78135",
   "cost": "{1={built=number:0,doors=number:0,dug=number:46,items=number:4,jobs=number:86,stairs=number:0,statues=number:4,},n=number:1,}",
   "layouts": [
-   "sha256:2159c7968fc1c2889dc00cff",
-   "sha256:8cc65cb315829e65b0444fae",
-   "sha256:1ffea30def363839e7ce6b94",
-   "sha256:6a0bcfe32da2bb872f8c2684"
+   "sha256:62c4aa403dfce01eb46aca39",
+   "sha256:032c4890a4a59bfe51086cb8",
+   "sha256:d15fd17b2ed7ef078fcd006a",
+   "sha256:50622700af31fc4d3e63f28b"
   ]
  },
  "blueprints/good_doors.json": {
@@ -433,20 +433,20 @@
   "check": "sha256:b813d7bef53ecef9d4c78135",
   "cost": "{1={built=number:0,doors=number:0,dug=number:36,items=number:5,jobs=number:86,stairs=number:0,statues=number:0,},n=number:1,}",
   "layouts": [
-   "sha256:679cb5f3096f78f68c0564c6",
-   "sha256:6000260fbb602b66c3dc7146",
-   "sha256:6763af671dd4e94685e1208d",
-   "sha256:4f62d7015660477d33c4d27a"
+   "sha256:210b41e3eb251138bc8171cd",
+   "sha256:cff77b868d159a9f23e19368",
+   "sha256:447e03d7911f619ad6c9b36b",
+   "sha256:502aa20f94430bc60a80f1d8"
   ]
  },
  "blueprints/good_meeting.json": {
   "check": "sha256:b813d7bef53ecef9d4c78135",
   "cost": "{1={built=number:0,doors=number:0,dug=number:36,items=number:3,jobs=number:66,stairs=number:0,statues=number:0,},n=number:1,}",
   "layouts": [
-   "sha256:5559b1b722ed88f6926d6fd5",
-   "sha256:4d1098c4353320f969781a83",
-   "sha256:04b92552cdffa4a3973e337d",
-   "sha256:bd803fcdb2b6b838052541f1"
+   "sha256:1e2b73be5ca66108659a45e1",
+   "sha256:4457a7c42d5353799e450ac2",
+   "sha256:93ecf9b3922c053f137d3bd1",
+   "sha256:a0e583dbc4cd5d2cbe559fa2"
   ]
  },
  "blueprints/good_necropolis.json": {
@@ -533,20 +533,20 @@
   "check": "sha256:b813d7bef53ecef9d4c78135",
   "cost": "{1={built=number:132,doors=number:0,dug=number:0,items=number:1,jobs=number:538,stairs=number:1,statues=number:1,},n=number:1,}",
   "layouts": [
-   "sha256:45340d34ec82e8ea6273af31",
-   "sha256:ef8c1fa1f137b2b155bde4b4",
-   "sha256:389a37ba9458d49f65072999",
-   "sha256:436eb8db2d8e884875d1c666"
+   "sha256:95c6ec3d56747f2d00edcc7e",
+   "sha256:cddb3202e86d4d6c7542a6eb",
+   "sha256:c1cd5ee0519c4fdbcd69bb01",
+   "sha256:f7fc177f8bc13e1f01d2e5b4"
   ]
  },
  "landmarks/descent.json": {
   "check": "sha256:b813d7bef53ecef9d4c78135",
   "cost": "{1={built=number:0,doors=number:0,dug=number:217,items=number:5,jobs=number:267,stairs=number:3,statues=number:5,},n=number:1,}",
   "layouts": [
-   "sha256:a677414777c22911e89ec3ca",
-   "sha256:db1fc42511aad9d39411fde7",
-   "sha256:3317992c03e4c858f03323cd",
-   "sha256:76d41367597cdeba67a3828f"
+   "sha256:9b64752149c7045b809f5c6b",
+   "sha256:e7e9c6137cc1d5bd6f14cb1b",
+   "sha256:79b86a89f49bd5aef6074800",
+   "sha256:9c6acea80cacd6c31dd1ef86"
   ]
  },
  "landmarks/gate_hall.json": {
@@ -563,20 +563,20 @@
   "check": "sha256:b813d7bef53ecef9d4c78135",
   "cost": "{1={built=number:0,doors=number:1,dug=number:230,items=number:18,jobs=number:410,stairs=number:0,statues=number:10,},n=number:1,}",
   "layouts": [
-   "sha256:a40f6a1d629683fb7c369b63",
-   "sha256:772df8840a16a25f28c5587d",
-   "sha256:9bcd37f74164b17d89468eb4",
-   "sha256:40e3528a78b73a3c70d215ee"
+   "sha256:b5db25de66b22e89c1c24db0",
+   "sha256:7052ec304314860fdc094248",
+   "sha256:3abe01366f21f3a277e80d4c",
+   "sha256:b67ae0993150d8d703ed6638"
   ]
  },
  "landmarks/great_hall.json": {
   "check": "sha256:b813d7bef53ecef9d4c78135",
   "cost": "{1={built=number:0,doors=number:0,dug=number:530,items=number:24,jobs=number:770,stairs=number:0,statues=number:8,},n=number:1,}",
   "layouts": [
-   "sha256:21e165e1a88317adef91c254",
-   "sha256:1bc56dddda95ba4800553fa7",
-   "sha256:d1994d61d444370faf20b32d",
-   "sha256:f31b1cb362da117c6157eed5"
+   "sha256:b64bcda47b7619dde570e9ea",
+   "sha256:e5284c5f4b31c75d4a7622af",
+   "sha256:32157316b7c8c1cf613c6b80",
+   "sha256:fd347456e949ced85f115fe1"
   ]
  },
  "landmarks/necropolis.json": {
@@ -593,10 +593,10 @@
   "check": "sha256:b813d7bef53ecef9d4c78135",
   "cost": "{1={built=number:177,doors=number:1,dug=number:0,items=number:0,jobs=number:708,stairs=number:2,statues=number:0,},n=number:1,}",
   "layouts": [
-   "sha256:336be7560f9fc910958a4147",
-   "sha256:68e7effc9f7df02170fde4a0",
-   "sha256:055062c4fe8c4c4c5b48b70c",
-   "sha256:7d4356f5ed19705014a3d7ff"
+   "sha256:d82c507303e139ee7eb77e8c",
+   "sha256:bde36e6f61271659b3ddf233",
+   "sha256:2a353140ab6a40a86a9c0d37",
+   "sha256:a5c00dedf354b8260c9a9e32"
   ]
  }
 }
