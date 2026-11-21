@@ -41,6 +41,10 @@ TIMES: list[tuple[float, str]] = []      # (seconds, name): DFAI_TEST_TIMES=1 pr
 _SHARD = tuple(int(x) for x in os.environ.get("DFAI_TEST_SHARD", "0/1").split("/"))
 _SEEN = [0]
 
+# (r4 k5) the strategist's advice-only mode is on by default (review.shadow_on);
+# the tests of the applying path run with it off, test_r4_k5.py turns it on
+os.environ.setdefault("DFAI_STRATEGIST_SHADOW", "0")
+
 if not os.environ.get("DFAI_LOG_DIR"):
     _TMP = tempfile.mkdtemp(prefix="dfai-test-logs-")
     os.environ["DFAI_LOG_DIR"] = _TMP

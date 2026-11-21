@@ -1,187 +1,83 @@
 # DF AI Overseer: AI Module Handoff
 
-Written 11 Nov 2026 for the next chats, which work on **the AI module: Phase 14.3 and 14a-14d**. That covers the strategist going live, the agent loop, and the token budget. This note is the starting point for that work.
+Last edited 21 Nov 2026, for **round 4** (code 0.105.59 plus the round-4 groups k1-k5; the version is bumped at delivery). It covers the token-using AI: the strategist (14a), its token budget (14.3) and the agent plan (14b-14d). The main handoff (`DF-AI\handoff.md`) holds everything else: the forts, the way a round goes and is delivered (the PC runner), the changelog. Read both.
 
-The main handoff (project doc "DF AI Overseer Handoff", `DF-AI\handoff.md`) still holds everything else: the whole plan, the changelog, the forts, the Commands, "How it fits together", and the standing decisions. Read both. This note only repeats what the AI work needs.
+## 1. Where it stands
 
-## 1. Where things stand (11 Nov)
+Built and tested offline, **never run live**. No journal of any fort has a `review` line; `--ai` has never run in a keeper; `check_ai.py` has never been seen to pass on the PC. The audit of 15 Nov (A7, `r4/A7.md` in the round's folder) listed ten bugs, B1-B10; round 4 fixes them (k1: B1 B2, k2: B5 B8 B9, k3: B3 B4 and token reporting, k4: B6 B7, k5: B10 and the advice-only mode).
 
-**Code version: 0.105.40** (12 Nov: the seven fort-ending gaps from the coverage audit; 0.105.39 13b missions offline and 13e performance, incl. a `perf` report section and `batch`; 0.105.38 the whole-map water survey; 0.105.37 the design track's D0 with openings, scaffolding, power and personal rooms; see the main handoff) — before it, 0.105.36 (11 Nov), delivered to all six folders, hashes matched; DF and DFHack are now **53.17 / 53.17-r1** (Steam updated them 9 Nov; the copies B-F were brought to 53.17 on 11 Nov). Since 0.105.32: E's stuck-hatch fix, two code audits, the slider fixes, "nothing waits for the player" (0.105.35); the strategist's `RAISE_FORBIDDEN` now also covers trade, slaughter, levers and `stranded`, and holds of containers/soap/farms are refused. `culture.profile_from` is cached (0.105.33).
+The next step is the player's: Step 0 below, then Step 1, a season with `--ai` in **advice-only mode**.
 
-**The forts.** All six run the **14.1 step 5 exit test**, restarted fresh from the original embark on **11 Nov 21:08**, scripts only, no `--ai`. Start them with `C:\Users\skulr\Documents\start-keepers.bat`. Leave them scripts-only, because the exit test is the agent's baseline.
+## 2. Step 0: connect (on the PC, by the player)
 
-| Fort | Preset | DF copy | DF-AI folder | Port |
-|---|---|---|---|---|
-| A | War-hold | `D:\SteamLibrary\steamapps\common\Dwarf Fortress` (saves in AppData) | `DF-AI` | 5000 |
-| B | Monastery | `D:\DF-B` | `DF-AI-B` | 5001 |
-| C | Merchant city | `D:\DF-C` | `DF-AI-C` | 5002 |
-| D | Hermit hold | `D:\DF-D` | `DF-AI-D` | 5003 |
-| E | Deep mine | `D:\DF-E` | `DF-AI-E` | 5004 |
-| F | Garden fort | `D:\DF-F` | `DF-AI-F` | 5005 |
+In the DF-AI folder that will run `--ai`:
 
-- **The original embark:** a pristine copy is in each game folder as `first-save\region4`. The source is `DF-AI-B\backups\region4\2026-11-02 0014` (hash `e7fefd17`).
-- **The old runs:** saves in `D:\DF-x\old-saves\2026-11-08-<fort>` and `...\2026-11-11-<letter>`, logs in `DF-AI-x\logs\old-runs\<date>\`.
+1. `claude auth status` shows the claude.ai sign-in (if not: run `claude`, sign in with the Claude account, `/exit`).
+2. `pip install claude-agent-sdk` (Windows wheels exist for Python 3.15).
+3. `config.json` has `"strategist_backend": "subscription"` (round 4 makes it the code's default too; an API key is used only when the config says `"api"`).
+4. `python brain\check_ai.py` passes. Write down the tokens it prints: the project's first real measurement.
 
-**GitHub is back (12 Nov):** `SpaceisbigSoft/DorfOverseer`, `main` up to date. Clone it in a new chat; push each round to `main`; the PC's `_stage\dorfoverseer-repo.tgz` stays as a local backup.
+Details for the player: `docs/ai-setup.md`. No extra money: no purchased credits, no auto-reload. The subscription is personal; never distribute it, never print or log a key.
 
-**Still waiting on the player** (not AI work): whether the stranger rule (0.105.30) should be gentler. While an outsider seeks a meeting, it keeps visitors out of the tavern, temples, library and guildhalls for 7 days, at Outsiders < 50.
+## 3. Step 1: a season with `--ai`, advice only
 
-## 2. How to work (the player's rules)
+`keeper.py --revive --ai --preset "<name>"` on a seventh fort (`D:\DF-G`, port 5006, `DF-AI-G`) started from `first-save\region4` on the same version and at the same time as its scripts-only twin, so the six-fort exit test stays scripts-only. Sliders: How often = Rare, How long = Short; the daily cap set.
 
-- **In parallel.** Split every task into small groups. Each group gets its own builder agent in its own repo copy (`cp -r dorfoverseer workN && git checkout -b <branch>`), and is told it may use subagents. Then merge, test and deliver.
-  - Big or structural changes go in two waves: a design agent first, read-only, which writes a spec to a file and splits the work; then builders to that spec.
-  - Before every delivery, **an independent verifier** that hasn't seen the work checks the merged code with proof scripts. In every round so far it has found real bugs: fix them, re-run its scripts, then ship.
-- **Each group's brief** (see `/tmp/claude-0/review/*-common.md` from earlier rounds for the pattern) covers:
-  - the files it owns, and small hunks only elsewhere;
-  - tests in a new file, using `tests/harness.py` and `from lupa.lua53 import LuaRuntime`;
-  - no version bump, no push;
-  - the commit with the attribution lines.
-- **Tests:** `python3 tests/run_all.py` (91 files, about 40 s, in parallel processes). Lua must compile under Lua 5.3, which DFHack uses: `load(src,"b","t",{})` through `lupa.lua53` over `lua/*.lua` and `lua/gui/*.lua`.
-- **Delivery:**
-  1. **Version bump:** one find-replace of the quoted version across `lua/*.lua` (`BRIDGE_VERSION` and every `PART_VERSIONS` mark), plus `tests/test_bridge_memory.py`.
-  2. **Build the patch:** `git diff --binary --no-renames --diff-filter=d <delivered>..HEAD -- lua brain tests docs` and an md5 list. Commit both to the PC under a **new file name** each time; a reused staged path can write an old copy back.
-  3. **Apply:** `patch -p1 --binary`, dry run first, in all six `Documents\DF-AI*` folders.
-  4. **Then** `touch lua/*.lua lua/gui/*.lua`, and check the md5s (`tr -d '\r' | md5sum | cut -c1-8`).
-  5. **Live effect:** Lua changes take effect at once; brain changes need the player to restart the keepers.
-- **After a version:** update the main handoff (latest-version paragraph, changelog row, under 70 KB), its PC copy and the project copy, and this note when AI work changed.
+**Advice-only ("shadow") mode** is on by default (`brain/review.py`, `shadow_on()`): config.json `"strategist_shadow"`; only `false` turns it off (missing, `true` or unreadable: on). In it:
+- the review is asked as usual (tokens are spent and counted) and its answer goes through `check_answer`;
+- **nothing is applied**: no proposal, no planner adjustment, no raise or hold, no style change, no design ask; the season's character choice is made by the script, as without `--ai`, while the review is still asked what it would choose (once a season);
+- the journal's `review` line carries `"shadow": true, "applied": false`, everything it would do (`adjust`, `actions`, `steer`, `season`), what `check_answer` refused (`rejected`), a `verdict` (accepted / refused counts) and the reply itself (first 4,000 characters);
+- the log says "ADVICE ONLY: nothing applied" and "AI would ..." lines; the overseer says at start that it is advice only.
 
-## 3. The AI module today: built, never run live
+Only the sections it asked to see (`want`) carry over, since they only shape its next prompt.
 
-Nothing below has ever run against a real fort. `--ai` has never been used in a live keeper, and `check_ai.py` has not been seen to pass on the PC.
+Read the shadow reviews: tokens per review against the estimate, what it would do and whether that is sensible, the refusals, the failures and their back-off. When they read well, the player sets `"strategist_shadow": false` and restarts the keeper.
 
-**Files**
+## 4. What a review can do (all through `strategist.check_answer`)
 
-| File | What it does |
+- adjust 5 planner keys within `planner_core.ADJUST_BOUNDS` (drink, meals, blocks, wood per dwarf, idle share), re-clamped by the planner;
+- up to 3 actions: `work_order` (known recipes, amount 1-100), `tool` (the bridge's allowlist), `civ_alert`, `start_project` (the 15 kinds of `lua/ai-layouts.lua` KINDS, each with its sizes in `INSTRUCTIONS` and `_check_project`; a kind without a check is refused), `cancel_project` (open, still being dug), `cancel_work_order` (its own orders), `set_style`;
+- up to 4 raises (7 days, first in line) or holds (1-84 days, `build` at most 14) of planner rules;
+- `want`: up to 3 report sections in full next review: any section of the bridge's report (`WANTABLE`, kept level with `lua/ai-bridge.lua` SECTIONS by `tests/test_r4_k5.py`), each cut to 2,500 characters on item boundaries; the prompt names the most useful (`SECTIONS`);
+- the season's character choice; a note.
+
+A new level's place is never the model's: its rooms go along a floor's main hall (`planner_floors.floor_action` adds the floor hint at send time, for the strategist's levels too) or a classic spot.
+
+## 5. Safety bounds (keep them)
+
+- **No tools for the model.** Subscription path: `tools=[]`, `disallowed_tools=["*"]`, `mcp_servers={}`, `strict_mcp_config`, `setting_sources=[]`, `max_turns=1`, an empty sandbox `cwd`. The API path sends no tools.
+- **Everything through `check_answer`**, which never raises on any JSON shape (round 4, k2). No action type for squads, gates, levers, trade, expulsions or kills exists there.
+- **Holds by rule class:** no hold of a rule `hold_classes.py` classes survival or defence, nor of the protected lists (round 4, k1). **Raises by action kind:** a rule whose actions kill, expel, open gates or seals, link levers, trade, butcher, convict, lure or hunt is never raised (k1).
+- **Its proposals pass the crisis and recovery holds** like the planner's (k4); only its own orders are shown as "YOUR OPEN ORDERS" (k4).
+- **Game text is data:** names, news, notes quoted through `digest.game_text`. **No coordinates out** (blueprint coordinate keys refused).
+- **The halt, Co-pilot's big moves and the Rules tab** apply to its proposals as to the planner's.
+
+## 6. Tokens
+
+- `tokens.TokenBank` per fort, filled by the two AI sliders (`ai_plan`); event top-ups; a reserve kept for event reviews.
+- **The daily cap** (`real_day_token_cap` in the panel): round 4 (k3) makes it one count for the whole PC, shared by every fort folder, on by default; a review past it is skipped and says so. The subscription shares the player's chat limits, so keep it modest.
+- A failing or rate-limited backend backs off (doubling waits, a journal note) and is never asked every game day (k2).
+- Every review journals its tokens (in/out/total, model, backend, fort) (k3).
+- Size: the prompt reads about 6,200-6,500 tokens a review uncached (instructions ~2,900, the message ~3,000-3,300, the answer ~400), about twice the old `REVIEW_TOKENS` (3,100). `token_ratio` learns the real figure from the first reviews and `ai_plan` uses it (k3). The 2.5 characters a token is the code's estimate, never measured.
+
+## 7. Files
+
+| File | What |
 |---|---|
-| `brain/strategist.py` | the prompt (`INSTRUCTIONS`, `instructions()`), the review message (`review_message`), `check_answer` (every answer is validated), steering (`_check_steer`, `STEER_RULES`, `shown_rules`), `cut_json`, `rules_line`, event detection (`detect`) |
-| `brain/review.py` | `maybe_review`: when a review runs, which model, applying the answer, token learning (`token_ratio`), `apply_steer`, event queue (`note_events`) |
-| `brain/backends.py` | `SubscriptionBackend` (the Agent SDK on the player's Claude subscription, the default by `config.json` `"strategist_backend": "subscription"`) and `ApiBackend` (an API key in `.env`, never auto-reload). Models: `strategist_model` haiku, `_events` sonnet, `_top` opus. `thinking_params` uses adaptive thinking for 4.6+ models on the API (0.105.26). The subscription path still uses `max_thinking_tokens`. |
-| `brain/tokens.py` | `TokenBank` per fort, the PC-wide real-day cap (`pc_used_today`), `ai_plan` from the two AI sliders (How often, How long it thinks), `routine_due`, `event_review_allowed` |
-| `brain/season.py` | the season's character decision: a menu of raises and focuses; the AI chooses within `AI_GRACE_TICKS`, otherwise the script does (14.3 step 1, 0.103.20) |
-| `brain/digest.py` | the compact fort description (about 730 tokens; 60x smaller than the raw report), `diff`, and the threat, world, infection and built lines |
-| `brain/chronicle.py`, `crisis.py` | the fort's story lines; crisis mode, which holds expansion rules |
-| `brain/check_ai.py` | a one-question connection test |
-| `docs/ai-setup.md`, `docs/token-efficiency.md` | the player's setup steps and the token measurements |
-| tests | `test_strategist.py`, `test_fix26_strategist.py` (an end-to-end fake backend over a real fixture), `test_strategist_sections.py`, `test_season.py`, `test_copilot_ids.py` |
+| `brain/strategist.py` | `INSTRUCTIONS`, `review_message`, `check_answer`, steering, `SECTIONS` / `WANTABLE`, `cut_json`, `detect` |
+| `brain/review.py` | `maybe_review` (when, which model, the bank, applying or advice only), `shadow_on`, `token_ratio`, `apply_steer` |
+| `brain/backends.py` | `SubscriptionBackend` (Agent SDK; `effort` and adaptive `thinking`, `max_thinking_tokens` only for an old SDK), `ApiBackend`; models haiku / sonnet / opus by the How long slider |
+| `brain/tokens.py` | the bank, the daily cap, `ai_plan` |
+| `brain/hold_classes.py`, `planner_core.steer_protected` | what may never be held |
+| `brain/season.py`, `digest.py`, `chronicle.py`, `storyteller.py` | the season choice, the compact fort text (~1,900 tokens on a year-258 fort), the story |
+| `brain/check_ai.py` | the one-question connection test |
+| tests | `test_strategist.py`, `test_fix26_strategist.py`, `test_strategist_sections.py`, `test_season.py`, `test_storyteller.py`, `test_copilot_ids.py`, the `test_d0_*.py`, `test_r4_*.py` |
 
-**What one review can do** (one shot, no tools; all of it re-checked by `check_answer`):
-- adjust 5 planner keys within `planner_config.ADJUST_BOUNDS`;
-- at most 3 actions: `work_order` (known recipes, amount ≤ 100), `tool` (allowlisted DFHack tools on or off), `civ_alert`, `start_project` (kinds and sizes as listed in `INSTRUCTIONS`), `cancel_project` / cancel its own orders, `set_style`;
-- up to 4 raises or holds of planner rules, holds at most 84 days. Life-saving rules are in `planner_core.STEER_PROTECTED` and can't be held (0.105.26);
-- ask for up to 3 report sections in full for the next review (`want`);
-- the season choice;
-- a note.
+## 8. Known gaps
 
-**Safety bounds (keep them):**
-- **Never reachable by a model:** kill orders, expulsions, gate clearing, lever links and trading come only from the rules.
-- **No tools on the subscription backend:** it runs with `tools=[]`, `disallowed_tools=["*"]` and `setting_sources=[]`, so the player's Claude settings and hooks aren't loaded, and in an empty sandbox folder (`logs/strategist-sandbox`).
-- **Game text is quoted as data:** names and news go through `digest.game_text`.
-- **No coordinates:** the AI names kinds, sizes and purposes, and the scripts pick the spot.
-- **The rest:** the in-game halt, Co-pilot's `BIG_MOVES` (asks the player first) and the Rules tab all apply.
-
-**Token sliders** (the AI & tokens tab):
-- **How often:** routine reviews from every 56 to every 4 game days, plus event reviews.
-- **How long it thinks:** the model and the thinking size.
-- **Cost estimate:** at Normal, about 3,100 tokens a review, about 0.1 million a game year (estimates; `token_ratio` learns the real figure).
-
-## 4. The design (Design Notes, "Design: full token-based AI agent control", and "Fort identity" §3f)
-
-**Control levels** (a new AI-tab slider; the existing modes stay):
-
-| Level | Who decides | Tokens |
-|---|---|---|
-| Scripts | the planner alone (today, without `--ai`) | none |
-| Strategist | the planner; the AI tunes it and adds a few actions (built) | low |
-| Director | the AI sets the season's plan and priorities, approves or vetoes the planner's big moves, and answers the Needs-you items it can act on | medium |
-| Agent | the AI starts any action in the registry; the planner keeps only reflexes and proposes the rest | high |
-
-**The keeper/agent split** (the player, 8 Nov): the keeper owns basic vocabulary, such as layouts, customs, construction pieces and the safety reflexes. The agent owns grand design: the big moves, landmarks, one-off projects, how the fort grows across eras, and when to break its own pattern. It steers the style and picks the projects; the scripts place them.
-
-**A turn** is a short agent loop with tools, not one prompt:
-- **read:** the digest, then any report section on request;
-- **act:** one tool per bridge action. Schemas are generated from the bridge's `ACTIONS`, and the same validators and dry runs apply;
-- **planner:** see its proposals and why; accept or veto with a reason the planner learns from; change a threshold within bounds; set the season's rule priorities;
-- **talk:** a Needs-you note, a chronicle line, the season's agenda.
-
-A turn ends when the agent says so, or at a step or token limit.
-
-**When it runs:**
-- a season turn (plan, agenda, priorities);
-- a weekly turn;
-- event turns: siege, beast, death, mood, caravan, migrants, a stuck rule;
-- whenever the scripts hit something they can't decide.
-
-Reflexes never wait for it.
-
-**Budget and safety:**
-- **Limits:** the bank and the real-day cap stay; each turn has a token and a step limit.
-- **Caching and models:** prompt caching for the instructions and tool schemas; a small model for routine turns, a large one for seasons and events.
-- **Money:** no extra spending. The subscription is the default; an API key only if the player chooses, and never auto-reload.
-- **Actions:** every action goes through the validators and the halt, with a daily action rate limit. Destructive ones (cancel, remove, expel, open water) need a dry run and a reason, and in Co-pilot the player's Yes.
-- **Fallback:** if the backend fails or the budget runs out, control drops a level for that period, and the log says so.
-
-**Memory:** the agent reads the atlas, the chronicle, the lessons, and a rolling summary of its own past turns, which it writes at the end of each turn and which is kept in the save.
-
-**The 14.3 brief:** even the lowest setting must change the fort in a visible way, through few, high-leverage decisions from the identity map: the season's character decision, the next set piece and its name, which industry to grow, a new wing pattern, how to answer a petition or a diplomat.
-
-**Measuring:** comparison runs. The same save and sliders under Scripts and under each level at several budgets, judged on the scorecard (`brain/scorecard.py --every 2y`), the soak measures (unhappy, idle, deaths, wealth, FPS, loops) and distinctiveness. Then set the defaults where more tokens stop paying.
-
-**Phase 14 exit:** a game decade run by the agent within budget, at least as well as the scripts, with every fort visibly its own.
-
-## 5. The proposed plan (for the player to confirm)
-
-**Step 0: connect, on the PC, by the player** (`docs/ai-setup.md` option 1):
-1. Claude Code is installed and signed in with the Claude account (`claude auth status` mentions claude.ai).
-2. `pip install claude-agent-sdk`.
-3. `config.json` has `"strategist_backend": "subscription"` (already set in `DF-AI`).
-4. `python brain\check_ai.py` passes.
-
-The agent loop needs tools. The current SDK lock is `tools=[]` and `disallowed_tools=["*"]`. Tools are to be given **only as in-process SDK tools defined by the overseer** (no file, shell or web tools), with `setting_sources=[]` kept. Design that in 14b, and have a security review.
-
-**Step 1: 14a live.** A season with `--ai` on a **seventh fort**, so the exit test stays scripts-only:
-- a new DF copy (`D:\DF-G`, port 5006, `DF-AI-G`), started from `first-save\region4` with a preset the player picks. Its scripts-only twin in the exit test is then the comparison;
-- `keeper.py --revive --ai --preset "<name>"`;
-- the player picks the token sliders; start at How often = Rare and How long = Short.
-
-Read the journal's reviews:
-- the tokens per review against `REVIEW_TOKENS`;
-- what it chose and whether it showed in the fort;
-- refusals by `check_answer`;
-- failures and their fallback.
-
-Fix what that shows, in a parallel round.
-
-**Step 2: 14b, the Director loop on the subscription backend.** A design agent first, then groups, roughly:
-1. **The tool layer:** read tools generated from `SECTIONS` and the digest; act tools from `ACTIONS` and the validators; planner tools (proposals, accept or veto, thresholds, priorities); talk tools.
-2. **The turn runner:** step and token limits, caching, model choice, fallback, the rolling summary in the save.
-3. **When turns happen:** season, weekly, events, stuck rules; reflexes never wait.
-4. **The window:** the control-level slider on the AI tab; Co-pilot asks for big moves.
-5. **Tests** with a fake model that calls tools, and the security review.
-
-**Step 3: 14c, Agent level.** Planner proposals become advice; the agent originates actions; reflexes stay with the scripts.
-
-**Step 4: 14d, comparison runs.** Copies of one save under Scripts, Strategist, Director and Agent at two or three budgets. Compare scorecards and soak measures, then set the default budget and prompts.
-
-## 6. Known gaps that touch the AI work
-
-- **Strategist levels get layout customs only** (`review.py`), never the placement ones such as cells, market gate or deep hall. Decide in 14b whether the agent's levels go through `planner_building.customs_pass`.
-- **The digest:** 0.105.26 added threat, world, infection and lockout lines, and 0.105.30 a BUILT line. It has never been checked against a live report.
-- **`cut_json`** cuts full sections at 2,500 characters on item boundaries. Check that the sections the agent will ask for most (`needs`, `projects`, `military`) are still useful at that size.
-- **Calibration:** `REVIEW_TOKENS` 3,100 and `CHARS_PER_TOKEN` 2.5 are estimates from 19 Oct. The live run should calibrate them (`learn_token_ratio`).
-- **The subscription backend's thinking setting** (`max_thinking_tokens`) is unchanged since before the 5.5 models. Check what the SDK accepts now.
-- **The SDK's limits:** usage on the subscription shares the player's Claude chat limits. Find out how the SDK reports rate limits, and make the fallback quiet and correct.
-- **Code health:** `culture.profile_from` is cached (0.105.33, `plan()` about half the cost); Phase 13e (performance) has the rest.
-- **Co-pilot:** `place_keep` isn't in `BIG_MOVES` (the hall and wings are).
-
-## 7. Files outside the repo
-
-- **The local log folder:** `C:\Users\skulr\Documents\Claude Project Creation Logs\Dorf AI Overseer\`:
-  - `DF AI Overseer Design Notes.md`: §"Design: full token-based AI agent control" and §"Fort identity: the full detailing" (2f, 3f).
-  - `DF AI Overseer Gap Checklist.md`: the in-game lists, and a 0.105.16-0.105.25 section.
-  - `DF AI Overseer Handoff Archive.md`: the history.
-- **The in-game watch list:** `docs/watch-in-game.md` in the repo (0.105.22 onwards).
-- **Proof scripts from the verifiers:** `/tmp/claude-0/.../scratchpad/` (`v30r/`, `v31x/`, `dump_plan.py`, the DFHack loader simulation in `an/sc2.lua` with the `v30/` runner). They're lost with the cloud session; copy any worth keeping into `tests/` or `brain/tools/`.
-
-## 8. The design track (14e, added 11 Nov)
-
-The player wants each fort to have its own fantastical, unique design. A **Design** slider (Scripts / Guided / Architect), separate from the control level. **Guided**: a per-fort design language (motifs, shapes, proportions, symmetry, materials, naming, era changes) that the scripts' layouts and customs follow; rule-made with no tokens (D0) or written by the strategist once per fort and revised per era (D1). **Architect**: the AI draws landmark blueprints (a strict per-level tile grid with a legend; one a season by default), turned into ordinary layouts of kind `landmark` so every existing site check, Quickfort dry run and project step applies; the AI picks a site id (`S1`-`S4`) from the bridge's candidates, never coordinates; up to 2 redraws, then the library piece (D2). D0 (built, 0.105.37) puts the answer fields in `check_answer` behind `design_ai` (off). The full plan: Design Notes "Design track (14e)"; the D0 spec and contract: the archive. Decisions: Guided by rules is the default for new forts; saves without the setting read Scripts; Guided within ±1 of the sliders, Architect landmarks may go past; no surface landmarks for the Hermit hold or Deep mine; cavern-edge landmarks by the cavern switch.
+- Unverified until a signed-in call: the CLI taking `*` and an empty `--tools`, `--thinking`, the model aliases on the plan, the `usage` key names, how much context the CLI adds (the real cost), caching, what a rate limit looks like.
+- Strategist levels get the layout customs only, not the placement ones (`review.py`).
+- A raw invasion event (a thief) still counts as a siege in `strategist.detect` (Gap Checklist l.1249): fix before paying for event reviews.
+- The cut size of a section (2,500 characters) is a guess: `needs` on fort A is cut to 29%.
+- 14b-14d (the tool layer, the turn runner, the control-level slider, Agent level, comparison runs) are not built; the design is in the Design Notes ("Design: full token-based AI agent control"), and tools are to be only in-process SDK tools defined by the overseer, with a security review.
+- The design track (14e): D0 built behind `design_ai` (off); never asked in advice-only mode.

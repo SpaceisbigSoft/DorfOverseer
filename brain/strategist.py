@@ -37,7 +37,29 @@ SECTION_CHARS = 2500
 SECTIONS = ("needs", "water", "trade", "military", "society", "projects", "health", "locations", "farms",
             "supplies", "stocks", "others_on_map", "logistics", "order_desk", "entrances",
             # (0.105.26) the life-and-death ones, and the world's
-            "moods", "threats", "world", "missions", "infection", "homes", "petitions", "meetings")
+            "moods", "threats", "world", "missions", "infection", "homes", "petitions", "meetings",
+            # (r4 k5, B10) and the newer ones most worth reading in full (named in INSTRUCTIONS)
+            "floors", "thirst", "hunt", "siege", "herd", "welfare", "waterworks", "shelter_plan")
+# (r4 k5, B10) every section the bridge's report has today (lua/ai-bridge.lua SECTIONS,
+# and the perf section built after them) may be asked for, each cut to SECTION_CHARS as
+# before: the ones above by the list INSTRUCTIONS shows, any other by its name. Only
+# bridge_version and paused (one value each) are not offered. Naming all ~100 in the
+# prompt would cost ~400 tokens a review, so only SECTIONS is listed there.
+# tests/test_r4_k5.py keeps WANTABLE level with the Lua's list.
+SECTIONS_NOT_OFFERED = ("bridge_version", "paused")
+WANTABLE = SECTIONS + (
+            "alerts", "artifacts", "benches", "buildings", "captives", "citizens_taste", "civ_alert",
+            "civ_alert_ready", "civ_alert_shelter", "cleanup", "constructions", "crossings", "date", "dead",
+            "deep", "descent", "diplomacy", "disposal", "dwarves", "env_hazards", "events_waiting", "field_watch",
+            "floors", "food_store", "forestry", "fort", "founding", "garden_court", "hauling", "hazards", "herd",
+            "hunt", "industry", "insane", "jobs", "justice", "killers", "killzones", "labor", "landmarks",
+            "leather_gear", "ledger", "lures", "mandates", "map", "miasma", "migration", "mood_help",
+            "near_gates", "necro", "noble_demands", "noble_rooms", "nobles", "offices", "orders", "paper",
+            "perf", "pile_links", "planned", "provisions", "recent_announcements", "registry", "room_gaps",
+            "settings", "shelter_plan", "siege", "stone_types", "stone_use", "stuck", "syndromes", "tantrums",
+            "thirst", "tools", "traffic", "units", "wealth", "waterworks", "way_out", "weather", "welfare",
+            "well_safety")
+WANTABLE = tuple(dict.fromkeys(WANTABLE))
 
 INSTRUCTIONS = """You are the strategist for an AI overseer that runs a Dwarf Fortress fortress.
 
@@ -58,24 +80,21 @@ YOU CAN:
    {{"type":"tool","name":<one of the tools below>,"enabled":true|false}}
    {{"type":"civ_alert","on":true|false}}
    {{"type":"cancel_work_order","order_id":<id of an order YOU created earlier>}}
-   {{"type":"start_project","kind":"bedrooms","rooms":1-32,"room_size":2-4}}
-   {{"type":"start_project","kind":"dining","tables":4-90}}
-   {{"type":"start_project","kind":"storage","piles":[<stockpile types>],"room_size":5-11}}
-   {{"type":"start_project","kind":"workshops","shops":[<workshop types>]}}
-   {{"type":"start_project","kind":"temple","size":"shrine"|"grand"}}
-   {{"type":"start_project","kind":"hospital"|"barracks","beds":4-20}}
-   {{"type":"start_project","kind":"tombs","coffins":4-30}}   (each coffin in its own tomb)
-   {{"type":"start_project","kind":"tavern","tables":4-20}}
-   {{"type":"start_project","kind":"library","bookcases":4-20}}
-   {{"type":"start_project","kind":"memorial","name":<one of the memorials owed below>}}
+   {{"type":"start_project","kind":<kind>,<its sizes>}}, a kind and its sizes one of:
+     "bedrooms" "rooms":1-32,"room_size":2-4 | "suites" "suites":1-8 (nobles' rooms) | "jail" "cells":1-8
+     | "dining" "tables":4-90 | "storage" "piles":[<stockpile types>],"room_size":5-11
+     | "workshops" "shops":[<workshop types>] | "temple" "size":"shrine"|"grand"
+     | "hospital" or "barracks" "beds":4-20 | "tombs" "coffins":4-30 | "tavern" "tables":4-20
+     | "library" "bookcases":4-20 | "memorial" "name":<one of the memorials owed below>
+     | "archery" "lanes":1-3,"length":8-16 | "garden" "name":<up to 40 letters>
    {{"type":"cancel_project","project_id":<id of an open project still being dug>}}
 RECIPES: {recipes}
 TOOLS: {tools}
 STOCKPILE TYPES: {stockpiles}
 WORKSHOP TYPES: {workshops}
-A project digs a whole new level by the main staircase; the game picks a safe
-spot and the planner furnishes it in the fort's style. At most 2 open projects;
-start one only for a real, lasting need.
+A project is a new level: the scripts place its rooms (along a floor's main hall,
+or a safe spot of their own) and furnish it in the fort's style. At most 2 open
+projects; start one only for a real, lasting need.
 
 CULTURE: the fort has its own architectural style, set by the personality and
 shaped by its history. You may refine it (this costs nothing in the game):
@@ -91,7 +110,8 @@ in "reason". Keep the style true to the personality, the quirks and the fort's s
    still picks the exact action and spot) or HOLD one 1-{steer_days} days ({{"type":"hold","rule":<rule>,
    "days":<n>,"why":<text>}}; safety rules can't be held). Up to {max_steer}. A rule is named as in
    THE PLANNER PROPOSES NOW and RECENT ACTIONS, or one of: {rules}
-4. "want":[<up to {max_want} of {sections}>] shows those report sections in full next review.
+4. "want":[<up to {max_want} of {sections}, or another report section's name>] shows them in
+   full next review.
 
 Change one thing the scripts wouldn't when the fort's story or personality calls for it;
 the planner does the routine. If nothing needs you, say so in "note".
@@ -265,7 +285,7 @@ def review_message(state: dict, reason: str, planner_notes: list[str], recent_de
             f"{game_text(k, 40)} {game_text(v.get('mode'), 10)} ({game_text(v['why'], 60) if v.get('why') else ''})"
             for k, v in steer.items() if isinstance(v, dict)))
     for sec in (wants or [])[:MAX_WANT]:
-        if sec in SECTIONS and sec in state:
+        if isinstance(sec, str) and sec in WANTABLE and sec in state:
             text, cut = cut_json(state.get(sec), SECTION_CHARS)
             lines.append(f"SECTION {sec} (as you asked{', cut' if cut else ''}) " + text + (" (cut)" if cut else ""))
     # (r4 k4, audit A7 B6) only the orders the strategist made itself (the
@@ -522,7 +542,7 @@ def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: se
         if want is not None and not isinstance(want, list):
             a.rejected.append(f"want: not a list ({type(want).__name__})")
         for w in _l(want)[:MAX_WANT]:
-            if _str_in(w, SECTIONS):
+            if _str_in(w, WANTABLE):       # (r4 k5, B10) any report section
                 a.want.append(w)
             else:
                 a.rejected.append(f"want: unknown section {_short(w)}")
@@ -747,10 +767,18 @@ def _names(v, allowed, most):
     return list(dict.fromkeys(v))
 
 
+# (r4 k5, B10) the kinds INSTRUCTIONS lists, each with its sizes checked below: a
+# kind the bridge has but this list lacks (a new one) is refused, never sent bare
+PROJECT_KINDS = ("bedrooms", "suites", "jail", "dining", "storage", "workshops", "temple", "hospital",
+                 "barracks", "tombs", "tavern", "library", "memorial", "archery", "garden")
+
+
 def _check_project(act, build) -> tuple[dict | None, str]:
     kind = act.get("kind")
     if not _str_in(kind, set(build.get("level_kinds") or [])):
         return None, f"start_project: unknown kind {_short(kind)}"
+    if kind not in PROJECT_KINDS:
+        return None, f"start_project: {kind} is not one the strategist may start"
     out = {"type": "start_project", "kind": kind}
     if kind == "bedrooms":
         out["rooms"], out["room_size"] = _int_in(act.get("rooms"), 1, 32), _int_in(act.get("room_size", 3), 2, 4)
@@ -773,6 +801,16 @@ def _check_project(act, build) -> tuple[dict | None, str]:
         out["size"] = act.get("size") if act.get("size") in ("shrine", "grand") else None
         if not build.get("temple_allowed", True):
             return None, "start_project temple: the fort already has a temple"
+    elif kind == "suites":                 # (r4 k5, B10) the four kinds the bridge has had since 0.105.40
+        out["suites"] = _int_in(act.get("suites"), 1, 8)
+    elif kind == "jail":
+        out["cells"] = _int_in(act.get("cells"), 1, 8)
+    elif kind == "archery":
+        out["lanes"], out["length"] = _int_in(act.get("lanes"), 1, 3), _int_in(act.get("length", 12), 8, 16)
+    elif kind == "garden":
+        # the meeting area is named for it in the game: the memorial rule's letters only
+        name = act.get("name")
+        out["name"] = " ".join(name.split()) if isinstance(name, str) and BLUEPRINT_NAME.match(name.strip()) else None
     elif kind == "memorial":
         # only a memorial the fort actually owes, by its exact name
         name = act.get("name")

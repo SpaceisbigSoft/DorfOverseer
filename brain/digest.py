@@ -69,6 +69,18 @@ def game_text(v, n: int = 40) -> str:
     return (t[:n - 1] + "…") if len(t) > n else (t or "?")
 
 
+def squad_name(q) -> str:
+    """(r4 k5, B10) A squad as the review names it: the game's name, else
+    "squad <id>" (the live report's name is "" for a squad nobody named,
+    which printed as "?" and left the review unable to tell squads apart)."""
+    q = q if isinstance(q, dict) else {}
+    v = q.get("name")
+    if isinstance(v, str) and v.strip():
+        return game_text(v)
+    sid = q.get("id")
+    return f"squad {sid}" if isinstance(sid, int) and not isinstance(sid, bool) else "squad ?"
+
+
 def _threat_groups(threats: list) -> list[str]:
     groups: dict[str, list] = {}
     for t in threats:
@@ -688,7 +700,7 @@ def digest(s: dict, news: int = 5) -> str:
         "SUPPLIES " + " ".join(f"{k}:{v}" for k, v in _d(s.get("supplies")).items() if isinstance(v, int))
         + f" wells:{_d(b.get('other')).get('Well', 0)}",
         "MILITARY soldiers " + str(_d(s.get("military")).get("soldiers", 0)) + " | "
-        + ("; ".join(f"{game_text(q.get('name'))} {q.get('members')}/{q.get('size')} {q.get('routine') or '?'}"
+        + ("; ".join(f"{squad_name(q)} {q.get('members')}/{q.get('size')} {q.get('routine') or '?'}"
                      + (" ON ORDERS" if q.get("orders") else "")
                      for q in _l(_d(s.get("military")).get("squads"))[:5]) or "no squads")
         + f" | gate levers {len(_l(_d(s.get('military')).get('gates')))}"

@@ -7,6 +7,7 @@ Kept separate from overseer.py so it can be tested without a game or a network.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 from culture import apply_style, explain, layout_style, new_history, pick_stone, profile_from, style_guide
@@ -37,6 +38,37 @@ MAX_PENDING_EVENTS = 40
 # are recorded as its own by the bridge, its cancels refused there for any
 # other order, its levels held in a crisis or recovery (hold_classes)
 STRATEGIST_MARKED = {"work_order", "cancel_work_order", "start_project"}
+
+
+# (r4 k5) Advice only ("shadow"): the review is asked, its answer checked by
+# check_answer and journaled in full (what it would adjust, hold, raise and
+# propose, the season it would choose, what was refused), and NOTHING is
+# applied: no proposal, no adjustment, no raise or hold, no style, no season
+# choice (the script makes that, as without --ai), no design ask. On unless
+# config.json says "strategist_shadow": false, so the first --ai seasons only
+# advise; the player switches it off. DFAI_STRATEGIST_SHADOW=0/1 overrides the
+# config (tests/harness.py sets 0 for the tests of the applying path).
+SHADOW_CONFIG_KEY = "strategist_shadow"
+SHADOW_ENV = "DFAI_STRATEGIST_SHADOW"
+SHADOW_REPLY_CHARS = 4000        # the reply as it came, kept on a shadow review's journal line
+
+
+def shadow_on() -> bool:
+    """Advice-only mode: on unless switched off (config.json
+    "strategist_shadow": false). Never raises; anything unreadable is on."""
+    env = os.environ.get(SHADOW_ENV)
+    if env in ("0", "1"):
+        return env == "1"
+    try:
+        from dfhack import read_config
+        cfg = read_config()
+        return not (isinstance(cfg, dict) and cfg.get(SHADOW_CONFIG_KEY) is False)
+    except Exception:  # noqa: BLE001
+        return True
+
+
+SHADOW_WORDS = ("AI strategist: advice only (shadow mode). Reviews are asked, checked and journaled, and nothing "
+                "is applied. Set \"strategist_shadow\": false in config.json to let it act.")
 
 
 @dataclass
@@ -97,6 +129,15 @@ def learn_token_ratio(memory, used: int, estimate: int) -> None:
     memory.token_ratio = round(0.7 * token_ratio(memory) + 0.3 * seen, 3)
 
 
+def steer_words(steer: list) -> list[str]:
+    """(r4 k5) The raises and holds in words, applied or not."""
+    out = []
+    for s in steer or []:
+        days = 7 if s["type"] == "raise" else int(s.get("days") or 7)
+        out.append(f"{s['type']} {s['rule']} for {days} day(s)" + (f": {s['why']}" if s.get("why") else ""))
+    return out
+
+
 def apply_steer(memory, steer: list, now: int) -> list[str]:
     """(0.104.89) The strategist's raises (a week) and holds (its days) into memory."""
     if not isinstance(getattr(memory, "steer", None), dict):
@@ -127,17 +168,26 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     now = abs_tick(state)
     plan = ai_plan(settings, plan_ratio(bank))   # how often, how long (the two AI sliders)
     bank.accrue(now, settings)
+    shadow = shadow_on()                         # (r4 k5) advice only: nothing below is applied
 
     kinds = [k["kind"] for k in memory.pending_kinds]
     # (0.103.20) one character decision a season, at any setting: the review
     # that makes it may come early (the lowest setting reviews rarely)
     season_due = season_mod.due(state, memory) and not season_mod.waiting(memory, now)
+    season_key = season_mod.season_key(state)
+    if shadow:
+        # (r4 k5) the script makes the season's choice (overseer); the review is
+        # asked what it would choose, once a season
+        c = memory.culture if isinstance(memory.culture, dict) else {}
+        season_due = (season_key is not None and c.get("shadow_season") != season_key
+                      and not season_mod.waiting(memory, now))
     # (0.105.33, B5) an event review that couldn't be paid for waits a day
     # (retry_at on its kinds); a kind that came since is tried at once
     kinds_due = any(not 0 <= k.get("retry_at", 0) - now <= TICKS_PER_DAY
                     for k in memory.pending_kinds if isinstance(k, dict))
     # (D0) the design ask: only when config.json's design_ai is on (never in D0)
-    design_ask = planner_design.due(memory, now) if planner_design.ai_allowed() else None
+    # (r4 k5) and never in advice-only mode: a design answer is stored as it comes
+    design_ask = planner_design.due(memory, now) if planner_design.ai_allowed() and not shadow else None
     if kinds and kinds_due and event_review_allowed(bank, now, plan):
         reason, important = "event: " + ", ".join(kinds), True
     elif routine_due(bank, now, plan) or season_due:
@@ -308,7 +358,9 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         bank.add_design(used if reason == "design" else int(used * design_est / max(1, raw_estimate)), now)
         design_said = _apply_design(memory, answer, design_ask, now)
     # (0.104.89) its raises and holds of the planner's rules, and what it wants to see
-    steer_lines = apply_steer(memory, answer.steer, now)
+    # ((r4 k5) in advice-only mode said, not kept; the sections it asks for are
+    # only words for its next review, so those are kept)
+    steer_lines = steer_words(answer.steer) if shadow else apply_steer(memory, answer.steer, now)
     memory.strategist_wants = list(answer.want)
 
     actions = []
@@ -322,6 +374,9 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         if a["type"] == "set_style":
             # The style lives with the overseer (and is copied into the save);
             # nothing in the game changes now.
+            if shadow:
+                actions.append(a)
+                continue
             if not memory.culture:
                 memory.culture = new_history()
             apply_style(memory.culture, {k: v for k, v in a.items() if k != "type"}, traits)
@@ -345,15 +400,26 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         if a["type"] in STRATEGIST_MARKED:
             a = dict(a, by="strategist")
         actions.append(a)
+        if shadow:
+            continue          # (r4 k5) journaled as what it would propose, never proposed
         # A new level from the strategist shares the planner's building limits.
         rule = "build" if a["type"] == "start_project" else "strategist"
         out.proposals.append(Proposal(rule, a, f"strategist: {answer.note or 'no reason given'}",
                                       1, a["type"] == "work_order"))
-    memory.adjust.update(answer.adjust)
-    if isinstance(memory.adjust_at, dict):            # (0.97.1) each lasts a season from now
-        memory.adjust_at.update({k: now for k in answer.adjust})
+    if not shadow:
+        memory.adjust.update(answer.adjust)
+        if isinstance(memory.adjust_at, dict):            # (0.97.1) each lasts a season from now
+            memory.adjust_at.update({k: now for k in answer.adjust})
     season_said = []
-    if season_due:
+    if season_due and shadow:
+        # (r4 k5) what it would choose, said and journaled; asked again next season
+        if not isinstance(memory.culture, dict):
+            memory.culture = {}
+        memory.culture["shadow_season"] = season_key
+        if answer.season is not None:
+            season_said = [f"would choose {answer.season.get('choice')}"
+                           + (f" ({answer.season['name']})" if answer.season.get("name") else "")]
+    elif season_due:
         if answer.season is None:
             # nothing chosen: the fort keeps to its ways; asked again next season
             answer.season = {"choice": "keep", "why": "no character decision in the reply"}
@@ -364,16 +430,20 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         memory.pending_events = []
         memory.pending_kinds = []
 
-    out.say.append(f"AI review ({reason}, {reply.model}, thinking {plan['effort_word'].lower()}): {used:,} tokens, "
-                   f"{int(bank.balance):,} left. {answer.note}")
+    out.say.append(f"AI review ({reason}, {reply.model}, thinking {plan['effort_word'].lower()}"
+                   + (", ADVICE ONLY: nothing applied" if shadow else "")
+                   + f"): {used:,} tokens, {int(bank.balance):,} left. {answer.note}")
     for line in season_said:
         out.say.append(f"  Season: {line}" + (f" ({answer.season['why']})" if answer.season.get("why") else ""))
-    if season_due and answer.season.get("line"):
-        out.say.append(f"  Chronicle: {answer.season['line']}")
+    if season_due and answer.season and answer.season.get("line"):
+        out.say.append(f"  {'Chronicle it would write' if shadow else 'Chronicle'}: {answer.season['line']}")
     if answer.adjust:
-        out.say.append(f"  AI adjusted the planner: {answer.adjust}")
+        out.say.append(f"  AI {'would adjust' if shadow else 'adjusted'} the planner: {answer.adjust}")
     for line in steer_lines:
-        out.say.append(f"  AI steers: {line}")
+        out.say.append(f"  AI {'would steer' if shadow else 'steers'}: {line}")
+    if shadow:
+        for a in actions:
+            out.say.append(f"  AI would do: {_action_words(a)}")
     for line in design_said:
         out.say.append(f"  AI design: {line}")
     for r in answer.rejected:
@@ -399,6 +469,12 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     if cleared:
         out.journal["backoff_cleared"] = cleared
         out.say.append(f"  AI connection back after {cleared['fails']} failed call(s)")
+    if shadow:
+        # (r4 k5) advice only: everything above is what it WOULD do; nothing was applied
+        out.journal.update({"shadow": True, "applied": False,
+                            "verdict": {"accepted": len(actions) + len(answer.steer) + len(answer.adjust)
+                                        + (1 if answer.season else 0), "refused": len(answer.rejected)},
+                            "reply": (reply.text or "")[:SHADOW_REPLY_CHARS]})
     if design_ask:
         out.journal["design"] = {"ask": design_ask, "language": answer.design is not None,
                                  "blueprint": answer.blueprint is not None,
@@ -437,6 +513,11 @@ def note_success(memory) -> dict | None:
     bo = backoff_state(memory)
     memory.ai_backoff = {}
     return {"fails": bo["fails"], "since": bo.get("since")} if bo.get("fails") else None
+
+
+def _action_words(a: dict) -> str:
+    """(r4 k5) One checked action in words for the log (its style dict left out)."""
+    return " ".join(f"{k}={v}" for k, v in a.items() if k not in ("style",))
 
 
 def _landmark_project_ids(s: dict) -> set:
