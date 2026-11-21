@@ -1375,6 +1375,11 @@ PLANNER_CONFIG.update({
     "g9_signal_hold_s": 3600,             # a console close, logoff or shutdown signal: nothing started or loaded this long
 })
 
+# (x3, V7) the fallen mark against the fort now loaded (brain/fallen.py idle)
+PLANNER_CONFIG.update({
+    "x3_fallen_probe_s": 30,              # while a mark stands: the loaded fort's pulse read again this often (at once on a new date)
+})
+
 # (R1 g6) strange moods must not fail for want of materials (R-AD 1-2, R-CE 4)
 PLANNER_CONFIG.update({
     "g6_mood_slaughter_again_days": 8,    # a mood still waiting on bone or leather: another animal after this long
@@ -1447,8 +1452,3 @@ PLANNER_CONFIG.update({
 
 
 
-
-# (x3, V7) the fallen mark against the fort now loaded (brain/fallen.py idle)
-PLANNER_CONFIG.update({
-    "x3_fallen_probe_s": 30,              # while a mark stands: the loaded fort's pulse read again this often (at once on a new date)
-})
