@@ -17,8 +17,14 @@ while the AI ran thousands of useless actions (survey slices, labour refused
     deletes logs/fallen.json (the AI acts again on that fort until it has
     citizens and falls again).
 
+  * (x3, V7) the mark is for the fort and date it names: the overseer's loop
+    checks it against the game loaded now (fallen.idle(status, probe)), as DF
+    loads every save paused and no cycle runs while paused; the keeper holds
+    only for a mark of its pinned fort (holds_for).
+
     why = fallen.falls(state)                      # before normalize(): the raw report
     fallen.note(state, key, folder, say)           # each cycle: True while fallen
+    fallen.idle(status, probe, say, journal)       # each poll of the loop: the mark, or None
 """
 
 from __future__ import annotations
@@ -90,10 +96,86 @@ def current() -> dict | None:
     return d if isinstance(d, dict) and d.get("fort") else None
 
 
-def idle() -> dict | None:
+def _cfg(name: str, default: float) -> float:
+    try:
+        from planner_config import PLANNER_CONFIG
+        v = PLANNER_CONFIG.get(name, default)
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+    except Exception:  # noqa: BLE001
+        return default
+
+
+def _date_key(st: dict):
+    d = st.get("date") if isinstance(st, dict) else None
+    return (d.get("year"), d.get("tick")) if isinstance(d, dict) else None
+
+
+def idle(st: dict | None = None, probe=None, say=print, journal=None) -> dict | None:
     """For the overseer's loop and the keeper: the mark when the game is to
-    be left alone (no unpausing, no unsticking, no relaunch or reload)."""
-    return current()
+    be left alone (no unpausing, no unsticking, no relaunch or reload).
+
+    (x3, V7) With the loop's status `st`, the mark holds only for the fort and
+    date it names. DF loads every save paused, and while the mark stands the
+    loop neither unpauses nor runs a cycle (where note() would end it): so it
+    is checked here, against the game loaded now. It lapses at once (said,
+    taken off, the loop runs as usual) when the status's date is earlier than
+    the fall's, or when `probe()` (the loaded fort's raw pulse report and its
+    key, or None when it can't be read; asked at once on a new date while
+    paused, else every x3_fallen_probe_s) shows another fort, citizens again, an earlier
+    date or a migrant wave on its way. Without `st` (the keeper), the mark as
+    it stands. Never raises: a check that fails (not a report that can't be
+    read) lets the game run rather than hold a living fort paused."""
+    mark = current()
+    if mark is None or st is None:
+        return mark
+    try:
+        if not isinstance(st, dict) or not st.get("in_fort"):
+            STATE.pop("probe", None)          # nothing loaded: whatever comes next is read at once
+            return mark
+        why, key, seen = None, mark.get("fort"), st
+        t, at = _tick(st), mark.get("tick")
+        if isinstance(t, int) and isinstance(at, int) and t < at:
+            why = "an earlier date is loaded (an earlier save, or another fort)"
+        elif probe is not None:
+            import time
+            last, now, dk = STATE.get("probe") or {}, time.monotonic(), _date_key(st)
+            # a new date read at once only while paused (a load): a running game's
+            # date moves each poll, and its cycles end the fall (note) anyway
+            if (last.get("mark") != mark.get("since") or (st.get("paused") and last.get("date") != dk)
+                    or now - float(last.get("at") or 0.0) >= _cfg("x3_fallen_probe_s", 30.0)):
+                STATE["probe"] = {"at": now, "date": dk, "mark": mark.get("since")}
+                got = probe()
+                if isinstance(got, tuple) and len(got) == 2 and isinstance(got[0], dict) and got[1]:
+                    seen, key = got[0], got[1]
+                    why = _ended(seen, key, mark)
+        if why is None:
+            return mark
+        _end(mark, why, key, seen.get("date"), say, journal)
+        return None
+    except Exception as e:  # noqa: BLE001  (never a living fort held paused by a fault here)
+        try:
+            say(f"Fallen: the mark couldn't be checked against the loaded fort ({type(e).__name__}: "
+                f"{str(e)[:120]}): the game is looked after as usual.")
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+
+def holds_for(mark: dict | None, pin: dict | None) -> bool:
+    """(x3, V7) The keeper: does this mark hold its game? Not when the keeper
+    is pinned to another fort (another world or site than the fall's): a mark
+    left by another run must not keep the pinned fort from being started or
+    loaded. Without a pin (or without the mark's world and site), it holds."""
+    if not mark:
+        return False
+    if not isinstance(pin, dict) or not pin.get("world") or pin.get("site") is None:
+        return True
+    key = str(mark.get("fort") or "")
+    world = mark.get("world") or key.rpartition("#")[0].partition("@")[0]
+    site = mark.get("site") if mark.get("site") is not None else _site(key)
+    if not world or site in (None, ""):
+        return True
+    return str(world) == str(pin["world"]) and str(site) == str(pin["site"])
 
 
 def _write(path: Path, data) -> None:
@@ -155,12 +237,7 @@ def _note(state: dict, key: str, folder: Path | None, say, journal) -> bool:
         if why is None:
             STATE["mark"] = mark
             return True
-        say(f"Fallen: the fort's fall is over ({why}): the AI acts again, and the keeper looks after the game again.")
-        if journal:
-            journal({"kind": "fallen", "fort": key, "event": "ended", "why": why, "date": state.get("date")})
-        _clear(mark, why)
-        STATE["mark"] = None
-        STATE["dismissed"] = None
+        _end(mark, why, key, state.get("date"), say, journal)
         return False
     why = falls(state)
     if why is None:
@@ -199,6 +276,16 @@ def _note(state: dict, key: str, folder: Path | None, say, journal) -> bool:
         journal({"kind": "fallen", "fort": key, "event": "fallen", "why": why, "date": state.get("date"),
                  "evidence": str(evidence) if evidence else None})
     return True
+
+
+def _end(mark: dict, why: str, key, date, say, journal) -> None:
+    """The fall in `mark` is over: said, journalled, the mark taken off."""
+    say(f"Fallen: the fort's fall is over ({why}): the AI acts again, and the keeper looks after the game again.")
+    if journal:
+        journal({"kind": "fallen", "fort": key, "event": "ended", "why": why, "date": date})
+    _clear(mark, why)
+    STATE["mark"] = None
+    STATE["dismissed"] = None
 
 
 def _clear_fort_mark(mark: dict, why: str) -> None:
