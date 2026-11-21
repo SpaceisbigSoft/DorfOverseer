@@ -1106,7 +1106,7 @@ function seal_lockable(o, row)
     if type(o.source) == 'string' and o.source:find('^cavern well') then
         local okw, W = pcall(reqscript, 'ai-well-safety')
         if okw and W then
-            local okb, who = pcall(W.door_blocked, o)
+            local okb, who = pcall(function() return W.door_blocked(o) end)
             if okb and who then
                 local name = tostring(who)
                 return false, name .. ' is beyond the cavern well\'s door', name, 'blocked'
