@@ -13,6 +13,7 @@
    "IRON": 3
   },
   "bolts": 3,
+  "bolts_free": 0,
   "booted": 0,
   "crossbows_total": 2,
   "flask_places": 3,
@@ -169,6 +170,7 @@
     "assigned": 1,
     "items": 1,
     "specs": 1,
+    "units": 0,
     "wanted": 50
    },
    "id": 2,

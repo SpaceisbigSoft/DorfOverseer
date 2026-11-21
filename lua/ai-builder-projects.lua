@@ -704,6 +704,23 @@ function start_project(params, now, dry_run)
         end
         mood_shop = n < MOOD_SHOP_OPEN_MAX
     end
+    -- (r2h4) the crossbow squad's Bowyer's workshop (params.crossbows, the bridge
+    -- lets it through for a lone Bowyers) takes no slot either: one such level
+    -- open at a time, and not past MOOD_SHOP_OPEN_MAX urgent workshops levels
+    local bowyer_shop = params.crossbows == true and kind == 'workshops'
+    if bowyer_shop then
+        local n = 0
+        for _, q in ipairs(open) do
+            local qp = type(q.params) == 'table' and q.params or {}
+            if q.kind == 'workshops' and (q.crossbows == true or qp.crossbows == true) then
+                bowyer_shop = false
+            elseif q.kind == 'workshops' and (q.urgent == true or qp.urgent == true) then
+                n = n + 1
+            end
+        end
+        bowyer_shop = bowyer_shop and n < MOOD_SHOP_OPEN_MAX
+        mood_shop = mood_shop or bowyer_shop
+    end
     if not mood_shop and #open >= slot_cap(open) + (params.urgent == true and URGENT_EXTRA or (kind == 'farms' and 1 or 0)) then
         return {ok = false, rejected = true,
                 error = ('already %d unfinished building projects'):format(#open)}
@@ -840,6 +857,7 @@ function start_project(params, now, dry_run)
     local p = {
         id = data.next_id, kind = kind, phase = 'dig',
         urgent = params.urgent == true or nil,     -- (0.105.48, A3 14) the report's row carries it
+        crossbows = params.crossbows == true or nil,   -- (r2h4) the crossbow squad's Bowyer's: one open at a time
         params = {rooms = params.rooms, room_size = params.room_size, tables = params.tables, beds = params.beds,
                   dormitory = params.dormitory,
                   piles = params.piles, shops = params.shops, size = params.size,

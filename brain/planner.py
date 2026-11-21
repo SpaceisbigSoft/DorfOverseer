@@ -1133,7 +1133,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             if missing_:
                 for p in proposals:
                     a = p.action
-                    if a.get("type") == "start_project" and a.get("kind") == "workshops":
+                    # (r2h4) never onto the crossbow squad's lone Bowyer's (it takes no
+                    # project slot only alone: lua/ai-builder-projects.lua start_project)
+                    if a.get("type") == "start_project" and a.get("kind") == "workshops" and not a.get("crossbows"):
                         shops_ = list(a.get("shops") or [])
                         add = [w for w in missing_ if w not in shops_]
                         if add:

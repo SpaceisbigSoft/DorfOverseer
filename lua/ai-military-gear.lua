@@ -1164,24 +1164,168 @@ function assign_quivers(dry_run, limit)
     return {ok = true, assigned = n, left = #pool, error = err}
 end
 
+-- (r2h4) the bolts a list of item ids holds (stack sizes summed; an id
+-- that is gone counts nothing)
+local function stack_units(ids)
+    local n = 0
+    for _, id in ipairs(ids) do
+        pcall(function()
+            local it = df.item.find(id)
+            if it then n = n + (it:getStackSize() or 1) end
+        end)
+    end
+    return n
+end
+
 -- A crossbow squad's bolts: its ammunition entries, the bolts wanted and
 -- those DF has assigned. nil for a squad that doesn't shoot.
+-- (r2h4) `units`: the bolts on the entries' assigned lists (`assigned` counts
+-- stacks: 25 bolts are one item), so wanted and units compare
 function squad_ammo(sq)
     local shoots = false
     for _, pos in ipairs(sq.positions) do
         if ranged_place(pos) then shoots = true break end
     end
     if not shoots then return nil end
-    local out = {specs = 0, wanted = 0, assigned = 0, items = 0}
+    local out = {specs = 0, wanted = 0, assigned = 0, items = 0, units = 0}
     pcall(function()
         for _, a in ipairs(sq.ammo.ammunition) do
             out.specs = out.specs + 1
             out.wanted = out.wanted + (a.amount or 0)
             out.assigned = out.assigned + #a.assigned
+            out.units = out.units + stack_units(a.assigned)
         end
         out.items = #sq.ammo.ammo_items
     end)
     return out
+end
+
+-- (r2h4) Bolts DF never hands out. The 15-16 Nov run (0.105.55): every
+-- crossbow squad had its bolts entry (set_bolts, 500 wanted) and none
+-- assigned (A with 500 bolts in stock, C 508, D 304, E 449: `ammo.assigned`
+-- 0), so no soldier ever had a bolt in his quiver (`power.ranged` 0 in all
+-- 14 squads). DF fills an entry only when its equipment update runs (the
+-- update flags), and the entry was set before the bolts were made: B's
+-- squad, set while 11 stacks lay free, got those 11 and no more. Weapons
+-- had the same lazy hand-out (assign_weapons, 0.104.60). Here the free bolts
+-- go onto the entries as DF's own assignment puts them: the entry's
+-- `assigned` list, from DF's unassigned list to its assigned one; then the
+-- update flags, so DF has the soldiers fetch them into their quivers.
+BOLTS_ID = 'ITEM_AMMO_BOLTS'
+
+local function is_bolts(it)
+    local ok, id = pcall(function() return it.subtype.id end)
+    return ok and id == BOLTS_ID
+end
+
+-- every bolt stack an ammunition entry claims (any squad's, the hunters')
+local function ammo_claims()
+    local c = {}
+    for _, sq in ipairs(fort_squads()) do
+        pcall(function()
+            for _, a in ipairs(sq.ammo.ammunition) do
+                for _, id in ipairs(a.assigned) do c[id] = true end
+            end
+        end)
+    end
+    pcall(function()
+        for _, a in ipairs(df.global.plotinfo.equipment.hunter_ammunition) do
+            for _, id in ipairs(a.assigned) do c[id] = true end
+        end
+    end)
+    return c
+end
+
+-- The free bolt stacks no entry claims: {it, units, listed} (listed: on
+-- DF's unassigned list; else on no list at all, as a new stack DF has not
+-- filed). Never one forbidden, for the dump or to melt, in a job, carried,
+-- a trader's or an enemy's, or one waiting on the "unmanifested" list.
+local BOLT_OK = {}
+function free_bolts()
+    local out = {}
+    local eq = equipment_lists()
+    local una, asg, unm = {}, {}, {}
+    if eq then
+        pcall(function() una = id_set(eq.items_unassigned.AMMO) end)
+        pcall(function() asg = id_set(eq.items_assigned.AMMO) end)
+        pcall(function() unm = id_set(eq.items_unmanifested.AMMO) end)
+    end
+    local claimed = ammo_claims()
+    pcall(function()
+        for _, it in ipairs(df.global.world.items.other.AMMO) do
+            local f = it.flags
+            if is_bolts(it) and not claimed[it.id] and not unm[it.id] and not f.melt
+                    and U.item_free(it, BOLT_OK) and (una[it.id] or not asg[it.id]) then
+                table.insert(out, {it = it, units = it:getStackSize() or 1, listed = una[it.id] and true or false})
+            end
+        end
+    end)
+    return out
+end
+
+-- the bolts the fort's free stacks hold, for the gear report
+function bolts_free_count()
+    local n = 0
+    for _, b in ipairs(free_bolts()) do n = n + b.units end
+    return n
+end
+
+-- Hand free bolts to the crossbow squads' entries short of their amount (at
+-- most `limit` stacks a call). {ok, stacks, bolts, squads} or a refusal.
+function assign_bolts(dry_run, limit)
+    local fort = U.fort_entity()
+    if not fort then return {ok = false, rejected = true, error = 'no fort'} end
+    limit = limit or 20
+    local pool = free_bolts()
+    local eq = equipment_lists()
+    local stacks, units, squads, short = 0, 0, {}, 0
+    for _, sid in ipairs(fort.squads) do
+        local sq = df.squad.find(sid)
+        local okv, specs = pcall(function() return sq.ammo.ammunition end)
+        for _, a in ipairs((sq and okv and specs) or {}) do
+            local okt, fits = pcall(function()
+                return a.item_type == df.item_type.AMMO
+            end)
+            local have = stack_units(a.assigned)
+            local want = tonumber(a.amount) or 0
+            if okt and fits and have < want then
+                short = short + 1
+                while have < want and stacks < limit and #pool > 0 do
+                    local b = table.remove(pool, 1)
+                    if not dry_run then
+                        a.assigned:insert('#', b.it.id)
+                        if eq then
+                            pcall(function()
+                                vec_remove(eq.items_unassigned.AMMO, b.it.id)
+                                vec_add(eq.items_assigned.AMMO, b.it.id)
+                            end)
+                        end
+                    end
+                    have, stacks, units = have + b.units, stacks + 1, units + b.units
+                    squads[sid] = (squads[sid] or 0) + b.units
+                end
+            end
+        end
+    end
+    if stacks == 0 then
+        return {ok = false, rejected = true,
+                error = short == 0 and 'every crossbow squad has its bolts' or 'no free bolts in a stockpile'}
+    end
+    local by = {}
+    for sid, n in pairs(squads) do by[tostring(sid)] = n end
+    if dry_run then return {ok = true, dry_run = true, would_assign = units, stacks = stacks, squads = by} end
+    for sid in pairs(squads) do
+        pcall(function()
+            local sq = df.squad.find(sid)
+            sq.ammo.update.ammo = true
+            sq.ammo.update.quiver = true
+        end)
+    end
+    pcall(function()
+        df.global.plotinfo.equipment.update.ammo = true
+        df.global.plotinfo.equipment.update.quiver = true
+    end)
+    return {ok = true, stacks = stacks, bolts = units, squads = by, left = #pool}
 end
 
 -- Bolts for a crossbow squad with no ammunition entry (a uniform the player
@@ -1691,4 +1835,6 @@ function army_gear(out)
     if okf and fl then
         for k, v in pairs(fl) do out[k] = v end
     end
+    local okb, nb = pcall(bolts_free_count)      -- (r2h4) the bolts assign_bolts can hand out
+    if okb and type(nb) == 'number' then out.bolts_free = nb end
 end

@@ -23,7 +23,7 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "notes": "sha256:a76be1d185e69e105d3b5eb9",
-   "props": "sha256:afad71222126f89d39c3ca7a",
+   "props": "sha256:c3870a6bd98b6586a7c8924c",
    "rules": [
     "build",
     "hospital",
@@ -31,6 +31,7 @@
     "doctor_post",
     "fat_ban",
     "soap",
+    "crossbow_shop",
     "pop_cap",
     "labor",
     "recreation",
@@ -56,21 +57,22 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:4b4604253d59b494def3104b",
-   "props": "sha256:59bbb0c87d628e1a81306057",
+   "props": "sha256:0b89c4827745c8800801982a",
    "rules": [
-    "well",
     "build",
     "hospital",
     "build",
     "doctor_post",
     "fat_ban",
     "soap",
+    "crossbow_shop",
     "pop_cap",
     "labor",
     "recreation",
     "cistern",
     "water_traffic",
     "mandate",
+    "well",
     "needs_meal",
     "temple_chest",
     "instrument_orders",
@@ -133,10 +135,11 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:ebc0dc8709bfb0a92a944d4f",
+   "props": "sha256:13fe630998d30f2e7fa1973a",
    "rules": [
     "build",
     "appoint",
+    "crossbow_shop",
     "furniture",
     "furniture",
     "bags",
@@ -151,10 +154,11 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:39f508278ada3ddaa5c28fe8",
+   "props": "sha256:fa92090ab7f7750c6c84cc2c",
    "rules": [
     "build",
     "appoint",
+    "crossbow_shop",
     "furniture",
     "furniture",
     "bags",
@@ -170,9 +174,10 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:f9863ddbb68f255435aa1756",
+   "props": "sha256:e7e0ceec962d8faa1f1b007e",
    "rules": [
     "appoint",
+    "crossbow_shop",
     "bags",
     "smelt",
     "cloth",
@@ -186,9 +191,10 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:86798606f5887c0b9a6288d9",
+   "props": "sha256:1d04dd65e360b56804a26067",
    "rules": [
     "appoint",
+    "crossbow_shop",
     "bags",
     "smelt",
     "cloth",
