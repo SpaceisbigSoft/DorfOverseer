@@ -1393,8 +1393,11 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # shrank) gives soldiers back to work a few at a time, while all is quiet.
     # Monastery kept 49 soldiers at Militarism -60 (it wanted ~10).
     over = have - want
-    from planner_war_hold import arm_first, armed_count
-    arm_why = arm_first(s, cfg, rules_, memory)
+    from planner_war_hold import arm_check, armed_count
+    try:
+        arm_why, arm_lift = arm_check(s, cfg, rules_, memory)
+    except Exception:  # noqa: BLE001   (x4: never stops the drafting)
+        arm_why, arm_lift = "", ""
     if (floor_tag and int(_d(mil.get("gear")).get("on_duty") or 0) > 0
             and armed_count(s) < int(floor_.get("soldiers") or 0) <= have):
         # (r1g5) the floor counts armed soldiers: met in members, not in arms
@@ -1428,6 +1431,9 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         # (r1g5) A: 22 of 57 armed with 68 steel bars; B: the floor drafted 6, none armed
         notes.append(f"{have} soldiers, the fort wants {want}{floor_tag}: {arm_why}")
     elif have < want:
+        if arm_lift:
+            # (x4, V3) the arming hold would stand, but the weapons can't come soon or the fort needs numbers
+            notes.append(f"{have} soldiers, the fort wants {want}{floor_tag}: drafted unarmed ({arm_lift})")
         open_ = [(q, min(9, (q.get("size") or 0) - 1) - max(0, (q.get("members") or 0) - (1 if q.get("leader") else 0)))
                  for q in squads]
         open_ = [(q, n) for q, n in open_ if n > 0 and not q.get("training_squad")]   # (0.105.47) volunteers only

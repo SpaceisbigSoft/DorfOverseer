@@ -3661,7 +3661,7 @@ function get_order_desk()
         out.labor_free = {}
         local citizens = report_citizens(true)     -- (13c) once, not once a labour
         for _, name in ipairs({'MASON', 'CARPENTER', 'STONECUTTER', 'WOOD_CRAFT', 'STONE_CRAFT', 'BONE_CARVE',
-                               'METAL_CRAFT', 'GLASSMAKER', 'MECHANIC'}) do
+                               'METAL_CRAFT', 'GLASSMAKER', 'MECHANIC', 'FORGE_WEAPON'}) do   -- (x4) the arming hold's smith
             local lab, n, free = df.unit_labor[name], 0, 0
             if lab then
                 for _, u in ipairs(citizens) do
