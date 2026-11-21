@@ -273,16 +273,23 @@ def _():
     assert any("player raised" in r for r in entries("review")[0]["rejected"])
 
 
-@test("AI: connection failure -> planner carries on, retries in a day (not every cycle)")
+@test("AI: connection failure -> planner carries on, retries after the back-off (not every cycle, not every day)")
 def _():
+    # (r4 k2, B8) was "retries in a day": a failed call now backs off
+    # r4k2_backoff_first_days, doubling (tests/test_r4_k2.py)
+    first = overseer.PLANNER_CONFIG["r4k2_backoff_first_days"]
     c, b = FakeClaude(error=RuntimeError("not signed in")), FakeBridge()
     b._state["stocks"]["drink"] = 10
     overseer.one_cycle(b, autopilot=True, backend=c)
     assert any(a.get("recipe") == "brew_drink" for a in b.acted) and entries("review_failed")
+    assert entries("review_failed")[0]["backoff"]["fails"] == 1
     b._state["date"]["tick"] += 600
     overseer.one_cycle(b, autopilot=True, backend=c)
     assert len(c.calls) == 1
     b.advance(1)
+    overseer.one_cycle(b, autopilot=True, backend=c)
+    assert len(c.calls) == 1, "not asked again the next day"
+    b.advance(first - 1)
     overseer.one_cycle(b, autopilot=True, backend=c)
     assert len(c.calls) == 2
 

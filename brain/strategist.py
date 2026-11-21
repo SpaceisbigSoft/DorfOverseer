@@ -442,6 +442,20 @@ def _extract_json(text: str) -> dict | None:
     return obj if isinstance(obj, dict) else None
 
 
+def _short(v, n: int = 60) -> str:
+    """(r4 k2, B5) A model's value in a refusal, cut short (a huge object is not copied out)."""
+    try:
+        return repr(v)[:n]
+    except Exception:  # noqa: BLE001
+        return f"<{type(v).__name__}>"
+
+
+def _str_in(v, allowed) -> bool:
+    """(r4 k2, B5) A name looked up only if it is a string: a list or dict in a
+    set lookup raised TypeError after the tokens were spent."""
+    return isinstance(v, str) and v in allowed
+
+
 def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: set[int],
                  build: dict | None = None, shown: set | None = None, design_ctx: dict | None = None,
                  seen: dict | None = None) -> Answer:
@@ -449,59 +463,92 @@ def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: se
     `shown`: the rule names the review showed (shown_rules), which may be
     raised or held as well as STEER_RULES (never a protected one held).
     `design_ctx` (planner_design.design_ctx): "design" is read only when it
-    asked for a language, "blueprint" only when it asked for a drawing."""
+    asked for a language, "blueprint" only when it asked for a drawing.
+    (r4 k2, B5) Never raises, whatever the reply's shape: each part is read on
+    its own, and a part of the wrong shape (or one that fails to read) is
+    refused with a reason while the rest is kept."""
     a = Answer()
-    obj = _extract_json(text)
+    try:
+        obj = _extract_json(text if isinstance(text, str) else "")
+    except Exception:  # noqa: BLE001
+        obj = None
     if obj is None:
         a.rejected.append("reply was not a JSON object")
         return a
-    note = obj.get("note")
-    a.note = (note if isinstance(note, str) else "")[:NOTE_MAX_CHARS]
-    if "season" in obj:
-        import season
-        a.season, why = season.check(obj.get("season"))
-        a.rejected += why
 
-    for k, v in _d(obj.get("adjust")).items():
-        if k not in ADJUSTABLE:
-            a.rejected.append(f"adjust: unknown key {k!r}")
-            continue
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
-            a.rejected.append(f"adjust: {k} is not a number")
-            continue
-        lo, hi = ADJUSTABLE[k]
-        a.adjust[k] = max(lo, min(hi, v))
+    def part(name, fn):
+        try:
+            fn()
+        except Exception as e:  # noqa: BLE001  (a model's answer never stops the cycle)
+            a.rejected.append(f"{name}: could not be read ({type(e).__name__})")
 
-    if design_ctx and design_ctx.get("ask"):
-        _check_design(obj, design_ctx, a)
+    def read_note():
+        note = obj.get("note")
+        if note is not None and not isinstance(note, str):
+            a.rejected.append(f"note: not text ({type(note).__name__})")
+        a.note = (note if isinstance(note, str) else "")[:NOTE_MAX_CHARS]
 
-    for w in _l(obj.get("want"))[:MAX_WANT]:
-        if w in SECTIONS:
-            a.want.append(w)
-        else:
-            a.rejected.append(f"want: unknown section {w!r}")
+    def read_season():
+        if "season" in obj:
+            import season
+            a.season, why = season.check(obj.get("season"))
+            a.rejected += why
 
-    for act in _l(obj.get("actions")):
-        if isinstance(act, dict) and act.get("type") in ("raise", "hold"):
-            try:
-                ok, why = _check_steer(act, shown, seen)
-            except Exception as ex:  # noqa: BLE001  (never raises on a model's answer)
-                ok, why = None, f"{act.get('type')}: could not be checked ({type(ex).__name__})"
-            if ok and len(a.steer) < MAX_STEER:
-                a.steer.append(ok)
+    def read_adjust():
+        adj = obj.get("adjust")
+        if adj is not None and not isinstance(adj, dict):
+            a.rejected.append(f"adjust: not an object ({type(adj).__name__})")
+        for k, v in _d(adj).items():
+            if k not in ADJUSTABLE:
+                a.rejected.append(f"adjust: unknown key {_short(k)}")
+                continue
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+                a.rejected.append(f"adjust: {k} is not a number")
+                continue
+            lo, hi = ADJUSTABLE[k]
+            a.adjust[k] = max(lo, min(hi, v))
+
+    def read_want():
+        want = obj.get("want")
+        if want is not None and not isinstance(want, list):
+            a.rejected.append(f"want: not a list ({type(want).__name__})")
+        for w in _l(want)[:MAX_WANT]:
+            if _str_in(w, SECTIONS):
+                a.want.append(w)
             else:
-                a.rejected.append(why or "more raises and holds than allowed")
-            continue
-        if len(a.actions) >= MAX_ACTIONS:
-            a.rejected.append("more than the allowed number of actions")
-            continue     # (0.105.33, B5) a raise or hold after it is still read
-        ok, why = _check_action(act, recipes, tools, ai_order_ids, build or {})
-        if ok:
-            a.actions.append(ok)
-        else:
-            a.rejected.append(why)
-    return a
+                a.rejected.append(f"want: unknown section {_short(w)}")
 
+    part("note", read_note)
+    part("season", read_season)
+    part("adjust", read_adjust)
+    if design_ctx and design_ctx.get("ask"):
+        part("design", lambda: _check_design(obj, design_ctx, a))
+    part("want", read_want)
+
+    acts = obj.get("actions")
+    if acts is not None and not isinstance(acts, list):
+        a.rejected.append(f"actions: not a list ({type(acts).__name__})")
+    for act in _l(acts):
+        try:
+            if isinstance(act, dict) and act.get("type") in ("raise", "hold"):
+                ok, why = _check_steer(act, shown, seen)
+                if ok and len(a.steer) < MAX_STEER:
+                    a.steer.append(ok)
+                else:
+                    a.rejected.append(why or "more raises and holds than allowed")
+                continue
+            if len(a.actions) >= MAX_ACTIONS:
+                a.rejected.append("more than the allowed number of actions")
+                continue     # (0.105.33, B5) a raise or hold after it is still read
+            ok, why = _check_action(act, recipes, tools, ai_order_ids, build or {})
+            if ok:
+                a.actions.append(ok)
+            else:
+                a.rejected.append(why)
+        except Exception as e:  # noqa: BLE001  (r4 k2, B5) this action refused, the rest read
+            t = act.get("type") if isinstance(act, dict) else None
+            a.rejected.append(f"action {_short(t, 30)}: could not be read ({type(e).__name__})")
+    return a
 
 BLUEPRINT_NAME = re.compile(r"^[A-Za-z' ]{1,40}$")     # the memorial rule (act_start_project)
 
@@ -636,7 +683,7 @@ def _check_steer(act, shown: set | None = None, seen: dict | None = None) -> tup
     import steer_guard
     rule, why = act.get("rule"), act.get("why")
     if not isinstance(rule, str) or rule in NOT_STEERABLE or (rule not in STEER_RULES and rule not in (shown or ())):
-        return None, f"{act.get('type')}: unknown rule {rule!r}"
+        return None, f"{act.get('type')}: unknown rule {_short(rule)}"
     why = (why if isinstance(why, str) else "")[:120]
     if act["type"] == "raise":
         no = steer_guard.raise_refused(rule, (seen or {}).get(rule) or ())
@@ -693,8 +740,8 @@ def _names(v, allowed, most):
 
 def _check_project(act, build) -> tuple[dict | None, str]:
     kind = act.get("kind")
-    if kind not in set(build.get("level_kinds") or []):
-        return None, f"start_project: unknown kind {kind!r}"
+    if not _str_in(kind, set(build.get("level_kinds") or [])):
+        return None, f"start_project: unknown kind {_short(kind)}"
     out = {"type": "start_project", "kind": kind}
     if kind == "bedrooms":
         out["rooms"], out["room_size"] = _int_in(act.get("rooms"), 1, 32), _int_in(act.get("room_size", 3), 2, 4)
@@ -732,14 +779,14 @@ def _check_action(act, recipes, tools, ai_order_ids, build=None) -> tuple[dict |
     t = act.get("type")
     if t == "work_order":
         recipe, amount = act.get("recipe"), _int(act.get("amount"))
-        if recipe not in recipes:
-            return None, f"work_order: unknown recipe {recipe!r}"
+        if not _str_in(recipe, recipes):
+            return None, f"work_order: unknown recipe {_short(recipe)}"
         if amount is None or not 1 <= amount <= MAX_ORDER:
             return None, f"work_order: amount must be 1-{MAX_ORDER}"
         return {"type": "work_order", "recipe": recipe, "amount": amount}, ""
     if t == "tool":
-        if act.get("name") not in tools or not isinstance(act.get("enabled"), bool):
-            return None, f"tool: not allowed {act.get('name')!r}"
+        if not _str_in(act.get("name"), tools) or not isinstance(act.get("enabled"), bool):
+            return None, f"tool: not allowed {_short(act.get('name'))}"
         return {"type": "tool", "name": act["name"], "enabled": act["enabled"]}, ""
     if t == "civ_alert":
         if not isinstance(act.get("on"), bool):
@@ -762,4 +809,4 @@ def _check_action(act, recipes, tools, ai_order_ids, build=None) -> tuple[dict |
         if oid is None or oid not in ai_order_ids:
             return None, "cancel_work_order: only the AI's own open orders"
         return {"type": "cancel_work_order", "order_id": oid}, ""
-    return None, f"unknown action type {t!r}"
+    return None, f"unknown action type {_short(t)}"

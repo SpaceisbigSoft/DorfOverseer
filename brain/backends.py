@@ -13,8 +13,10 @@ Both run with NO tools: the model can only answer in text. Its answer is then
 checked by strategist.check_answer() before anything reaches the game.
 
 config.json keys (all optional):
-  "strategist_backend": "auto" | "api" | "subscription"   (auto: api if a key exists;
-      set "subscription" to be sure a key in the environment never switches to paid calls)
+  "strategist_backend": "subscription" (the default) | "api"
+      (r4 k2, B9) an API key is used ONLY when this says "api": a key in the
+      environment or .env never switches reviews to paid calls by itself. The
+      old "auto" means "subscription" now.
   "strategist_model": model for routine reviews  (api: "claude-haiku-5-5", subscription: "haiku")
   "strategist_model_events": model for event reviews (api: "claude-sonnet-5-5", subscription: "sonnet")
   "strategist_model_top": the largest model, for event reviews at Very long thinking
@@ -56,6 +58,25 @@ class Reply:
 
 class BackendUnavailable(RuntimeError):
     pass
+
+
+class RateLimited(RuntimeError):
+    """(r4 k2, B8) The service said no for now (a rate or usage limit): the
+    review backs off (review.maybe_review) rather than asking every game day."""
+    rate_limited = True
+
+
+def is_rate_limit(e: BaseException) -> bool:
+    """A refusal for a rate or usage limit, from either backend (never raises)."""
+    try:
+        if getattr(e, "rate_limited", False) or type(e).__name__ in ("RateLimitError", "RateLimited"):
+            return True
+        if getattr(e, "status_code", None) == 429:
+            return True
+        words = str(e).lower()
+        return "rate limit" in words or "rate_limit" in words or "usage limit" in words or " 429" in words
+    except Exception:  # noqa: BLE001
+        return False
 
 
 ASK_TIMEOUT_S = 480   # (0.104.81) seconds a strategist call may take (the keeper restarts a 600 s silence)
@@ -260,14 +281,22 @@ class SubscriptionBackend:
             strict_mcp_config=True,       # and no MCP servers
             model=model,
         )
-        result = None
+        result, limited = None, None
         async for msg in query(prompt=message, options=options):
             if isinstance(msg, ResultMessage):
                 result = msg
+            elif _rate_limit_event(msg):
+                limited = msg       # (r4 k2, B8) the SDK's RateLimitEvent: the plan's limit is reached
         if result is None:
+            if limited is not None:
+                raise RateLimited("the subscription's usage limit is reached (rate-limit event)")
             raise RuntimeError("no answer from Claude")
         if getattr(result, "is_error", False):
-            raise RuntimeError(f"Claude returned an error: {getattr(result, 'result', '')}"[:300])
+            status = getattr(result, "api_error_status", None)
+            text = f"Claude returned an error: {getattr(result, 'result', '')}"[:300]
+            if status == 429 or limited is not None:
+                raise RateLimited(text)
+            raise RuntimeError(text)
         u = result.usage or {}
         return Reply(text=result.result or "", model=model,
                      input_tokens=u.get("input_tokens", 0) or 0,
@@ -276,16 +305,34 @@ class SubscriptionBackend:
                      cache_read_tokens=u.get("cache_read_input_tokens", 0) or 0)
 
 
+def _rate_limit_event(msg) -> bool:
+    """(r4 k2, B8) A rate-limit message from the SDK (RateLimitEvent, by name:
+    an older SDK has no such class). Only a 'rejected' status, or none given,
+    counts: an 'allowed_warning' is a warning, the answer still comes."""
+    if type(msg).__name__ != "RateLimitEvent":
+        return False
+    info = getattr(msg, "rate_limit_info", None) or getattr(msg, "info", None) or msg
+    status = getattr(info, "status", None)
+    if status is None and isinstance(info, dict):
+        status = info.get("status")
+    return status in (None, "rejected")
+
+
 # --- Choosing ---------------------------------------------------------------------------
 
+DEFAULT_BACKEND = "subscription"   # (r4 k2, B9) never the API unless config.json says "api"
+
+
 def get_backend():
-    """The configured backend, or with "auto" the first one that's ready."""
+    """The configured backend: "subscription" unless config.json says "api".
+    (r4 k2, B9) "auto" used to try an API key first (one in the environment
+    turned reviews into paid calls); it now means the subscription."""
     cfg = _config()
-    choice = cfg.get("strategist_backend", "auto")
+    choice = cfg.get("strategist_backend") or DEFAULT_BACKEND
     order = {"api": [ApiBackend], "subscription": [SubscriptionBackend],
-             "auto": [ApiBackend, SubscriptionBackend]}.get(choice)
+             "auto": [SubscriptionBackend]}.get(choice) if isinstance(choice, str) else None
     if order is None:
-        raise BackendUnavailable(f'strategist_backend must be "auto", "api" or "subscription", not {choice!r}')
+        raise BackendUnavailable(f'strategist_backend must be "subscription" or "api", not {str(choice)[:40]!r}')
     problems = []
     for cls in order:
         try:

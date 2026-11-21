@@ -1578,6 +1578,14 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r4 k2, B8) a failing or rate-limited strategist backs off (brain/review.py maybe_review)
+PLANNER_CONFIG.update({
+    "r4k2_backoff_first_days": 2,         # game days before the first retry after a failed call (doubles each failure)
+    "r4k2_backoff_max_days": 28,          # ...never more than this between tries
+    "r4k2_backoff_limit_days": 7,         # a rate or usage limit waits at least this long (the plan's window)
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

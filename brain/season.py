@@ -91,8 +91,8 @@ def check(obj) -> tuple[dict | None, list[str]]:
         return None, ["season: missing or not an object"]
     choice = obj.get("choice")
     ok_choices = {f"raise:{k}" for k in RAISE} | {f"focus:{k}" for k in FOCUS} | {"keep"}
-    if choice not in ok_choices:
-        return None, [f"season: unknown choice {choice!r}"]
+    if not isinstance(choice, str) or choice not in ok_choices:   # (r4 k2, B5) a list or dict raised here
+        return None, [f"season: unknown choice {repr(choice)[:60]}"]
     out = {"choice": choice}
     name = obj.get("name")
     if name is not None:
