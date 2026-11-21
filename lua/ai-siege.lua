@@ -536,14 +536,16 @@ function shop_count()
     return n
 end
 
-function shop_spot(e, inside, T)
+function shop_spot(e, inside, T, ctx)
     local z = e.z
     local opening = {}
     for _, k in ipairs(e.inside_list or {}) do opening[k] = true end
+    local purpose = shop_purpose_test(ctx)      -- (Y1) never in a room with a purpose
     local function free(x, y)
         local t = T(x, y, z)
         return t and inside[gkey(x, y, z)] == true and t.walk and not t.outside and not t.liquid
-            and not t.occupied and not t.designated and not opening[gkey(x, y, z)] or false
+            and not t.occupied and not t.designated and not opening[gkey(x, y, z)]
+            and not purpose(x, y, z) or false
     end
     local best, best_d
     for cy = e.y - SHOP_RADIUS, e.y + SHOP_RADIUS do
@@ -573,8 +575,22 @@ end
 -- (so nothing it stands on was a way through: a corridor's two sides are two
 -- runs) and at least one of them beside an edge (not only a corner). A
 -- workshop level's empty 5x5 room, its 3-wide door onto the corridor, is
--- such a spot. SHOP_SCAN_MAX tiles looked at at most.
-SHOP_SCAN_MAX = 250000
+-- such a spot.
+-- (Y1) Bounded: the AI's workshop levels are looked at first, then the
+-- fort's inside outward from the entrance and the fort's stair (a walk
+-- flood: nearest by walking first), at most SHOP_SLICE_TILES tiles and
+-- SHOP_SLICE_MS a call; a search not done is taken up again by the next call
+-- (kept per entrance and inside map) and given up after SHOP_SCAN_MAX tiles
+-- in all (that answer kept SHOP_NONE_CALLS calls, or until the inside map is
+-- made again). Never a hall's
+-- middle (the whole ring open), never a room with a purpose: a zone (dining,
+-- temple, tavern, bedroom, hospital...), a stockpile, a farm plot, or an AI
+-- level of any kind but workshops.
+SHOP_SCAN_MAX = 120000      -- tiles looked at in all, over every slice (was 250000 in one call)
+SHOP_SLICE_TILES = 15000    -- tiles looked at in one call at most
+SHOP_SLICE_MS = 40          -- milliseconds of one call at most
+SHOP_NONE_CALLS = 30        -- a search that found nothing is not made again for this many calls
+SHOP_FREE_KINDS = {workshops = true}   -- AI levels a siege workshop may stand in
 
 local RING = {}
 do
@@ -584,22 +600,70 @@ do
     for dy = 2, -2, -1 do table.insert(RING, {-3, dy}) end
 end
 
-function shop_spot_anywhere(e, inside, T)
+local function in_box(b, x, y, z)
+    return b.z == z and x >= b.x1 and x <= b.x2 and y >= b.y1 and y <= b.y2
+end
+
+-- (Y1) What the search needs from the game, read once a call: `taken` boxes
+-- (rooms with a purpose), `rooms` boxes (AI workshop levels, looked at
+-- first) and `starts` (the fort's stair, its meeting hall). Tests replace it.
+function shop_context()
+    local taken, rooms, starts = {}, {}, {}
+    pcall(function()
+        local BT = df.building_type
+        for _, b in ipairs(df.global.world.buildings.all) do
+            local t = b:getType()
+            if t == BT.Civzone or t == BT.Stockpile or t == BT.FarmPlot then
+                table.insert(taken, {x1 = b.x1, y1 = b.y1, x2 = b.x2, y2 = b.y2, z = b.z})
+            end
+        end
+    end)
+    pcall(function()
+        local B = builder()
+        local data = B.load_projects()
+        for _, p in ipairs(data and data.list or {}) do
+            local okA, areas = pcall(B.project_areas, p)
+            for _, ar in ipairs(okA and areas or {}) do
+                if type(ar) == 'table' and ar.x1 and ar.z then
+                    table.insert(SHOP_FREE_KINDS[p.kind] and rooms or taken,
+                                 {x1 = ar.x1, y1 = ar.y1, x2 = ar.x2, y2 = ar.y2, z = ar.z})
+                end
+            end
+        end
+    end)
+    pcall(function()
+        for _, p in ipairs(gates().fort_anchor_starts() or {}) do table.insert(starts, p) end
+    end)
+    return {taken = taken, rooms = rooms, starts = starts}
+end
+
+function shop_purpose_test(ctx)
+    local taken = type(ctx) == 'table' and type(ctx.taken) == 'table' and ctx.taken or {}
+    return function(x, y, z)
+        for _, b in ipairs(taken) do
+            if in_box(b, x, y, z) then return true end
+        end
+        return false
+    end
+end
+
+local function shop_fits(e, inside, T, purpose)
     local opening = {}
     for _, k in ipairs(e.inside_list or {}) do opening[k] = true end
     local function core(x, y, z)
         local t = T(x, y, z)
         return t and inside[gkey(x, y, z)] == true and t.walk and t.shape == 'FLOOR' and not t.outside
-            and not t.liquid and not t.occupied and not t.designated and not opening[gkey(x, y, z)] or false
+            and not t.liquid and not t.occupied and not t.designated and not opening[gkey(x, y, z)]
+            and not purpose(x, y, z) or false
     end
-    local function fits(cx, cy, z)
+    return function(cx, cy, z)
         for dy = -2, 2 do
             for dx = -2, 2 do
                 if not core(cx + dx, cy + dy, z) then return false end
             end
         end
         -- the ring: each tile wall (not walkable) or free floor; the free ones in one run
-        local open, edge = {}, false
+        local open, edge, n_open = {}, false, 0
         for i, d in ipairs(RING) do
             local x, y = cx + d[1], cy + d[2]
             local t = T(x, y, z)
@@ -607,28 +671,122 @@ function shop_spot_anywhere(e, inside, T)
             if walk then
                 if t.occupied or t.liquid or opening[gkey(x, y, z)] then return false end
                 open[i] = true
+                n_open = n_open + 1
                 if math.abs(d[1]) ~= 3 or math.abs(d[2]) ~= 3 then edge = true end
             end
         end
         if not edge then return false end
+        if n_open == #RING then return false end      -- (Y1) a hall's middle: never
         local runs, n = 0, #RING
         for i = 1, n do
             local prev = i == 1 and n or i - 1
             if open[i] and not open[prev] then runs = runs + 1 end
         end
-        return runs <= 1          -- 0: the whole ring open (a hall's middle)
+        return runs <= 1
     end
-    local best, best_d, looked = nil, nil, 0
-    for k in pairs(inside) do
-        looked = looked + 1
-        if looked > SHOP_SCAN_MAX then break end
-        local x = k % 4096
-        local y = (k // 4096) % 4096
-        local z = k // (4096 * 4096)
-        local d = math.abs(x - e.x) + math.abs(y - e.y) + 3 * math.abs(z - e.z)
-        if (not best_d or d < best_d) and fits(x, y, z) then best, best_d = {x = x, y = y, z = z}, d end
+end
+
+local STEPS = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {1, 1, 0}, {1, -1, 0}, {-1, 1, 0}, {-1, -1, 0},
+               {0, 0, 1}, {0, 0, -1}}
+local function climb(t)
+    local sh = t and t.shape or ''
+    return sh:find('STAIR') ~= nil or sh:find('RAMP') ~= nil
+end
+
+local SHOP_SEARCH = {}      -- (Y1) the searches not done (and given up), by entrance
+
+local function clock_ms()
+    local ok, c = pcall(os.clock)
+    return ok and type(c) == 'number' and c * 1000 or 0
+end
+
+-- Returns the spot, or nil (and SHOP_LAST says why: 'searching', taken up
+-- again next call; 'none', nothing in the fort).
+function shop_spot_anywhere(e, inside, T, ctx)
+    SHOP_LAST = nil
+    if ctx == nil then
+        local okc, c = pcall(shop_context)
+        ctx = okc and type(c) == 'table' and c or {}
     end
-    return best
+    local purpose = shop_purpose_test(ctx)
+    local fits = shop_fits(e, inside, T, purpose)
+    local sk = tostring(e.id)
+    local st = SHOP_SEARCH[sk]
+    if st and st.inside ~= inside then st = nil end
+    if st and st.none then
+        -- the fort-wide 'none' kept SHOP_NONE_CALLS calls (or until the inside map is made again)
+        st.none_calls = (st.none_calls or 0) + 1
+        if st.none_calls <= SHOP_NONE_CALLS then SHOP_LAST = 'none'; return nil end
+        st = nil
+    end
+    if not st then
+        st = {inside = inside, queue = {}, seen = {}, head = 1, looked = 0, rooms_done = false}
+        local function seed(x, y, z)
+            local k = gkey(x, y, z)
+            if inside[k] == true and not st.seen[k] then st.seen[k] = true; table.insert(st.queue, k) end
+        end
+        for _, k in ipairs(e.inside_list or {}) do
+            if inside[k] == true and not st.seen[k] then st.seen[k] = true; table.insert(st.queue, k) end
+        end
+        seed(e.x, e.y, e.z)
+        for _, p in ipairs(type(ctx.starts) == 'table' and ctx.starts or {}) do
+            if type(p) == 'table' and p.x and p.y and p.z then seed(p.x, p.y, p.z) end
+        end
+    end
+    SHOP_SEARCH[sk] = st
+    local t0, slice = clock_ms(), 0
+    local function over()
+        return slice >= SHOP_SLICE_TILES or st.looked >= SHOP_SCAN_MAX
+            or (slice % 256 == 0 and clock_ms() - t0 > SHOP_SLICE_MS)
+    end
+    -- the AI's workshop levels first (their empty rooms)
+    if not st.rooms_done then
+        local best, best_d
+        for _, r in ipairs(type(ctx.rooms) == 'table' and ctx.rooms or {}) do
+            for y = r.y1 + 2, r.y2 - 2 do
+                for x = r.x1 + 2, r.x2 - 2 do
+                    slice, st.looked = slice + 1, st.looked + 1
+                    if inside[gkey(x, y, r.z)] == true and fits(x, y, r.z) then
+                        local d = math.abs(x - e.x) + math.abs(y - e.y) + 3 * math.abs(r.z - e.z)
+                        if not best_d or d < best_d then best, best_d = {x = x, y = y, z = r.z}, d end
+                    end
+                end
+            end
+        end
+        st.rooms_done = true
+        if best then SHOP_SEARCH[sk] = nil; return best end
+    end
+    -- then outward over the inside, nearest by walking first
+    local q, seen = st.queue, st.seen
+    while st.head <= #q do
+        if over() then
+            if st.looked >= SHOP_SCAN_MAX then st.none = true; st.queue, st.seen = nil, nil; SHOP_LAST = 'none'; return nil end
+            SHOP_LAST = 'searching'; return nil
+        end
+        local k = q[st.head]
+        q[st.head] = false
+        st.head = st.head + 1
+        slice, st.looked = slice + 1, st.looked + 1
+        local x, y, z = k % 4096, (k // 4096) % 4096, k // (4096 * 4096)
+        if fits(x, y, z) then SHOP_SEARCH[sk] = nil; return {x = x, y = y, z = z} end
+        local t = T(x, y, z)
+        local climbs = climb(t)
+        for _, d in ipairs(STEPS) do
+            local nx, ny, nz = x + d[1], y + d[2], z + d[3]
+            local nk = gkey(nx, ny, nz)
+            if not seen[nk] and inside[nk] == true then
+                local u = T(nx, ny, nz)
+                -- up and down only by a stair or a ramp
+                if u and u.walk and (d[3] == 0 or climbs or climb(u)) then
+                    seen[nk] = true
+                    q[#q + 1] = nk
+                end
+            end
+        end
+    end
+    st.none = true
+    st.queue, st.seen = nil, nil
+    SHOP_LAST = 'none'; return nil
 end
 
 function place_shop(entrance_id, dry_run)
@@ -637,10 +795,16 @@ function place_shop(entrance_id, dry_run)
     if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
     if not (G.GATES or {}).inside then return {ok = false, rejected = true, error = 'the fort is not mapped yet'} end
     local T = reader()
-    local sp, near = shop_spot(e, G.GATES.inside, T), true
+    local okc, ctx = pcall(shop_context)       -- (Y1) the rooms with a purpose, the AI's workshop levels
+    ctx = okc and type(ctx) == 'table' and ctx or {}
+    local sp, near = shop_spot(e, G.GATES.inside, T, ctx), true
     if not sp then
-        local ok, s2 = pcall(shop_spot_anywhere, e, G.GATES.inside, T)     -- (r2h7)
+        local ok, s2 = pcall(shop_spot_anywhere, e, G.GATES.inside, T, ctx)     -- (r2h7)
         sp, near = ok and s2 or nil, false
+        if not sp and ok and SHOP_LAST == 'searching' then
+            return {ok = false, rejected = true, searching = true,
+                    error = 'still looking for a free 5x5 room for a siege workshop (the search goes on next time)'}
+        end
     end
     if not sp then
         return {ok = false, rejected = true, error = 'no free 5x5 of roofed floor in the fort for a siege workshop '

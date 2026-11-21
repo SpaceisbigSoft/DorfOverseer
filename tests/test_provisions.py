@@ -143,6 +143,7 @@ function B.tile_info(x, y, z)
     return {shape = 'FLOOR', material = 'SOIL', outside = true}
 end
 function B.walk_group(x, y, z) return W.group[key(x, y, z)] or 1 end
+function B.citizen_groups() return W.cit_groups or {[1] = true} end   -- (Y1) the citizens walk in group 1
 function B.tile_taken(x, y, z) return W.taken[key(x, y, z)] == true end
 function B.qf_try(mode, cells, z, ax, ay, dry_run)
     table.insert(W.qf, {mode = mode, text = cells[1].text, z = z, x = ax, y = ay, dry = dry_run == true})
