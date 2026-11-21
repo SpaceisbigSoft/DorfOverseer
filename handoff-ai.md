@@ -55,10 +55,12 @@ A new level's place is never the model's: its rooms go along a floor's main hall
 ## 6. Tokens
 
 - `tokens.TokenBank` per fort, filled by the two AI sliders (`ai_plan`); event top-ups; a reserve kept for event reviews.
-- **The daily cap** (`real_day_token_cap` in the panel): round 4 (k3) makes it one count for the whole PC, shared by every fort folder, on by default; a review past it is skipped and says so. The subscription shares the player's chat limits, so keep it modest.
+- **The daily cap:** `pc_token_cap` in each folder's `config.json` (default 250,000 tokens; 0 turns it off, the player's choice only) is one count for the whole PC in `pc_token_file` (default `%LOCALAPPDATA%\DF-AI\tokens-today.json`, outside every fort folder), shared by every fort. The panel's own `real_day_token_cap` still applies; the smaller of the two holds. A review or chronicle past it is skipped and says so. The subscription shares the player's chat limits, so keep it modest.
+- **Back-off:** a failing call waits 2, 4, 8, 16 then at most 28 game days; a rate or usage limit at least 7. **Extra usage:** when the subscription reports pay-as-you-go extra usage in play, the call is dropped at once and every AI call (reviews and the chronicle) waits 28 days: the player spends no extra money. Error text is scrubbed of any API key before it is said, journaled or saved.
+- **The chronicle** (`storyteller.py`, off by default) spends tokens too, from the same bank, cap and back-off.
 - A failing or rate-limited backend backs off (doubling waits, a journal note) and is never asked every game day (k2).
 - Every review journals its tokens (in/out/total, model, backend, fort) (k3).
-- Size: the prompt reads about 6,200-6,500 tokens a review uncached (instructions ~2,900, the message ~3,000-3,300, the answer ~400), about twice the old `REVIEW_TOKENS` (3,100). `token_ratio` learns the real figure from the first reviews and `ai_plan` uses it (k3). The 2.5 characters a token is the code's estimate, never measured.
+- Size: the prompt reads about 6,200-6,500 tokens a review uncached (instructions ~2,900, the message ~3,000-3,300, the answer ~400), about twice the old `REVIEW_TOKENS` (3,100). `bank.plan_ratio` learns the real cost against `ai_plan`'s own estimate from the first reviews, and `ai_plan` uses it (k3; `token_ratio` only compares the cost with the prompt-length estimate). The 2.5 characters a token is the code's estimate, never measured.
 
 ## 7. Files
 

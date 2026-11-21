@@ -80,6 +80,15 @@ def maybe_tell(state: dict, memory, bank, backend, today=None) -> StoryOutcome:
     if not entries:
         memory.story_season = key
         return out
+    # (r4 W2) the chronicle obeys the strategist's back-off (a failing or limited connection, and
+    # the 28-day stop when pay-as-you-go extra usage was in play)
+    from planner import abs_tick as _abs
+    from review import backoff_active
+    bo = backoff_active(memory, _abs(state))
+    if bo:
+        out.say.append("AI chronicle skipped: the AI connection waits (" + ("extra usage was in play"
+                       if bo.get("overage") else f"{bo.get('fails')} failed call(s)") + ")")
+        return out
     msg = message(state, memory)
     estimate = int((len(INSTRUCTIONS) + len(msg)) / CHARS_PER_TOKEN) + ANSWER_TOKENS
     from tokens import plan_ratio
@@ -92,7 +101,11 @@ def maybe_tell(state: dict, memory, bank, backend, today=None) -> StoryOutcome:
         reply = backend.ask(INSTRUCTIONS, msg, important=False,
                             effort={"model": "small", "thinking": 0, "answer_tokens": ANSWER_TOKENS})
     except Exception as e:  # noqa: BLE001 - a connection problem: no story this season
-        out.say.append(f"AI chronicle failed: {type(e).__name__}: {str(e)[:160]}")
+        from review import note_failure, _scrub
+        from backends import is_rate_limit
+        if is_rate_limit(e) or getattr(e, "overage", False):
+            note_failure(memory, _abs(state), e)      # (r4 W2) a limit or extra usage: every AI call waits
+        out.say.append(f"AI chronicle failed: {type(e).__name__}: {_scrub(e)[:160]}")
         return out
     out.used = reply.budget_tokens
     from planner import abs_tick

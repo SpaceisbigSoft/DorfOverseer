@@ -325,16 +325,16 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
         if design_ask:
             _design_failed(memory, design_ask, now, f"the call failed ({type(e).__name__})")
         if reason == "design":
-            out.say.append(f"AI review ({reason}) failed: {type(e).__name__}: {str(e)[:200]}" + wait)
-            out.journal = {"kind": "review_failed", "reason": reason, "error": f"{type(e).__name__}: {e}"[:500],
+            out.say.append(f"AI review ({reason}) failed: {type(e).__name__}: {_scrub(e)[:200]}" + wait)
+            out.journal = {"kind": "review_failed", "reason": reason, "error": f"{type(e).__name__}: {_scrub(e)}"[:500],
                            "backoff": dict(bo)}
             return out
         if not important:
             bank.last_routine_tick = now - routine_interval_ticks(plan) + TICKS_PER_DAY
         if season_due:
             season_mod.wait(memory, now)
-        out.say.append(f"AI review ({reason}) failed: {type(e).__name__}: {str(e)[:200]}" + wait)
-        out.journal = {"kind": "review_failed", "reason": reason, "error": f"{type(e).__name__}: {e}"[:500],
+        out.say.append(f"AI review ({reason}) failed: {type(e).__name__}: {_scrub(e)[:200]}" + wait)
+        out.journal = {"kind": "review_failed", "reason": reason, "error": f"{type(e).__name__}: {_scrub(e)}"[:500],
                        "backoff": dict(bo)}
         return out
 
@@ -482,6 +482,22 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     return out
 
 
+def _scrub(e) -> str:
+    """(r4 W3) Error text with any API key removed (backends.scrub)."""
+    try:
+        from backends import scrub
+        return scrub(e)
+    except Exception:  # noqa: BLE001
+        return "(error text withheld)"
+
+
+def backoff_active(memory, now: int) -> dict | None:
+    """(r4 W2) The back-off record while it still runs (any AI call waits), else None."""
+    bo = backoff_state(memory)
+    u = bo.get("until")
+    return bo if isinstance(u, int) and bo.get("fails") and now < u else None
+
+
 def backoff_state(memory) -> dict:
     """(r4 k2, B8) The back-off record ({} when the last call worked)."""
     bo = getattr(memory, "ai_backoff", None)
@@ -506,7 +522,7 @@ def note_failure(memory, now: int, e: BaseException) -> dict:
     if overage:
         wait = most          # (r4 merge) extra usage in play: off for the longest wait; the player looks
     bo = {"fails": fails, "wait_days": wait, "until": now + wait * TICKS_PER_DAY, "since": prev.get("since", now),
-          "rate_limited": limited, "overage": overage, "error": f"{type(e).__name__}: {e}"[:200]}
+          "rate_limited": limited, "overage": overage, "error": f"{type(e).__name__}: {_scrub(e)}"[:200]}
     memory.ai_backoff = bo
     return bo
 

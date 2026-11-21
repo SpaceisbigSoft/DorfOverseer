@@ -57,7 +57,7 @@ _LAST_SEEN: dict = {}              # the file's last good read (a read failing m
 
 
 def default_pc_file() -> Path:
-    """Outside every fort folder: %LOCALAPPDATA%\DF-AI (Windows), else ~/.df-ai."""
+    r"""Outside every fort folder: %LOCALAPPDATA%\DF-AI (Windows), else ~/.df-ai."""
     base = os.environ.get("LOCALAPPDATA")
     if base:
         return Path(base) / "DF-AI" / PC_FILE_NAME
@@ -84,9 +84,12 @@ def pc_cap_from(cfg: dict | None) -> int:
     """config.json's "pc_token_cap" (0 = off, set on purpose), else PC_CAP_DEFAULT.
     Anything else (a string, a negative, true) reads as the default."""
     v = (cfg or {}).get("pc_token_cap", PC_CAP_DEFAULT) if isinstance(cfg, dict) else PC_CAP_DEFAULT
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
-        return PC_CAP_DEFAULT
-    return int(v)
+    import math
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+        return PC_CAP_DEFAULT           # (r4 W4) Infinity/NaN from json: the default, never a crash
+    if v == 0:
+        return 0                        # 0 exactly: off, set on purpose
+    return max(1, int(math.ceil(v)))    # a fraction never reads as 0 (off)
 
 
 def configure_pc(cfg: dict | None, project_root: Path | None = None) -> None:

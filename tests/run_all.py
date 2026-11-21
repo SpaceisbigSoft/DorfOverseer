@@ -34,7 +34,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SHARDS = {"test_builder.py": 4}        # the slow files, split this many ways
+SHARDS = {"test_builder.py": 4, "test_d0_layouts.py": 8, "test_b16_floors_end_to_end.py": 4,
+          "test_r2_h1.py": 3, "test_r38_water.py": 3}   # the slow files, split this many ways (r4: a 32-thread PC)
+FIRST = ("test_d0_merge.py", "test_r33_tests.py", "test_deep_depot_wagons.py",
+         "test_x_e2.py", "test_x_fix.py")   # slow files that can't be split (their tests run in order): started first
 TOTALS = re.compile(r"^(\d+) passed, (\d+) failed(?:, (\d+) skipped)?$")
 NO_LUPA: list[str] = []          # a folder whose lupa/ fails to import (--no-lupa), else empty
 
@@ -148,7 +151,7 @@ def main(argv: list[str]) -> int:
         print("!" * 78 + "\n" + warn + "\n" + "!" * 78)
     tasks = [(t, (i, SHARDS[t.name]) if t.name in SHARDS else None)
              for t in files for i in range(SHARDS.get(t.name, 1))]
-    tasks.sort(key=lambda x: x[1] is None)            # the split (slow) files start first
+    tasks.sort(key=lambda x: (x[1] is None, x[0].name not in FIRST))   # the split and the slow files start first
     t0 = time.perf_counter()
     failed, skipped, part_skipped = [], [], []
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:

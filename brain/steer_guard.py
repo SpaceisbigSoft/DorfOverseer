@@ -44,6 +44,7 @@ RAISE_NEVER = {
     # trade
     "trade_deal": "a trade", "call_trader": "a trader called", "open_trade": "trade opened",
     "close_trade": "trade closed", "bring_goods": "goods to the depot",
+    "unload_depot": "the depot unloaded (trade)",           # (r4 W5)
     # the butcher
     "slaughter_one": "the butcher", "herd_targets": "the butcher's targets",
     # convictions and prisoners

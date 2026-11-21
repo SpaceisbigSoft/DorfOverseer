@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from dataclasses import dataclass
 
 from dfhack import PROJECT_ROOT, read_config
@@ -91,10 +92,27 @@ def _config() -> dict:
     return read_config()
 
 
+_KEY_RX = re.compile(r"sk-ant-[A-Za-z0-9_\-]+")
+
+
+def scrub(text) -> str:
+    """(r4 W3) Any error text before it is said, journaled or saved: an API key
+    (the sk-ant- shape, and the configured key itself) replaced by [key removed]."""
+    t = str(text)
+    t = _KEY_RX.sub("[key removed]", t)
+    try:
+        k = load_api_key()
+        if k and len(k) >= 8:
+            t = t.replace(k, "[key removed]")
+    except Exception:  # noqa: BLE001
+        pass
+    return t
+
+
 def load_api_key() -> str | None:
     """From the environment or the project's .env file. Never printed or logged."""
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return os.environ["ANTHROPIC_API_KEY"]
+    if (os.environ.get("ANTHROPIC_API_KEY") or "").strip():
+        return os.environ["ANTHROPIC_API_KEY"].strip().strip('"').strip("'") or None   # (r4 W3) a stray \r
     env = PROJECT_ROOT / ".env"
     if env.exists():
         for line in env.read_text(encoding="utf-8").splitlines():

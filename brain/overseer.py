@@ -1418,7 +1418,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 for line in held_notes:
                     say(f"  AI review: {line}")
                 notes.extend(n for n in held_notes if n not in notes)
-                _note_adjust(state, memory, outcome.journal, cfg)
+                if not (outcome.journal or {}).get("shadow"):
+                    _note_adjust(state, memory, outcome.journal, cfg)   # (r4 W1) advice only: nothing to judge
                 return list(ai_props)
             # (0.105.48, K6) the strategist's review on its own: failing, the plan goes on without it
             proposals = (cycle_step(memory, state, "strategist", _review, default=None) or []) + proposals
