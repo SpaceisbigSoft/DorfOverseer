@@ -381,6 +381,15 @@ function claims_of(a)
     return out
 end
 
+-- (r1 g7) how many historical figures from afar claim an artifact
+-- (artifact_record.remote_claims: DF's claiming_hfid). B and F (16 Nov):
+-- heroes came as guests for Nettlewalk and Pillartoned, which no civ claimed,
+-- and killed 24 citizens and the last 4; a figure's claim sends a hero
+function hf_claims_of(a)
+    local ok, n = pcall(function() return #a.remote_claims end)
+    return (ok and type(n) == 'number') and n or 0
+end
+
 local function entity_name(eid)
     local ok, e = pcall(df.historical_entity.find, eid)
     return ok and e and words(e.name) or ('entity ' .. tostring(eid))
@@ -415,7 +424,7 @@ function report()
 
     local assigned = assigned_ids()
     local arts, counts = {}, {total = 0, mine = 0, displayed = 0, loose = 0, mine_loose = 0, claimed = 0,
-                                 displayed_open = 0}
+                                 displayed_open = 0, at_risk = 0}
     for _, it in ipairs(artifact_items()) do
         local a = record_of(it)
         local aid = a and int(a.id)
@@ -434,6 +443,10 @@ function report()
                 for i = 1, math.min(3, #cl) do table.insert(row.claimed_by, entity_name(cl[i])) end
                 counts.claimed = counts.claimed + 1
             end
+            -- (r1 g7) claimed by a figure from afar (a hero may come for it)
+            local nh = a and hf_claims_of(a) or 0
+            if nh > 0 then row.sought = nh end
+            if #cl > 0 or nh > 0 then counts.at_risk = counts.at_risk + 1 end
             if mine then counts.mine = counts.mine + 1 end
             if st == 'displayed' then
                 counts.displayed = counts.displayed + 1
@@ -453,6 +466,7 @@ function report()
         local pa, qa = p.mine and p.state == 'loose', q.mine and q.state == 'loose'
         if pa ~= qa then return pa end
         if (p.claimed_by ~= nil) ~= (q.claimed_by ~= nil) then return p.claimed_by ~= nil end
+        if (p.sought ~= nil) ~= (q.sought ~= nil) then return p.sought ~= nil end    -- (r1 g7)
         return (p.id or -1) < (q.id or -1)
     end)
     while #arts > ARTIFACTS_MAX do table.remove(arts) end
@@ -554,12 +568,18 @@ function display_artifact(o, dry_run)
     if not (okj and df.job_type.PutItemOnDisplay and dfhack.job.attachJobItem and dfhack.job.linkIntoWorld) then
         return reject('this DF version has no put-on-display job')
     end
+    -- (r1 g7) the hauled role is df.job_role_type.Hauled in DFHack 53.17
+    -- (df.job_item_ref.T_role is nil there: A, 16 Nov, "ai-artifacts.lua:562:
+    -- attempt to index a nil value (field 'T_role')" 45 times, each leaving
+    -- an allocated job behind); read before any job is made
+    local okr, role = pcall(function() return df.job_role_type.Hauled end)
+    if not (okr and role ~= nil) then return reject('this DF version has no hauled job role') end
     if dry_run then return {ok = true, dry_run = true, item_id = it.id, building_id = b.id, kind = kind} end
     local job = df.job:new()
     job.job_type = df.job_type.PutItemOnDisplay
     job.pos = xyz2pos(b.centerx, b.centery, b.z)
     dfhack.job.addGeneralRef(job, df.general_ref_type.BUILDING_HOLDER, b.id)
-    if not dfhack.job.attachJobItem(job, it, df.job_item_ref.T_role.Hauled, -1, -1) then
+    if not dfhack.job.attachJobItem(job, it, role, -1, -1) then
         dfhack.job.linkIntoWorld(job, true)
         dfhack.job.removeJob(job)
         return {ok = false, error = 'the game would not attach the artifact to the display job'}

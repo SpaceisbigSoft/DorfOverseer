@@ -314,6 +314,8 @@ class Memory:
     locations_acted: dict = field(default_factory=dict)      # (0.105.26) location id (str) -> tick the AI last shut or opened it
     intrusion: dict = field(default_factory=dict)            # (0.105.30) {tick, civ, invaders, cleared}: DF's last invasion record
     stranger_shut: dict = field(default_factory=dict)        # (0.105.30) {seen, who}: a stranger last seen seeking a meeting
+    artifacts_sought: dict = field(default_factory=dict)     # (r1 g7) artifact name -> tick a spotted hero named it
+    artifact_risk: dict = field(default_factory=dict)        # (r1 g7) {seen, n, names} claimed/sought artifacts last seen in the fort, or {clear}
     gate_unstick: dict = field(default_factory=dict)         # (0.105.32) gate piece id (str) -> {step, tick, ok, split_after, done, prevent}
     way_in: dict = field(default_factory=dict)               # (0.105.32) "x,y,z" -> {tick, ok, project_id, why}: ways dug in
     way_out: dict = field(default_factory=dict)              # (0.105.47, J16) {since, cause_tick, cause, tries, last_try, digs, dig_tick}: the fort sealed in

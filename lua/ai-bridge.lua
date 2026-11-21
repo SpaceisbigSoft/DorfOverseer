@@ -2109,7 +2109,11 @@ local function cmd_events()
     end)
     if ok then
         LAST_REPORT_ID = newest
-        for _, ev in ipairs(found) do push_event(ev) end
+        for _, ev in ipairs(found) do
+            -- (r1 g7) a hero spotted after an artifact: a target at once (ai-threats TURNED)
+            pcall(function() reqscript('ai-threats').note_report(ev, txt) end)
+            push_event(ev)
+        end
     end
     local events = EVENT_QUEUE
     EVENT_QUEUE = {}

@@ -62,6 +62,116 @@ local function name_of(u, txt)
     return ok and n or ('unit ' .. tostring(u.id))
 end
 
+-- --- (r1 g7) visitors turned killers -------------------------------------------
+-- B (16 Nov): lone heroes came in as guests for the fort's artifacts. Len
+-- Karaura killed 19 citizens in 65 seconds and Itvid 5; F lost its last 4 to
+-- two visiting humans. DF counted them neither a danger nor an invader for a
+-- while, so no row, no kill order (kill_target_ok said no). A non-citizen who
+-- kills one of the fort's own (not a berserk one), or who is spotted sneaking
+-- after an artifact (DF's AMBUSH_HERO report), is marked here (kept in the
+-- save, TURNED_DAYS): others_on_map lists them as a threat and the squads may
+-- be sent at them (ai-military kill_target_ok).
+TURNED_DAYS = 28
+TURNED_NEAR = 3          -- tiles from the report's place a spotted hero is looked for
+TURNED = TURNED or nil   -- unit id (string) -> tick marked; read from the save on first use
+TURNED_SITE = TURNED_SITE or nil   -- the site TURNED was read for (another fort loaded: read afresh)
+
+local function turned_set()
+    local oks, site = pcall(function() return df.global.plotinfo.site_id end)
+    site = oks and site or nil
+    if type(TURNED) ~= 'table' or TURNED_SITE ~= site then
+        TURNED_SITE = site
+        local set = {}
+        pcall(function()
+            local d = U.site_get(STATE_KEY, {})
+            if type(d.turned) == 'table' then
+                for k, v in pairs(d.turned) do
+                    if type(v) == 'number' then set[tostring(k)] = v end
+                end
+            end
+        end)
+        TURNED = set
+    end
+    return TURNED
+end
+
+-- Mark unit `id` a turned visitor at tick t; the old marks dropped; saved.
+function mark_turned(id, t)
+    if type(id) ~= 'number' or id < 0 then return false end
+    local set = turned_set()
+    t = t or now_tick()
+    set[tostring(id)] = t
+    for k, v in pairs(set) do
+        if type(v) ~= 'number' or t - v > TURNED_DAYS * DAY then set[k] = nil end
+    end
+    pcall(function()
+        local d = U.site_get(STATE_KEY, {})
+        d.turned = set
+        U.site_put(STATE_KEY, d)
+    end)
+    return true
+end
+
+-- Is u a marked visitor (alive, not a citizen, marked within TURNED_DAYS)?
+function is_turned(u)
+    if not u or type(u.id) ~= 'number' then return false end
+    local t = turned_set()[tostring(u.id)]
+    if type(t) ~= 'number' then return false end
+    local okn, now = pcall(now_tick)
+    if okn and type(now) == 'number' and now - t > TURNED_DAYS * DAY then return false end
+    local okc, cit = pcall(dfhack.units.isCitizen, u)
+    if okc and cit then return false end
+    local okd, dead = pcall(dfhack.units.isDead, u)
+    return not (okd and dead)
+end
+
+-- A death event (ai-bridge-report death_details): its killer marked when an
+-- outsider (no citizen, ghost, beast or animal), alive, killed one of the
+-- fort's own who wasn't berserk. Returns true when marked.
+function note_death(ev)
+    if type(ev) ~= 'table' or ev.again or ev.animal or not ev.own_civ then return false end
+    if ev.killer_kind ~= 'outsider' or ev.killer_dead or type(ev.killer_id) ~= 'number' then return false end
+    if tostring(ev.mood or ''):lower() == 'berserk' then return false end
+    return mark_turned(ev.killer_id)
+end
+
+-- The name a readable name starts with ('Len Karaura "Heatdied", Human
+-- Axeman' -> 'Len Karaura'), for matching the report's text.
+function first_name_of(readable)
+    local s = tostring(readable or '')
+    s = s:match('^([^",]+)') or s
+    return (s:gsub('^%s+', ''):gsub('%s+$', ''))
+end
+
+-- A report event (ai-reports): "The Human Axeman Len Karaura was spotted
+-- sneaking around! "You will not stand between me and Nettlewalk!"" marks
+-- the unit it names (or the one non-citizen person by the report's place).
+-- Returns the unit id marked, or nil.
+function note_report(ev, txt)
+    if type(ev) ~= 'table' or ev.kind ~= 'report' then return nil end
+    local text = tostring(ev.text or '')
+    if ev.type ~= 'AMBUSH_HERO' and not text:find('spotted sneaking around', 1, true) then return nil end
+    local named, near, n_near = nil, nil, 0
+    for _, u in ipairs(df.global.world.units.active) do
+        local ok, cand = pcall(function()
+            return not dfhack.units.isDead(u) and not dfhack.units.isCitizen(u) and not dfhack.units.isAnimal(u)
+        end)
+        if ok and cand then
+            -- by name only for a named unit (an unnamed one reads as its profession)
+            local okh, hn = pcall(function() return u.name.has_name end)
+            local nm = (okh and hn == false) and '' or first_name_of(name_of(u, txt))
+            if #nm >= 3 and nm:find(' ', 1, true) and text:find(nm, 1, true) then named = u; break end
+            if type(ev.x) == 'number' and u.pos.z == ev.z and math.abs(u.pos.x - ev.x) <= TURNED_NEAR
+                    and math.abs(u.pos.y - ev.y) <= TURNED_NEAR then
+                near, n_near = u, n_near + 1
+            end
+        end
+    end
+    local u = named or (n_near == 1 and near) or nil
+    if u and mark_turned(u.id) then return u.id end
+    return nil
+end
+
 -- the save's record: fire = {tiles = {"x,y,z", ...}}, thieves = {seen = {id
 -- = tick}, last, total}, moon = {changes = {{tick, phase}}}, cells = {uid =
 -- {burrow, zone, doors = {ids}, tick, locked}}, sealed = {layer = {ids, tick,

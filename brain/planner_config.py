@@ -1361,3 +1361,17 @@ PLANNER_CONFIG.update({
     "floor_full_retry_days": 28,          # a full floor is offered again after this long
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
 })
+
+# (r1 g7) visitors who come for the fort's artifacts (B, 16 Nov: lone heroes
+# came in as guests for claimed artifacts and killed 24 citizens; F lost its
+# last 4 to two visiting humans). While an artifact another civ claims (or a
+# figure from afar, or a hero named when spotted) lies in the fort, the
+# tavern, temples, library and guildhalls stay shut to visitors, whatever
+# Outsiders says (planner_visitors.claimed_shut)
+PLANNER_CONFIG.update({
+    "g7_claimed_shut": True,              # the lockout while claimed artifacts are in the fort (off: never)
+    "g7_hf_claims_risk": True,            # an artifact a historical figure from afar claims counts too (remote_claims)
+    "g7_risk_hold_days": 7,               # the last artifacts report saying "at risk" holds this long without a newer one
+    "g7_sought_keep_days": 1008,          # an artifact a spotted hero named ("stand between me and X") is sought this long (3 years)
+    "g7_sought_keep_max": 30,             # names of sought artifacts remembered at most
+})

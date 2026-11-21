@@ -116,7 +116,7 @@ env.df = {
     building = {find = find_building},
     building_type = {DisplayFurniture = 'DisplayFurniture'},
     job_type = {PutItemOnDisplay = 'PutItemOnDisplay'},
-    job_item_ref = {T_role = {Hauled = 'Hauled'}},
+    job_role_type = {Hauled = 'Hauled'},
     item = {find = function(id) return W.all_items[id] end},
     job = {new = function() return {id = nid(), refs = {}, items = {}} end},
 }
