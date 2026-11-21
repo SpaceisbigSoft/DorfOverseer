@@ -1344,6 +1344,17 @@ PLANNER_CONFIG.update({
     "g7_sought_keep_max": 30,             # names of sought artifacts remembered at most
 })
 
+# (R1 g4) the civilians' shelter (brain/planner_shelter.py; before the floors'
+# block, which test_b10_floor_grammar wants last; the walk's own
+# numbers are lua/ai-shelter-plan.lua SHELTER_DANGER_*): A2/E's flee and
+# pick undid each other every cycle (18 moves in two minutes, civilians on
+# levels with 0 drink); B's pick sent them past the killer
+PLANNER_CONFIG.update({
+    "g4_shelter_hold_ticks": 1200,        # once the shelter moved (or went back to the whole fort) for the dangers
+                                          # on the map, it is held this long: only a new danger, a picked shelter
+                                          # an intruder comes close to, or one that no longer holds them moves it
+})
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

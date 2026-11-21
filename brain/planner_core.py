@@ -341,6 +341,7 @@ class Memory:
     shelter_rest: dict = field(default_factory=dict)     # (0.105.22) squad id -> tick it may shelter again
     thirst_alarm_off_until: int = 0   # (0.105.52) the AI's alarm let down for the thirsty: not raised before this tick
     shelter_supply: dict = field(default_factory=dict)   # (0.105.36, D5) the AI shelter's last fill: {tick, drink_short, no_water, no_food, ...}
+    shelter_hold: dict = field(default_factory=dict)     # (R1 g4) {levels, tick, ids}: the shelter as last seen and since when (planner_shelter: one move a threat)
     fights: list = field(default_factory=list)           # (0.104.118) the last fights: {tick, keys, lost, of}
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
     recovery: dict = field(default_factory=dict)         # (0.105.46, I4) collapse recovery: {since, why, floor, peak, weeks, last_rise, calls, journal} (planner_recovery)

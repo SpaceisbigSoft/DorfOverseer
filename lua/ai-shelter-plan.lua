@@ -54,6 +54,15 @@ CHOKE_MIN_FROM_SOURCE = 2         -- a choke this many steps in from the threat'
 CHOKE_MAX_WIDTH = 4               -- a choke's walkable neighbours on its level, at most (a corridor, a stair)
 SHELTER_PICK_KEY = 'ai-overseer/shelter-pick'
 SHELTER_PICK_MAX_TICKS = 10 * 1200   -- a pick older than this is dropped (the whole fort again)
+-- (R1 g4) the civilians' way to a shelter never passes an intruder: B (y262)
+-- sent them down the one central stair the killer stood by (14 of 26 dead
+-- within a tile of it). Each danger inside the fort is a source of its own
+-- (its real tile, not the entrance), and the tiles near it are a zone no
+-- civilian's walk to a shelter may cross:
+SHELTER_DANGER_NEAR = 4           -- tiles within this walk of an intruder
+SHELTER_DANGER_STAIR = 40         -- ...and the stair tiles on its level (and the next) within this walk
+SHELTER_DANGER_STAIR_LEVELS = 1   -- ...those levels: its own and this many up and down
+SHELTER_PLAN_INSIDE_TICKS = 120   -- an intruder inside: the plan walked again at least this often (it moves)
 
 local function has(f, bit) return f ~= nil and (f // bit) % 2 == 1 end
 
@@ -97,28 +106,76 @@ end
 
 -- Breadth-first walk from the seed keys: key -> steps, how many reached,
 -- whether the cap stopped it.
-function bfs(grid, seeds, cap)
+-- (R1 g4) zone (a set of keys, optional): bad[k] = true when every
+-- shortest walk from the seeds to k crosses the zone (k's own tile counts).
+function bfs(grid, seeds, cap, zone)
     cap = cap or SHELTER_PLAN_CAP
     local dist, q, head, n = {}, {}, 1, 0
+    local bad = zone and {} or nil
     for _, k in ipairs(seeds) do
-        if grid[k] and not dist[k] then dist[k] = 0; n = n + 1; q[n] = k end
+        if grid[k] and not dist[k] then
+            dist[k] = 0; n = n + 1; q[n] = k
+            if zone and zone[k] then bad[k] = true end
+        end
     end
     local capped = false
     while head <= n do
         local k = q[head]
         head = head + 1
         local d = dist[k] + 1
+        local kb = bad and bad[k] or false
         neighbours(grid, k, function(nk)
             if not dist[nk] then
                 if n >= cap then capped = true; return end
                 dist[nk] = d
                 n = n + 1
                 q[n] = nk
+                if bad and (kb or zone[nk]) then bad[nk] = true end
+            elseif bad and bad[nk] and dist[nk] == d and not kb and not zone[nk] then
+                bad[nk] = nil            -- a clean walk as short: not yet walked from, so it holds
             end
         end)
         if capped then break end
     end
+    if bad then return dist, n, capped, bad end
     return dist, n, capped
+end
+
+-- (R1 g4) The tiles no civilian's walk to a shelter may cross: within
+-- opts.near (walk) of each intruder, and the stair tiles on its level and
+-- the next (opts.levels) within opts.stair of it. inside: {{key, z}, ...}.
+-- A set of keys, and how many tiles in it.
+function danger_zone(grid, inside, opts)
+    opts = opts or {}
+    local near = opts.near or SHELTER_DANGER_NEAR
+    local stair = opts.stair or SHELTER_DANGER_STAIR
+    local lv = opts.levels or SHELTER_DANGER_STAIR_LEVELS
+    local maxd = math.max(near, stair)
+    local zone, nz = {}, 0
+    local dist, srcz, q, head, n = {}, {}, {}, 1, 0
+    for _, t in ipairs(inside or {}) do
+        if t.key and grid[t.key] and not dist[t.key] then
+            dist[t.key] = 0; srcz[t.key] = t.z; n = n + 1; q[n] = t.key
+        end
+    end
+    while head <= n do
+        local k = q[head]
+        head = head + 1
+        local d = dist[k]
+        local f = grid[k]
+        local _, _, z = unkey(k)
+        if d <= near or ((has(f, UP) or has(f, DOWN)) and math.abs(z - srcz[k]) <= lv and d <= stair) then
+            if not zone[k] then zone[k] = true; nz = nz + 1 end
+        end
+        if d < maxd then
+            neighbours(grid, k, function(nk)
+                if not dist[nk] then
+                    dist[nk] = d + 1; srcz[nk] = srcz[k]; n = n + 1; q[n] = nk
+                end
+            end)
+        end
+    end
+    return zone, nz
 end
 
 -- The path from k down the walk's distances to a seed: a list of keys, k first.
@@ -220,8 +277,10 @@ end
 function plan(grid, cands, sources, civs, inside, opts)
     opts = opts or {}
     local kept
+    local zone = opts.zone
+    if zone and next(zone) == nil then zone = nil end
     for _, c in ipairs(cands) do
-        local dist, n, capped = bfs(grid, c.seeds, opts.cap)
+        local dist, n, capped, bad = bfs(grid, c.seeds, opts.cap, zone)
         c.reached, c.capped = n, capped or nil
         local best, bi
         for i, s in ipairs(sources) do
@@ -229,11 +288,18 @@ function plan(grid, cands, sources, civs, inside, opts)
             if d and (not best or d < best) then best, bi = d, i end
         end
         c.d_threat, c.src = best, bi
-        local ds, unreached = {}, 0
+        local ds, unreached, exposed, in_zone = {}, 0, 0, 0
         for _, k in ipairs(civs) do
             local d = dist[k]
-            if d then table.insert(ds, d) else unreached = unreached + 1 end
+            if d then
+                table.insert(ds, d)
+                -- (R1 g4) a civilian whose walk there passes an intruder (one
+                -- already beside it is counted apart: no walk saves it)
+                if zone and zone[k] then in_zone = in_zone + 1
+                elseif bad and bad[k] then exposed = exposed + 1 end
+            else unreached = unreached + 1 end
         end
+        if zone then c.civ_exposed, c.civ_in_zone = exposed, in_zone end
         ds = sorted_copy(ds)
         c.civ_reached, c.civ_unreached = #ds, unreached
         c.civ_med, c.civ_p90, c.civ_max = quantile(ds, 0.5), quantile(ds, 0.9), ds[#ds]
@@ -704,6 +770,27 @@ local function walk_items(base, info)
         local k = grid_key_near(grid, e, 2)
         if k then table.insert(sources, k); table.insert(src_rows, e) end
     end
+    -- (R1 g4) each danger already inside the fort (any: a great one, an
+    -- invader, a thief, a beast) is a source at its own tile, and the zone
+    -- round it is where no civilian's walk to a shelter may go
+    local inside, inside_keys = {}, {}
+    for _, t in ipairs(info.dangers or {}) do
+        pcall(function()
+            local k = grid_key_near(grid, t, 1)
+            if k and grid[k] >= INSIDE then
+                table.insert(inside, {key = k, z = t.z})
+                table.insert(inside_keys, k)
+                table.insert(sources, k)
+                table.insert(src_rows, {id = 'u' .. tostring(t.id), kind = 'intruder', x = t.x, y = t.y, z = t.z,
+                                        name = t.name})
+            end
+        end)
+    end
+    local zone, zone_n = {}, 0
+    if #inside > 0 then
+        local okz, zz, nn = pcall(danger_zone, grid, inside)
+        if okz then zone, zone_n = zz, nn end
+    end
     -- the civilians: citizens not in a squad
     local civs, civ_out = {}, 0
     for _, u in ipairs(U.citizens and U.citizens(true) or dfhack.units.getCitizens(true)) do
@@ -774,7 +861,7 @@ local function walk_items(base, info)
         end
     end
     local ctx = {grid = grid, sources = sources, src_rows = src_rows, civs = civs, civ_out = civ_out,
-                 keep_key = keep_key, rest = rest, info = info}
+                 keep_key = keep_key, rest = rest, info = info, inside = inside_keys, zone = zone, zone_n = zone_n}
     WALK_CTX = ctx
     local items = {}
     for _, c in ipairs(walk) do table.insert(items, {c = c, ctx = ctx}) end
@@ -783,7 +870,8 @@ end
 
 local function walk_visit(acc, it)
     local ctx = it.ctx
-    local cands, kept = plan(ctx.grid, {it.c}, ctx.sources, ctx.civs, {}, {keep = ctx.keep_key})
+    local cands, kept = plan(ctx.grid, {it.c}, ctx.sources, ctx.civs, ctx.inside or {},
+                             {keep = ctx.keep_key, zone = ctx.zone})
     table.insert(acc.cands, cands[1])
     if kept then acc.keep = kept end
 end
@@ -794,7 +882,7 @@ local function walk_finish(acc)
     for _, c in ipairs(acc.cands) do
         if c.src then
             local e = ctx.src_rows[c.src]
-            c.way_in = e and {id = e.id, kind = e.kind, x = e.x, y = e.y, z = e.z} or nil
+            c.way_in = e and {id = e.id, kind = e.kind, x = e.x, y = e.y, z = e.z, name = e.name} or nil
         end
         c.src, c.far = nil, nil
     end
@@ -802,7 +890,8 @@ local function walk_finish(acc)
     pcall(function() bar = barracks(ctx.grid) end)
     local info = ctx.info
     return {tick = info.now, sig = info.sig, dsig = info.dsig, grid = ctx.grid, cands = acc.cands, rest = ctx.rest, keep = acc.keep,
-            civs = #ctx.civs, civ_out = ctx.civ_out, ways = info.ways, barracks = bar, levels = {info.lo, info.hi}}
+            civs = #ctx.civs, civ_out = ctx.civ_out, ways = info.ways, barracks = bar, levels = {info.lo, info.hi},
+            intruders = #(ctx.inside or {}), zone_tiles = ctx.zone_n}
 end
 
 -- (0.105.51) The time a report may walk the plan for: a pulse's, a full
@@ -842,6 +931,9 @@ function plan_fresh(m, sig, dsig, now, any_inside)
         return false, false
     end
     local age = now - m.tick
+    -- (R1 g4) an intruder inside moves: its tile, the zone round it and the
+    -- walks from it are walked again this often
+    if any_inside and age >= SHELTER_PLAN_INSIDE_TICKS then return false, false end
     if age < SHELTER_PLAN_TICKS then return true, false end
     if age < SHELTER_PLAN_KEEP_TICKS and m.dsig ~= nil and m.dsig == dsig and not any_inside then
         return true, true
@@ -914,7 +1006,8 @@ function report(txt, tier)
             visit = grid_visit, finish = function(acc) return acc end, max_ms = budget})
     end
     if base and not fresh then
-        local info = {points = points, ways = ways, lo = lo, hi = hi, cur = cur, now = now, sig = signature, dsig = dsig}
+        local info = {points = points, ways = ways, lo = lo, hi = hi, cur = cur, now = now, sig = signature, dsig = dsig,
+                      dangers = list}
         local left = math.max(1, budget - (os.clock() - t0) * 1000)
         -- (0.105.52) keyed by the ways in and the range only: a new shelter
         -- pick (the flee) no longer throws the unfinished walk away; the plan
@@ -966,6 +1059,7 @@ function report(txt, tier)
     out.barracks = m.barracks
     out.levels = m.levels
     out.walked_tick = m.tick
+    out.intruders_walked, out.zone_tiles = m.intruders, m.zone_tiles   -- (R1 g4)
     return out
 end
 
