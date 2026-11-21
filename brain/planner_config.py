@@ -1330,6 +1330,15 @@ PLANNER_CONFIG.update({
     "raid_greed_rich": 60,                # Greed at or past this: the aggressive fort prefers the richest clear win
     "raid_pet_restore_days": 2,           # pets let out for a mission put back this long after, once all are home
 })
+# (R1 g6) strange moods must not fail for want of materials (R-AD 1-2, R-CE 4)
+PLANNER_CONFIG.update({
+    "g6_mood_slaughter_again_days": 8,    # a mood still waiting on bone or leather: another animal after this long
+    "g6_reserve_bones_min": 2,            # bones under this: one spare animal to the butcher (the ordinary rule)
+    "g6_reserve_cut_gems_min": 1,         # a cut gem kept whenever a rough gem lies about
+    "g6_mood_trade_goods": 10,            # a no-trade fort: crafts taken to the depot to pay for a mood's goods
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall
@@ -1362,10 +1371,3 @@ PLANNER_CONFIG.update({
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
 })
 
-# (R1 g6) strange moods must not fail for want of materials (R-AD 1-2, R-CE 4)
-PLANNER_CONFIG.update({
-    "g6_mood_slaughter_again_days": 8,    # a mood still waiting on bone or leather: another animal after this long
-    "g6_reserve_bones_min": 2,            # bones under this: one spare animal to the butcher (the ordinary rule)
-    "g6_reserve_cut_gems_min": 1,         # a cut gem kept whenever a rough gem lies about
-    "g6_mood_trade_goods": 10,            # a no-trade fort: crafts taken to the depot to pay for a mood's goods
-})
