@@ -11,7 +11,7 @@ from culture import layout_style, new_history, profile_from
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["drink_short", "_crop_rules", "farm_plots_live", "crops_owned", "drink_known_short", "_farm_crops_rule", "_kitchen_rule", "_fishery_rule", "_dairy_rule", "_eggs_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "farm_target", "thirsty_farm_extra", "_farm_rule", "drink_swap_wanted"]
+__all__ = ["drink_short", "_crop_rules", "farm_plots_live", "crops_owned", "drink_known_short", "_farm_crops_rule", "_kitchen_rule", "_seed_reserve_rule", "_fishery_rule", "_dairy_rule", "_eggs_rule", "drink_below_target", "drink_crisis", "drink_target_per_dwarf", "crisis_brew_room", "brew_jobs_open", "farm_target", "thirsty_farm_extra", "_farm_rule", "drink_swap_wanted"]
 
 
 def drink_short(s: dict, cfg: dict) -> bool:
@@ -254,6 +254,77 @@ def _kitchen_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
         proposals.append(Proposal("kitchen", {"type": "kitchen_brewables", "ban": False},
                                   f"drink has recovered ({drink} for {citizens}): the kitchen may cook "
                                   "brewable plants again", 5))
+
+
+def _seed_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(r2h6) The seed reserve. The audit (A1, 14-15 Nov): underground
+    farming died in all six forts for want of seed. Plump helmet seeds A 1,
+    B 7, C 0, D 0, F 0 (F: 35 of 51 plots dead), while A kept 1,082 plump
+    helmets in store: cooking keeps no seed (DF: only brewing, milling,
+    processing or eating a plant raw gives it back) and the plump helmet's
+    spawn is itself cookable. seedwatch was on in every fort and did not
+    hold it. Each farmable crop sown now or grown underground, under
+    h6_seed_reserve seeds with seeds or plants to save, keeps its plant and
+    seed from the cooks (seed_reserve ban: DF's kitchen exclusions); the
+    AI's ban lifts at h6_seed_lift. An underground brewable crop short of
+    seed with plants in store gets a small brew order (when none is open):
+    the still gives the seed back. Needs the report's farms.seed_bans (the
+    bans the AI holds); an older bridge: nothing."""
+    fm = _d(s.get("farms"))
+    held = fm.get("seed_bans")
+    if isinstance(held, dict):
+        held = list(held)
+    if not isinstance(held, list):
+        return
+    held = {str(h) for h in held}
+    crops = {k: v for k, v in _d(fm.get("crops")).items() if isinstance(v, dict)}
+    if not crops:
+        return
+    reserve, lift = cfg["h6_seed_reserve"], cfg["h6_seed_lift"]
+
+    def n(c, k):
+        v = c.get(k)
+        return v if isinstance(v, int) and not isinstance(v, bool) else 0
+
+    def farmable(c):
+        return c.get("seed") is not False and bool(_l(c.get("seasons")))
+
+    low = [k for k, c in crops.items() if farmable(c) and k not in held and n(c, "seeds") < reserve
+           and n(c, "seeds") + n(c, "stock") > 0 and (c.get("underground") or n(c, "planted") > 0)]
+    low.sort(key=lambda k: (not crops[k].get("underground"), k != "MUSHROOM_HELMET_PLUMP", n(crops[k], "seeds"), k))
+    low = low[:cfg["h6_seed_plants_max"]]
+    up = sorted(k for k in held if k not in crops or n(crops[k], "seeds") >= lift)
+    if low or up:
+        a = {"type": "seed_reserve", "target": reserve}
+        if low:
+            a["ban"] = low
+        if up:
+            a["lift"] = up
+        words = []
+        if low:
+            words.append(", ".join(f"{_d(crops[k]).get('name') or k.lower()} ({n(crops[k], 'seeds')} seeds)"
+                                   for k in low[:4]) + ("..." if len(low) > 4 else "")
+                         + f" under {reserve}: the kitchen stops cooking the plant and its seed (cooking "
+                         "keeps no seed; brewing or eating it raw gives it back)")
+        if up:
+            words.append(f"{len(up)} crop(s) have {lift}+ seeds again: the AI's kitchen ban on them lifts")
+        proposals.append(Proposal("seed_reserve", a, "; ".join(words), 3 if any(
+            crops[k].get("underground") for k in low) else 5))
+    # the still gives the seed back: a few underground plants brewed
+    short = [k for k, c in crops.items() if farmable(c) and c.get("underground") and c.get("brews")
+             and n(c, "seeds") < reserve and n(c, "stock") >= cfg["h6_seed_brew_min"]]
+    if not short or queued(s, BREW_RECIPES) > 0:
+        return
+    if any(p.action.get("type") == "work_order" and p.action.get("recipe") in BREW_RECIPES for p in proposals):
+        return
+    if memory is not None and _stuck_before(memory, "brew_drink", abs_tick(s), cfg):
+        return
+    k = min(short, key=lambda k: (k != "MUSHROOM_HELMET_PLUMP", n(crops[k], "seeds")))
+    amount = max(1, min(cfg["h6_seed_brew_amount"], n(crops[k], "stock") // 2))
+    proposals.append(Proposal("seed_brew", {"type": "work_order", "recipe": "brew_drink", "amount": amount},
+                              f"{_d(crops[k]).get('name') or k.lower()}: {n(crops[k], 'seeds')} seeds and "
+                              f"{n(crops[k], 'stock')} in store: brew {amount} (the still gives the seed back "
+                              "for the underground plots)", 4))
 
 
 def _fishery_rule(s: dict, cfg: dict, proposals: list) -> None:

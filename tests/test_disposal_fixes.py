@@ -294,7 +294,7 @@ def _():
 
 # --- 6. empty_dump ------------------------------------------------------------------------------
 
-@test("6. empty_dump: only forbidden items; never a citizen's body, the fort's civ's, a dead dwarf's or a living owner's "
+@test("6. empty_dump: only forbidden items; never a citizen's body, a dead dwarf's or a living owner's "
       "(0.105.51: another civ's dwarf goes)")
 def _():
     lua, env, w = A.world()
@@ -312,11 +312,12 @@ def _():
     goblin = mk(lua, w, kind="CORPSE", race=2, unit_id=8, flags={"forbid": True}, pos=(10, 12, 150))
     rags = mk(lua, w, kind="PANTS", flags={"forbid": True}, pos=(11, 12, 150))
     r = env.empty_dump(opts(lua), False)
-    assert set(w.removed.values()) == {goblin.id, rags.id, dwarf.id}, (list(w.removed.values()), skipped(r))
-    for it in (citizen, civ, ring, owned, free):
+    # (r2h6) another race of the fort's civ, no pet (a tame animal's body: DF never buries it) goes too
+    assert set(w.removed.values()) == {goblin.id, rags.id, dwarf.id, civ.id}, (list(w.removed.values()), skipped(r))
+    for it in (citizen, ring, owned, free):
         assert not it.flags.removed
     s = skipped(r)
-    assert s.get("own_remains") == 3 and s.get("not_forbidden") == 1 and s.get("owned") == 1, s
+    assert s.get("own_remains") == 2 and s.get("not_forbidden") == 1 and s.get("owned") == 1, s
 
 
 # --- 7. place_dump_zone ---------------------------------------------------------------------------

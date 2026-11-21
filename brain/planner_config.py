@@ -1441,6 +1441,18 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r2h6) the dead animals' bodies, the seed reserve, cups and the guildhall
+# petitions (brain/planner_farms.py _seed_reserve_rule; lua/ai-util.lua
+# fort_remains; lua/ai-bridge-actions.lua act_seed_reserve)
+PLANNER_CONFIG.update({
+    "h6_seed_reserve": 30,                # a farmable crop under this many seeds keeps its plant and seed from the cooks
+    "h6_seed_lift": 60,                   # ...and the ban lifts at this many (the AI's own bans only)
+    "h6_seed_plants_max": 8,              # plants banned in one action at most (underground first, fewest seeds first)
+    "h6_seed_brew_min": 10,               # an underground crop short of seed with this many plants in store: brew some
+    "h6_seed_brew_amount": 10,            # ...an order of this many (brewing gives the seed back; cooking never does)
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

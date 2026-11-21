@@ -1042,6 +1042,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_farm_crops_rule, s, memory, cfg, proposals, notes)   # (0.105.5) Hammerstirred: fallow plots
     if can_use("stocks"):
         _guard(_kitchen_rule, s, memory, cfg, proposals)   # (0.100) cooking leaves brewables to the stills
+    if can_use("farms", "orders"):
+        _guard(_seed_reserve_rule, s, memory, cfg, proposals, notes)   # (r2h6) seeds kept from the cooks
     # idle hands: finished levels smoothed, then engraved, one at a time
     def _polish_rule():
         if can_use("projects") and not young_fort(s, cfg):

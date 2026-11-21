@@ -1722,6 +1722,13 @@ end
 -- (0.105.33) the kitchen bans both rules share: `keys` excluded from cooking
 -- (ban) and recorded under `key`, or the recorded ones lifted (only the AI's
 -- own; false from addExclusion means the player's or ours is there already)
+-- (r2h6) one kitchen exclusion (Cook) added (on) or removed: the one place
+-- the AI touches DF's kitchen list (the bans below and the seed reserve)
+local function kitchen_exclude(k, on)
+    if on then return dfhack.kitchen.addExclusion({Cook = true}, k.t, k.s, k.mt, k.mi) end
+    return dfhack.kitchen.removeExclusion({Cook = true}, k.t, k.s, k.mt, k.mi)
+end
+
 local function kitchen_ban(key, keys, ban, dry_run)
     local data = dfhack.persistent.getSiteData(key, {bans = {}})
     local had = type(data.bans) == 'table' and data.bans or {}
@@ -1729,7 +1736,7 @@ local function kitchen_ban(key, keys, ban, dry_run)
         if dry_run then return {ok = true, dry_run = true, kinds = #keys} end
         local added = 0
         for _, k in ipairs(keys) do
-            if dfhack.kitchen.addExclusion({Cook = true}, k.t, k.s, k.mt, k.mi) then
+            if kitchen_exclude(k, true) then
                 table.insert(had, k)
                 added = added + 1
             end
@@ -1740,7 +1747,7 @@ local function kitchen_ban(key, keys, ban, dry_run)
     if dry_run then return {ok = true, dry_run = true, held = #had} end
     local lifted = 0
     for _, k in ipairs(had) do
-        if dfhack.kitchen.removeExclusion({Cook = true}, k.t, k.s, k.mt, k.mi) then lifted = lifted + 1 end
+        if kitchen_exclude(k, false) then lifted = lifted + 1 end
     end
     pcall(dfhack.persistent.saveSiteData, key, {bans = {}})
     return {ok = true, lifted = lifted}
@@ -1783,6 +1790,126 @@ function act_kitchen_fat(a)
     local r = kitchen_ban(KITCHEN_FAT_KEY, keys, a.ban, a.dry_run)
     if a.ban and not a.dry_run and r.banned == 0 and #keys == 0 then return reject('no fat or tallow in the fort') end
     return r
+end
+
+-- (r2h6) The seed reserve: a farmable crop whose seeds run low keeps its
+-- plant and its seed from the cooks (DF's kitchen exclusions, Cook), so the
+-- plants are brewed or eaten raw and give their seed back (DF: cooking
+-- never leaves a seed; the plump helmet's spawn is itself cookable). The
+-- audit (A1, 14-15 Nov): plump helmet seed 0-7 in every fort, A with 1,082
+-- plump helmets in store and 1 seed, the underground plots dead. {ban =
+-- {plant ids}, lift = {plant ids}, target = n}: each banned plant's
+-- exclusions are recorded (KITCHEN_SEED_KEY, by plant id) and only those
+-- lifted; a player's own exclusion stays. With DFHack's seedwatch on, its
+-- target for the banned plants is set to `target` too (seedwatch lifts
+-- every exclusion of a plant above its own target).
+KITCHEN_SEED_KEY = 'ai-overseer/kitchen-seeds'
+SEED_RESERVE_PLANTS_MAX = 40     -- plant ids an action names at most
+
+local function plant_raw_by_id(id)
+    for _, p in ipairs(df.global.world.raws.plants.all) do
+        if p.id == id then return p end
+    end
+    return nil
+end
+
+-- The kitchen keys of a plant and of its seed (each {t, s, mt, mi}).
+function plant_seed_keys(p)
+    local out = {}
+    for _, m in ipairs(p.material) do
+        if m.id == 'STRUCTURAL' then
+            local mi = dfhack.matinfo.find(p.id, m.id)
+            if mi then table.insert(out, {t = df.item_type.PLANT, s = -1, mt = mi.type, mi = mi.index}) end
+            break
+        end
+    end
+    local okd, st, si = pcall(function() return p.material_defs.type.seed, p.material_defs.idx.seed end)
+    if okd and type(st) == 'number' and st >= 0 and type(si) == 'number' then
+        table.insert(out, {t = df.item_type.SEEDS, s = -1, mt = st, mi = si})
+    end
+    return out
+end
+
+-- The plant ids whose seed bans the AI holds (sorted).
+function seed_bans_held()
+    local ok, data = pcall(dfhack.persistent.getSiteData, KITCHEN_SEED_KEY, {bans = {}})
+    local out = {}
+    if ok and type(data) == 'table' and type(data.bans) == 'table' then
+        for id in pairs(data.bans) do table.insert(out, tostring(id)) end
+    end
+    table.sort(out)
+    return out
+end
+
+local function id_list(v)
+    local out = {}
+    if type(v) ~= 'table' then return out end
+    for _, id in ipairs(v) do
+        if type(id) == 'string' and id ~= '' and #out < SEED_RESERVE_PLANTS_MAX then table.insert(out, id) end
+    end
+    return out
+end
+
+function act_seed_reserve(a)
+    local ban, lift = id_list(a.ban), id_list(a.lift)
+    if #ban == 0 and #lift == 0 then return reject('seed_reserve needs ban or lift (plant ids)') end
+    local data = dfhack.persistent.getSiteData(KITCHEN_SEED_KEY, {bans = {}})
+    local bans = type(data.bans) == 'table' and data.bans or {}
+    local res = {ok = true, banned = {}, lifted = {}, unknown = {}, dry_run = a.dry_run == true or nil}
+    for _, id in ipairs(ban) do
+        local p = plant_raw_by_id(id)
+        if not p then
+            table.insert(res.unknown, id)
+        elseif bans[id] == nil then
+            local okk, keys = pcall(plant_seed_keys, p)
+            local added = {}
+            if okk and not a.dry_run then
+                for _, k in ipairs(keys) do
+                    local okx, yes = pcall(kitchen_exclude, k, true)
+                    if okx and yes then
+                        table.insert(added, k)
+                    end
+                end
+            end
+            if not a.dry_run then bans[id] = added end
+            table.insert(res.banned, id)
+        end
+    end
+    for _, id in ipairs(lift) do
+        local had = bans[id]
+        if had ~= nil then
+            if not a.dry_run then
+                for _, k in ipairs(type(had) == 'table' and had or {}) do
+                    pcall(kitchen_exclude, k, false)
+                end
+                bans[id] = nil
+            end
+            table.insert(res.lifted, id)
+        end
+    end
+    if a.dry_run then return res end
+    pcall(dfhack.persistent.saveSiteData, KITCHEN_SEED_KEY, {bans = bans})
+    -- seedwatch, when on, keeps the same line (else it lifts the ban above its own target)
+    local target = math.tointeger(tonumber(a.target))
+    if target and target > 0 and #res.banned > 0 then
+        local okp, on = pcall(plugin_enabled, 'seedwatch')
+        if okp and on == true then
+            res.seedwatch = 0
+            for _, id in ipairs(res.banned) do
+                local okc, _, rv = pcall(dfhack.run_command_silent, 'seedwatch', id, tostring(target))
+                if okc and rv == CR_OK then res.seedwatch = res.seedwatch + 1 end
+            end
+        end
+    end
+    if #res.banned == 0 and #res.lifted == 0 then
+        res.ok, res.rejected = false, true
+        res.error = #res.unknown > 0 and ('no such plant: ' .. table.concat(res.unknown, ', '))
+            or 'the seed bans asked are held already (or were never the AI\'s)'
+    end
+    res.held = 0
+    for _ in pairs(bans) do res.held = res.held + 1 end
+    if #res.unknown == 0 then res.unknown = nil end
+    return res
 end
 
 -- (0.99.7) Soldiers who don't pick up their uniforms: DFHack's
