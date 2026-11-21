@@ -47,7 +47,7 @@ KILN_PAPER = ("make_quicklime", "make_milk_of_lime", "make_parchment", "make_qui
 # where each is made when the report doesn't say (vanilla, from memory: needs an in-game look)
 DEFAULT_SHOPS = {"slurry": ("Quern", "Millstone"), "press": ("ScrewPress",), "papyrus": ("Farmers",),
                  "scroll": ("Craftsdwarfs",), "codex": ("Craftsdwarfs",)}
-AGENDA_THEMES["paper"] = AGENDA_THEMES["paper_shop"] = "paper for the library"
+AGENDA_THEMES["paper"] = AGENDA_THEMES["paper_shop"] = AGENDA_THEMES["paper_press"] = "paper for the library"
 
 # (0.105.51) built only when nothing else listed will do
 LAST_RESORT_SHOPS = {"Millstone"}
@@ -195,6 +195,15 @@ def _plant_route(s, cfg, paper, b, need, have, want, batch, proposals, notes) ->
         else:
             n = min(int(slurry["inputs"]) - keep, need, batch)
             _order(proposals, "make_slurry", n, f"{lack}: mill {n} plant(s) into paper slurry (then pressed into sheets)")
+            # (R2 h3) and the press beside it, in the same cycle: the run's forts
+            # milled slurry 19-264 times (A 135, D 264) and never once had any to
+            # press (press inputs 0, 0 sheets in six forts). Slurry is a glob
+            # stored as a paste in a food pile, where a loose one is cleaned
+            # away (wiki: "Slurry"), so the press order waits in the manager's
+            # list for the slurry as it comes off the quern
+            proposals.append(Proposal("paper_press", {"type": "work_order", "recipe": "press_paper", "amount": max(1, n)},
+                                      f"{lack}: press the {n} slurry into sheets as soon as it is milled (loose "
+                                      "slurry in a food pile is cleaned away)", 6, True))
         return
     if not (papyrus or slurry):
         notes.append(f"{lack}: the game has no plant paper reactions; parchment (the kiln chain) is the only route")

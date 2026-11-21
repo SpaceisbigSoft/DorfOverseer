@@ -1522,6 +1522,16 @@ PLANNER_CONFIG.update({
                                           # left this long for you on DF's petitions screen, then declined
 })
 
+# (R2 h3) building slots (brain/planner_slots.py; lua/ai-builder-projects.lua slot_cap,
+# need_slot_free, park_project): a level waiting on the same pieces parked, the small
+# needs' pool, a dig that never began re-checked
+PLANNER_CONFIG.update({
+    "h3_park_days": 30,                   # a level being furnished, the same pieces missing this long: parked (holds no slot)
+    "h3_park_drop_days": 336,             # ...parked this long on pieces it can't get: they are taken off and the level finished
+    "h3_dig_check_days": 21,              # a level with no tile dug this long: why (designations, reach, miners) and unstuck or cancelled
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

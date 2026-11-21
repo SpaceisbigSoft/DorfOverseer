@@ -339,6 +339,7 @@ ACTIONS = {
     seal_well_stairs = act_seal_well_stairs,
     well_shaft = act_well_shaft,
     finish_project = act_finish_project,
+    park_project = act_park_project,          -- (R2 h3) a level waiting on the same pieces holds no slot
     engrave_project = act_engrave_project,
     set_culture = act_set_culture,
     set_learned = act_set_learned,

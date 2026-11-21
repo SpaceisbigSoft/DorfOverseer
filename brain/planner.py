@@ -75,6 +75,7 @@ from planner_mood_help import mood_shelter_rule, note_mood_help  # noqa: E402  (
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
+from planner_slots import needs_pass, slots_rules  # noqa: E402  (R2 h3) building slots
 from planner_thirst import _thirst_rule, note_thirst, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
 from planner_near_gates import _near_gates_rule  # noqa: E402  (0.105.47, I7d) surface work near the gates under a titan
 from planner_ice import _ice_rule  # noqa: E402  (0.105.47, I7d) surface water zones, shore wells, traffic before the ice
@@ -1070,6 +1071,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     s.pop("_character_slot", None)          # (0.105.10 review) never a reservation from an earlier plan
     if can_use("projects"):
         _guard(_project_rules, s, traits, cfg, proposals, notes, can_use, memory)
+        # (R2 h3) a level waiting on the same pieces parked; a dig that never began re-checked
+        _guard(slots_rules, s, memory, cfg, proposals, notes)
     # 7a. (0.104.168) a bedroom per household (after the levels: no second bedrooms level)
     _guard(_homes_rules, s, cfg, traits, proposals, notes)
     # 7b. (0.105.10, 14.1 step 3) the last free slot is the fort's own: other
@@ -1267,6 +1270,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         kept = _guard(recovery_apply, proposals, memory, notes)
         if kept is not None:
             proposals = kept
+    # (R2 h3) the small needs (paper shop, mood workshops, wells, a still or kitchen
+    # while drink or meals are short) marked for the bridge's pool of their own
+    _guard(needs_pass, s, cfg, proposals, memory)
     proposals.sort(key=lambda p: p.priority)
     return proposals, notes
 

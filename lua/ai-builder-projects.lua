@@ -35,7 +35,8 @@ function load_projects()
 end
 
 OLD_AREAS_MAX = 600       -- (0.104.19) outlines of levels dropped from the list, kept for safety
-MOOD_SHOP_OPEN_MAX = 3    -- (R1 g6) a mood's workshops level takes no slot while fewer urgent workshops levels are open
+MOOD_SHOP_OPEN_MAX = NEED_SLOTS or 3    -- (R1 g6) a mood's workshops level takes no slot while fewer urgent workshops levels are open
+                                        -- (R2 h3) the small needs' pool (NEED_SLOTS, ai-builder.lua): one number
 
 function save_projects(data)
     -- keep every open project, and only the most recent closed ones;
@@ -694,16 +695,9 @@ function start_project(params, now, dry_run)
     -- unfinished building projects" while moods wanted a cut gem; two died
     -- (urgent workshops levels open at most MOOD_SHOP_OPEN_MAX: one stuck
     -- furnishing is no "coming" shop to the brain, so another would follow)
-    local mood_shop = params.mood == true and kind == 'workshops'
-    if mood_shop then
-        local n = 0
-        for _, q in ipairs(open) do
-            if q.kind == 'workshops' and (q.urgent == true or (type(q.params) == 'table' and q.params.urgent == true)) then
-                n = n + 1
-            end
-        end
-        mood_shop = n < MOOD_SHOP_OPEN_MAX
-    end
+    -- (R2 h3) one pool with the other small needs (need_slot_free): a paper shop, a
+    -- well, a still or kitchen while drink or meals are short
+    local mood_shop = need_slot_free(open, params, kind)
     -- (r2h4) the crossbow squad's Bowyer's workshop (params.crossbows, the bridge
     -- lets it through for a lone Bowyers) takes no slot either: one such level
     -- open at a time, and not past MOOD_SHOP_OPEN_MAX urgent workshops levels
@@ -905,6 +899,31 @@ function start_project(params, now, dry_run)
             not_joined = join_why,     -- (0.105.54) why no standing workshops level took the shops
             warning = (result ~= expected) and ('only %d of %d tiles designated'):format(result, expected) or nil}
 end
+
+-- (R2 h3) start_project_level, and the small need it was started for (params.need,
+-- NEED_KINDS) kept on the new project (`need`): it is counted in the needs' pool
+-- (need_slot_free) and not in the ordinary cap (slot_cap). The level is made by
+-- several paths (a new level, a standing level's free room, an extension, a
+-- floor), so the mark is put on once the project exists.
+start_project_level = start_project
+function start_project(params, now, dry_run)
+    local r = start_project_level(params, now, dry_run)
+    local need = type(params) == 'table' and project_need(params, params.kind) or nil
+    if need and not dry_run and type(r) == 'table' and r.ok and math.tointeger(r.project_id) then
+        pcall(function()
+            local data = load_projects()
+            local p
+            for _, q in ipairs(data.list) do if q.id == r.project_id then p = q end end
+            if p and p.need == nil then
+                p.need = need
+                save_projects(data)
+            end
+        end)
+        r.need = need
+    end
+    return r
+end
+
 
 function cells_of(p, phase)
     return (type(p.cells) == 'table' and type(p.cells[phase]) == 'table') and p.cells[phase] or {}
@@ -1177,20 +1196,87 @@ local function tick_of(d)
     return type(d) == 'table' and (tonumber(d.year) or 0) * 403200 + (tonumber(d.tick) or 0) or nil
 end
 
+-- (R2 h3) A furnish progress's missing pieces in one word ("Bed:1,Box:1"; '' none):
+-- what park_project keeps, and what the level waits on while it is parked.
+function furnish_sig(f)
+    local keys = {}
+    for k, n in pairs(type(f) == 'table' and type(f.waiting) == 'table' and f.waiting or {}) do
+        if (tonumber(n) or 0) > 0 then table.insert(keys, tostring(k) .. ':' .. math.floor(tonumber(n))) end
+    end
+    table.sort(keys)
+    return table.concat(keys, ',')
+end
+
+-- (R2 h3) Parked: the brain parked it (park_project) and it still waits on the
+-- very pieces it was parked for. Once one comes (or another goes missing) it is
+-- an ordinary level again and holds its slot. f: its furnish_progress, if known.
+function is_parked(p, f)
+    if type(p) ~= 'table' or p.phase ~= 'furnish' or type(p.parked) ~= 'table'
+            or type(p.parked.sig) ~= 'string' or p.parked.sig == '' then
+        return false
+    end
+    if f == nil then
+        local ok, got = pcall(furnish_progress, p)
+        if not ok then return false end
+        f = got
+    end
+    return furnish_sig(f) == p.parked.sig
+end
+
+-- (R2 h3) the small need a project (or a start_project's params) is for, or nil:
+-- its `need` (NEED_KINDS), or a strange mood's workshops level (R1 g6)
+function project_need(p, kind)
+    if type(p) ~= 'table' then return nil end
+    local need = p.need
+    if need == nil and type(p.params) == 'table' then need = p.params.need end
+    if NEED_KINDS[need] then return need end
+    local mood = p.mood == true or (type(p.params) == 'table' and p.params.mood == true)
+    if mood and (kind or p.kind) == 'workshops' then return 'mood' end
+    return nil
+end
+
+local function urgent_shops(q)
+    return q.kind == 'workshops' and (q.urgent == true or (type(q.params) == 'table' and q.params.urgent == true))
+end
+
+-- (R2 h3) the needs' pool in use: open small-need levels (and, as R1 g6 counted
+-- them, urgent workshops levels), a parked one not counted
+function need_slots_used(open)
+    local n = 0
+    for _, q in ipairs(open or {}) do
+        if (project_need(q) or urgent_shops(q)) and not is_parked(q) then n = n + 1 end
+    end
+    return n
+end
+
+-- (R2 h3) May a small need start over the ordinary cap? (R1 g6's mood rule, for
+-- every need): while fewer than NEED_SLOTS of the pool are open
+function need_slot_free(open, params, kind)
+    if not project_need(params, kind) then return false end
+    return need_slots_used(open) < NEED_SLOTS
+end
+
 -- (0.104.142) The open-project cap: the base, plus a slot for each level
 -- furnishing FURNISH_LEND_DAYS or more (FURNISH_LEND_MAX at most).
 -- (D0, G6) A landmark takes one slot whatever its levels: each level past the
 -- first is a project of its own (kind 'landmark', one params.landmark_id), so
 -- it adds a slot back, and lends once; a surface landmark being built has no
 -- project at all, so it takes one (landmarks_open_surface, ai-builder-landmarks)
+-- (R2 h3) and a slot back for each parked level (PARK_MAX at most) and for each
+-- small need's level (NEED_SLOTS at most: they have their own pool), so neither
+-- holds an ordinary slot; a level is counted once (parked first, then need, then lent)
 function slot_cap(open)
-    local lent, again, seen = 0, 0, {}
+    local lent, again, seen, parked, needs = 0, 0, {}, 0, 0
     for _, p in ipairs(open or {}) do
         local lid = p.kind == 'landmark' and type(p.params) == 'table' and p.params.landmark_id or nil
         local dup = lid ~= nil and seen[lid] == true
         if lid ~= nil then seen[lid] = true end
         if dup then
             again = again + 1
+        elseif parked < PARK_MAX and is_parked(p) then
+            parked = parked + 1
+        elseif project_need(p) then
+            needs = needs + 1
         elseif p.phase == 'furnish' then
             local since = tick_of(p.furnish_started)
             if since and (now_tick() - since) // 1200 >= FURNISH_LEND_DAYS then lent = lent + 1 end
@@ -1201,7 +1287,36 @@ function slot_cap(open)
         local ok, n = pcall(landmarks_open_surface)
         if ok and math.tointeger(n) then surface = n end
     end
-    return MAX_OPEN_PROJECTS + math.min(FURNISH_LEND_MAX, lent) + again - surface
+    return MAX_OPEN_PROJECTS + math.min(FURNISH_LEND_MAX, lent) + parked + math.min(NEED_SLOTS, needs)
+        + again - surface
+end
+
+-- (R2 h3) Parks a level being furnished that has waited on the same pieces for the
+-- brain's h3_park_days (sig: its furnish sig as the report gave it; refused if it
+-- changed since): it stops holding a building slot (slot_cap) and stays open, its
+-- pieces still ordered, until one of them comes.
+function park_project(id, sig, dry_run)
+    local data = load_projects()
+    local p
+    for _, q in ipairs(data.list) do if q.id == id then p = q end end
+    if not p or p.phase ~= 'furnish' then
+        return {ok = false, rejected = true, error = 'not a project being furnished'}
+    end
+    local f = furnish_progress(p)
+    local now_sig = furnish_sig(f)
+    if now_sig == '' then
+        return {ok = false, rejected = true, error = 'nothing is missing: it finishes instead'}
+    end
+    if type(sig) == 'string' and sig ~= '' and sig ~= now_sig then
+        return {ok = false, rejected = true, error = ('its missing pieces changed (%s, was %s)'):format(now_sig, sig)}
+    end
+    if is_parked(p, f) then
+        return {ok = true, project_id = id, parked = true, sig = now_sig, already = true}
+    end
+    if dry_run then return {ok = true, project_id = id, parked = true, sig = now_sig, dry_run = true} end
+    p.parked = {sig = now_sig, year = now_tick() // 403200, tick = now_tick() % 403200}
+    if not save_projects(data) then return {ok = false, error = 'could not save the project with the fort'} end
+    return {ok = true, project_id = id, parked = true, sig = now_sig}
 end
 
 -- Smoothing progress: how many cells still have a smoothing job waiting.
@@ -1282,7 +1397,15 @@ function projects_report()
                 r.furnish = furnish_progress(p)
                 local since = tick_of(p.furnish_started)
                 r.furnish.days = since and math.max(0, (now_tick() - since) // 1200) or 0
+                -- (R2 h3) what it waits on in one word, and whether it is parked (holds no slot)
+                r.furnish.sig = furnish_sig(r.furnish)
+                if type(p.parked) == 'table' then
+                    r.parked = is_parked(p, r.furnish)
+                    local pt = tick_of(p.parked)
+                    r.parked_days = pt and math.max(0, (now_tick() - pt) // 1200) or nil
+                end
             end
+            r.need = project_need(p)       -- (R2 h3) the small need it is for (its own pool)
             if p.phase ~= 'dig' then r.decor = decor_progress(p) end
             -- (0.105.24) a well the game refused: how often, and what it showed
             if p.kind == 'well' and p.well_refusals then
@@ -1302,6 +1425,11 @@ function projects_report()
     -- kept closed ones (20 at most); done_total every level ever finished
     return {open = out, decorating = decorating, finished = finished, done_total = done_total(data),
             max_open = okc and cap or MAX_OPEN_PROJECTS,
+            -- (R2 h3) the small needs' pool: free places (need_slot_free)
+            need_slots_free = (function()
+                local ok, n = pcall(need_slots_used, open_projects(data))
+                return ok and math.max(0, NEED_SLOTS - n) or nil
+            end)(),
             max_open_base = MAX_OPEN_PROJECTS, well_lids = (okl and #lids > 0) and lids or nil,
             well_lids_error = (not okl) and tostring(lids):sub(1, 120) or nil}
 end
@@ -1786,14 +1914,17 @@ DECOR_ONLY = {Statue = true}
 -- holds what it already has, a mechanism) and the level finished
 GIVE_UP_KINDS = {Workshop = true, Furnace = true}
 
-function drop_waiting_shops(p)
+-- (R2 h3) kinds: the building kinds to take off (GIVE_UP_KINDS when nil): a parked
+-- level's pieces nothing in the fort can make, or that never came in a year
+function drop_waiting_shops(p, kinds)
     local a, n = p.area, 0
     local list = {}
     local mine = own_tile_test(p)       -- (layout B)
+    kinds = kinds or GIVE_UP_KINDS
     for _, b in ipairs(df.global.world.buildings.all) do
         if b.z == a.z and b.x1 >= a.x1 and b.x2 <= a.x2 and b.y1 >= a.y1 and b.y2 <= a.y2
                 and (not mine or mine(b))
-                and not b.flags.exists and GIVE_UP_KINDS[df.building_type[b:getType()] or '']
+                and not b.flags.exists and kinds[df.building_type[b:getType()] or '']
                 and is_planned(b) then
             table.insert(list, b)
         end
@@ -1805,13 +1936,11 @@ function drop_waiting_shops(p)
 end
 
 -- (r2h7) leave_planned: the stuck sweep's give-up of a level furnishing for
--- months with pieces of any kind waiting (R3 and 15-16 Nov: refused "N
--- buildings still waiting" 71 of 71 times, the same levels for up to 146
--- days): the level is finished and its slot freed, the waiting pieces left
--- planned (DF builds them when their items come, as decor_only leaves the
--- statues); with give_up too, the waiting workshops are taken off first. Not
--- a well level (its well is the point: the well rule orders its parts).
-function finish_project(id, decor_only, stalled, give_up, leave_planned)
+-- months with pieces of any kind waiting: finished, its slot freed, the waiting
+-- pieces left planned (with give_up too, the waiting workshops taken off first).
+-- Not a well level. (R2 h3) drop: with give_up, building kinds (e.g. {'Bed','Box'})
+-- that may be taken off besides the workshops (say which: `dropped_kinds`)
+function finish_project(id, decor_only, stalled, give_up, drop, leave_planned)
     local data = load_projects()
     local p = find(data, id)
     -- (merge32) a dug way in finishes from its dig (nothing to furnish)
@@ -1824,10 +1953,23 @@ function finish_project(id, decor_only, stalled, give_up, leave_planned)
         return {ok = false, rejected = true, error = 'not a project being furnished'}
     end
     local f = furnish_progress(p)
+    local kinds = GIVE_UP_KINDS
+    local dropped_kinds
+    if give_up and type(drop) == 'table' then
+        kinds = {}
+        for k in pairs(GIVE_UP_KINDS) do kinds[k] = true end
+        for _, k in ipairs(drop) do
+            if type(k) == 'string' and df.building_type[k] ~= nil then kinds[k] = true end
+        end
+    end
     local left, only_shops = false, true
     for name, n in pairs(f.waiting or {}) do
         if n > 0 and not (decor_only and DECOR_ONLY[name]) then left = true end
-        if n > 0 and not GIVE_UP_KINDS[name] then only_shops = false end
+        if n > 0 and not kinds[name] then only_shops = false end
+        if n > 0 and kinds[name] then
+            dropped_kinds = dropped_kinds or {}
+            table.insert(dropped_kinds, name)
+        end
     end
     local dropped, kept
     if leave_planned and left and not (give_up and only_shops) then
@@ -1835,18 +1977,21 @@ function finish_project(id, decor_only, stalled, give_up, leave_planned)
             return {ok = false, rejected = true, error = 'a well level is not given up while its well waits (the well rule orders its parts)'}
         end
         if give_up then
-            local okd, n = pcall(drop_waiting_shops, p)
+            local okd, n = pcall(drop_waiting_shops, p, kinds)
             dropped = okd and n or 0
         end
         kept = math.max(0, f.placed - f.done - (dropped or 0))
         -- falls through to finish
     elseif give_up and left and only_shops then
-        local okd, n = pcall(drop_waiting_shops, p)
+        local okd, n = pcall(drop_waiting_shops, p, kinds)
         dropped = okd and n or 0
+        if dropped_kinds then table.sort(dropped_kinds) end
         -- falls through to finish
     elseif give_up then
         return {ok = false, rejected = true,
-                error = left and 'pieces other than workshops still waiting' or 'no workshop waiting to give up'}
+                error = left and (kinds == GIVE_UP_KINDS and 'pieces other than workshops still waiting'
+                                  or 'pieces other than those named still waiting')
+                        or 'no workshop waiting to give up'}
     -- (0.104.141) stalled: everything placed, nothing missing, buildings DF
     -- never finished (a 20-bed hospital at 30 of 31 for 134 days): finished,
     -- the slot freed; DF goes on building what is placed
@@ -1868,6 +2013,7 @@ function finish_project(id, decor_only, stalled, give_up, leave_planned)
     -- (layout B) a floor level's pile rooms are booked for their shops (ai-builder-floorpiles.lua)
     if p.floor and type(floor_book_piles) == 'function' then pcall(floor_book_piles, p) end
     return {ok = true, project_id = id, phase = p.phase, burial = burial, dropped = dropped,
+            dropped_kinds = dropped and dropped_kinds or nil,
             left_planned = kept}   -- (r2h7)
 end
 

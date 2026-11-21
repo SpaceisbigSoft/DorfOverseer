@@ -102,10 +102,12 @@ def _():
 def _():
     s = fort(have=0, want=10, shops=WORKS)
     p, _ = run(s)
-    assert recipe(p) == [("paper", "make_slurry", CFG["paper_batch"])], recipe(p)
+    # (R2 h3) the press ordered beside the slurry (loose slurry is cleaned away before a later press)
+    assert recipe(p) == [("paper", "make_slurry", CFG["paper_batch"]),
+                         ("paper_press", "press_paper", CFG["paper_batch"])], recipe(p)
     s = fort(have=0, want=10, shops=WORKS, paper={"slurry": rx("X", ["Quern"], CFG["paper_plants_keep"] + 2)})
     s["buildings"]["workshops"]["Quern"] = 1
-    assert recipe(run(s)[0]) == [("paper", "make_slurry", 2)]
+    assert recipe(run(s)[0]) == [("paper", "make_slurry", 2), ("paper_press", "press_paper", 2)]
     s = fort(have=0, want=10, shops=WORKS, paper={"slurry": rx("X", ["Quern"], CFG["paper_plants_keep"])})
     p, notes = run(s)
     assert not p and any("no papyrus sedge or plants" in n for n in notes), notes
@@ -159,7 +161,7 @@ def _():
     p, _ = run(s)
     assert not p, recipe(p)
     s = fort(have=0, want=10, shops=WORKS, paper={"quires_blank": 8})
-    assert recipe(run(s)[0]) == [("paper", "make_slurry", 2)]
+    assert recipe(run(s)[0]) == [("paper", "make_slurry", 2), ("paper_press", "press_paper", 2)]   # (R2 h3)
 
 
 @test("one step a cycle: nothing while a paper or kiln-chain order waits, or the kiln proposed one")

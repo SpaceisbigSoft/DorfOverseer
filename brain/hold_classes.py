@@ -55,7 +55,7 @@ _EXPANSION_RULES = {
     "polish", "grandeur", "location_value", "noble_value", "encrust", "gems", "gem_cutting", "glass",
     "instruments", "artifact_display", "artifact_furniture", "artifact_pedestals", "library_chest",
     # industry that can wait
-    "export", "paper", "paper_shop", "alloy", "leather_gear", "industry", "bottleneck", "kiln", "idle",
+    "export", "paper", "paper_press", "paper_shop", "alloy", "leather_gear", "industry", "bottleneck", "kiln", "idle",
     "war_animals", "quarry", "ore", "reserve_storage", "cavern_logging", "cavern_farm",
     # the fort's reach: new ways, crossings, the deep
     "crossing", "deep_descent", "prisoner_pit",   # (0.105.48 merge) join_levels: survival (cut-off levels, the thirst watch)
@@ -125,7 +125,7 @@ _SURVIVAL_RULES = {
     # recovery the rule declines what would need a new hall (no promise to break)
     "petition_answer",
     # the work itself: orders, shops, stone, hauling, the dumps
-    "stone", "dig_first", "dig_jobs", "project", "build", "planned_parts", "found", "mandate", "cleanup",
+    "stone", "dig_first", "dig_jobs", "project", "slots", "build", "planned_parts", "found", "mandate", "cleanup",
     "cleanup_spatter", "cleanup_spatter_dry", "cleanup_dead", "cleanup_dead_dry", "cleanup_items",
     "cleanup_items_dry", "cleanup_units", "cleanup_units_dry", "approve_orders", "order_slots", "orphan_jobs",
     "unsuspend", "stuck_order", "stuck_sweep", "tools", "mechanisms", "bins", "picks", "fuel", "fuel_trim",
@@ -202,6 +202,7 @@ _SURVIVAL_ACTIONS = {
     # the work: orders, projects, stone, hauling, dumps, cleanup
     "work_order", "cancel_work_order", "approve_orders", "unsuspend_orders", "clear_orphan_jobs", "order_slots",
     "stuck_reset", "start_project", "cancel_project", "finish_project", "furnish_project", "engrave_project",
+    "park_project",
     "unmark_project_dig", "free_dig_jobs", "prioritize_dig", "place_in_zone", "place_surface", "allow_stone",
     "remove_workshops", "add_haulers", "relieve_haulers", "pile_barrows", "feeder_pile", "feeder_link",
     "bench_caps", "mark_melt", "mark_dump", "empty_dump", "place_dump", "set_standing_orders", "unforbid_items",

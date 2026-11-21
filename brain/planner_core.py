@@ -360,6 +360,7 @@ class Memory:
     ranged_need: dict = field(default_factory=dict)      # (r2h4) {tick, why}: a fire breather or a flier was met (crossbows wanted: planner_military)
     order_loop: dict = field(default_factory=dict)       # (0.105.46, I3) {misses: {"recipe|MATERIAL": {tick, missing, what, snap}}, approved, approved_ids} (order_check)
     dig_seen: dict = field(default_factory=dict)         # (0.104.110) project id -> {"dug", "tick" (last progress), "freed"}
+    furnish_seen: dict = field(default_factory=dict)     # (R2 h3) project id -> {"sig" (its missing pieces), "tick" (since)} (planner_slots)
     join_wait_days: int = 2                              # (0.104.108) days to the next look (longer once all were seen)
     culture: dict = field(default_factory=dict)          # culture history (see culture.py)
     culture_pushed: str = ""                              # what was last written into the save
