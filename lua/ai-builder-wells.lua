@@ -2273,8 +2273,7 @@ function place_well(params, now, dry_run)
         up = up,                                        -- (0.105.47) dug from the bottom up
         landing = landing,                              -- (0.105.24) the floor dug beside the shaft's top
         -- (0.105.47) shore: the brain gives up a shore well still being dug before the ice (planner_ice)
-        summary = {well = 1, drop = spot.drop, cavern = spot.cavern, shore = spot.shore,
-                   filled = spot.filled},      -- (r2 h2) the winter cistern
+        summary = {well = 1, drop = spot.drop, cavern = spot.cavern, shore = spot.shore},
         furniture = {Well = 1},
         chamber = #chamber > 0 and chamber or nil,   -- (r2 h2) its tiles one level down
         -- (r2 h2) the winter cistern's pond zone on the well's tile: the dwarves fill it by bucket
@@ -2283,6 +2282,7 @@ function place_well(params, now, dry_run)
                  smooth = {}, engrave = {}},
         started = now, designated = 1,
     }
+    p.summary.filled = spot.filled         -- (r2 h2) the winter cistern
     data.next_id = data.next_id + 1
     table.insert(data.list, p)
     if not save_projects(data) then
