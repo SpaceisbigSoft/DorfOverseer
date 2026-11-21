@@ -929,6 +929,9 @@ def short(a: dict) -> str:
         return f"take unit {a.get('unit_id')} out of the squad"
     if t == "squad_trim":
         return f"send {a.get('count')} soldier(s) back to work"
+    if t == "seed_reserve":   # (r2h6)
+        return ("keep " + ", ".join(str(x).lower() for x in (a.get("ban") or [])[:3]) + " and its seed from the cooks"
+                if a.get("ban") else "let the cooks use the plants whose seed has come back")
     if t == "kitchen_fat":
         return "keep fat and tallow from the cooks" if a.get("ban") else "let the cooks use fat and tallow again"
     if t == "order_slots":

@@ -733,8 +733,14 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         notes.append(f"{stuck} cups lie in the halls though the finished goods piles have room "
                      f"({used} of {tiles} tiles used): not counted; new ones are made")
     _cups_home_rule(cl, cupless, proposals, notes)       # (0.104.168)
+    # (r2h6) the cups a location keeps (a tavern's, loose in its zone) are
+    # counted free but never reach the dining halls: C (16 Nov) "37 citizens
+    # drank without a cup lately and 41 cups are free: make 1 stone mugs",
+    # the 41 "kept by a location (a tavern's own)"; 30-43 drank without one
+    held_loc = _d(_d(cl.get("free_cups_detail")).get("why")).get("location")
+    held_loc = held_loc if isinstance(held_loc, int) and not isinstance(held_loc, bool) and held_loc > 0 else 0
     if isinstance(free_cups, int):
-        free_cups = max(0, free_cups - stuck)
+        free_cups = max(0, free_cups - stuck - held_loc)
     if (isinstance(free_cups, int) and not (waiting and not room) and free_cups < want
             and cupless >= citizens * cfg["cupless_share"]
             and _has_shop(b, "Craftsdwarfs") and not queued(s, {"stone_mugs", "wooden_cups"})):
@@ -743,7 +749,9 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         n = min(cfg["cups_batch"], want - free_cups)
         proposals.append(Proposal("comfort", {"type": "work_order", "recipe": "wooden_cups" if cups else "stone_mugs",
                                               "amount": n},
-                                  f"{cupless} citizens drank without a cup lately and {free_cups} cups are free: make {n} "
+                                  f"{cupless} citizens drank without a cup lately and {free_cups} cups are free"
+                                  + (f" ({held_loc} more are a tavern's, kept in its zone)" if held_loc else "")
+                                  + f": make {n} "
                                   + ("wooden cups (no stone to spare)" if cups else "stone mugs"), 5, True))
 
 

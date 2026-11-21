@@ -59,8 +59,9 @@ _EXPANSION_RULES = {
     "war_animals", "quarry", "ore", "reserve_storage", "cavern_logging", "cavern_farm",
     # the fort's reach: new ways, crossings, the deep
     "crossing", "deep_descent", "prisoner_pit",   # (0.105.48 merge) join_levels: survival (cut-off levels, the thirst watch)
-    # petitions agreed to, rooms furnished to taste
-    "petition_answer", "petition_build", "homes_furnish",
+    # petitions agreed to, rooms furnished to taste ((r2h6) the answer itself
+    # is survival: a held petition lapses as "ignored", see _SURVIVAL_RULES)
+    "petition_build", "homes_furnish",
     # the herd's extras
     "tame_wild", "train_hunt", "herd_breeders",
     # waterworks begun or advanced (their shut, retire and recheck still go: SAFE_FLAGS)
@@ -90,7 +91,7 @@ _SURVIVAL_RULES = {
     "waterworks_power_run", "magma_guard", "magma_reclaim", "magma_shut", "lure_shut",
     # drink and food
     "drink", "drink_fruit", "booze_variety", "food", "food_barrels", "food_standing", "food_store",
-    "food_store_level", "farms", "farm_crops", "surface_farm", "crops", "kitchen", "fat_ban", "meal_variety",
+    "food_store_level", "farms", "farm_crops", "surface_farm", "crops", "kitchen", "seed_reserve", "seed_brew", "fat_ban", "meal_variety",
     "good_cooks", "train_cook", "needs_meal", "dairy", "milking", "eggs", "nest_box_order", "fishery",
     "butchery_labor", "butchery_shop", "slaughter", "hunting", "hunting_stop", "fruit_pickers", "fruit_zone",
     "gather", "gather_trim", "tree_quota", "vermin", "herd", "herd_cull", "herd_targets", "pasture",
@@ -117,6 +118,12 @@ _SURVIVAL_RULES = {
     # the fort's offices and people
     "appoint", "messenger", "pop_cap", "recovery_migrants", "census", "labor", "labor_trim", "petitions",
     "petition_retarget", "residency", "location_access",
+    # (r2h6) a temple or guildhall petition answered: held in a crisis it
+    # lapsed, DF's "The guildhall petition by The Sienna Guild has been
+    # ignored" (C, 16 Nov 07:36-07:44, four guilds), and IgnoredGuildhallPetition
+    # (29-65 citizens) topped the stress from that hour on; in a crisis or a
+    # recovery the rule declines what would need a new hall (no promise to break)
+    "petition_answer",
     # the work itself: orders, shops, stone, hauling, the dumps
     "stone", "dig_first", "dig_jobs", "project", "build", "planned_parts", "found", "mandate", "cleanup",
     "cleanup_spatter", "cleanup_spatter_dry", "cleanup_dead", "cleanup_dead_dry", "cleanup_items",
@@ -176,7 +183,7 @@ _SURVIVAL_ACTIONS = {
     # ways in and out for the stranded
     "open_entrance", "dig_way_in", "way_out_open", "way_out_leave", "close_world", "redig_projects", "location_access",
     # food, drink, farms, the herd
-    "farm_plots", "farm_thresholds", "set_farm_crops", "kitchen_brewables", "kitchen_fat", "kitchen_skill",
+    "farm_plots", "farm_thresholds", "set_farm_crops", "kitchen_brewables", "kitchen_fat", "seed_reserve", "kitchen_skill",
     "train_cook", "gather_plants", "trim_gathering", "hunters", "food_standing", "fruit_zone", "food_pile",
     "food_barrels", "keep_mousers", "pasture", "make_pasture", "nest_boxes", "slaughter_one", "herd_targets",
     "tool",

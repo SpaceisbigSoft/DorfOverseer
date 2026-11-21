@@ -295,6 +295,11 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
     # then is agreed if the unbuilt halls are under
     # `location_petitions_open_late`, else declined: an answer, never silence.
     agreed_keys = {wish_key(a) for a in agreed}
+    # (r2h6) in a crisis or a recovery the AI still answers (a held petition
+    # lapses and DF upsets the whole guild: C, 16 Nov), but promises no new
+    # hall: building waits (petition_build is expansion), so it declines those
+    hold = any(isinstance(getattr(memory, k, None), dict) and getattr(memory, k).get("since")
+               for k in ("crisis", "recovery")) if memory is not None else False
     for w in pending:
         tier = int(w.get("tier") or 1)
         known = w.get("profession") if w.get("loc") == "GUILDHALL" else (w.get("deity_hf") is not None
@@ -324,6 +329,13 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
         elif wish_key(w) in agreed_keys:
             reason = (f"a petition asks again for {_wish_words(w)}, already promised: agree (the hall promised "
                       "answers both; left unanswered it lapses and upsets the guild)")
+        elif hold and not _wish_met(s, w):
+            proposals.append(Proposal("petition_answer", {"type": "answer_petition", "id": w.get("id"),
+                                                          "accept": False, "wish": wish_key(w)},
+                                      f"a petition asks for {_wish_words(w)}, and the fort is in crisis (no new hall "
+                                      "is built meanwhile): decline (an answer; left unanswered it lapses and "
+                                      "upsets the guild)", 6))
+            return
         elif len(unbuilt) < cfg["location_petitions_open"]:
             if _wish_met(s, w):
                 reason = f"a petition asks for {_wish_words(w)}, and the fort has one: agree"

@@ -465,13 +465,34 @@ function corpse_side(it, kind, ctx)
     return 'own'
 end
 
+-- (r2h6) Was the dead creature somebody's pet? Its unit's PetOwner
+-- relationship (DFHack's Units.isPet test), read again on the dead unit.
+-- DF buries pets in a tomb that allows them (civzone_tomb_flag no_pets is
+-- off by default), so a pet's body waits for its tomb like a citizen's.
+-- false when the unit is gone or nothing can be read.
+function corpse_was_pet(it)
+    local okf, u = pcall(function() return df.unit.find(it.unit_id) end)
+    if not okf or u == nil then return false end
+    local ok, pet = pcall(function()
+        local owner = u.relationship_ids[df.unit_relationship_type.PetOwner]
+        return owner ~= nil and owner >= 0
+    end)
+    if ok then return pet == true end
+    local okp, p = pcall(dfhack.units.isPet, u)
+    return okp and p == true
+end
+
 -- The remains of one of the fort's own (nothing ever dumps or destroys
 -- these): the dead_dwarf flag, a body, part or remains corpse_side calls
--- the fort's own, one of another race but the fort's civ (no merchant,
--- diplomat or visitor), or one whose race, or kind, can't be read.
+-- the fort's own, a pet of the fort's civ (DF buries pets), or one whose
+-- race, or kind, can't be read.
 -- (0.105.51) was the fort's race OR civ: every dwarf's body, a visitor's
 -- too, was kept to rot where it lay (E: 'kept own_dead 25', 668 indoor
 -- miasma tiles, every citizen had seen a dead body).
+-- (r2h6) was also any body of another race of the fort's civ: every tame
+-- animal's (they carry the fort's civ), which DF never buries, so none was
+-- ever dumped (C, 16 Nov: Miasma 117-126 citizens, SawDeadBody 94-126,
+-- miasma_clear 'kept: own_dead 24 / 29'). Only a pet's is kept now.
 function fort_remains(it, kind, ctx)
     if it.flags.dead_dwarf then return true end
     if kind == nil then return true end         -- can't tell what it is: kept
@@ -480,6 +501,7 @@ function fort_remains(it, kind, ctx)
     if race == nil then return true end
     if corpse_side(it, kind, ctx) == 'own' then return true end
     return civ ~= nil and ctx.civ ~= nil and civ == ctx.civ and corpse_record(it, ctx) ~= 'visitor'
+        and corpse_was_pet(it)
 end
 
 -- The context forbidden_reason reads: the cistern's tiles, the fort's race

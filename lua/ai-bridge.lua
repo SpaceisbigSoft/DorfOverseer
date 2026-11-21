@@ -310,6 +310,7 @@ ACTIONS = {
     clear_orphan_jobs = act_clear_orphan_jobs,
     order_slots = act_order_slots,
     kitchen_fat = act_kitchen_fat,
+    seed_reserve = act_seed_reserve,   -- (r2h6) low seeds kept from the cooks
     convict = act_convict,
     repair_rooms = function(a) return reqscript('ai-builder').repair_rooms(a.dry_run == true) end,
     bootstrap_chair = act_bootstrap_chair,
@@ -872,7 +873,7 @@ for _, name in ipairs({
     'build_crossing', 'build_gatehouse', 'calm_burrow', 'clear_orphan_jobs', 'clear_webs', 'close_meeting',
     'cut_entrance', 'dig_stairwell', 'fire_guard', 'fix_gear_gaps', 'free_slabs', 'free_stray_gear',
     'gate_dogs', 'guard_gate', 'hospital_burrow', 'house_dwarves', 'furnish_liked', 'join_levels', 'keep_mousers',
-    'kitchen_fat', 'ledger_set', 'location_access', 'mark_run', 'mood_free_items', 'moon_cell', 'nest_boxes',
+    'kitchen_fat', 'seed_reserve', 'ledger_set', 'location_access', 'mark_run', 'mood_free_items', 'moon_cell', 'nest_boxes',
     'order_instrument', 'order_slots', 'pair_chairs', 'place_gate_lever', 'prisoner_room', 'prune_remains',
     'quick_location', 'recreation', 'remove_crossing', 'remove_webs', 'repair_rooms', 'rest_infected',
     'restrict_water', 'scrub_dead_units', 'seal_cavern', 'seal_well_stairs', 'send_mission', 'shelter_squads',

@@ -713,6 +713,18 @@ function farms_report()
         out.plots_fallow, out.plots_dead, out.plots_wrong, out.plots_idle =
             cr.plots_fallow, cr.plots_dead, cr.plots_wrong, cr.plots_idle
         out.crops_by_ai = farm_crops_data().ai == true or nil
+        -- (r2h6) the plants whose seeds the AI keeps from the cooks (the
+        -- bridge's seed_reserve, site data ai-overseer/kitchen-seeds)
+        local okb, held = pcall(function()
+            local d = dfhack.persistent.getSiteData('ai-overseer/kitchen-seeds', {bans = {}})
+            local ids = {}
+            for id in pairs(type(d) == 'table' and type(d.bans) == 'table' and d.bans or {}) do
+                table.insert(ids, tostring(id))
+            end
+            table.sort(ids)
+            return ids
+        end)
+        out.seed_bans = okb and held or nil
     else
         out.crops_error = tostring(cr):sub(1, 120)
     end

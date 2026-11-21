@@ -178,7 +178,7 @@ def _():
 @test("recovery: the expansion rules the old list let through now wait (A7 5)")
 def _():
     held = [P("noble_value", type="place_in_zone"),
-            P("petition_answer", type="answer_petition"), P("petition_build", type="start_project", kind="guildhall"),
+            P("petition_build", type="start_project", kind="guildhall"),   # (r2h6) petition_answer goes
             P("homes_furnish", type="furnish_liked"), P("landmark", type="build_blueprint"),
             P("landmark_level", type="start_project", kind="dining", landmark=True),
             P("crossing", type="build_crossing"), P("depot", type="deep_depot"), P("quarry", type="quarry"),
@@ -203,10 +203,12 @@ def _():
 @test("crisis: the same expansion waits (keep, grove, noble value, petitions); squad_make and join_levels go (A7 6, 8)")
 def _():
     held = [P("keep", type="place_keep"), P("grove", type="keep_grove"), P("noble_value", type="place_in_zone"),
-            P("petition_answer", type="answer_petition"),
+            P("petition_build", type="start_project", kind="guildhall"),
             P("hunt", type="hunt_send"), P("mission", type="send_mission"), P("hall", type="place_hall")]
+    # (r2h6) the petition's answer goes: held, it lapsed as "ignored" (C, 16 Nov)
     kept = [P("join_levels", type="join_levels"), P("squad_make", type="make_squad"), P("burial", type="allow_burial"),
-            P("hospital", type="work_order"), P("cursed", type="expel_dwarf")]
+            P("hospital", type="work_order"), P("cursed", type="expel_dwarf"),
+            P("petition_answer", type="answer_petition")]
     notes: list = []
     out = crisis.apply(held + kept, ["45% unhappy"], notes)
     assert out == kept, [(p.rule, p.action) for p in out]
