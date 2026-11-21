@@ -1768,27 +1768,200 @@ local function kitchen_exclude(k, on)
     return dfhack.kitchen.removeExclusion({Cook = true}, k.t, k.s, k.mt, k.mi)
 end
 
-local function kitchen_ban(key, keys, ban, dry_run)
-    local data = dfhack.persistent.getSiteData(key, {bans = {}})
-    local had = type(data.bans) == 'table' and data.bans or {}
+-- (Y1, W2) One shared record of the AI's kitchen exclusions (site data
+-- KITCHEN_HOLDS_KEY), one entry per exclusion (job, item type, subtype,
+-- material) naming every AI reason that holds it: 'brewables', 'fat',
+-- 'seed:<PLANT_ID>'. An exclusion is added when the first reason asks and
+-- removed only when the last reason lets go; one that was there before the
+-- AI asked (ai = false: the player's) is never removed. Before, each rule
+-- kept its own list, and the seed reserve's plump helmet ban (its plant
+-- already excluded by the brewables ban) was lifted with the brewables ban.
+-- The three old per-rule records are taken over once (migrated).
+KITCHEN_HOLDS_KEY = 'ai-overseer/kitchen-holds'
+local KITCHEN_HOLDS_VERSION = 1
+
+-- (numbers read back from the save may be floats: 53.0 is key 53)
+local function knum(v) return math.tointeger(v) or v end
+
+local function kitchen_key_id(k)
+    return (k.j or 'cook') .. ':' .. tostring(knum(k.t)) .. ':' .. tostring(knum(k.s)) .. ':'
+        .. tostring(knum(k.mt)) .. ':' .. tostring(knum(k.mi))
+end
+
+local function valid_kitchen_key(k)
+    return type(k) == 'table' and type(k.t) == 'number' and type(k.s) == 'number'
+        and type(k.mt) == 'number' and type(k.mi) == 'number'
+end
+
+local function old_bans(key)
+    local ok, d = pcall(dfhack.persistent.getSiteData, key, {bans = {}})
+    return ok and type(d) == 'table' and type(d.bans) == 'table' and d.bans or {}
+end
+
+-- holds[id] = {j, t, s, mt, mi, ai = true/false, reasons = {reason = true}}
+local function migrate_kitchen_holds(holds, live)
+    local function take(k, reason, ai)
+        if not valid_kitchen_key(k) then return end
+        local id = kitchen_key_id(k)
+        local h = holds[id]
+        if not h then
+            local n = 0
+            for _, o in pairs(holds) do if type(o.n) == 'number' and o.n > n then n = o.n end end
+            h = {j = k.j or 'cook', t = k.t, s = k.s, mt = k.mt, mi = k.mi, ai = ai, reasons = {}, n = n + 1}
+            holds[id] = h
+        elseif ai then
+            h.ai = true
+        end
+        h.reasons[reason] = true
+    end
+    for _, k in ipairs(old_bans(KITCHEN_KEY)) do take(k, 'brewables', true) end
+    for _, k in ipairs(old_bans(KITCHEN_FAT_KEY)) do take(k, 'fat', true) end
+    local seeds = old_bans(KITCHEN_SEED_KEY)
+    local ids = {}
+    for id, added in pairs(seeds) do
+        id = tostring(id)
+        table.insert(ids, id)
+        for _, k in ipairs(type(added) == 'table' and added or {}) do take(k, 'seed:' .. id, true) end
+        -- the plant's keys the old reserve found excluded already (not recorded
+        -- then): held for it now too, as someone else's unless a reason above is the AI's
+        local okp, keys = pcall(function()
+            for _, p in ipairs(df.global.world.raws.plants.all) do
+                if p.id == id then return plant_seed_keys(p) end
+            end
+            return {}
+        end)
+        for _, k in ipairs(okp and type(keys) == 'table' and keys or {}) do
+            if valid_kitchen_key(k) and not holds[kitchen_key_id(k)] then
+                -- (not on a dry run: it changes nothing)
+                local oka, yes = false, false
+                if live then oka, yes = pcall(kitchen_exclude, k, true) end
+                take(k, 'seed:' .. id, oka and yes == true)
+            elseif valid_kitchen_key(k) then
+                take(k, 'seed:' .. id, false)
+            end
+        end
+    end
+    return ids
+end
+
+-- the old records cleared once the shared one is saved (the seed list kept
+-- as the set of held plant ids)
+local function clear_old_kitchen_records(ids)
+    pcall(dfhack.persistent.saveSiteData, KITCHEN_KEY, {bans = {}})
+    pcall(dfhack.persistent.saveSiteData, KITCHEN_FAT_KEY, {bans = {}})
+    local set = {}
+    for _, id in ipairs(ids) do set[id] = true end
+    pcall(dfhack.persistent.saveSiteData, KITCHEN_SEED_KEY, {bans = set})
+end
+
+-- The shared record (migrated from the old ones the first time; on a dry
+-- run the migration is only read, nothing written or excluded).
+function kitchen_holds_load(dry_run)
+    local ok, d = pcall(dfhack.persistent.getSiteData, KITCHEN_HOLDS_KEY, {})
+    d = ok and type(d) == 'table' and d or {}
+    local holds = type(d.holds) == 'table' and d.holds or {}
+    local migrated
+    if d.v ~= KITCHEN_HOLDS_VERSION then
+        local okm, ids = pcall(migrate_kitchen_holds, holds, not dry_run)
+        migrated = okm and ids or nil        -- (failed: the old records kept, tried again next time)
+    end
+    -- malformed entries dropped, the rest keyed afresh (whole numbers)
+    local out = {}
+    for _, h in pairs(holds) do
+        if valid_kitchen_key(h) and type(h.reasons) == 'table' and next(h.reasons) ~= nil then
+            h.t, h.s, h.mt, h.mi, h.n = knum(h.t), knum(h.s), knum(h.mt), knum(h.mi), knum(h.n)
+            h.ai = h.ai == true
+            local r = {}
+            for reason, on in pairs(h.reasons) do if on then r[tostring(reason)] = true end end
+            h.reasons = r
+            if next(r) ~= nil then out[kitchen_key_id(h)] = h end
+        end
+    end
+    if migrated and not dry_run then
+        kitchen_holds_save(out)
+        clear_old_kitchen_records(migrated)
+    end
+    return out
+end
+
+function kitchen_holds_save(holds)
+    pcall(dfhack.persistent.saveSiteData, KITCHEN_HOLDS_KEY, {v = KITCHEN_HOLDS_VERSION, holds = holds})
+end
+
+-- `reason` holds exclusion k: true when the AI added it to DF's list now
+function kitchen_hold(holds, k, reason)
+    if not valid_kitchen_key(k) then return false end
+    local id = kitchen_key_id(k)
+    local h = holds[id]
+    if h then
+        h.reasons[reason] = true
+        if not h.ai then
+            -- the player's: if they have taken it off since, it is the AI's now
+            local oka, yes = pcall(kitchen_exclude, h, true)
+            if oka and yes == true then h.ai = true; return true end
+        end
+        return false
+    end
+    local oka, yes = pcall(kitchen_exclude, k, true)
+    local added = oka and yes == true
+    local n = 0
+    for _, o in pairs(holds) do if type(o.n) == 'number' and o.n > n then n = o.n end end
+    holds[id] = {j = k.j or 'cook', t = k.t, s = k.s, mt = k.mt, mi = k.mi, ai = added, reasons = {[reason] = true},
+                 n = n + 1}
+    return added
+end
+
+-- `reason` lets go of every exclusion it holds (or of k only): the ones no
+-- reason holds any more are removed from DF's list if the AI added them.
+-- Returns the number removed.
+function kitchen_release(holds, reason, k)
+    local removed = 0
+    local ids = {}
+    for id in pairs(holds) do table.insert(ids, id) end
+    -- in the order they were held (the same order every time)
+    table.sort(ids, function(x, y)
+        local a, b = tonumber(holds[x].n) or 0, tonumber(holds[y].n) or 0
+        if a ~= b then return a < b end
+        return x < y
+    end)
+    for _, id in ipairs(ids) do
+        local h = holds[id]
+        if h.reasons[reason] and (k == nil or id == kitchen_key_id(k)) then
+            h.reasons[reason] = nil
+            if next(h.reasons) == nil then
+                if h.ai then
+                    local oka, yes = pcall(kitchen_exclude, h, false)
+                    if oka and yes == true then removed = removed + 1 end
+                end
+                holds[id] = nil
+            end
+        end
+    end
+    return removed
+end
+
+local function kitchen_held_by(holds, reason)
+    local n = 0
+    for _, h in pairs(holds) do if h.reasons[reason] then n = n + 1 end end
+    return n
+end
+
+-- (0.105.33) the kitchen bans of the brewables and fat rules: `keys` held
+-- for `reason` (ban) or every key it holds let go (Y1: the shared record)
+local function kitchen_ban(reason, keys, ban, dry_run)
+    local holds = kitchen_holds_load(dry_run)
     if ban then
         if dry_run then return {ok = true, dry_run = true, kinds = #keys} end
         local added = 0
         for _, k in ipairs(keys) do
-            if kitchen_exclude(k, true) then
-                table.insert(had, k)
-                added = added + 1
-            end
+            if kitchen_hold(holds, k, reason) then added = added + 1 end
         end
-        pcall(dfhack.persistent.saveSiteData, key, {bans = had})
-        return {ok = true, banned = added, kinds = #keys, held = #had}
+        kitchen_holds_save(holds)
+        return {ok = true, banned = added, kinds = #keys, held = kitchen_held_by(holds, reason)}
     end
-    if dry_run then return {ok = true, dry_run = true, held = #had} end
-    local lifted = 0
-    for _, k in ipairs(had) do
-        if kitchen_exclude(k, false) then lifted = lifted + 1 end
-    end
-    pcall(dfhack.persistent.saveSiteData, key, {bans = {}})
+    if dry_run then return {ok = true, dry_run = true, held = kitchen_held_by(holds, reason)} end
+    local lifted = kitchen_release(holds, reason)
+    kitchen_holds_save(holds)
     return {ok = true, lifted = lifted}
 end
 
@@ -1800,7 +1973,7 @@ function act_kitchen_brewables(a)
         if not ok then return {ok = false, error = 'kitchen_brewables: ' .. tostring(k):sub(1, 120)} end
         keys = k
     end
-    return kitchen_ban(KITCHEN_KEY, keys, a.ban, a.dry_run)
+    return kitchen_ban('brewables', keys, a.ban, a.dry_run)
 end
 
 -- (0.104.30) Fat and tallow kept from the cooks while the hospital has no
@@ -1826,7 +1999,7 @@ function act_kitchen_fat(a)
             end
         end
     end
-    local r = kitchen_ban(KITCHEN_FAT_KEY, keys, a.ban, a.dry_run)
+    local r = kitchen_ban('fat', keys, a.ban, a.dry_run)
     if a.ban and not a.dry_run and r.banned == 0 and #keys == 0 then return reject('no fat or tallow in the fort') end
     return r
 end
@@ -1838,8 +2011,9 @@ end
 -- audit (A1, 14-15 Nov): plump helmet seed 0-7 in every fort, A with 1,082
 -- plump helmets in store and 1 seed, the underground plots dead. {ban =
 -- {plant ids}, lift = {plant ids}, target = n}: each banned plant's
--- exclusions are recorded (KITCHEN_SEED_KEY, by plant id) and only those
--- lifted; a player's own exclusion stays. With DFHack's seedwatch on, its
+-- exclusions are held for it ('seed:<id>') in the shared record
+-- (KITCHEN_HOLDS_KEY, Y1), KITCHEN_SEED_KEY keeping the set of plant ids;
+-- one removed only when no AI reason holds it any more, a player's own never. With DFHack's seedwatch on, its
 -- target for the banned plants is set to `target` too (seedwatch lifts
 -- every exclusion of a plant above its own target).
 KITCHEN_SEED_KEY = 'ai-overseer/kitchen-seeds'
@@ -1892,6 +2066,9 @@ end
 function act_seed_reserve(a)
     local ban, lift = id_list(a.ban), id_list(a.lift)
     if #ban == 0 and #lift == 0 then return reject('seed_reserve needs ban or lift (plant ids)') end
+    -- (Y1, W2) the exclusions live in the shared record (one entry per key,
+    -- every AI reason named); KITCHEN_SEED_KEY keeps the set of plant ids held
+    local holds = kitchen_holds_load(a.dry_run)      -- (first: it migrates the old seed record)
     local data = dfhack.persistent.getSiteData(KITCHEN_SEED_KEY, {bans = {}})
     local bans = type(data.bans) == 'table' and data.bans or {}
     local res = {ok = true, banned = {}, lifted = {}, unknown = {}, dry_run = a.dry_run == true or nil}
@@ -1901,32 +2078,25 @@ function act_seed_reserve(a)
             table.insert(res.unknown, id)
         elseif bans[id] == nil then
             local okk, keys = pcall(plant_seed_keys, p)
-            local added = {}
             if okk and not a.dry_run then
-                for _, k in ipairs(keys) do
-                    local okx, yes = pcall(kitchen_exclude, k, true)
-                    if okx and yes then
-                        table.insert(added, k)
-                    end
-                end
+                -- a key already excluded (the brewables ban, the player) is held too
+                for _, k in ipairs(keys) do kitchen_hold(holds, k, 'seed:' .. id) end
             end
-            if not a.dry_run then bans[id] = added end
+            if not a.dry_run then bans[id] = true end
             table.insert(res.banned, id)
         end
     end
     for _, id in ipairs(lift) do
-        local had = bans[id]
-        if had ~= nil then
+        if bans[id] ~= nil then
             if not a.dry_run then
-                for _, k in ipairs(type(had) == 'table' and had or {}) do
-                    pcall(kitchen_exclude, k, false)
-                end
+                kitchen_release(holds, 'seed:' .. id)
                 bans[id] = nil
             end
             table.insert(res.lifted, id)
         end
     end
     if a.dry_run then return res end
+    kitchen_holds_save(holds)
     pcall(dfhack.persistent.saveSiteData, KITCHEN_SEED_KEY, {bans = bans})
     -- seedwatch, when on, keeps the same line (else it lifts the ban above its own target)
     local target = math.tointeger(tonumber(a.target))

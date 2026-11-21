@@ -804,11 +804,14 @@ def _():
     assert d.ok and d.dry_run and d.kinds == 2 and "54:1:420:0" not in list(ex.keys()), dict(d)
     r = act(t({"ban": True}))
     assert r.ok and r.kinds == 2 and r.banned == 1 and ex["54:1:420:0"], dict(r)   # the fruit; the plant was banned
-    assert len(H.persist["ai-overseer/kitchen"].bans) == 1
+    # (Y1) the shared record: both brewables held, only the fruit the AI's own
+    holds = H.persist["ai-overseer/kitchen-holds"].holds
+    assert sorted((k, bool(h.ai)) for k, h in holds.items()) == [("cook:53:-1:419:0", False),
+                                                                ("cook:54:1:420:0", True)]
     r = act(t({"ban": False}))
     assert r.ok and r.lifted == 1, dict(r)
     assert sorted(ex.keys()) == ["53:-1:419:0", "54:0:421:0"], list(ex.keys())         # the player's stay
-    assert len(H.persist["ai-overseer/kitchen"].bans) == 0
+    assert len(list(H.persist["ai-overseer/kitchen-holds"].holds.keys())) == 0
 
 
 @test("set_farm_crops (0.105.5): the builder sets the plots' crops; autofarm switched off so it can't rewrite them")

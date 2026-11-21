@@ -670,24 +670,59 @@ end
 
 -- (r2h7) The nearest walkable, seen cavern tile (a map feature's) within
 -- CAVERN_SNAP tiles across and CAVERN_LEVELS levels of x, y, z, or nil.
-function cavern_snap(B, x, y, z)
+-- (Y1) Only a tile the citizens can walk to (in one of their walk groups:
+-- else the plots land beyond the AI's cavern walls, where nobody reaches
+-- them) and with no danger within CAVERN_DANGER tiles. `groups` the citizens'
+-- walk groups ({[n] = true}; nil: the builder's citizen_groups), `dangers`
+-- the danger spots. Returns x, y, z, or nil and why ('unreached', 'danger',
+-- 'none').
+function cavern_snap(B, x, y, z, groups, dangers)
+    if groups == nil then
+        local okg, g = pcall(function() return B.citizen_groups() end)
+        groups = okg and type(g) == 'table' and g or {}
+    end
+    if next(groups) == nil then return nil, 'unreached' end
+    dangers = type(dangers) == 'table' and dangers or {}
     local best, bd
+    local why = 'none'
     for dz = -CAVERN_LEVELS, CAVERN_LEVELS do
         for dy = -CAVERN_SNAP, CAVERN_SNAP do
             for dx = -CAVERN_SNAP, CAVERN_SNAP do
                 local d = math.abs(dx) + math.abs(dy) + 3 * math.abs(dz)
                 if not bd or d < bd then
-                    local t = B.tile_info(x + dx, y + dy, z + dz)
-                    if t and t.feature_global and not t.hidden and t.shape == 'FLOOR'
-                            and B.walk_group(x + dx, y + dy, z + dz) ~= 0 then
-                        best, bd = {x + dx, y + dy, z + dz}, d
+                    local tx, ty, tz = x + dx, y + dy, z + dz
+                    local t = B.tile_info(tx, ty, tz)
+                    if t and t.feature_global and not t.hidden and t.shape == 'FLOOR' then
+                        local g = B.walk_group(tx, ty, tz)
+                        if g ~= 0 and not groups[g] then
+                            if why == 'none' then why = 'unreached' end
+                        elseif g ~= 0 and U.near_danger(dangers, tx, ty, tz, CAVERN_DANGER) then
+                            why = 'danger'
+                        elseif g ~= 0 then
+                            best, bd = {tx, ty, tz}, d
+                        end
                     end
                 end
             end
         end
     end
     if best then return best[1], best[2], best[3] end
-    return nil
+    return nil, why
+end
+
+-- (Y1) the dangers by a cavern plot: the fort's danger spots and the hostile wild animals loose
+local function cavern_dangers(B)
+    local okd, spots_d = pcall(U.danger_spots)
+    local dangers = okd and type(spots_d) == 'table' and spots_d or {}
+    pcall(function()
+        for _, u in ipairs(units()) do
+            local okh, h = pcall(function() return B.hostile_wild and B.hostile_wild(u) end)
+            if okh and h and not (u.flags1.caged or u.flags1.chained) then
+                table.insert(dangers, {x = u.pos.x, y = u.pos.y, z = u.pos.z})
+            end
+        end
+    end)
+    return dangers
 end
 
 function cavern_farm(o, dry_run)
@@ -701,30 +736,26 @@ function cavern_farm(o, dry_run)
         return {ok = false, rejected = true, error = ('cavern_farm needs tiles 4-%d'):format(CAVERN_TILES_MAX)}
     end
     local B = builder()
+    local dangers = cavern_dangers(B)
     local t = B.tile_info(ax, ay, az)
     if not t or not t.feature_global then
         -- (r2h7) A, 15-16 Nov: refused 60 times "x128 y127 z143 is not in a cavern", the
         -- same tile every time: the deep report's junction is the fort's side of the
         -- meeting (a dug or built tile). The nearest walkable cavern tile is taken instead
-        local ok, sx, sy, sz = pcall(cavern_snap, B, ax, ay, az)
+        -- (Y1: one the citizens reach, with no danger near)
+        local ok, sx, sy, sz = pcall(cavern_snap, B, ax, ay, az, nil, dangers)
         if not (ok and sx) then
-            return {ok = false, rejected = true, error = ('x%d y%d z%d is not in a cavern'):format(ax, ay, az)}
+            local why = ok and sy or nil
+            local more = why == 'unreached' and ' (the cavern tiles near it are not where the citizens can walk)'
+                or why == 'danger' and (' (the cavern tiles near it have a danger within %d tiles)'):format(CAVERN_DANGER)
+                or ''
+            return {ok = false, rejected = true, error = ('x%d y%d z%d is not in a cavern'):format(ax, ay, az) .. more}
         end
         ax, ay, az = sx, sy, sz
     end
     local g = B.walk_group(ax, ay, az)
     if g == 0 then return {ok = false, rejected = true, error = 'the cavern there is not walkable'} end
     -- no danger near: the planner checks the cavern's beasts, this the ground itself
-    local okd, spots_d = pcall(U.danger_spots)
-    local dangers = okd and spots_d or {}
-    pcall(function()
-        for _, u in ipairs(units()) do
-            local okh, h = pcall(function() return B.hostile_wild and B.hostile_wild(u) end)
-            if okh and h and not (u.flags1.caged or u.flags1.chained) then
-                table.insert(dangers, {x = u.pos.x, y = u.pos.y, z = u.pos.z})
-            end
-        end
-    end)
     if U.near_danger(dangers, ax, ay, az, CAVERN_DANGER) then
         return {ok = false, rejected = true, error = ('a danger within %d tiles of the cavern\'s way in'):format(CAVERN_DANGER)}
     end
