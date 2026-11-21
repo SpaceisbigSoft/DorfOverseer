@@ -1330,6 +1330,18 @@ PLANNER_CONFIG.update({
     "raid_greed_rich": 60,                # Greed at or past this: the aggressive fort prefers the richest clear win
     "raid_pet_restore_days": 2,           # pets let out for a mission put back this long after, once all are home
 })
+# (R1 g2) the thirst watch's real remedies (brain/planner_thirst.py, lua/ai-thirst.lua)
+PLANNER_CONFIG.update({
+    "g2_thirst_join_tries": 1,            # no_path: join_levels asked for one dwarf at most this often (37 no-ops in F)
+    "g2_thirst_join_noop_days": 7,        # ...and not again this long after one changed nothing
+    "g2_thirst_way_tries": 3,             # no_path: thirst_way (the AI's walls, doors, a dig) at most this often a dwarf
+    "g2_thirst_way_dig": 30,              # ...rock tiles dug for one dwarf at most
+    "g2_thirst_patient_tries": 3,         # a patient: thirst_patient (hospital burrow lifted, carrying counted) this often
+    "g2_thirst_probe_tries": 3,           # "unknown": thirst_probe at most this often a dwarf
+    "g2_thirst_probe_timer": 35000,       # ...from this thirst (was: said only once dehydrated)
+    "g2_thirst_buckets": 3,               # a patient thirsty and no bucket: this many ordered
+})
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall
@@ -1360,16 +1372,4 @@ PLANNER_CONFIG.update({
     "floor_elevs_max": 4,                 # floors offered for one level
     "floor_full_retry_days": 28,          # a full floor is offered again after this long
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
-})
-
-# (R1 g2) the thirst watch's real remedies (brain/planner_thirst.py, lua/ai-thirst.lua)
-PLANNER_CONFIG.update({
-    "g2_thirst_join_tries": 1,            # no_path: join_levels asked for one dwarf at most this often (37 no-ops in F)
-    "g2_thirst_join_noop_days": 7,        # ...and not again this long after one changed nothing
-    "g2_thirst_way_tries": 3,             # no_path: thirst_way (the AI's walls, doors, a dig) at most this often a dwarf
-    "g2_thirst_way_dig": 30,              # ...rock tiles dug for one dwarf at most
-    "g2_thirst_patient_tries": 3,         # a patient: thirst_patient (hospital burrow lifted, carrying counted) this often
-    "g2_thirst_probe_tries": 3,           # "unknown": thirst_probe at most this often a dwarf
-    "g2_thirst_probe_timer": 35000,       # ...from this thirst (was: said only once dehydrated)
-    "g2_thirst_buckets": 3,               # a patient thirsty and no bucket: this many ordered
 })
