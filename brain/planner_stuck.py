@@ -60,7 +60,7 @@ proposes or notes anything.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import MULTI_PER_CYCLE, TICKS_PER_DAY, TICKS_PER_YEAR, Proposal, abs_tick
+from planner_core import MULTI_PER_CYCLE, TICKS_PER_DAY, TICKS_PER_YEAR, Proposal, abs_tick, supply_order_kept
 
 __all__ = ["stuck_rows", "stuck_key", "_stuck_rule", "note_stuck", "soak_summary", "past_count", "STUCK_RULE"]
 
@@ -237,6 +237,12 @@ def _remedies(r: dict, proj: dict | None, order: dict | None, days: int, cfg: di
         return (None, {"type": "cancel_work_order", "order_id": id_, "stuck": str(recipe)},
                 f"the AI's {recipe} order ({r.get('left')} of {r.get('total')} left)")
     if k == "gate":
+        # (r1g8) only a gate whose own pieces have a suspended job is nudged:
+        # free_gate_jobs resumes those and nothing else (F: nudged 6 times
+        # where the suspended job was the AI's floor wall, called "the player's")
+        if r.get("suspended") is False:
+            return (None, None, f"the gate planned at the {r.get('what')} entrance at x{r.get('x')} y{r.get('y')} "
+                                f"({_int(r.get('pieces'), 0)} piece(s), none suspended: it waits for its parts)")
         return ({"type": "free_gate_jobs", "entrance_id": id_}, None,
                 f"the gate planned at the {r.get('what')} entrance at x{r.get('x')} y{r.get('y')} "
                 f"({_int(r.get('pieces'), 0)} piece(s)" + (", no dwarf on them" if not r.get("worker") else "") + ")")
@@ -347,6 +353,9 @@ def _stuck_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
             continue
         why_not = _skip(r, proj, order, cfg, s.get("dead"))
         if why_not:
+            continue
+        # (r1g8) the fort's drink and meals while short or under the alarm: never given up
+        if r["kind"] == "order" and supply_order_kept(s, (order or {}).get("recipe") or r.get("what"), cfg):
             continue
         past[r["kind"]] = past.get(r["kind"], 0) + 1
         nudge, retire, what = _remedies(r, proj, order, still, cfg)

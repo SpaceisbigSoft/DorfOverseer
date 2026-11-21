@@ -1394,6 +1394,11 @@ PLANNER_CONFIG.update({
     "r1g5_recall_hopeless_ratio": 0.25,   # a young kill order is called back for the odds only below this
 })
 
+# (r1g8) drink and food in a crisis, and ghosts
+PLANNER_CONFIG.update({
+    "r1g8_dry_containers_min": 3,         # brewing waits on containers: the least barrels/pots worth ordering from what wood or stone there is
+})
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

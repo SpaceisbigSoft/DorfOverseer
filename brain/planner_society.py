@@ -1164,11 +1164,27 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
                                           "their building's job suspended)"
                                           + (f", {murderous} of them murderous" if murderous else "")
                                           + ": unforbid them and resume the work", 1))
+            # (r1g8) a ghost with no memorial slab at all gets one engraved by
+            # name, by the AI's own order (F: Udil's never was in 6 years:
+            # autoslab's engrave jobs were lifted off the full bench, and the
+            # slabs put up 164 times were other dead's)
+            no_slab = _d(s.get("supplies")).get("ghosts_no_slab")
+            if (proposals is not None and isinstance(no_slab, int) and no_slab > 0
+                    and _has_shop(_d(s.get("buildings")), "Masons")):
+                proposals.append(Proposal("slabs_ghost", {"type": "engrave_memorials", "max": min(5, no_slab),
+                                                          "ghosts": True},
+                                          f"{no_slab} ghost(s){who} have no memorial slab at all: engrave theirs by "
+                                          "name (an order of the AI's own, approved)", 2))
+            gs = _d(s.get("supplies")).get("ghost_slabs")
             if proposals is not None and isinstance(ms, int) and ms > 0:
                 # (0.103.16) autoslab engraves them but nobody puts them up
+                # (r1g8) said as it is: the ghosts' own slabs, or other dead's
+                mine = (f"{gs} of them the ghosts' own" if isinstance(gs, int) and gs > 0 else
+                        "none of them a walking ghost's: put up for the other dead" if isinstance(gs, int) else "")
                 proposals.append(Proposal("slabs", {"type": "place_slabs", "max": min(20, ms)},
                                           f"{d['ghosts']} ghost(s){who} walk the fort and {ms} engraved memorial "
-                                          "slab(s) lie unbuilt: put them up so the dead rest", 3))
+                                          "slab(s) lie unbuilt" + (f" ({mine})" if mine else "")
+                                          + ": put them up so the dead rest", 3 if gs != 0 else 4))
             elif (proposals is not None and isinstance(slabs, int) and slabs < d["ghosts"]
                     and queued(s, {"stone_slab"}) == 0 and stone_short(s, 1)):
                 # (0.104.14) no stone the masons may use: an order would only

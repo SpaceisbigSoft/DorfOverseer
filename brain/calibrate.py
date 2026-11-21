@@ -101,6 +101,34 @@ def _step(key: str, value: float, up: bool) -> float:
     return round(v, 2) if mult or isinstance(rise, float) else int(round(v))
 
 
+def _pinch(s: dict) -> dict:
+    """(r1g8) The day's signs of a fort in a pinch: the alarm up, dwarves
+    thirsty or starving, and the count of thirst and hunger deaths (a rise
+    in the window is a death in it). A target is never lowered on such a
+    window (E y258: drink 12 -> 6 while dwarves died of thirst)."""
+    th, so = _d(s.get("thirst")), _d(s.get("society"))
+    by = _d(_d(_d(s.get("dead")).get("deaths")).get("by_cause"))
+
+    def n(v):
+        return int(v) if isinstance(v, (int, float)) else 0
+    deaths = n(th.get("deaths")) + n(by.get("THIRST")) + n(by.get("HUNGER"))
+    short = (n(th.get("thirsty")) + n(th.get("dehydrated")) + n(th.get("new_deaths"))
+             + n(so.get("starving")) + n(so.get("parched")))
+    return {"alarm": s.get("civ_alert") is True, "short": short > 0, "deaths": deaths}
+
+
+def _pinched(days: list[dict]) -> str:
+    """Why the window was a pinch ('' if not)."""
+    if any(d.get("alarm") for d in days):
+        return "the alarm was up"
+    ds = [d.get("deaths") for d in days if isinstance(d.get("deaths"), int)]
+    if any(b > a for a, b in zip(ds, ds[1:])):
+        return "dwarves died of thirst or hunger"
+    if any(d.get("short") for d in days):
+        return "dwarves were thirsty or starving"
+    return ""
+
+
 def _observe(key: str, state: dict, memory, cfg: dict) -> dict | None:
     """Today's evidence for one key (None: nothing to learn from today)."""
     s = normalize(state)
@@ -119,7 +147,7 @@ def _observe(key: str, state: dict, memory, cfg: dict) -> dict | None:
         # meals: thin only when the fort is short of food altogether (dwarves eat
         # raw food too; few meals with plenty of food is the cooks' problem)
         thin = stock < urgent * pop if key == "drink_per_dwarf" else food_thin
-        return {"thin": thin, "ratio": round(stock / target, 3) if target else 1.0}
+        return dict(_pinch(s), thin=thin, ratio=round(stock / target, 3) if target else 1.0)
     if key == "farm_tiles_per_dwarf":
         if "farms" in err or "settings" in err:
             return None
@@ -132,7 +160,7 @@ def _observe(key: str, state: dict, memory, cfg: dict) -> dict | None:
         thin = st.get("drink", 0) < cfg["urgent_drink_per_dwarf"] * pop or food_thin
         dw = _d(s.get("dwarves"))
         idle = 100 * (dw.get("idle_adults") or 0) / max(1, dw.get("adults") or 0)
-        return {"full": have >= 0.9 * want, "thin": thin, "plants_pd": round(sum(st.get(k) or 0 for k in ("plants", "plant_growths")) / pop, 2),
+        return {**_pinch(s), "full": have >= 0.9 * want, "thin": thin, "plants_pd": round(sum(st.get(k) or 0 for k in ("plants", "plant_growths")) / pop, 2),
                 "idle": round(idle, 1)}
     if key == "pasture_margin":
         if "society" in err:
@@ -160,6 +188,10 @@ def _decide(key: str, days: list[dict]) -> tuple[bool | None, str]:
         if any(d.get("thin") for d in days):
             return True, f"{what} fell below the urgent line"
         low = min(d.get("ratio", 1.0) for d in days)
+        if low < DRAWN_SHARE and _pinched(days):
+            # (r1g8) a stock drawn low while the fort was in a pinch is no
+            # sign the target is too high: kept
+            return None, ""
         if low < DRAWN_SHARE:
             return False, f"{what} fell to {round(100 * low)}% of the target and the fort never ran short"
         return None, ""
@@ -168,6 +200,8 @@ def _decide(key: str, days: list[dict]) -> tuple[bool | None, str]:
             return None, ""               # the farms aren't at their size yet: the size can't be judged
         if any(d.get("thin") for d in days):
             return True, "food ran thin with the farms at their full size"
+        if _pinched(days):
+            return None, ""               # (r1g8) never smaller farms in a pinch
         if (min(d.get("plants_pd", 0) for d in days) >= PLENTY_PLANTS_PD
                 and sum(d.get("idle", 0) for d in days) / len(days) >= IDLE_PLENTY_PCT):
             return False, (f"at least {PLENTY_PLANTS_PD} food plants per dwarf all the time, "
@@ -280,6 +314,14 @@ def heed(e: dict, memory, state: dict) -> dict | None:
     c = _state(memory)
     if c["values"].get(key) != new:
         return None                       # moved again since (or set by the strategist): leave it
+    try:
+        # (r1g8) a drink, food or farm raise is not taken back while the fort
+        # is in a pinch (E: the raise to 8 taken back as "no effect" 16 min later)
+        pz = _pinch(normalize(state))
+        if new > old and (pz["alarm"] or pz["short"]):
+            return None
+    except Exception:
+        pass
     c["values"][key] = old
     now = _now(state)
     c["changed"][key] = now

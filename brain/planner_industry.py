@@ -54,6 +54,14 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
     food_more = food_want > want
     want = max(want, food_want)
     pending = queued(s, CONTAINER_RECIPES)
+    # (r1g8) brewing waits for an empty barrel or pot: the containers come
+    # first (priority 1, before the brew), from the workshop the fort has and
+    # whatever wood or stone there is (F y250: "no empty barrels or pots to
+    # brew into" for 3 seasons; the barrels held for want of a Carpenters')
+    try:
+        dry = drink_lacks_containers(s, citizens, cfg, memory)
+    except Exception:
+        dry = False
     if free + pending < want:
         amount = _clamp(want * 2 - free - pending, 5, 30)
         wood_spare = wood - citizens * cfg["wood_per_dwarf"]
@@ -64,7 +72,10 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
         elif boulders >= amount:
             recipe, what = "stone_large_pot", "rock pots"
         else:
-            recipe = None
+            recipe, what = None, ""
+        if dry:
+            recipe, what, amount = _dry_containers(s, cfg, recipe, what, amount, wood, boulders)
+        if recipe is None:
             # (0.105.35) nothing waits for the player: what the AI does about it
             notes.append(f"only {free} empty barrels/pots (brewing and cooking stop without them), "
                          "and too little wood or stone to make more: the AI makes them as soon as there is "
@@ -75,8 +86,9 @@ def _supply_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: lis
                 f"only {free} empty barrels/pots (+{pending} queued) for {citizens} dwarves; "
                 f"brewing and cooking stop without them: make {what}"
                 + (f" (crisis: {crisis_brew} brew jobs wait for one)" if crisis_words else "")
+                + (" (drink is under its target and the stills have nothing to brew into: first)" if dry else "")
                 + (" (food lies out of barrels, where it rots or vermin eat it)" if food_more else ""),
-                2, True))
+                1 if dry else 2, True))
 
     # Bins hold finished goods, bars, cloth and the like: a stockpile with
     # bins takes far more, and haulers carry a bin's worth in one trip.
@@ -1111,6 +1123,31 @@ def _bottleneck_rule(s: dict, cfg: dict, citizens: int, proposals: list, memory=
                                   3 if shop in ("Still", "Kitchen") or dry_casks else 6))
 
 
+def _dry_containers(s: dict, cfg: dict, recipe, what, amount: int, wood: int, boulders: int):
+    """(r1g8) The containers order while brewing waits for them: barrels or
+    rock pots from the workshop the fort has (a barrel order with no
+    Carpenters' is held, a pot order with no Craftsdwarf's likewise), and
+    from the wood or stone there is, not only the spare (drink comes before
+    beds). Returns (recipe, what, amount); recipe None when neither can go."""
+    from order_check import order_feasible
+    small = int(cfg.get("r1g8_dry_containers_min", 3))
+    stock = {"wooden_barrel": int(wood or 0), "stone_large_pot": int(boulders or 0)}
+    words = {"wooden_barrel": "barrels", "stone_large_pot": "rock pots"}
+    order = [recipe] if recipe else []
+    order += [r for r in ("wooden_barrel", "stone_large_pot") if r not in order]
+    for r in order:
+        n = min(amount, stock[r])
+        if n < small:
+            continue
+        try:
+            ok = order_feasible(r, s, {"recipe": r, "amount": n}, cfg)["ok"]
+        except Exception:
+            ok = True
+        if ok:
+            return r, (what if r == recipe and what else words[r]), n
+    return None, what, amount
+
+
 def drink_lacks_containers(s: dict, citizens: int, cfg: dict, memory=None) -> bool:
     """(0.105.51) Drink under its target and fewer than `drink_containers_low`
     empty barrels and pots left once the open brew jobs have theirs."""
@@ -1392,7 +1429,7 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     for k, w in sorted(memory.order_watch.items()) if memory is not None else []:
         if (isinstance(w, dict) and w.get("by_ai") and str(w.get("what", "")).startswith("stone_")
                 and str(w.get("what")) not in keep
-                and isinstance(w.get("since"), int) and (now - watch_since(w)) // TICKS_PER_DAY >= cfg["order_stuck_days"]):
+                and isinstance(w.get("since"), int) and stuck_days(w, now) >= cfg["order_stuck_days"]):   # (r1g8) not the alarm's days
             # (0.105.24) booked as stuck (`stuck`), so the recipe waits its 28-112
             # days and a rule asking again gets the wooden one (stuck_fallback):
             # A (2-5 Nov) cancelled stone_door and stone_slab 276 times, the

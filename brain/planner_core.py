@@ -8,7 +8,7 @@ from quirks import has_rule
 from digest import _d, _l, normalize
 from planner_config import PLANNER_CONFIG, DISPOSAL_ACTION_MAX  # noqa: F401  (13c: the tuning numbers, split out)
 
-__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "emergency", "limit_exempt", "steer_protected", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule", "wildlife_threat", "wildlife_threats", "wild_rows", "wild_pack", "thief_ids", "snatcher_ids", "GREAT_LIKE_KINDS", "is_release", "thief_rows", "crowded_thief", "CROWD_LOCATIONS"]
+__all__ = ["great_present", "all_clear", "STEER_PROTECTED", "STEER_MAX_DAYS", "steer_of", "PLANNER_CONFIG", "BREW_RECIPES", "MEAL_RECIPES", "MANDATE_RECIPES", "BUILDABLE_SHOPS", "SHOP_ALIASES", "SURVIVAL_SHOPS", "TICKS_PER_DAY", "TICKS_PER_YEAR", "NO_COOLDOWN", "COOLDOWN_KEYS", "MULTI_PER_CYCLE", "EMERGENCY", "STUCK_HOLD_EXEMPT", "ORDER_HOLD_EXEMPT", "LIMIT_EXEMPT", "emergency", "limit_exempt", "steer_protected", "Proposal", "Memory", "abs_tick", "stamp_tick", "game_day", "factor", "ADJUST_BOUNDS", "_number", "effective_config", "queued", "unstored_cups", "free_stock", "watch_since", "stuck_days", "supply_order_kept", "_clamp", "MEMORIAL_SPAN", "OPTIONAL_LEVELS", "GEAR_WEAPONS", "GEAR_METALS", "NEEDS_YOU", "ask_player", "DISPOSAL_LEVELS", "DISPOSAL_ACTION_MAX", "player_rules", "OPEN_CAVERNS_MODES", "open_caverns_mode", "MAINTAIN_SKIPS", "level_refused", "_traits", "reachable_threats", "held_off_threats", "_holding_off", "ONE_A_CYCLE", "growth_mode", "growth_target", "JOB_SHOPS", "RECIPE_SHOPS", "WOOD_ELSEWHERE", "recipe_shop", "brewable_counts", "brew_recipe", "_watchdog_notes", "jobs_reported", "order_job_state", "masons_jammed", "stuck_hold_days", "_stuck_before", "stone_short", "_office_held", "tantrums_recent", "justice_held", "_restraint_order", "manager_needs_office", "suites_short", "wool_route", "thread_plants_here", "MINING_NEED_ONLY", "mining_plan", "noble_room_kinds", "SOCIAL_NEEDS", "care_waiting", "unmet", "_soldier_swap", "recently_home", "LOCATION_UNITS", "_location", "_location_short", "_real_locations", "can_fight", "is_ranged", "STALE_PROJECT_DAYS", "_workshops_busy", "shop_count", "shops_max", "_has_shop", "RAW_FOOD", "ALL_FOOD", "_idle_share", "idle_line", "IDLE_OLD_LINES", "levels_done", "_lever_state", "update_idle", "AGENDA_THEMES", "agenda", "food_per_dwarf", "WINTER_STOCK", "winter_factor", "young_fort", "established", "has_farms", "_best_metal", "REFUSAL_FIRST_DAYS", "REFUSAL_MAX_DAYS", "REFUSAL_IDLE_DAYS", "REFUSAL_KEYS", "LABOR_CAPS", "labor_given", "note_labor_given", "REFUSAL_ID_TYPES", "PER_ID_COOLDOWN", "refusal_key", "cooldown_key", "_refused_wait", "note_refusal", "zone_full_days", "note_zone_full", "ZONE_FULL_FIRST_DAYS", "ZONE_FULL_MAX_DAYS", "TIMEOUT_TRIES", "timeout_streak", "brief_timeout", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "LOOP_EXEMPT", "_loop_count", "NO_EFFECT_RULES", "NO_EFFECT_WHY", "note_no_effect", "no_effect_wait", "_stalled_days", "_entrance_spot", "_record_any_outcome", "_weapon_gaps", "spare_sig", "MOOD_BODY_FLAGS", "mood_kind", "mood_on_hand", "mood_waits", "_stuck_again_rule", "wildlife_threat", "wildlife_threats", "wild_rows", "wild_pack", "thief_ids", "snatcher_ids", "GREAT_LIKE_KINDS", "is_release", "thief_rows", "crowded_thief", "CROWD_LOCATIONS"]
 
 BREW_RECIPES = {"brew_drink", "brew_drink_from_fruit", "make_mead"}
 MEAL_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
@@ -491,6 +491,41 @@ def watch_since(w: dict) -> int:
     # (review) at most WORKED_MAX_DAYS later: a job taken and dropped again
     # and again (its item out of reach) looks worked at every sample
     return min(max(since, worked), since + WORKED_MAX_DAYS * TICKS_PER_DAY) if isinstance(worked, int) else since
+
+
+def stuck_days(w: dict, now: int) -> int:
+    """(r1g8) Days an order has stood still, less the days the alarm was up
+    (`paused`, counted by orders_seen): an order the sheltered dwarves can't
+    reach isn't stuck."""
+    since = watch_since(w)
+    still = max(0, now - since)
+    paused = w.get("paused") if isinstance(w.get("paused"), int) else 0
+    return (still - min(max(0, paused), still)) // TICKS_PER_DAY
+
+
+def supply_order_kept(s: dict, what, cfg: dict) -> str | None:
+    """(r1g8) Why an order of the fort's own drink or meals is never cancelled
+    as stuck (nor its recipe held back) now, or None. While drink (meals) is
+    under its target or the alarm is up, a still's (kitchen's) order that
+    stands still waits for the stills: cancelling it only throws away its
+    jobs and bans the recipe 28-112 days (E y257-y259: brew orders cancelled
+    9 times, drink 1,458 -> 183, dwarves dead of thirst)."""
+    what = str(what)
+    if what not in BREW_RECIPES and what not in MEAL_RECIPES:
+        return None
+    if s.get("civ_alert") is True:
+        return "the alarm is up"
+    citizens = int(_d(s.get("dwarves")).get("total") or 0)
+    st = _d(s.get("stocks"))
+    if what in BREW_RECIPES:
+        have, per = st.get("drink"), cfg.get("drink_per_dwarf", 0)
+    else:
+        have, per = st.get("prepared_meals"), cfg.get("meals_per_dwarf", 0)
+    if not isinstance(have, (int, float)):
+        return "the stock is unknown"       # (no stock read: keep it, as when short)
+    if citizens > 0 and have < citizens * float(per or 0):
+        return f"{'drink' if what in BREW_RECIPES else 'meals'} {have} under the target of {round(citizens * float(per or 0))}"
+    return None
 
 
 def _clamp(v: float, lo: int, hi: int) -> int:
@@ -1159,7 +1194,7 @@ def _watchdog_notes(s: dict, memory, cfg: dict, notes: list) -> None:
     for k, w in memory.order_watch.items():
         if not isinstance(w, dict) or not isinstance(w.get("since"), int) or not (w.get("left") or 0) > 0:
             continue
-        days = (now - watch_since(w)) // TICKS_PER_DAY
+        days = stuck_days(w, now)           # (r1g8) less the alarm's days
         if days < cfg["order_stuck_days"]:
             continue
         shop = JOB_SHOPS.get(str(w.get("job")))
@@ -1220,10 +1255,12 @@ def _stuck_again_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
                 or not isinstance(w.get("since"), int) or not (w.get("left") or 0) > 0):
             continue
         what = str(w.get("what"))
-        days = (now - watch_since(w)) // TICKS_PER_DAY
+        days = stuck_days(w, now)           # (r1g8) less the alarm's days
         if days < cfg["order_stuck_you_days"] or not _stuck_before(memory, what, now, cfg):
             continue
         if dead and what in ("stone_slab", "stone_coffin"):
+            continue
+        if supply_order_kept(s, what, cfg):   # (r1g8) drink and meals in a pinch stay
             continue
         try:
             oid = int(k)

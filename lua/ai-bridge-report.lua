@@ -1485,6 +1485,13 @@ function get_supplies()
     each('SLAB', function(it) out.slabs = (out.slabs or 0) + 1 end)
     -- (0.103.16) engraved memorial slabs nobody has put up yet
     pcall(function() out.memorial_slabs = #reqscript('ai-builder').memorial_slabs() end)
+    -- (r1g8) of them the walking ghosts' own; and the ghosts with no memorial
+    -- slab at all and no open order of the AI's for one (engrave_memorials ghosts)
+    pcall(function()
+        local w = reqscript('ai-builder').ghost_slab_counts()
+        out.ghost_slabs = w
+    end)
+    pcall(function() out.ghosts_no_slab = #reqscript('ai-welfare').ghost_scan() end)
     -- (0.83) good meals: EatGoodMeal is met by a preferred food or a meal
     -- worth over 20 (DF wiki, Needs): servings of prepared meals and those
     -- worth more than GOOD_MEAL_VALUE each

@@ -75,7 +75,7 @@ def snapshot(memory) -> dict:
 ORDER_WATCH_MAX = 40
 GATE_RECORDS_MAX = 40
 GATE_PREFIXES = ("gate:", "doors:", "traps:")
-ORDER_KEYS = ("left", "since", "worked", "by_ai", "what", "job")
+ORDER_KEYS = ("left", "since", "worked", "by_ai", "what", "job", "paused", "seen")
 RECORD_KEYS = ("kind", "variant", "tick", "status", "changed", "elevation", "b", "count", "moved_in",
                "doors_later", "pieces", "era")
 

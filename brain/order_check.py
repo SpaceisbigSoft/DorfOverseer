@@ -365,6 +365,14 @@ def hold_lifted(p, s: dict, memory, cfg: dict = PLANNER_CONFIG) -> bool:
     return bool(rec) and _changed(rec, snapshot(a.get("recipe"), s, a, cfg))
 
 
+def _supply_kept(s: dict, recipe: str, cfg: dict) -> bool:
+    try:
+        from planner_core import supply_order_kept
+        return bool(supply_order_kept(s, recipe, cfg))
+    except Exception:       # (never stops the gate)
+        return False
+
+
 def order_gate(p, s: dict, memory, cfg: dict, now: int, allowed=()) -> str | None:
     """None: the order may go. Else why it's held (select() lists it)."""
     a = p.action
@@ -378,6 +386,8 @@ def order_gate(p, s: dict, memory, cfg: dict, now: int, allowed=()) -> str | Non
     if not chk["ok"]:
         return f"{p.rule}: no {recipe} order: {chk['what']}"
     rec = _miss_for(memory, recipe, a.get("material"))
+    if rec and isinstance(rec.get("tick"), int) and _supply_kept(s, recipe, cfg):
+        rec = None          # (r1g8) drink and meals short or under the alarm: no stuck hold
     if rec and isinstance(rec.get("tick"), int):
         days = (now - rec["tick"]) // TICKS_PER_DAY
         wait = int(cfg.get("order_miss_days", 56))

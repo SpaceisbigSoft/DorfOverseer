@@ -215,8 +215,68 @@ local function slab_order(hf)
     return o.id
 end
 
-function engrave_memorials(max, dry_run)
+-- (r1g8) The fort's walking ghosts with no memorial slab at all and no
+-- EngraveSlab order of the AI's own (kept in the save, by hf) still open:
+-- DFHack's autoslab orders one, but its jobs are the ones lifted off a full
+-- mason's bench, and F (15-16 Nov) never got Udil's slab engraved in 6 years
+-- while other slabs were put up 164 times. {{hf, id, name}}
+function ghost_scan()
+    local out = {}
+    local race, civ = U.fort_race_civ()
+    local group
+    pcall(function() group = df.global.plotinfo.group_id end)
+    if not race then return out end
+    local slabs = memorial_hfs()
+    local d = state()
+    local mine = type(d.ghost_orders) == 'table' and d.ghost_orders or {}
+    local live = {}
+    pcall(function()
+        for _, o in ipairs(df.global.world.manager_orders.all) do live[o.id] = true end
+    end)
+    local okl, all = pcall(function() return df.global.world.units.all end)
+    for _, u in ipairs(okl and all or {}) do
+        pcall(function()
+            if not dfhack.units.isGhost(u) then return end
+            local hf = u.hist_figure_id or -1
+            if hf < 0 or not fort_own(u, race, civ, group) or slabs[hf] then return end
+            local oid = mine[tostring(hf)]
+            if oid and live[oid] then return end
+            table.insert(out, {hf = hf, id = u.id, name = name_of(u), why = 'ghost'})
+        end)
+    end
+    table.sort(out, function(a, b) return a.id < b.id end)
+    return out
+end
+
+function engrave_memorials(max, dry_run, ghosts)
     max = math.max(1, math.min(10, math.tointeger(max) or 5))
+    if ghosts then
+        local list = ghost_scan()
+        if #list == 0 then
+            return {ok = false, rejected = true, nothing_to_do = true,
+                    error = 'every ghost has a memorial slab or an open order of the AI\'s for one'}
+        end
+        local named, ids = {}, {}
+        local d = state()
+        d.ghost_orders = type(d.ghost_orders) == 'table' and d.ghost_orders or {}
+        for i = 1, math.min(max, #list) do
+            local w = list[i]
+            if dry_run then
+                table.insert(named, w.name)
+            else
+                local ok, id = pcall(slab_order, w.hf)
+                if ok then
+                    table.insert(ids, id) table.insert(named, w.name)
+                    d.ghost_orders[tostring(w.hf)] = id
+                elseif #named == 0 then
+                    return {ok = false, error = 'the game took no memorial order: ' .. tostring(id):sub(1, 120)}
+                end
+            end
+        end
+        if not dry_run and #ids > 0 then pcall(save, d) end
+        return {ok = true, ordered = named, order_ids = (#ids > 0) and ids or nil, ghosts = true,
+                left = #list - #named, dry_run = dry_run or nil}
+    end
     local scan = dead_scan()
     if #scan.wanted == 0 then
         return {ok = false, rejected = true, nothing_to_do = true,
