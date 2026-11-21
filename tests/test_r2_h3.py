@@ -162,7 +162,7 @@ def _():
     k = calls[1]
     assert k.Bed and k.Box and k.Workshop and not k.Door
     src = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "a.give_up == true, drop)" in src and "function act_park_project(a)" in src
+    assert "a.give_up == true, drop," in src and "function act_park_project(a)" in src
     assert "park_project = act_park_project" in (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 
 

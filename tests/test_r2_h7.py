@@ -447,13 +447,13 @@ def _():
         B.furnish_project(r.project_id, True)
         got = B.finish_project(r.project_id, False, True)
         assert not got.ok and "16 buildings still waiting" in got.error, dict(got)     # the run's refusal
-        got = B.finish_project(r.project_id, False, True, False, True)
+        got = B.finish_project(r.project_id, False, True, False, None, True)
         assert got.ok and got.phase in ("done", "decorate") and got.left_planned == 16 and calls[1] is None, dict(got)
         B.furnish_progress = LUA.eval("function() return {placed = 3, done = 1, waiting = {Workshop = 1, Bed = 1}} end")
         r2 = TB.styled(kind="storage", piles=["food"], style={"smooth": 0})
         TB.finish_digging()
         B.furnish_project(r2.project_id, True)
-        got = B.finish_project(r2.project_id, False, True, True, True)
+        got = B.finish_project(r2.project_id, False, True, True, None, True)
         assert got.ok and got.dropped == 1 and got.left_planned == 1 and calls[1] == r2.project_id, dict(got)
         # a well level
         data = B.load_projects()
@@ -465,7 +465,7 @@ def _():
             if p.id == r3.project_id:
                 p.kind = "well"
         B.save_projects(data)
-        got = B.finish_project(r3.project_id, False, True, False, True)
+        got = B.finish_project(r3.project_id, False, True, False, None, True)
         assert not got.ok and "well" in got.error, dict(got)
     finally:
         B.drop_waiting_shops, B.furnish_progress = real_drop, real_prog
@@ -635,25 +635,8 @@ def petitions_fort(outsiders, days):
     return s
 
 
-@test("5: E's petitions (neutral Outsiders 0, 82 days waiting): declined after r2h7_residency_neutral_days; "
-      "younger ones wait; a closed fort declines all as before; a welcoming one still asks the player")
-def _():
-    m = Memory()
-    s = petitions_fort(0, [82, 82, 3])
-    props, notes = [], []
-    PV._residency_rule(s, m, CFG, props, notes)
-    assert len(props) == 1 and props[0].action == {"type": "answer_petition", "ids": [3154, 3155], "accept": False,
-                                                    "residency": True}, props
-    props = []
-    PV._residency_rule(petitions_fort(0, [3, 5]), Memory(), CFG, props, [])
-    assert not props
-    props = []
-    PV._residency_rule(petitions_fort(-80, [3]), Memory(), CFG, props, [])
-    assert props and props[0].action["accept"] is False
-    props, notes = [], []
-    PV._residency_rule(petitions_fort(60, [82]), Memory(), CFG, props, notes)
-    assert not [p for p in props if p.action.get("accept") is False]
-
+# (merge 0.105.57) test 5 (residency declined after r2h7_residency_neutral_days) was retired: r2h9's
+# residency_verdict weighs every petition at once and supersedes it (tests/test_r2_h9.py covers residency).
 
 if __name__ == "__main__":
     finish()
