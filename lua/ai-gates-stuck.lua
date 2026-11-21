@@ -649,7 +649,30 @@ function free_gate_jobs(id, dry_run, ai_plan)
         end
         return true
     end
-    local n, seen, theirs = 0, 0, 0
+    -- (r1g8) a piece the AI's own builder planned (inside one of its levels'
+    -- areas: a floor's wall or door near the entrance) is not the player's,
+    -- though it is no gate piece (F: "the player's" said of the AI's own
+    -- floor-2 walls, 18:33-18:35 15 Nov)
+    local levels
+    local function ai_work(b)
+        if b.x1 == nil or b.z == nil then return false end
+        if levels == nil then
+            levels = {}
+            pcall(function()
+                local B = reqscript('ai-builder')
+                for _, p in ipairs(B.load_projects().list or {}) do
+                    for _, a in ipairs(B.project_areas(p)) do table.insert(levels, a) end
+                end
+            end)
+        end
+        for _, a in ipairs(levels) do
+            if a.z == b.z and a.x1 and b.x1 >= a.x1 and b.x1 <= a.x2 and b.y1 >= a.y1 and b.y1 <= a.y2 then
+                return true
+            end
+        end
+        return false
+    end
+    local n, seen, theirs, works = 0, 0, 0, 0
     for _, bid in ipairs(e.pending_ids or {}) do
         local okb, b = pcall(df.building.find, bid)
         if okb and b then
@@ -661,6 +684,8 @@ function free_gate_jobs(id, dry_run, ai_plan)
                     if mine then
                         n = n + 1
                         if not dry_run then j.flags.suspend = false end
+                    elseif ai_work(b) then
+                        works = works + 1
                     else
                         theirs = theirs + 1
                     end
@@ -669,9 +694,16 @@ function free_gate_jobs(id, dry_run, ai_plan)
         end
     end
     if n == 0 then
-        return {ok = false, rejected = true, players = theirs > 0 or nil,
-                error = theirs > 0 and ('the %d suspended job(s) there are on what the player planned: the AI '
-                                        .. 'leaves them'):format(theirs)
+        local words = {}
+        if works > 0 then
+            table.insert(words, ('%d on the AI\'s own level works there (no gate piece: its builder sees '
+                                 .. 'them through)'):format(works))
+        end
+        if theirs > 0 then
+            table.insert(words, ('%d on what the player planned (the AI leaves them)'):format(theirs))
+        end
+        return {ok = false, rejected = true, players = theirs > 0 or nil, ai_works = works > 0 and works or nil,
+                error = #words > 0 and ('the suspended job(s) there: ' .. table.concat(words, '; '))
                     or ('no suspended job at the %d piece(s) planned there'):format(seen)}
     end
     return {ok = true, unsuspended = n, dry_run = dry_run or nil}

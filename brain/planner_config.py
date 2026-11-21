@@ -1361,3 +1361,8 @@ PLANNER_CONFIG.update({
     "floor_full_retry_days": 28,          # a full floor is offered again after this long
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
 })
+
+# (r1g8) drink and food in a crisis, and ghosts
+PLANNER_CONFIG.update({
+    "r1g8_dry_containers_min": 3,         # brewing waits on containers: the least barrels/pots worth ordering from what wood or stone there is
+})

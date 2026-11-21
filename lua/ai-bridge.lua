@@ -728,7 +728,7 @@ ACTIONS = {
     engrave_memorials = function(a)
         local n = int_in(a.max or 5, 1, 10)
         if not n then return reject('engrave_memorials: max is 1-10') end
-        return reqscript('ai-welfare').engrave_memorials(n, a.dry_run == true)
+        return reqscript('ai-welfare').engrave_memorials(n, a.dry_run == true, a.ghosts == true)   -- (r1g8) ghosts by name
     end,
     train_cook = function(a)
         if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('train_cook: release is true or false') end

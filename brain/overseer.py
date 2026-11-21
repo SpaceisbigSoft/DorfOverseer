@@ -443,6 +443,15 @@ def _victim_mood(ev: dict) -> str:
     return f"in a {mood} mood"
 
 
+def journal_event(ev: dict) -> dict:
+    """(r1g8) The event as the journal keeps it: a death told again (a ghost
+    laid to rest, the bridge's `again`) is kind "laid_to_rest", so no reader
+    of the journal counts the dwarf dead twice."""
+    if isinstance(ev, dict) and ev.get("kind") == "death" and ev.get("again"):
+        return dict(ev, kind="laid_to_rest", was="death")
+    return ev
+
+
 def death_words(ev: dict) -> str:
     """(0.104.100) A death in a line: who, how (DF's cause), by whom, where."""
     who = " ".join(str(ev.get("name") or "someone").split())
@@ -1252,7 +1261,14 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         events = bridge.events()
         seen: dict[str, int] = {}
         for ev in events:
-            journal({"kind": "event", "fort": key, "event": ev})
+            # (r1g8) a ghost laid to rest is no second death: journaled as
+            # what it is (R-AD: 11 such counted again in B, A's Zulban twice)
+            journal({"kind": "event", "fort": key, "event": journal_event(ev)})
+            if ev.get("kind") == "death" and ev.get("again"):
+                if ev.get("own_civ") and not ev.get("animal"):
+                    line = "Laid to rest: " + death_words(ev)
+                    seen[line] = seen.get(line, 0) + 1
+                continue
             if ev.get("kind") == "report" and ev.get("topic") not in QUIET_TOPICS:
                 # one line however the text runs (a name can hold a line break)
                 line = f"Seen: {ev.get('topic')}: {' '.join(str(ev.get('text', '')).split())[:120]}"

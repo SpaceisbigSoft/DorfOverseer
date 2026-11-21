@@ -1417,6 +1417,10 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             # arrived): the recipe's hold gives way (brain/order_check.py)
             if p.action.get("type") == "work_order" and isinstance(sc.get("tick"), int) and hold_lifted(p, state, memory, cfg):
                 sc = {}
+            # (r1g8) drink and meals are never held back by an old stuck cancel
+            # while they are short or the alarm is up
+            if p.action.get("type") == "work_order" and sc and supply_order_kept(state, p.action.get("recipe"), cfg):
+                sc = {}
             if (p.action.get("type") == "work_order" and p.rule not in STUCK_HOLD_EXEMPT
                     and isinstance(sc.get("tick"), int)
                     and 0 <= now - sc["tick"] < hold_days * TICKS_PER_DAY):
@@ -2301,6 +2305,14 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
                 # their last jobs on the benches, and held 28 days)
                 if int(_d(o.get("jobs")).get("working") or 0) > 0:
                     memory.order_watch[k]["worked"] = now
+                # (r1g8) days under the alarm aren't "stuck": the dwarves are
+                # held in the shelter, away from the workshops (E: the brew
+                # orders cancelled 9 times during an 812-day alarm)
+                w = memory.order_watch[k]
+                last = w.get("seen")
+                if s.get("civ_alert") is True and isinstance(last, int) and 0 < now - last:
+                    w["paused"] = int(w.get("paused") or 0) + (now - last)
+                w["seen"] = now
             for k in [k for k in memory.order_watch if k not in seen]:
                 del memory.order_watch[k]
 

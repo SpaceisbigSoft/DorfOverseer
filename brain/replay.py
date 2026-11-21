@@ -74,6 +74,8 @@ def load_journal(path: Path) -> list[dict]:
 def event_text(e: dict) -> str:
     who = e.get("name") or f"unit {e.get('unit_id', '?')}"
     kind = e.get("kind")
+    if kind == "laid_to_rest":           # (r1g8) a ghost laid to rest: no second death
+        return f"laid to rest: {who}"
     if kind == "death":
         return f"died: {who}" + (" (animal)" if e.get("animal") else " (citizen)" if e.get("own_civ") else "")
     if kind == "arrival":

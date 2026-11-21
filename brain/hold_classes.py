@@ -106,7 +106,7 @@ _SURVIVAL_RULES = {
     "webs", "remove_webs",
     # the dead
     "burial", "burial_coffins", "burial_corner", "burial_others", "coffins", "slabs", "slabs_free", "slabs_ahead",
-    "slabs_ahead_blanks", "slabs_ahead_place", "tombs_ghosts", "ghost_mason", "ghost_masons", "dead_units",
+    "slabs_ahead_blanks", "slabs_ahead_place", "slabs_ghost", "tombs_ghosts", "ghost_mason", "ghost_masons", "dead_units",
     "necro_corpses",
     # the mind: needs, stress, tantrums, justice, moods
     "stress_care", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",

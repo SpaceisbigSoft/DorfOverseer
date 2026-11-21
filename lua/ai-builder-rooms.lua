@@ -913,17 +913,105 @@ end
 -- building holds is built on a free floor beside a wall in a tomb zone, then
 -- a meeting or dining hall, with that very slab (constructBuilding's items).
 SLAB_ZONES = {'ZONE_TOMB', 'ZONE_MEETING_HALL', 'ZONE_DINING_HALL'}
+-- (r1g8) the AI's dead slab sites cleared at most this many a call: an
+-- unbuilt Slab building holding no slab, whose job holds none either and
+-- asks for none (not a buildingplan plan, which asks by filter)
+SLAB_DEAD_SITES_MAX = 10
 
-function memorial_slabs()
+-- (r1g8) The hist figures of the fort's walking ghosts: {hf = true}.
+function ghost_hfs()
     local out = {}
     pcall(function()
+        local race, civ = df.global.plotinfo.race_id, df.global.plotinfo.civ_id
+        for _, u in ipairs(df.global.world.units.active) do
+            pcall(function()
+                if dfhack.units.isGhost(u) and u.race == race and u.civ_id == civ and (u.hist_figure_id or -1) >= 0 then
+                    out[u.hist_figure_id] = true
+                end
+            end)
+        end
+    end)
+    return out
+end
+
+-- (r1g8) The Slab buildings: the slab item ids one holds (in it, or on its
+-- job) and the AI's dead sites (unbuilt, holding none, asking for none).
+-- F (15-16 Nov): place_slabs "done" 164 times, each at a new spot, while
+-- "1 engraved memorial slab lies unbuilt" every cycle: a slab a planned Slab
+-- building already held was counted free and given to a new building.
+function slab_sites()
+    local held, dead = {}, {}
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.SLAB) do
+            pcall(function()
+                local has = false
+                pcall(function()
+                    for _, ci in ipairs(b.contained_items) do held[ci.item.id] = b.id; has = true end
+                end)
+                local asks, read = false, true
+                local okj = pcall(function()
+                    for _, j in ipairs(b.jobs) do
+                        for _, ji in ipairs(j.items) do held[ji.item.id] = b.id; has = true end
+                        -- DF 53: job_items holds its list in `elements`; a count
+                        -- not read keeps the site (it may be a player's plan)
+                        local okc, cnt = pcall(function() return #j.job_items.elements end)
+                        if not okc then okc, cnt = pcall(function() return #j.job_items end) end
+                        if not okc then read = false elseif cnt > 0 then asks = true end
+                    end
+                end)
+                local planned = false
+                pcall(function()
+                    local bp = require('plugins.buildingplan')
+                    planned = bp.isPlannedBuilding(b) and true or false
+                end)
+                if okj and read and not has and not asks and not planned and b:getBuildStage() == 0 then
+                    table.insert(dead, b)
+                end
+            end)
+        end
+    end)
+    return held, dead
+end
+
+-- Engraved memorial slabs nobody has put up yet: free, on no job, in no
+-- building and held by no Slab building (r1g8). The walking ghosts' own
+-- first (a slab for someone else lays no ghost), then the rest.
+function memorial_slabs()
+    local out = {}
+    local held = slab_sites()
+    local ghosts = ghost_hfs()
+    pcall(function()
         for _, it in ipairs(df.global.world.items.other.SLAB) do
-            if not (item_held(it) or it.flags.in_job) and it.engraving_type == df.slab_engraving_type.Memorial then
+            local okh, hb = pcall(dfhack.items.getHolderBuilding, it)
+            if not (item_held(it) or it.flags.in_job or it.flags.in_building or held[it.id] or (okh and hb))
+                    and it.engraving_type == df.slab_engraving_type.Memorial then
                 table.insert(out, it)
             end
         end
     end)
+    local function g(it) return ghosts[it.topic] and 0 or 1 end
+    table.sort(out, function(a, b)
+        if g(a) ~= g(b) then return g(a) < g(b) end
+        return a.id < b.id
+    end)
     return out
+end
+
+-- (r1g8) How many of the walking ghosts' own slabs wait to be put up, and how
+-- many ghosts have no memorial slab at all (none engraved, loose or built).
+function ghost_slab_counts()
+    local ghosts = ghost_hfs()
+    local waiting = 0
+    for _, it in ipairs(memorial_slabs()) do if ghosts[it.topic] then waiting = waiting + 1 end end
+    local any = {}
+    pcall(function()
+        for _, it in ipairs(df.global.world.items.other.SLAB) do
+            if it.engraving_type == df.slab_engraving_type.Memorial then any[it.topic] = true end
+        end
+    end)
+    local none = 0
+    for hf in pairs(ghosts) do if not any[hf] then none = none + 1 end end
+    return waiting, none
 end
 
 function place_slabs(max, dry_run)
@@ -931,7 +1019,14 @@ function place_slabs(max, dry_run)
     local slabs = memorial_slabs()
     if #slabs == 0 then return {ok = false, rejected = true, error = 'no engraved memorial slab waits to be put up'} end
     local n = math.min(#slabs, max or 5)
-    if dry_run then return {ok = true, dry_run = true, slabs = n, waiting = #slabs} end
+    local _, dead = slab_sites()
+    if dry_run then return {ok = true, dry_run = true, slabs = n, waiting = #slabs, dead_sites = #dead} end
+    -- (r1g8) the AI's dead slab sites taken down: they hold the spots and the
+    -- next slab was put elsewhere again and again (F: 164 sites)
+    local cleared = 0
+    for i = 1, math.min(#dead, SLAB_DEAD_SITES_MAX) do
+        if pcall(dfhack.buildings.deconstruct, dead[i]) then cleared = cleared + 1 end
+    end
     local spots = {}
     for _, list in ipairs(SLAB_ZONES) do
         local okl, zs = pcall(function() return df.global.world.buildings.other[list] end)
@@ -943,23 +1038,51 @@ function place_slabs(max, dry_run)
         end
     end
     if #spots == 0 then return {ok = false, rejected = true, error = 'no free floor beside a wall in a tomb, meeting or dining hall'} end
-    local placed, si, last = {}, 1, nil
+    local ghosts = ghost_hfs()
+    local placed, used, last, unreached = {}, {}, nil, 0
     for i = 1, n do
         local it = slabs[i]
-        while si <= #spots do
-            local sp = spots[si]
-            si = si + 1
-            local ok, b, err = pcall(dfhack.buildings.constructBuilding,
-                                     {type = df.building_type.Slab, pos = xyz2pos(sp.x, sp.y, sp.z), items = {it}})
-            if ok and b then
-                table.insert(placed, {x = sp.x, y = sp.y, elevation = ez(sp.z)})
-                break
+        -- (r1g8) only a spot the slab can be carried to (F: the floor-2
+        -- tombs walled off from the fort): else the job drops the slab
+        local from
+        pcall(function()
+            local x, y, z = dfhack.items.getPosition(it)
+            if x then from = xyz2pos(x, y, z) end
+        end)
+        for si, sp in ipairs(spots) do
+            if not used[si] then
+                local reach = true
+                if from then
+                    local okw, yes = pcall(dfhack.maps.canWalkBetween, from, xyz2pos(sp.x, sp.y, sp.z))
+                    reach = not okw or yes
+                end
+                if not reach then
+                    unreached = unreached + 1
+                else
+                    used[si] = true
+                    local ok, b, err = pcall(dfhack.buildings.constructBuilding,
+                                             {type = df.building_type.Slab, pos = xyz2pos(sp.x, sp.y, sp.z), items = {it}})
+                    if ok and b then
+                        table.insert(placed, {x = sp.x, y = sp.y, elevation = ez(sp.z), hf = it.topic,
+                                              ghost = ghosts[it.topic] or nil})
+                        break
+                    end
+                    last = ok and tostring(err) or tostring(b)
+                end
             end
-            last = ok and tostring(err) or tostring(b)
         end
     end
-    if #placed == 0 then return {ok = false, error = 'the game took none of the slabs: ' .. tostring(last):sub(1, 120)} end
-    return {ok = true, placed = placed, waiting = #slabs - #placed}
+    if #placed == 0 then
+        if last == nil and unreached > 0 then
+            return {ok = false, rejected = true, dead_sites = cleared,
+                    error = 'no free floor in a tomb, meeting or dining hall the slab can be carried to'}
+        end
+        return {ok = false, error = 'the game took none of the slabs: ' .. tostring(last):sub(1, 120), dead_sites = cleared}
+    end
+    local for_ghosts = 0
+    for _, p in ipairs(placed) do if p.ghost then for_ghosts = for_ghosts + 1 end end
+    return {ok = true, placed = placed, waiting = #slabs - #placed, for_ghosts = for_ghosts,
+            dead_sites = cleared > 0 and cleared or nil}
 end
 
 ---------------------------------------------------------------------------

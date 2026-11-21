@@ -358,7 +358,7 @@ local function gates(rows)
                 local since = GS.closing_since and GS.closing_since[gate_key(e.x, e.y, e.z)]
                 table.insert(rows, {kind = 'gate', id = e.id, key = ('gate:%d,%d,%d'):format(e.x, e.y, e.z),
                                     state = 'closing', since = math.tointeger(since), progress = pieces,
-                                    pieces = pieces, job = jobs > 0, worker = worker, suspended = suspended or nil,
+                                    pieces = pieces, job = jobs > 0, worker = worker, suspended = suspended,   -- (r1g8) false said too
                                     what = tostring(e.kind or 'entrance'), x = e.x, y = e.y, z = e.z})
             end
         end
