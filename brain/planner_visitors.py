@@ -10,7 +10,7 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since"]
+__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since", "sought_artifact", "artifacts_at_risk", "note_artifact_risk", "claimed_shut"]
 
 
 PETITION_KINDS = ("performer", "scholar", "monster_hunter", "mercenary", "sanctuary", "citizenship")
@@ -276,6 +276,15 @@ def note_heists(state: dict, memory, events: list) -> int:
                 and e.get("killer_visitor") and not e.get("killer_dead")
                 and str(e.get("mood") or "").lower() != "berserk"):
             who = str(e.get("killer") or "a visitor").split(",")[0][:40]
+        if e.get("kind") == "report":
+            # (r1 g7) the artifact a spotted hero named is sought: the locations
+            # stay shut while it is in the fort (claimed_shut)
+            art = sought_artifact(e.get("text"))
+            if art and isinstance(now, int):
+                sought = dict(_d(getattr(memory, "artifacts_sought", None)))
+                sought[art] = now
+                keep = int(PLANNER_CONFIG.get("g7_sought_keep_max", 30) or 30)
+                memory.artifacts_sought = dict(sorted(sought.items(), key=lambda kv: kv[1])[-keep:])
         if not who or (day, who) in have:
             continue
         have.add((day, who))
@@ -283,6 +292,101 @@ def note_heists(state: dict, memory, events: list) -> int:
         n += 1
     memory.heists = [t for t in memory.heists if isinstance(t, list) and len(t) == 2][-HEISTS_KEEP:]
     return n
+
+
+def sought_artifact(text) -> str:
+    """(r1 g7) The artifact a spotted hero names: "...was spotted sneaking
+    around!  "You will not stand between me and Nettlewalk!"" -> "Nettlewalk";
+    "" for any other text."""
+    t = " ".join(str(text or "").split())
+    key = "stand between me and "
+    if "sneaking around" not in t or key not in t:
+        return ""
+    name = t.split(key, 1)[1]
+    for end in ('!"', '!', '"'):
+        name = name.split(end, 1)[0]
+    return name.strip()[:60]
+
+
+def artifacts_at_risk(s: dict, memory, cfg: dict):
+    """(r1 g7) The artifacts in the fort that someone may come for: claimed by
+    another civ (DF's entity_claims), by a historical figure from afar
+    (remote_claims, `sought`; with g7_hf_claims_risk) or named by a spotted
+    hero within g7_sought_keep_days ("You will not stand between me and X").
+    A list of {name, why} (with "a claimed artifact" stand-ins for ones the
+    report counts but doesn't list), or None without an artifacts report.
+    B (16 Nov): ~19 artifacts other civs claimed; every claim sent a hero who
+    came in as a guest (Itvid y258, Len Karaura y262); F's Nettlewalk was
+    claimed by no civ, and heroes came for it too."""
+    a = _d(s.get("artifacts"))
+    if not a or not isinstance(a.get("artifacts"), list):
+        return None
+    now = abs_tick(s)
+    keep = int(cfg.get("g7_sought_keep_days", 1008) or 0) * TICKS_PER_DAY
+    sought = {str(k).lower() for k, t in _d(getattr(memory, "artifacts_sought", None)).items()
+              if isinstance(t, int) and isinstance(now, int) and 0 <= now - t < keep}
+    hf = cfg.get("g7_hf_claims_risk", True)
+    out = []
+    for r in _l(a.get("artifacts")):
+        if not isinstance(r, dict):
+            continue
+        name = str(r.get("name") or "an artifact")
+        if r.get("claimed_by"):
+            out.append({"name": name, "why": "claimed by " + ", ".join(str(w) for w in _l(r["claimed_by"])[:2])})
+        elif hf and isinstance(r.get("sought"), int) and r["sought"] > 0:
+            out.append({"name": name, "why": "claimed by someone from afar"})
+        elif name.lower() in sought:
+            out.append({"name": name, "why": "a hero came for it"})
+    c = _d(a.get("counts"))
+    n = c.get("at_risk") if hf and isinstance(c.get("at_risk"), int) else c.get("claimed")
+    listed = sum(1 for x in out if x["why"] != "a hero came for it")
+    if isinstance(n, int) and not isinstance(n, bool) and n > listed:
+        out += [{"name": "a claimed artifact", "why": "claimed (not listed)"}] * (n - listed)
+    return out
+
+
+def note_artifact_risk(s: dict, memory, cfg: dict) -> None:
+    """(r1 g7) The artifacts at risk, kept from a fresh artifacts report
+    (claimed_shut holds on it between reports): {seen, n, names}, or
+    {clear} when the report shows none. No report: memory unchanged."""
+    risk = artifacts_at_risk(s, memory, cfg)
+    now = abs_tick(s)
+    if risk is None or not isinstance(now, int):
+        return
+    if risk:
+        memory.artifact_risk = {"seen": now, "n": len(risk),
+                                "names": [f"{x['name']} ({x['why']})" for x in risk[:3]]}
+    else:
+        memory.artifact_risk = {"clear": now} if _d(getattr(memory, "artifact_risk", None)).get("seen") else {}
+
+
+def claimed_shut(s: dict, memory, cfg: dict):
+    """(r1 g7) Keep visitors out while artifacts someone may come for are in
+    the fort: {n, names}, or None. Whatever Outsiders says (a welcoming fort
+    too: B was Outsiders +60 and let its killers in as guests); never with
+    g7_claimed_shut off or the Rules switch heist_lockout off. From this
+    cycle's artifacts report, else the last one (memory.artifact_risk)
+    within g7_risk_hold_days.
+    Why shut rather than hand the artifacts back: DF has no way for the fort
+    to return an artifact (it can't be traded or given to a visitor), and a
+    shut location costs only the visitors' company; the claimed artifacts
+    were the player's (in the world before the AI) and are left where they
+    are."""
+    if not cfg.get("g7_claimed_shut", True):
+        return None
+    if isinstance(s.get("settings"), dict) and not player_rules(s)["heist_lockout"]:
+        return None
+    risk = artifacts_at_risk(s, memory, cfg)
+    if risk is not None:
+        if not risk:
+            return None
+        return {"n": len(risk), "names": [f"{x['name']} ({x['why']})" for x in risk[:3]]}
+    w = _d(getattr(memory, "artifact_risk", None))
+    now = abs_tick(s)
+    hold = int(cfg.get("g7_risk_hold_days", 7) or 0) * TICKS_PER_DAY
+    if isinstance(w.get("seen"), int) and isinstance(now, int) and 0 <= now - w["seen"] < hold:
+        return {"n": int(w.get("n") or 1), "names": [str(x) for x in _l(w.get("names"))]}
+    return None
 
 
 def heist_lockout_days(s: dict, cfg: dict) -> int:
@@ -451,6 +555,7 @@ def note_locations(s: dict, memory, cfg: dict) -> None:
     who = strangers_seeking(s)
     if who and isinstance(abs_tick(s), int):
         memory.stranger_shut = {"seen": abs_tick(s), "who": who[0][:60], "n": len(who)}
+    note_artifact_risk(s, memory, cfg)          # (r1 g7) the artifacts someone may come for
     locs = [e for e in _l(_d(s.get("locations")).get("list"))
             if isinstance(e, dict) and isinstance(e.get("id"), int) and isinstance(e.get("flags"), list)]
     if not locs:
@@ -527,6 +632,7 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     was = was if isinstance(was.get("until"), int) else {}
     swamp = None if closed else visitor_shut(s, memory, cfg)
     wary = None if closed else stranger_shut(s, memory, cfg)       # (0.105.30 live fixes)
+    claimed = None if closed else claimed_shut(s, memory, cfg)     # (r1 g7) artifacts heroes come for
     now = abs_tick(s)
     mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
     # (0.105.26) plan() changes no memory: one the AI shut and you opened again
@@ -535,7 +641,7 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     # shut is that old report: neither yours nor shut again
     stale = {i for i in mine if location_stale(s, memory, cfg, i)}
     yours = {e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" in e["flags"] and e["id"] not in stale}
-    if closed or lock or swamp or wary:
+    if closed or lock or swamp or wary or claimed:
         # (review) one the AI shut and you opened again is yours: forgotten, never shut again
         left_open = set(memory.locations_yours or []) | yours
         if lock and not closed:
@@ -559,7 +665,12 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
                          f"scholars asking to stay) and {swamp.get('unheard')} citizens couldn't lodge a complaint; "
                          "the Rules switch \"Shut to visitors when mayor swamped\" turns this off")
         # (0.105.30 live fixes) the wary days after a stranger sought a meeting, said while they hold
-        if wary and not closed and not lock and (shut or held):
+        if claimed and not closed and not lock and held and not shut:
+            notes.append(f"visitors kept out of {_location_words(locs, set(held)) or 'the locations'} while "
+                         f"{claimed['n']} artifact(s) someone may come for lie in the fort "
+                         f"({'; '.join(claimed['names'][:2])}): heroes come for them as guests. The Rules "
+                         "switch \"Shut to visitors a while after a theft\" turns this off")
+        if wary and not closed and not lock and not claimed and (shut or held):
             notes.append(f"a stranger ({wary.get('who') or 'a visitor not of the fort'}) sought a meeting with the "
                          f"mayor: visitors kept out of {_location_words(locs, set(shut) | set(held)) or 'the locations'} "
                          f"for {max(1, wary_left)} more day(s) (residents still welcome; 19 of 23 thieves asked for a "
@@ -570,6 +681,11 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
             elif lock and lock_left >= max(swamp_left, wary_left):
                 why = (f"a thief or a violent visitor ({lock[1]}) struck: visitors kept out "
                        f"for {max(1, lock_left)} more day(s) (thieves came as guests)")
+            elif claimed:
+                why = (f"{claimed['n']} artifact(s) in the fort are claimed or sought "
+                       f"({'; '.join(claimed['names'][:2])}): heroes come for them as guests (B, y262: one "
+                       "killed 19 citizens in 65 seconds), so visitors are kept out while they are here, "
+                       "whatever Outsiders says")
             elif wary and wary_left >= swamp_left:
                 why = (f"a stranger ({wary.get('who') or 'a visitor not of the fort'}) seeks a meeting with the "
                        f"mayor (19 of 23 thieves did first): visitors kept out for {max(1, wary_left)} day(s)")
@@ -584,7 +700,7 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
             proposals.append(Proposal("location_access", action,
                                       f"{why}: {_location_words(locs, set(shut))} ({len(shut)} location(s)) "
                                       "closed to visitors (residents still welcome)",
-                                      3 if lock or wary else 5 if swamp and not closed else 6))
+                                      3 if lock or wary or claimed else 5 if swamp and not closed else 6))
         return
     reopen = [e["id"] for e in locs if e["id"] in mine and "VISITORS_ALLOWED" not in e["flags"]]
     if not reopen:
@@ -598,6 +714,8 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     if (isinstance(ws, dict) and isinstance(ws.get("seen"), int)
             and 0 <= now - ws["seen"] < (int(cfg.get("stranger_shut_days", 7)) + 2) * TICKS_PER_DAY):
         why.append(f"no stranger sought a meeting for {int(cfg.get('stranger_shut_days', 7))} days")
+    if _d(getattr(memory, "artifact_risk", None)).get("clear"):
+        why.append("no claimed or sought artifact left in the fort")
     if was:
         why.append("shutting out visitors for the mayor is off on the Rules tab"
                    if rules_.get("shut_to_visitors") is False

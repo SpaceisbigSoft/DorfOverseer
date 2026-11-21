@@ -1633,6 +1633,11 @@ function kill_target_ok(u)
     if is(U.isMerchant) or is(U.isDiplomat) or is(U.isTame) then return false end
     if is(U.isCitizen) then return false end
     if is(U.isDanger) or is(U.isInvader) then return true end
+    -- (r1 g7) a visitor who killed one of the fort's own, or a hero spotted
+    -- sneaking after an artifact (ai-threats TURNED): B's Len Karaura killed 19
+    -- in 65 s while DF called him neither a danger nor an invader
+    local okt, turned = pcall(function() return reqscript('ai-threats').is_turned(u) end)
+    if okt and turned == true then return true end
     -- (item1, 14 Nov) a unit DF's own job cancellations show keeping the
     -- dwarves from drink, food or sleep ("cancels Drink: Interrupted by a
     -- human spearman"): B lost 66 to thirst beside 845 drinks while a beaten

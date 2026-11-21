@@ -3342,9 +3342,16 @@ function get_others_on_map()
                 and not dfhack.units.isHidden(u)
                 and not dfhack.units.isCitizen(u, true) then
             local contained = u.flags1.caged or u.flags1.chained
-            if dfhack.units.isDanger(u) and contained then
+            -- (r1 g7) a visitor turned killer (or a hero spotted after an
+            -- artifact) is a threat though DF doesn't call it a danger yet
+            local turned = false
+            if TH and TH.is_turned and not dfhack.units.isDanger(u) then
+                local okt2, yes = pcall(TH.is_turned, u)
+                turned = okt2 and yes == true
+            end
+            if (dfhack.units.isDanger(u) or turned) and contained then
                 out.contained_dangers = out.contained_dangers + 1
-            elseif dfhack.units.isDanger(u) then
+            elseif dfhack.units.isDanger(u) or turned then
                 local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
                 local group = dfhack.maps.getWalkableGroup(pos)
                 -- true / false, or nil when DF's path data can't say
@@ -3370,6 +3377,9 @@ function get_others_on_map()
                     kinds = #kinds > 0 and kinds or nil,
                     great_danger = dfhack.units.isGreatDanger(u),
                     invader = dfhack.units.isInvader(u),
+                    turned = turned or nil,     -- (r1 g7) a visitor turned killer
+                    visitor = (function() local okv, v = pcall(dfhack.units.isVisitor, u)
+                                   return (okv and v) and true or nil end)(),
                     -- (0.105.48, K1) an animal (DF agitates wild ones: a falcon, a
                     -- wolf) is wildlife to the brain's triage, not an enemy: no
                     -- fort-wide alarm or gates for a small one, a hunting squad
@@ -3820,6 +3830,8 @@ function start_watching()
         local ev = describe_unit(id)
         ev.kind = 'death'
         pcall(death_details, ev, id)
+        -- (r1 g7) a visitor who killed one of the fort's own: a target (ai-threats TURNED)
+        pcall(function() reqscript('ai-threats').note_death(ev) end)
         push_event(ev)
     end
     eventful.onUnitNewActive[WATCH_KEY] = function(id)
