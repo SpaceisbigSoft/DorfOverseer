@@ -2718,7 +2718,8 @@ def _():
     s["moods"] = {"list": [mood()]}
     p, _ = plan(s, Memory())
     m = by_rule(p, "mood")
-    assert m and m[0].action == {"type": "start_project", "kind": "workshops", "shops": ["Jewelers"], "urgent": True}, m
+    assert m and m[0].action == {"type": "start_project", "kind": "workshops", "shops": ["Jewelers"], "urgent": True,
+                                 "mood": True}, m          # (R1 g6) a mood's shop takes no project slot
     assert m[0].priority <= 1
     # (0.105.36, X1) only a level building its kind holds it; another workshops level does not
     s["projects"]["open"].append({"id": 9, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Masons"]}})
@@ -6371,7 +6372,7 @@ def _():
     o = [p.action for p in by_rule(props, "mood")]
     assert {"type": "work_order", "recipe": "stone_blocks", "amount": 2} in o, o
     # (0.105.24) a bone: one spare tame animal to the butcher; iron with no iron ore: named
-    assert {"type": "slaughter_one", "oldest": True, "mood_unit": 5} in o, o     # (0.105.30) the oldest, one a mood
+    assert {"type": "slaughter_one", "oldest": True, "mood": True, "mood_unit": 5} in o, o     # (0.105.30) the oldest, one a mood; (R1 g6) any spare
     assert any("1 bar of iron" in n for n in notes), notes
     # (0.103.8) on day 4 the dwarf may still be fetching it: a note; Needs you from day 7
     assert not any(n.startswith(planner.NEEDS_YOU) and "still lacks" in n for n in notes), notes
@@ -6455,8 +6456,8 @@ def _():
     assert any(n.startswith(planner.NEEDS_YOU) and "where the dwarf can't walk" in n and "1 log" in n for n in notes), notes
     from planner_industry import trade_wants
     w = trade_wants(s, PLANNER_CONFIG, 50)
-    assert w[0] == {"key": "CLOTH", "count": 1}, w[:3]
-    assert sum(1 for x in w if x["key"] == "CLOTH") == 1, w     # the fort's own cloth want isn't added twice
+    assert w[0] == {"key": "CLOTH:SILK", "count": 1}, w[:3]       # (R1 g6) the silk asked as silk
+    assert sum(1 for x in w if x["key"] == "CLOTH:SILK") == 1, w
 
 
 @test("mood (0.105.24): the jewellers and bone carvers leave the last gems and bones to a mood that waits for them")

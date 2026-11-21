@@ -54,7 +54,7 @@ def _():
     props, notes = plan(s, unclaimed(s))
     b = [p for p in by_rule(props, "mood") if p.action.get("type") == "start_project"]
     assert b and b[0].action == {"type": "start_project", "kind": "workshops", "shops": ["Mechanics"],
-                                 "urgent": True}, [p.action for p in props]
+                                 "urgent": True, "mood": True}, [p.action for p in props]   # (R1 g6) no slot taken
     assert not any(n.startswith(NEEDS) and "Kib" in n for n in notes), notes
     # a workshops level already under way: a note, nothing more
     s2 = fort()

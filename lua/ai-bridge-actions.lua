@@ -520,6 +520,7 @@ function act_start_project(a)
     if ferr then return reject(ferr) end
     p.floor = floor
     p.urgent = a.urgent == true or nil       -- a well's or a mood's workshop: one slot more
+    p.mood = (a.mood == true and a.kind == 'workshops') or nil   -- (R1 g6) a waiting mood's shop: no slot taken
     -- (0.105.23, 14.1 step 4c) the Deep mine: no level above this elevation (one under the surface)
     if a.max_elev ~= nil then
         p.max_elev = int_in(a.max_elev, -400, 400)
@@ -2134,35 +2135,103 @@ function slaughter_pick(animals, oldest)
     return best.list[1], best_race, best.n
 end
 
+-- (R1 g6) For a strange mood waiting on bone or leather (a life at stake),
+-- any spare tame animal will do: R-AD/R-CE, 15-16 Nov, the "three of a kind,
+-- adult" rule refused 93 times in D and 200+ in C and E while five moods died
+-- for one bone. Still never a pet, a war or hunting animal, a named one, a
+-- caged one, nor one of the last breeding pair of its kind (the only adult
+-- male while the kind has an adult female, and the reverse). The AI's kept
+-- breeders and mousers only when nothing else will do; adults before young
+-- (more bone and a hide), the most numerous kind, the oldest. animals:
+-- {id, race, male, born, adult, kept}. Returns the pick, its race and kind size.
+function slaughter_pick_mood(animals)
+    local by_race = {}
+    for _, a in ipairs(animals) do
+        local r = by_race[a.race] or {n = 0, am = 0, af = 0, list = {}}
+        r.n = r.n + 1
+        if a.adult then
+            if a.male then r.am = r.am + 1 else r.af = r.af + 1 end
+        end
+        table.insert(r.list, a)
+        by_race[a.race] = r
+    end
+    local best, best_race, best_r
+    for race, r in pairs(by_race) do
+        for _, a in ipairs(r.list) do
+            local pair_kept = a.adult and ((a.male and r.am == 1 and r.af >= 1) or (not a.male and r.af == 1 and r.am >= 1))
+            if not pair_kept then
+                local better = best == nil
+                if not better then
+                    if (a.kept and true or false) ~= (best.kept and true or false) then better = not a.kept
+                    elseif (a.adult and true or false) ~= (best.adult and true or false) then better = a.adult == true
+                    elseif r.n ~= best_r.n then better = r.n > best_r.n
+                    elseif (a.born or 0) ~= (best.born or 0) then better = (a.born or 0) < (best.born or 0)
+                    else better = a.id < best.id end
+                end
+                if better then best, best_race, best_r = a, race, r end
+            end
+        end
+    end
+    if not best then return nil end
+    return best, best_race, best_r.n
+end
+
 function act_slaughter_one(a)
     local cands, marked = {}, 0
+    -- (R1 g6) for a strange mood (mood_unit, or mood = true): any spare tame
+    -- animal (slaughter_pick_mood), young and the AI's kept ones included
+    local for_mood = a.mood_unit ~= nil or a.mood == true
     -- (0.105.51) the cats and breeders the AI keeps: a list of ids now, no nickname (lua/ai-herd.lua)
     local okk, kept = pcall(function() return reqscript('ai-herd').kept_all() end)
     kept = okk and type(kept) == 'table' and kept or {}
     for _, u in ipairs(df.global.world.units.active) do
-        local ok, fit = pcall(function()
+        local ok, fit, is_kept = pcall(function()
             if not dfhack.units.isAnimal(u) or not dfhack.units.isFortControlled(u) or dfhack.units.isDead(u) then return false end
             if u.flags2.slaughter then marked = marked + 1 return false end
             if dfhack.units.isPet(u) or dfhack.units.isWar(u) or dfhack.units.isHunter(u) then return false end
-            if kept[u.id] then return false end                                -- (0.105.51) kept by the AI
+            if u.flags1.caged then return false end
             if (u.name.nickname or '') == 'Mouser' then return false end      -- (0.104.168) a cat the AI keeps
+            local ai_kept = kept[u.id] == true or (u.name.nickname or '') == 'Breeder'
+            if for_mood then
+                -- (R1 g6) a named animal is the player's: never, not even for a mood
+                local named = false
+                pcall(function() named = u.name.has_name == true end)
+                if named or ((u.name.nickname or '') ~= '' and not ai_kept) then return false end
+                return true, ai_kept
+            end
+            if kept[u.id] then return false end                                -- (0.105.51) kept by the AI
             if (u.name.nickname or '') == 'Breeder' then return false end     -- (0.105.47) a breeder (lua/ai-herd.lua)
-            if not dfhack.units.isAdult(u) or u.flags1.caged then return false end
+            if not dfhack.units.isAdult(u) then return false end
             return true
         end)
         if ok and fit then
             local race = df.creature_raw.find(u.race)
             local born = 0
             pcall(function() born = u.birth_year * 403200 + u.birth_time end)
+            local adult = true
+            if for_mood then
+                local oka, ad = pcall(dfhack.units.isAdult, u)
+                adult = oka and ad == true
+            end
             table.insert(cands, {id = u.id, unit = u, race = race and race.creature_id or tostring(u.race),
-                                 male = dfhack.units.isMale(u), born = born})
+                                 male = dfhack.units.isMale(u), born = born, adult = adult, kept = is_kept == true})
         end
     end
     if marked > 0 then return {ok = false, rejected = true, waiting = true, error = ('%d animal(s) already wait for the butcher'):format(marked)} end
-    local pick, race, n = slaughter_pick(cands, a.oldest == true)
+    local pick, race, n
+    if for_mood then
+        pick, race, n = slaughter_pick_mood(cands)
+        if not pick then
+            return {ok = false, rejected = true, error = 'no tame animal to spare even for a strange mood (only pets, war or ' ..
+                    'hunting animals, named or caged ones, or a kind\'s last breeding pair)'}
+        end
+    else
+        pick, race, n = slaughter_pick(cands, a.oldest == true)
+    end
     if not pick then return {ok = false, rejected = true, error = 'no spare tame animal (three or more of a kind, adult, no pet or war animal)'} end
     local out = {ok = true, race = race, of = n, unit_id = pick.id, dry_run = a.dry_run or nil,
-                 oldest = a.oldest == true or nil, mood_unit = a.mood_unit}
+                 oldest = a.oldest == true or nil, mood_unit = a.mood_unit,
+                 young = (for_mood and not pick.adult) or nil, kept = (for_mood and pick.kept) or nil}
     if a.dry_run then return out end
     pick.unit.flags2.slaughter = true
     return out

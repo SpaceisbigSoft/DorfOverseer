@@ -77,8 +77,9 @@ def _():
     assert any("2 plant cloth, a reserve of 3 kept for strange moods" in n for n in notes), notes
     assert not reserve_props(s, m)[1] or not any("plant cloth" in n for n in reserve_props(s, m)[1])
     keys = {w["key"]: w["count"] for w in reserve_trade_wants(s, CFG)}
-    # (0.105.51) 1 plant cloth, and 2 silk cloth the fort can't make (no webs in reach)
-    assert keys == {"CLOTH": 3, "SEEDS": 5}, keys
+    # (0.105.51) 1 plant cloth, and 2 silk cloth the fort can't make (no webs in reach);
+    # (R1 g6) the silk asked by its own key
+    assert keys == {"CLOTH": 1, "SEEDS": 5, "CLOTH:SILK": 2}, keys
     assert any(w["key"] == "SEEDS" for w in trade_wants(s, CFG, 30))
     # never a slaughter for a reserve (the Beast-friends ban untouched)
     assert not [p for p in props if p.action.get("type") == "slaughter_one"]
@@ -101,7 +102,7 @@ def _():
     s["farms"]["crops"]["GRASS_TAIL_PIG"]["planted"] = 1          # grows already: nothing to set
     assert not [p for p in reserve_props(s)[0] if p.action.get("type") == "set_farm_crops"]
     # plant cloth can be made here: no seeds asked, only (0.105.51) the 2 silk cloth it can't make
-    assert reserve_trade_wants(s, CFG) == [{"key": "CLOTH", "count": 2}], reserve_trade_wants(s, CFG)
+    assert reserve_trade_wants(s, CFG) == [{"key": "CLOTH:SILK", "count": 2}], reserve_trade_wants(s, CFG)
 
 
 @test("reserves 3: at the reserve nothing is ordered with nothing to make it of; leather tanned, a gem cut over the rough reserve, blocks made")
@@ -117,7 +118,10 @@ def _():
     s["trade"] = dict(s.get("trade") or {}, rough_gem={"n": 5, "token": "INORGANIC:AGATE"})
     a = reserve_props(s)[0][0].action
     assert a == {"type": "work_order", "recipe": "cut_gems", "amount": 1, "material": "INORGANIC:AGATE"}, a   # rough 5 - 4 kept
-    s["stocks"]["rough_gems"] = 4                                 # only its own reserve: not cut
+    s["stocks"]["rough_gems"] = 4                                 # only its own reserve: (R1 g6) still one cut
+    a = reserve_props(s)[0][0].action
+    assert a == {"type": "work_order", "recipe": "cut_gems", "amount": 1, "material": "INORGANIC:AGATE"}, a
+    s["stocks"]["cut_gems"] = 1                                   # (R1 g6) one cut gem kept: the rough ones stay
     assert not reserve_props(s)[0]
     s["stocks"]["blocks"] = 1
     assert reserve_props(s)[0][0].action == {"type": "work_order", "recipe": "stone_blocks", "amount": 6}

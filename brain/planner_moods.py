@@ -107,7 +107,7 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                              f"with a {need} is already being built")
             elif need in BUILDABLE_SHOPS:
                 proposals.append(Proposal(
-                    "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True},
+                    "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True, "mood": True},
                     f"{name} is in a {mood.lower()} mood and needs a {need} workshop, which the fort "
                     "doesn't have; without one they go insane", 0))
             else:
@@ -125,7 +125,7 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
             what = f"{name} has been in a {mood.lower()} mood for {days} days without claiming a workshop"
             if need in BUILDABLE_SHOPS and not coming and shop_count(b, need) < shops_max(cfg, citizens):
                 proposals.append(Proposal(
-                    "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True},
+                    "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True, "mood": True},
                     f"{what}: the fort's {need} may be in use or out of the dwarf's walk, so another is "
                     "built; without one they go insane", 0))
             elif need and coming:
@@ -137,7 +137,7 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                 # Craftsdwarf's for 41 days and went mad, the AI building none)
                 proposals.append(Proposal(
                     "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True,
-                             "mood_unit": m.get("unit_id")},
+                             "mood": True, "mood_unit": m.get("unit_id")},
                     f"{what}: the fort's {shop_count(b, need)} {need} (the AI's cap) are taken or out of the "
                     f"dwarf's walk, so one more is built past the cap; without one they go insane", 0))
             else:
@@ -291,6 +291,8 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         kinds = [k for k in ("silk", "yarn", "plant") if k in flags] or \
             sorted(("plant", "yarn", "silk"), key=lambda k: -int(thread.get(k) or 0))
         if not _has_shop(b, "Loom"):
+            if _mood_shop(s, ("Loom",), acts, mood, "cloth woven"):
+                return acts, None
             return acts, "no loom to weave it at"
         for k in kinds:
             if int(_d(su.get("thread_kinds")).get(k) or 0) > 0 and not thread.get(k):
@@ -361,19 +363,26 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
             if order("tan_hide", q, "tan a hide"):
                 return acts, None
         why = "no hide to tan" + ("" if _has_shop(b, "Tanners") else " and no tanner's")
-        if _mood_slaughter(s, memory, cfg, acts, "its hide tanned for leather", mood=mood):
+        # (R1 g6) the butcher's and the tanner's a mood's leather needs, built past the cap
+        shop = _mood_shop(s, ("Butchers", "Tanners"), acts, mood, "an animal butchered and its hide tanned")
+        if _mood_slaughter(s, memory, cfg, acts, "its hide tanned for leather", mood=mood) or shop:
             return acts, None
         return acts, why + "; " + _slaughter_why(s, memory, cfg, mood) + dead_words()
     if kind in ("bone", "shell"):
         if kind == "shell":
             return acts, "no shell (shells come from turtles and shellfish: fishing, or a caravan's)"
-        if _mood_slaughter(s, memory, cfg, acts, "its bones for the mood", mood=mood):
+        shop = _mood_shop(s, ("Butchers",), acts, mood, "an animal butchered for its bones")
+        if _mood_slaughter(s, memory, cfg, acts, "its bones for the mood", mood=mood) or shop:
             return acts, None
         return acts, "no bone the dwarf can use; " + _slaughter_why(s, memory, cfg, mood)
     if kind == "bar":
         furnaces = _d(b.get("furnaces"))
         magma = bool(furnaces.get("MagmaSmelter"))
         if not (furnaces.get("Smelter") or magma):
+            ores = any(isinstance(v, dict) and int(v.get("n") or 0) > 0
+                       for v in _d(_d(s.get("industry")).get("ore_stock_by")).values())
+            if ores and _mood_shop(s, ("Smelter",), acts, mood, "ore smelted into a bar"):
+                return acts, None
             return acts, "no smelter"
         if not magma and int(su.get("fuel") or 0) <= 0:
             return acts, "no fuel for the smelter"
@@ -392,6 +401,9 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
     if kind == "glass_rough":
         furnaces = _d(b.get("furnaces"))
         if not (_has_shop(b, "GlassFurnace") or furnaces.get("MagmaGlassFurnace")):
+            sand = bool(_l(su.get("sand_layers")) or int(su.get("sand_bags") or 0) > 0)
+            if sand and _mood_shop(s, ("GlassFurnace",), acts, mood, "raw green glass made"):
+                return acts, None
             return acts, "no glass furnace"
         if int(su.get("sand_bags") or 0) > 0 and (int(su.get("fuel") or 0) > 0 or furnaces.get("MagmaGlassFurnace")):
             if order("raw_green_glass", q, "make raw green glass"):
@@ -410,10 +422,17 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         return acts, "no bag of sand (or no fuel) for raw glass" + dead_words()
     if kind == "cut_gem":
         rg = _d(_d(s.get("trade")).get("rough_gem"))
+        rough = max(int(rg.get("n") or 0), int(st.get("rough_gems") or 0))
         if (_has_shop(b, "Jewelers") and int(rg.get("n") or 0) > 0
                 and str(rg.get("token", "")).startswith("INORGANIC:")):
             if order("cut_gems", q, "cut a gem", rg["token"]):
                 return acts, None
+        if not _has_shop(b, "Jewelers") and rough > 0:
+            # (R1 g6) R-AD: rough gems by the hundred and no jeweller's for 1-2
+            # game years (the project cap), while three moods died for one cut gem
+            if _mood_shop(s, ("Jewelers",), acts, mood, f"one of the fort's {rough} rough gems cut"):
+                return acts, None
+            return acts, f"no jeweller's workshop to cut the fort's {rough} rough gems" + dead_words()
         return acts, "no rough gem to cut" + dead_words()
     if kind == "block" and not x.get("material") and not flags & {"metal", "glass", "wood"}:
         order("stone_blocks", q, "make stone blocks")
@@ -436,7 +455,34 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
     return acts, "no recipe makes it"
 
 
-MOOD_SLAUGHTER_MIN_TAME = 3     # (0.105.30) for a mood: the bridge keeps the last two of a kind anyway
+MOOD_SLAUGHTER_MIN_TAME = 1     # (R1 g6) for a mood: any spare animal (the bridge keeps pets, named ones, a last pair)
+
+
+def _mood_shop(s: dict, needs, acts: list, mood: dict | None, what: str) -> bool:
+    """(R1 g6) The workshops a waiting mood's material is made at (a
+    jeweller's for a cut gem, a butcher's for bone...), one workshops level
+    past the AI's project cap (`mood`: the bridge's builder takes no slot for
+    it). Only for a named mood (the reserves wait their turn). True when one
+    is asked for now or already coming; False when every one stands, or the
+    builder can't place it."""
+    if not mood:
+        return False
+    b = _d(s.get("buildings"))
+    missing = [n for n in needs if not _has_shop(b, n)]
+    if not missing:
+        return False
+    coming = [n for n in missing if _shop_coming(s, n)]
+    want = [n for n in missing if n not in coming and n in BUILDABLE_SHOPS]
+    if not want:
+        return bool(coming)
+    if any(a.get("type") == "start_project" for a, _ in acts):
+        return True
+    a = {"type": "start_project", "kind": "workshops", "shops": want, "urgent": True, "mood": True}
+    if mood.get("unit_id") is not None:
+        a["mood_unit"] = mood.get("unit_id")
+    acts.append((a, f"no {', '.join(want)}: one is built for it ({what}), past the AI's project cap, "
+                    "a life being at stake"))
+    return True
 
 
 def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict | None = None) -> bool:
@@ -452,7 +498,13 @@ def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict
     asked for or already went for this mood (its bone or hide is coming)."""
     uid = None if not mood else mood.get("unit_id")
     if uid is not None and memory is not None and str(uid) in _d(getattr(memory, "mood_slaughter", None)):
-        return True                                   # this mood's one animal went already
+        # this mood's animal went already: its bone or hide is coming. (R1 g6)
+        # Another after `g6_mood_slaughter_again_days` while it still waits
+        # (D's Uvash: the one alpaca butchered, the mood still failed)
+        last = _d(getattr(memory, "mood_slaughter", None)).get(str(uid))
+        again = int(cfg.get("g6_mood_slaughter_again_days", 8)) * TICKS_PER_DAY
+        if not (isinstance(last, int) and 0 <= abs_tick(s) - last >= again):
+            return True
     tame = int(_d(s.get("others_on_map")).get("tame_animals") or 0)
     banned = memory is not None and has_rule(getattr(memory, "culture", None), "no_slaughter")
     least = MOOD_SLAUGHTER_MIN_TAME if mood else cfg["slaughter_min_tame"]
@@ -463,11 +515,15 @@ def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict
     if any(a.get("type") == "slaughter_one" for a, _ in acts):
         return True
     if mood:
-        a = {"type": "slaughter_one", "oldest": True}
+        # (R1 g6) `mood`: the bridge takes any spare tame animal (young or of a
+        # small herd too), never a pet, a war or hunting animal, a named one, a
+        # caged one or a kind's last breeding pair (R-AD: refused 93 times in D)
+        a = {"type": "slaughter_one", "oldest": True, "mood": True}
         if uid is not None:
             a["mood_unit"] = uid
         who = mood.get("name") or "a dwarf"
-        text = f"the oldest spare tame animal of the {tame} to the butcher: {why}"
+        text = (f"a spare tame animal of the {tame} to the butcher (any kind, young too; never a pet, a war or "
+                f"hunting animal, a named one or a kind's last breeding pair): {why}")
         if banned:
             text = (f"the fort's {_ban_name(memory)} ban is set aside to save {who}'s mood: one animal only, "
                     + text)
@@ -634,7 +690,7 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
         lack_at = len(notes)
         notes.append(f"{name}'s {mood.lower()} mood (day {days}) needs what the fort can't supply: "
                      + "; ".join(f"{w}: {why}" for w, why, _ in lacking)
-                     + f". On the caravans' list: bought {TRADE_IF}")
+                     + ". " + _mood_trade_words(s, name, [k for _, _, k in lacking]))
     elif lacking and days >= cfg["mood_lacking_days"]:
         # (an older bridge, no count) what is forbidden or dumped is freed, the rest asked of the caravans
         if unit_id is not None and not freeing:
@@ -679,6 +735,25 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
                      + ("; forbidden materials freed" if freeing else ""))
 
 
+def _mood_trade_words(s: dict, name: str, kinds: list) -> str:
+    """(R1 g6) Plainly, whether what a mood lacks can still be had: bought
+    from a caravan on the map now, asked of the next one, or no way at all
+    (R-CE: 9 dwarves went insane wanting silk, the notes promising a purchase
+    no caravan was there to make)."""
+    tr = _d(s.get("trade"))
+    traded = [k for k in kinds if MOOD_TRADE_KEYS.get(k) or k == "bar"]
+    if not traded:
+        return (f"There is no way to get it here (no caravan sells it either): {name} will most likely go insane "
+                "unless it turns up")
+    if not tr.get("depot"):
+        return (f"The fort has no trade depot, so no caravan can sell it either: there is no way to get it, and "
+                f"{name} will most likely go insane")
+    if any(isinstance(c, dict) for c in _l(tr.get("caravans"))):
+        return "A caravan is on the map: it is first on the AI's list to buy from it"
+    return (f"No caravan is on the map, so there is no way to get it now: it is first on the next caravan's list "
+            f"(bought {TRADE_IF}), and {name} goes insane if none comes in time")
+
+
 def mood_trade_wants(s: dict) -> list[dict]:
     """(0.105.24) What the moods wait for and the fort doesn't have within
     reach, as caravan wants (first on the list: a life hangs on it)."""
@@ -693,6 +768,13 @@ def mood_trade_wants(s: dict) -> list[dict]:
             if int(av.get("forbidden_reach") or 0) or int(av.get("job") or 0):
                 continue
             key = MOOD_TRADE_KEYS.get(mood_kind(x))
+            # (R1 g6) cloth and thread of the fibre asked (a silk mood was "sold"
+            # the cheapest cloth: plant): CLOTH:SILK, THREAD:YARN... (lua/ai-trade.lua)
+            fibre = [f for f in ("silk", "yarn", "plant") if f in set(str(f) for f in _l(x.get("flags")))]
+            if mood_kind(x) == "cloth" and len(fibre) == 1:
+                key = "CLOTH:" + fibre[0].upper()
+            elif str(x.get("item") or "").upper() == "THREAD":
+                key = "THREAD" + (":" + fibre[0].upper() if len(fibre) == 1 else "")
             if not key and mood_kind(x) == "bar" and x.get("material") and str(x["material"]).lower() != "rock":
                 key = "BAR:" + str(x["material"]).upper().replace(" ", "_")
             if key and key not in seen:
@@ -909,16 +991,13 @@ def reserve_trade_wants(s: dict, cfg: dict) -> list[dict]:
     want, have = int(cfg.get("reserve_plant_cloth") or 0), counts["plant_cloth"]
     if want and have is not None and have < want and _plant_cloth_route(s) == "none":
         out += [{"key": "CLOTH", "count": want - have}, {"key": "SEEDS", "count": 5}]
-    short = 0
-    for k, made in (("silk_cloth", _silk_made_here(s, cfg)), ("yarn_cloth", _yarn_made_here(s, cfg))):
+    # (R1 g6) each fibre asked by its own key (CLOTH:SILK, CLOTH:YARN): a
+    # silk reserve met by the merchants' cheapest cloth was no silk
+    for k, made, key in (("silk_cloth", _silk_made_here(s, cfg), "CLOTH:SILK"),
+                         ("yarn_cloth", _yarn_made_here(s, cfg), "CLOTH:YARN")):
         w, h = int(cfg.get(MOOD_RESERVES[k][0]) or 0), counts.get(k)
         if w and h is not None and h < w and not made:
-            short += w - h
-    if short:
-        if out:
-            out[0]["count"] += short
-        else:
-            out.append({"key": "CLOTH", "count": short})
+            out.append({"key": key, "count": w - h})
     return out
 
 
@@ -1048,13 +1127,34 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
                 proposals.append(Proposal("mood_reserve", dict(a, oldest=True),
                                           f"{have} leather, a reserve of {want}: {why}", 5))
             return
+    # (R1 g6) bones: bone comes only from a carcass, so below a few the
+    # ordinary slaughter rule sends one spare animal (its own guards: enough
+    # tame animals, a butcher's, never a fort that bans it; never a young one,
+    # a pet, a war or hunting animal, or one of the last two of a kind)
+    bones, bones_min = counts.get("bones"), int(cfg.get("g6_reserve_bones_min", 2))
+    if (bones is not None and bones < bones_min and _has_shop(b, "Butchers")
+            and not _reserve_slaughter_recent(s, memory, cfg)):
+        acts = []
+        if _mood_slaughter(s, memory, cfg, acts, f"its bones {FOR}"):
+            for a, why in acts:
+                proposals.append(Proposal("mood_reserve", dict(a, oldest=True),
+                                          f"{bones} bones, under the {bones_min} kept: {why}", 5))
+            # no return: a refused slaughter (no spare animal) mustn't hold the gems and bars back
     n, have, want = gap("cut_gems")
     rough, rough_keep = counts.get("rough_gems"), int(cfg.get("reserve_rough_gems") or 0)
     rg = _d(_d(s.get("trade")).get("rough_gem"))
-    if (n and rough is not None and rough > rough_keep and _has_shop(b, "Jewelers")
+    # (R1 g6) at least `g6_reserve_cut_gems_min` cut gem whenever a rough gem
+    # lies about, the rough gems' own reserve or not (a mood asks "1 cut gem",
+    # any kind: 763 requests in the 15-16 Nov run, none of a named stone)
+    cut_min = int(cfg.get("g6_reserve_cut_gems_min", 1))
+    spare = (rough - rough_keep) if rough is not None else 0
+    if have is not None and have < cut_min and rough:
+        spare = max(spare, min(rough, cut_min - have))
+    if (n and rough is not None and spare > 0 and _has_shop(b, "Jewelers")
             and str(rg.get("token", "")).startswith("INORGANIC:")):
-        if order("cut_gems", min(n, rough - rough_keep), f"{have} cut gems, a reserve of {want} {FOR}: cut "
-                                                         "a rough gem (its own reserve kept)", rg["token"]):
+        if order("cut_gems", min(n, spare), f"{have} cut gems, a reserve of {want} {FOR}: cut "
+                                            "a rough gem" + (" (its own reserve kept)" if rough > rough_keep else ""),
+                 rg["token"]):
             return
     # (0.105.51) raw green glass and metal bars, by the mood's own routes
     for key, kind, item in (("green_glass", "glass_rough", {"item": "ROUGH", "material": "green glass"}),
@@ -1095,7 +1195,8 @@ def _reserve_slaughter_recent(s: dict, memory, cfg: dict) -> bool:
 # or leatherworker's mood came; A's glass furnace level, begun on the mood's
 # first day, was not dug in 40). Only these: the AI's other rules build the
 # common shops (the basic ladder, the industries) before moods begin.
-MOOD_SHOP_KINDS = {"Leatherworks": "Tanners", "Clothiers": "Loom", "GlassFurnace": "sand"}
+MOOD_SHOP_KINDS = {"Leatherworks": "Tanners", "Clothiers": "Loom", "GlassFurnace": "sand",
+                   "Jewelers": "rough"}      # (R1 g6) a cut gem is asked by any mood (R-AD: 3 deaths)
 MOOD_SHOPS_MIN_CITIZENS = 20        # DF's strange moods begin at 20 citizens
 
 
@@ -1106,8 +1207,9 @@ def mood_shops_missing(s: dict) -> list:
     su = _d(s.get("supplies"))
     sand = bool(_l(su.get("sand_layers")) or int(su.get("sand_bags") or 0) > 0 or int(su.get("sand_zones") or 0) > 0)
     out = []
+    rough = int(_d(s.get("stocks")).get("rough_gems") or 0) > 0
     for kind, source in MOOD_SHOP_KINDS.items():
-        works = sand if source == "sand" else _has_shop(b, source)
+        works = sand if source == "sand" else rough if source == "rough" else _has_shop(b, source)
         if works and kind in BUILDABLE_SHOPS and not _has_shop(b, kind) and not _shop_coming(s, kind):
             out.append(kind)
     return out

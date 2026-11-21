@@ -460,7 +460,8 @@ def _():
 @test("5: the mood notes promise a purchase only if a caravan trade happens")
 def _():
     s = fort()
-    s["buildings"]["workshops"].pop("Loom", None)
+    # (R1 g6) a Loom stands (none: one is built for the mood); a depot, no caravan on the map
+    s["trade"] = {"depot": True, "caravans": []}
     x = {"item": "CLOTH", "flags": ["silk"], "quantity": 1, "avail": {"free": 0, "reach": 0}}
     props, notes = [], []
     planner_moods._mood_materials(s, "Vutok", "Fey", [x], 4, props, notes, CFG, memory=Memory(), unit_id=5,
