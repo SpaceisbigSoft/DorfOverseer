@@ -2599,7 +2599,8 @@ def _():
     w = by_rule(plan(s, Memory())[0], "well")
     assert w[0].priority == 2 and w[0].reason.startswith("2 injured dwarves need water"), w
     assert w[0].action.get("urgent") is True, w                         # (0.104.13) an urgent slot
-    assert not by_rule(plan(fort(), Memory())[0], "well"), "the real fort has 3 wells"
+    # (r1 g3) its 3 wells for 194 (one for every 40 wanted): only another, not "no well"
+    assert not [x for x in by_rule(plan(fort(), Memory())[0], "well") if not x.action.get("extra")], "the real fort has 3 wells"
 
 
 @test("wells: one being built -> no second; slots full or Mining -100 -> a note, not an action")
@@ -8945,9 +8946,14 @@ def _():
     assert w and w[0].action == {"type": "place_well", "extra": True} and w[0].priority == 5, [x.action for x in w]
     record([(w[0], {"ok": False, "error": "no clean water inside the fort"})], s, m)
     assert m.extra_well_failure and not m.well_failure
+    # (r1 g3) any refusal of the ordinary well: the cavern well next (it waited a season for the same refusal)
+    props, notes = plan(copy.deepcopy(s), m)
+    assert [x.action.get("cavern") for x in by_rule(props, "well")] == [True], [x.action for x in by_rule(props, "well")]
+    m.cavern_well_failure = "the shaft would pass open space, water or an aquifer"
+    m.cavern_well_failure_at = abs_tick(s)
     props, notes = plan(copy.deepcopy(s), m)
     assert not by_rule(props, "well") and any("share 1 well" in n for n in notes), notes
-    s["buildings"]["other"]["Well"] = 4
+    s["buildings"]["other"]["Well"] = 6      # (r1 g3) one for every 40
     assert not by_rule(plan(copy.deepcopy(s), Memory())[0], "well")
     s["buildings"]["other"]["Well"] = 1
     s["projects"]["open"] = [{"id": 9, "kind": "well", "phase": "dig"}]
@@ -9255,12 +9261,13 @@ def _():
     s["others_on_map"]["threats_that_can_reach_dwarves"] = 1
     props, notes = plan(copy.deepcopy(s), m2)
     assert not by_rule(props, "well") and any("cavern well would help" in n for n in notes), notes
-    # another reason for the failure: the season's wait as before
+    # (r1 g3) another reason for the failure: the cavern well too (E: "no pond within 40" kept
+    # 90 dwarves on one well for years, the ordinary well asked again each season)
     s["others_on_map"]["threats_that_can_reach_dwarves"] = 0
     m3 = Memory()
     m3.extra_well_failure = "no clean water inside the fort"
     m3.last_fired["extra_well"] = abs_tick(s)
-    assert not by_rule(plan(copy.deepcopy(s), m3)[0], "well")
+    assert [x.action.get("cavern") for x in by_rule(plan(copy.deepcopy(s), m3)[0], "well")] == [True]
 
 
 def _body():

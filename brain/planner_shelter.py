@@ -119,7 +119,8 @@ def _needs(civs: int, cfg: dict) -> dict:
     tiles a civilian, 50 at least), drink (2 units a civilian, or a well) and
     food (`shelter_pick_food_per_civ` a civilian)."""
     return {"tiles": max(50, 2 * civs), "drink": max(1, 2 * civs),
-            "food": max(1, int(cfg.get("shelter_pick_food_per_civ", 2)) * civs)}
+            "food": max(1, int(cfg.get("shelter_pick_food_per_civ", 2)) * civs),
+            "per_well": int(cfg.get("g3_civs_per_well", 40) or 0)}     # (r1 g3) a well weighed
 
 
 def _shortfalls(tiles: int, drink: int, wells: int, food: int, need: dict) -> list:
@@ -127,7 +128,14 @@ def _shortfalls(tiles: int, drink: int, wells: int, food: int, need: dict) -> li
     out = []
     if tiles < need["tiles"]:
         out.append(f"{tiles} tiles (needs {need['tiles']})")
-    if wells == 0 and drink < need["drink"]:
+    # (r1 g3) a well gives water to `per_well` civilians, not to any number:
+    # E sheltered 80-94 on the level of its one cavern well (R-CE)
+    per = need.get("per_well") or 0
+    if per > 0 and wells > 0:
+        if wells * per * 2 + drink < need["drink"]:
+            out.append(f"{drink} drink and {wells} well(s) for {need['drink'] // 2} civilians "
+                       f"(a well for every {per}; needs {need['drink']} drink)")
+    elif wells == 0 and drink < need["drink"]:
         out.append(f"{drink} drink and no well (needs {need['drink']})")
     if food < need["food"]:
         out.append(f"{food} food (needs {need['food']})")

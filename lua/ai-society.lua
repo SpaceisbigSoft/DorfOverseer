@@ -29,6 +29,9 @@ end
 local utils = require('utils')
 
 SHELTER_NAME = 'AI shelter'
+-- (r1 g3) a well in the shelter gives water to this many civilians (E: one
+-- cavern well, its shaft at times shut, on the level of 80-94: no widening)
+SHELTER_CIVS_PER_WELL = 40
 
 local OPEN = {FLOOR = true, STAIR_UP = true, STAIR_DOWN = true, STAIR_UPDOWN = true,
               RAMP = true, RAMP_TOP = true}
@@ -365,6 +368,32 @@ local function item_spots(list, out, units)
     end
 end
 
+-- (r1 g3) the walk groups the citizens stand in (nil when the game can't say:
+-- then every well giving water counts), and whether a well is reached from one
+local function citizen_groups()
+    local gs, any = {}, false
+    pcall(function()
+        for _, u in ipairs(report_citizens(true)) do
+            local ok, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(u.pos.x, u.pos.y, u.pos.z))
+            if ok and type(g) == 'number' and g ~= 0 then gs[g] = true; any = true end
+        end
+    end)
+    return any and gs or nil
+end
+
+local function well_reached(b, gs)
+    if not gs then return true end
+    for dy = -1, 1 do
+        for dx = -1, 1 do
+            if dx ~= 0 or dy ~= 0 then
+                local ok, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(b.centerx + dx, b.centery + dy, b.z))
+                if ok and type(g) == 'number' and g ~= 0 and gs[g] then return true end
+            end
+        end
+    end
+    return false
+end
+
 local function drink_and_wells()
     local out, units, wells, food = {}, {}, {}, {}
     pcall(function() item_spots(df.global.world.items.other.DRINK, out, units) end)
@@ -379,11 +408,16 @@ local function drink_and_wells()
     end
     pcall(function()
         local okb, B = pcall(reqscript, 'ai-society-burrows')
+        local gs = citizen_groups()
         for _, b in ipairs(df.global.world.buildings.other.WELL) do
+            -- (r1 g3) a well counts only when it serves: built, its shaft open
+            -- and its water liquid (well_gives_water: no shut hatch, no ice, not
+            -- dry), and a citizen can walk to it (a well the game can't read
+            -- still counts, as before)
             local ok, good = pcall(function()
                 if b:getBuildStage() < b:getMaxBuildStage() then return false end
-                if okb and B and B.well_gives_water then return B.well_gives_water(b) ~= false end
-                return true
+                if okb and B and B.well_gives_water and B.well_gives_water(b) == false then return false end
+                return well_reached(b, gs)
             end)
             if not ok or good then
                 out[b.centerx .. ',' .. b.centery .. ',' .. b.z] = 'well'
@@ -652,8 +686,13 @@ function fill_shelter(b, only)
     cits0 = okc0 and cits0 or 0
     local want_drink = math.max(1, SHELTER_DRINK_PER_CITIZEN * cits0)
     local want_food = math.max(1, SHELTER_FOOD_PER_CITIZEN * cits0)
+    -- (r1 g3) water enough: the drink, and each well for SHELTER_CIVS_PER_WELL
+    -- civilians (a well for any number was water enough before)
+    local function watered()
+        return well_tiles * SHELTER_CIVS_PER_WELL * SHELTER_DRINK_PER_CITIZEN + drink_units >= want_drink
+    end
     local back = 0
-    if well_tiles == 0 and drink_units < want_drink then
+    if not watered() then
         local cand = {}
         for _, list in ipairs({held, dark_surface, sunlit}) do
             for _, t in ipairs(list) do
@@ -680,11 +719,11 @@ function fill_shelter(b, only)
             if t[6] and drink_tiles + well_tiles > 0 then break end
             if t[5] == 'drink' and drink_tiles < SHELTER_DRINK_BACK and drink_units < want_drink then
                 take(t); back = back + 1
-            elseif t[5] == 'well' and well_tiles == 0 then
+            elseif t[5] == 'well' and not watered() then
                 take_well(t.well, true)
                 if t.well.taken then back = back + 1 end
             end
-            if well_tiles > 0 or drink_units >= want_drink then break end
+            if watered() then break end
         end
         if back > 0 then
             info.drink_back = back
@@ -764,7 +803,12 @@ function fill_shelter(b, only)
         info.no_water = 'the shelter holds no drink and no well'
     elseif well_tiles == 0 and drink_units < want_drink then
         info.drink_short = ('the shelter holds %d drink for %d citizens and no well'):format(drink_units, cits0)
+    elseif not watered() then
+        info.drink_short = ('the shelter holds %d drink and %d well(s) for %d citizens (a well for every %d)')
+            :format(drink_units, well_tiles, cits0, SHELTER_CIVS_PER_WELL)
     end
+    info.civs = cits0
+    if not watered() then info.water_short = true end
     if food_units == 0 then
         info.no_food = 'the shelter holds no food'
     end
@@ -817,6 +861,7 @@ function shelter_result(r, info)
     r.drink_tiles, r.well_tiles = info.drink_tiles, info.well_tiles      -- (0.105.26)
     r.drink_back, r.drink_note, r.no_water = info.drink_back, info.drink_note, info.no_water
     r.drink_units, r.drink_short = info.drink_units, info.drink_short                     -- (0.105.33)
+    r.water_short, r.civs = info.water_short, info.civs                                   -- (r1 g3)
     r.food_units, r.food_tiles, r.food_back = info.food_units, info.food_tiles, info.food_back
     r.food_note, r.no_food = info.food_note, info.no_food
     r.deep_depot_tiles = info.deep_depot_tiles
@@ -960,6 +1005,24 @@ function cover_cut_off(b)
     return added, people
 end
 
+-- (r1 g3) The shelter's water test: the civilians its water serves (drink
+-- units / SHELTER_DRINK_PER_CITIZEN, a well SHELTER_CIVS_PER_WELL), and
+-- whether that is short of them (with no count of them: no drink nor well).
+function shelter_water_cover(info)
+    info = type(info) == 'table' and info or {}
+    return (tonumber(info.drink_units) or 0) / SHELTER_DRINK_PER_CITIZEN
+        + (tonumber(info.well_tiles) or 0) * SHELTER_CIVS_PER_WELL
+end
+
+function shelter_water_short(info)
+    info = type(info) == 'table' and info or {}
+    local civs = tonumber(info.civs)
+    if not civs or civs <= 0 then
+        return (tonumber(info.drink_units) or 0) <= 0 and (tonumber(info.well_tiles) or 0) <= 0
+    end
+    return shelter_water_cover(info) < civs
+end
+
 function refresh_shelter()
     local b = find_burrow(SHELTER_NAME)
     if not b then return nil end
@@ -978,10 +1041,13 @@ function refresh_shelter()
     -- a dry shelter level while a Hill Titan was on the map; the redraw kept
     -- redrawing the same dry level)
     local widened = false
-    if only and (tonumber(info.drink_units) or 0) <= 0 and (tonumber(info.well_tiles) or 0) <= 0 then
+    -- (r1 g3) and a pick whose water is short for its civilians (E: one
+    -- well, its shaft at times shut, for 80-94): redrawn too, the whole fort
+    -- taken when it holds more water for them
+    if only and shelter_water_short(info) then
         dfhack.burrows.clearTiles(b)
         local n2, info2 = fill_shelter(b, nil)
-        if (tonumber(info2.drink_units) or 0) > 0 or (tonumber(info2.well_tiles) or 0) > 0 then
+        if shelter_water_cover(info2) > shelter_water_cover(info) then
             n, info, widened = n2, info2, true
         else
             -- the whole fort is dry too: the safer pick kept (the planner lowers

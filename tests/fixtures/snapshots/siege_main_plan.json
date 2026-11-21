@@ -23,7 +23,7 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "notes": "sha256:a76be1d185e69e105d3b5eb9",
-   "props": "sha256:bec0c66c24d5d8907e6b2697",
+   "props": "sha256:afad71222126f89d39c3ca7a",
    "rules": [
     "build",
     "hospital",
@@ -55,9 +55,10 @@
   },
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "notes": "sha256:a32458a5af5caa5bca3bd5b6",
-   "props": "sha256:e249b5ec8a7db8cd6363d0d2",
+   "notes": "sha256:4b4604253d59b494def3104b",
+   "props": "sha256:59bbb0c87d628e1a81306057",
    "rules": [
+    "well",
     "build",
     "hospital",
     "build",
@@ -202,7 +203,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:5d915c30ba2a95b22e1eb764",
+   "props": "sha256:7251d73772600fcc849ef835",
    "rules": [
     "hospital",
     "staff",
@@ -234,7 +235,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:29af92c143036ef810d97bb8",
+   "props": "sha256:3fb22ca09f1c5ce911d3f270",
    "rules": [
     "hospital",
     "staff",

@@ -20,7 +20,7 @@ def _far_args(cfg: dict) -> dict:
         out["far_reach"] = 0
     return out
 
-__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "SHAFT_DRY_REACH", "shaft_judged", "shaft_danger_words", "shaft_far_walker", "shaft_water_short", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "bad_wells", "water_zones_usable", "no_water_cancels", "cavern_open_danger", "ai_opens_cavern", "cavern_soldiers_ready", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE", "jailed", "cavern_failure_now", "drinkable_frost_wells", "frost_zone_case", "shut_columns"]
+__all__ = ["_well_rule", "_well_lid_rule", "SHAFT_LINK_LOST_MAX", "SHAFT_DANGER_TILES", "SHAFT_DANGER_OPEN", "SHAFT_DRY_REACH", "shaft_judged", "shaft_danger_words", "shaft_far_walker", "shaft_water_short", "cavern_danger", "_water_zone_rule", "cavern_points", "cavern_action", "cavern_well_need", "unfound_cavern", "cavern_well_safe", "WELL_PARTS_SHOPS", "CHAIN_SKIP", "chain_metal", "well_parts_plan", "_well_parts", "_water_traffic_rule", "cistern_pop", "WATER_WORDS", "magma_access", "water_summary", "_water_rules", "CISTERN_WORDS", "_cistern_parts", "_cistern_rule", "WELLS_CONFIG", "shut_wells", "usable_wells", "bad_wells", "water_zones_usable", "no_water_cancels", "cavern_open_danger", "ai_opens_cavern", "cavern_soldiers_ready", "cavern_open_words", "CISTERN_RETRY_SEALS", "CISTERN_RELINK_ROUNDS", "CISTERN_SHUT_RULE", "jailed", "cavern_failure_now", "drinkable_frost_wells", "frost_zone_case", "shut_columns", "winter_wells", "winter_water_need", "climate_freezes_now", "_winter_water_rule"]
 
 # (0.105.33 B4) the wells' own settings (merged into PLANNER_CONFIG, as planner_threats does)
 WELLS_CONFIG = {
@@ -213,15 +213,29 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
         # dwarves (124 patients at the worst) shared one well
         cit = int(_d(s.get("dwarves")).get("total") or 0)
         per = cfg["dwarves_per_well"]
-        if not per or wells >= math.ceil(cit / per) or len(open_) >= (pr.get("max_open") or 2):
+        if not per or wells >= math.ceil(cit / per):
             return
+        # (r1 g3) the slot cap held every fort's building slots full (A3 B3),
+        # so "a well for every 70" returned here without a word in all six
+        # forts: another well takes g3_extra_well_slots over it
+        slots = (pr.get("max_open") or 2) + int(cfg.get("g3_extra_well_slots", 1) or 0)
+        if len(open_) >= slots:
+            notes.append(f"{cit} dwarves share {wells} well(s) (one for every {per} wanted): another waits for a "
+                         "free building slot")
+            return
+        # (the bridge takes a project over its cap only as urgent)
+        over_cap = len(open_) >= (pr.get("max_open") or 2)
         last = memory.last_fired.get("extra_well") if memory is not None else None
         # (0.104.148) no ordinary spot because the only water below is a
         # cavern (Teacheroar, 1 Nov: 163 dwarves on one well, 4 dead of
         # thirst overnight, "another couldn't be placed ... in a cavern" every
         # season): the cavern well, as for a fort with none, when it's needed
         # and safe and none has failed before
-        if (memory is not None and "cavern" in memory.extra_well_failure
+        # (r1 g3) any refusal of an ordinary well, not only one naming the
+        # cavern: E's "no open drop ...; no pond, brook or river within 40"
+        # kept 90 dwarves on one cavern well for years, an ordinary well tried
+        # again each season and the cavern never
+        if (memory is not None and memory.extra_well_failure
                 and not cavern_failure):
             patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
             need = cavern_well_need(s, cfg, patients) or f"{cit} dwarves share {wells} well(s)"
@@ -230,7 +244,7 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
                 safe = f"{shaft_danger} is near the cavern well"
             if safe is True:
                 urgent = bool(patients or int(_d(s.get("society")).get("parched") or 0))
-                action = cavern_action(s, cfg, urgent)       # (0.105.3)
+                action = cavern_action(s, cfg, urgent or over_cap)       # (0.105.3)
                 proposals.append(Proposal("well", action,
                                           f"{need} (one well for every {per} wanted), and another ordinary well "
                                           "can't be placed (the water below is in a cavern): dig a one-tile shaft "
@@ -241,17 +255,21 @@ def _well_rule(s: dict, memory, traits: dict, cfg: dict, proposals: list, notes:
                                           1 if urgent else 4))
                 return
             notes.append(f"a cavern well would help ({need}) but not now: {safe}")
-            return
-        if memory is not None and cavern_failure and "cavern" in memory.extra_well_failure:
+            if "cavern" in memory.extra_well_failure:
+                return
+        elif memory is not None and cavern_failure and memory.extra_well_failure:
             notes.append(f"{cit} dwarves share {wells} well(s); no cavern well either: "
                          f"{cavern_failure[:120]}")
-            return
+            if "cavern" in memory.extra_well_failure:
+                return
         if (memory is not None and memory.extra_well_failure and isinstance(last, int)
                 and 0 <= abs_tick(s) - last < cfg["extra_well_retry_days"] * TICKS_PER_DAY):
             notes.append(f"{cit} dwarves share {wells} well(s); another couldn't be placed "
                          f"({memory.extra_well_failure[:100]}): tried again next season")
             return
         action = {"type": "place_well", "extra": True}
+        if over_cap:
+            action["urgent"] = True
         if _ice_now(s, memory, cfg):
             action["inside_only"] = True
         proposals.append(Proposal("well", action,
@@ -806,7 +824,7 @@ def cavern_points(s: dict) -> list:
     return out[:3]
 
 
-def cavern_action(s: dict, cfg: dict, urgent: bool) -> dict:
+def cavern_action(s: dict, cfg: dict, urgent: bool, winter: str = "") -> dict:
     """(0.105.3) The cavern well's action: a gallery out to the lake allowed
     (Hammerstirred, 2 Nov: the lake lay beside the fort, under no fort floor)."""
     action = {"type": "place_well", "cavern": True}
@@ -816,7 +834,7 @@ def cavern_action(s: dict, cfg: dict, urgent: bool) -> dict:
     # (0.105.4 review) the bridge's own check follows the Rules tab; (0.105.35)
     # with the switch off the AI decides itself (ai_opens_cavern)
     mode = player_rules(s)["open_caverns"]
-    if mode == "always" or (mode == "ai" and unfound_cavern(s) and ai_opens_cavern(s, cfg)[0]):
+    if mode == "always" or (mode == "ai" and unfound_cavern(s) and ai_opens_cavern(s, cfg, winter)[0]):
         action["open_caverns"] = True
     pts = cavern_points(s)
     if pts and action["gallery"] > 0:
@@ -881,7 +899,7 @@ def unfound_cavern(s: dict) -> str | None:
     return None
 
 
-def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
+def ai_opens_cavern(s: dict, cfg: dict, winter: str = "") -> tuple[bool, str]:
     """(0.105.35) The player (11 Nov): nothing waits for the player. With the
     Rules switch "Cavern well into an unfound cavern" at "ai" (its default;
     the switch is three-state: never / ai / always), the AI decides itself
@@ -890,7 +908,11 @@ def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
     `cavern_well_drink_pd` a dwarf; (0.105.36) unknown drink, a missing
     stocks section, is not short) and has armed soldiers (v35
     fix: armed, not only drafted) for what comes out (`unfound_cavern_soldiers`, +2 at Caution 50+, -1 at Militarism
-    50+); at Caution +100 only for the injured or the parched. (ok, why)."""
+    50+); at Caution +100 only for the injured or the parched. (ok, why).
+    (r1 g3) `winter`: the fort has no water that works in winter (its wells
+    and water freeze, winter_water_need's why): short of water too, below
+    Caution +100, as drink running out is (B: every patient of every winter
+    died of thirst); the soldiers are still wanted."""
     tr = _traits(s) if isinstance(s.get("settings"), dict) else {}
     caution = tr.get("caution", 0) or 0
     militarism = tr.get("militarism", 0) or 0
@@ -906,6 +928,8 @@ def ai_opens_cavern(s: dict, cfg: dict) -> tuple[bool, str]:
         short = " and ".join(x for x in (f"{patients} injured" if patients else "",
                                           f"{parched} parched" if parched else "",
                                           f"{prisoners} jailed" if prisoners else "") if x)
+    elif winter and caution < 100:
+        short = winter
     elif not known:
         return False, "the fort's drink is not known (no stocks report): not counted as short"
     elif drink < cfg["cavern_well_drink_pd"] and caution < 100:
@@ -946,12 +970,12 @@ def cavern_soldiers_ready(s: dict, cfg: dict) -> tuple[bool, int, int]:
     return soldiers >= need, soldiers, need
 
 
-def cavern_open_words(s: dict, cfg: dict) -> str:
+def cavern_open_words(s: dict, cfg: dict, winter: str = "") -> str:
     """(0.105.35) The proposal's words when the AI itself opens an unfound cavern ("" otherwise)."""
     layer = unfound_cavern(s)
     if not layer or player_rules(s)["open_caverns"] != "ai":
         return ""
-    ok, why = ai_opens_cavern(s, cfg)
+    ok, why = ai_opens_cavern(s, cfg, winter)
     return (f" (it opens {layer} for the first time: the AI's call, {why}; the shaft's hatch shuts while a "
             "danger is near)") if ok else ""
 
@@ -977,7 +1001,7 @@ def cavern_open_danger(s: dict) -> str:
     return ""
 
 
-def cavern_well_safe(s: dict, cfg: dict, urgent: bool = False):
+def cavern_well_safe(s: dict, cfg: dict, urgent: bool = False, winter: str = ""):
     """True, or why a shaft into the caverns shouldn't be dug now.
     (item5) urgent: the fort has no well and the injured, the parched or the
     jailed wait for water: then a small or young fort digs one too (the
@@ -993,7 +1017,7 @@ def cavern_well_safe(s: dict, cfg: dict, urgent: bool = False):
         return (f"a cavern well would open {layer} for the first time, and the Rules tab says never "
                 "(\"Cavern well into an unfound cavern\": Never)")
     if layer and mode == "ai":
-        ok, why = ai_opens_cavern(s, cfg)
+        ok, why = ai_opens_cavern(s, cfg, winter)
         if not ok:
             return (f"a cavern well would open {layer} for the first time (cavern creatures and forgotten "
                     f"beasts follow), and the AI does that only when the fort is short of water and has "
@@ -1510,3 +1534,169 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
                               "a well over it"
                               + (f" (chosen over: {others}; lower is better)" if others else "")
                               + (f" ({plan['source_why']})" if plan.get("source_why") else ""), 5))
+
+
+# --- (r1 g3) water in winter -------------------------------------------------
+#
+# B (R-B finding 1): the only well stood over a surface brook. It was dug
+# every spring and frozen (or given up before the ice) every winter; in
+# winter the well rule looked only for an open drop inside the fort, found
+# none 78 times, and never dug a shaft. Every patient of every winter died of
+# thirst (a patient gets only water). D's only wells were shore wells too
+# (A1 5a). So a fort whose water freezes is given, before its first winter
+# is out, a water source that works in winter: a cavern well (its shaft
+# through solid rock, with its hatch, lever and watcher: the existing cavern
+# well path and its safety; an unfound cavern only as the Rules switch
+# allows), else the survey's cistern, filled while the water is liquid.
+
+WINTER_WATER_RULE = "winter_water"
+STEER_PROTECTED.add(WINTER_WATER_RULE)      # survival: the strategist never holds it
+AGENDA_THEMES.setdefault(WINTER_WATER_RULE, "water that works in winter")
+
+
+def winter_wells(s: dict) -> tuple[int, int] | None:
+    """(winter, surface): the built wells whose water stays liquid in winter
+    (water under them that isn't under the sky: a cavern or underground
+    water; a cavern well shut for a while for a danger is still one), and
+    the wells over surface water (under the sky) or drawing only ice now.
+    None without the frost reading (an older bridge): nothing is said."""
+    from planner_ice import _frost
+    f = _frost(s)
+    if not f or not isinstance(f.get("wells"), list):
+        return None
+    winter = surface = 0
+    for w in _frost_wells(s):
+        if w.get("water") == "water" and w.get("outside") is not True:
+            winter += 1
+        elif w.get("water") == "ice" or w.get("outside") is True:
+            surface += 1
+    return winter, surface
+
+
+def _cistern_works(s: dict) -> bool:
+    st = _d(s.get("water")).get("cistern_status")
+    return isinstance(st, dict) and st.get("stage") == "done" and not st.get("retired") and not st.get("leak")
+
+
+def _cistern_coming(s: dict) -> bool:
+    st = _d(s.get("water")).get("cistern_status")
+    return isinstance(st, dict) and st.get("stage") not in ("done", None) and not st.get("retired")
+
+
+def climate_freezes_now(s: dict, memory, cfg: dict) -> str:
+    """Why the fort's surface water freezes in winter ("" when nothing says
+    so): ice seen here before, the ice season now (planner_ice), a well or
+    water zone frozen, or an autumn surface within g3_winter_temp_margin of
+    freezing (the first year's warning, before any ice is seen)."""
+    from planner_ice import FREEZE, _frost, ice_season
+    if memory is not None and getattr(memory, "climate_freezes", False):
+        return "ice was seen here before"
+    on, why = ice_season(s, memory, cfg)
+    if on:
+        return why
+    f = _frost(s)
+    if any(isinstance(x, dict) and x.get("water") == "ice" for x in _l(f.get("wells")) + _l(f.get("zones"))):
+        return "a well or water zone is frozen"
+    temp = f.get("surface_temp")
+    if (_d(s.get("date")).get("season") == "autumn" and isinstance(temp, (int, float)) and not isinstance(temp, bool)
+            and temp <= FREEZE + int(cfg.get("g3_winter_temp_margin", 40))):
+        return f"the autumn surface is {int(temp - FREEZE)} degree(s) over freezing"
+    return ""
+
+
+def winter_water_need(s: dict, memory, cfg: dict) -> str:
+    """Why the fort needs a water source that works in winter ("" when it
+    has one, or its water doesn't freeze, or the bridge has no frost reading)."""
+    ww = winter_wells(s)
+    if ww is None:
+        return ""
+    winter, surface = ww
+    if winter > 0 or _cistern_works(s):
+        return ""
+    from planner_ice import _frost
+    if any(isinstance(z, dict) and z.get("outside") is not True and z.get("water") == "water"
+           for z in _l(_frost(s).get("zones"))):
+        return ""                 # a water zone at underground water: patients get water from it
+    freezes = climate_freezes_now(s, memory, cfg)
+    if not freezes:
+        return ""
+    what = (f"the fort's {surface} well(s) stand over surface water, which freezes" if surface
+            else "the fort has no well")
+    return f"{what} ({freezes}) and no water source works in winter"
+
+
+def _winter_water_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rules_: dict | None = None) -> None:
+    """(r1 g3) A water source that works in winter, before the first winter
+    ends (see winter_wells): a cavern well first, else the survey's cistern."""
+    need = winter_water_need(s, memory, cfg)
+    if not need:
+        return
+    from planner_ice import _frost
+    if (memory is not None and not getattr(memory, "climate_freezes", False)
+            and any(isinstance(x, dict) and x.get("water") == "ice"
+                    for x in _l(_frost(s).get("wells")) + _l(_frost(s).get("zones")))):
+        memory.climate_freezes = True     # ice seen: the climate freezes (the cistern's prefs read it)
+    pr = _d(s.get("projects"))
+    open_ = [p for p in _l(pr.get("open")) if isinstance(p, dict)]
+    coming = [p for p in open_ if p.get("kind") == "well" and not _d(p.get("summary")).get("shore")]
+    if coming:
+        notes.append(f"{need}: a well off the surface water is being made (project {coming[0].get('id')})")
+        return
+    if _cistern_coming(s):
+        notes.append(f"{need}: the cistern is being made")
+        return
+    patients = int(_d(s.get("dwarves")).get("needs_medical_care") or 0)
+    parched = int(_d(s.get("society")).get("parched") or 0)
+    from planner_ice import ice_season
+    season = ice_season(s, memory, cfg)[0] or _d(s.get("date")).get("season") == "winter"
+    pressing = bool(patients or parched or jailed(s) or season)
+    max_open = pr.get("max_open") or 2
+    extra = int(cfg.get("g3_winter_well_slots", 2) if pressing else cfg.get("g3_extra_well_slots", 1))
+    if len(open_) >= max_open + extra:
+        notes.append(f"{need}: a winter water source waits for a free building slot")
+        return
+    over_cap = len(open_) >= max_open
+    pri = 2 if pressing else 3
+    cavern_failure = cavern_failure_now(s, memory, cfg)
+    # the cavern well: its own safety (one at a time, no danger near, the
+    # Rules switch for an unfound cavern; the "ai" setting counts the winter
+    # need as a shortage, soldiers still wanted); a small or young fort too
+    safe = cavern_well_safe(s, cfg, urgent=True, winter=need) if not cavern_failure else None
+    if safe is True:
+        action = cavern_action(s, cfg, pressing or over_cap, winter=need)
+        proposals[:] = [p for p in proposals if not (p.rule in ("well", "frost_well")
+                                                     and _d(p.action).get("type") == "place_well"
+                                                     and not _d(p.action).get("cavern"))]
+        proposals.append(Proposal("winter_water", action,
+                                  f"{need}: dig a one-tile shaft through solid rock to the cavern lake, from a stair "
+                                  "beside it (out to it along a short tunnel if no fort floor is over it), and build "
+                                  "the well over it, its hatch and lever shut while a danger is near"
+                                  + (" (urgent: dug first)" if action.get("urgent") else "")
+                                  + cavern_open_words(s, cfg, need), pri))
+        return
+    why_not = f"no cavern well: {cavern_failure[:120]}" if cavern_failure else f"no cavern well now: {safe}"
+    # the cistern, filled while the water is liquid (the survey's plan); the
+    # cistern rule's own gates (fort size, age) don't hold this one back
+    w = _d(s.get("water"))
+    plan = _d(w.get("cistern"))
+    rules_ = rules_ or {}
+    if (plan and not plan.get("none") and rules_.get("water_works", True) and not cfg.get("cistern_hold")
+            and not isinstance(w.get("cistern_status"), dict)
+            and not _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves")):
+        dangers = [x for x in _l(_d(s.get("deep")).get("dangers")) if isinstance(x, dict) and not x.get("caged")]
+        step = {"type": "cistern_step", "prefs": {"freezes": True, "cavern_danger": any(
+            "cavern" in str(x.get("layer") or "").lower() for x in dangers)}}
+        if cfg["cistern_tunnel_max"] != 30:
+            step["tunnel"] = int(cfg["cistern_tunnel_max"])
+        if "far_reach" in _far_args(cfg):
+            step["far_reach"] = _far_args(cfg)["far_reach"]
+        proposals[:] = [p for p in proposals if not (p.rule == "cistern" and _d(p.action).get("type") == "cistern_step"
+                                                     and not any(k in p.action for k in ("shut", "retire", "relink")))]
+        proposals.append(Proposal("winter_water", step,
+                                  f"{need}, and {why_not}: dig a 5x5 cistern at elevation {plan.get('elevation')}, "
+                                  f"filled from the {plan.get('source')} while it is liquid, through a "
+                                  f"{plan.get('tunnel')}-tile tunnel and a floodgate, a well over it", pri))
+        return
+    cw = (f"no cistern site: {plan.get('why')}" if plan.get("none") else
+          "no cistern plan yet (the water survey)" if not plan else "the cistern waits (water works off, a threat near, or one already planned)")
+    notes.append(f"{need}; {why_not}; {cw}. The injured get water from a water zone at underground water, if any")
