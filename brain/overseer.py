@@ -82,7 +82,7 @@ from quirks import update as update_quirks  # noqa: E402
 from weights import choose_all  # noqa: E402
 from culture import note_events as culture_events  # noqa: E402
 from digest import _d, _l, normalize, project_text  # noqa: E402
-from review import maybe_review, note_events  # noqa: E402
+from review import SHADOW_WORDS, maybe_review, note_events, shadow_on  # noqa: E402
 from storyteller import maybe_tell  # noqa: E402
 from tokens import TokenBank  # noqa: E402
 import perf  # noqa: E402  (0.105.40)
@@ -1386,8 +1386,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
 
         # (0.104.3) the season's character decision by script: forts without
         # tokens, or whose AI review made no choice in the season's first two weeks
+        # ((r4 k5) or whose AI only advises: its choice is journaled, never applied)
         if autopilot and not fallen_now and season_mod.due(state, memory) and (
-                backend is None or season_mod.ai_gave_up(state, memory)):
+                backend is None or season_mod.ai_gave_up(state, memory) or shadow_on()):
             try:
                 choice = season_mod.pick(state, memory, cfg)
                 said = season_mod.apply(choice, state, memory, memory.adjust)
@@ -2588,6 +2589,8 @@ def _run(args) -> int:
         pass
     if backend and not args.autopilot:
         say("Note: in a dry run the AI still reviews (and uses tokens); its actions are only shown.")
+    if backend and shadow_on():
+        say(SHADOW_WORDS)          # (r4 k5) advice only until the player switches it off
 
     bridge = None
     last_plan_tick = None
