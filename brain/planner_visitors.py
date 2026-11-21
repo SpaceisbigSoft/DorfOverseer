@@ -10,7 +10,7 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since", "sought_artifact", "artifacts_at_risk", "note_artifact_risk", "claimed_shut"]
+__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "residency_kind", "residency_room", "residency_verdict", "note_residency", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since", "sought_artifact", "artifacts_at_risk", "note_artifact_risk", "claimed_shut"]
 
 
 PETITION_KINDS = ("performer", "scholar", "monster_hunter", "mercenary", "sanctuary", "citizenship")
@@ -120,27 +120,131 @@ def _citizenship_notes(s: dict, cfg: dict, pending: list, notes: list) -> None:
 
 def residency_stance(traits: dict, cfg: dict) -> str:
     """(0.105.9) Outsiders: "accept" petitions to stay from a welcoming fort
-    (30 and up), "decline" from a closed one (-50 and below), else "stale"
-    (only the ones whose visitor is gone or dead are cleared)."""
+    (30 and up), "decline" from a closed one (-50 and below), else "weigh"
+    ((r2 h9) a fort between them answers each by its character and room,
+    residency_verdict: A3 finding 3, E had 30 waiting, the oldest 78 days)."""
     o = traits.get("outsiders", 0) or 0
     if o >= cfg["residency_accept_outsiders"]:
         return "accept"
     if outsider_orders(traits)["closed"]:          # (review) -50 and below, as DF's standing orders
         return "decline"
-    return "stale"
+    return "weigh"
+
+
+def _h9(cfg: dict, k: str):
+    return cfg[k] if k in cfg else PLANNER_CONFIG[k]
+
+
+def residency_kind(e: dict) -> str:
+    """What a petition to stay comes for (DF's reason): performer, scholar,
+    mercenary, monster_hunter, or other."""
+    r = str(_d(e).get("reason") or "").lower()
+    if "merc" in r or "warrior" in r:
+        return "mercenary"
+    if "monster" in r or "hunt" in r or "beast" in r:
+        return "monster_hunter"
+    if "entertain" in r or "perform" in r:
+        return "performer"
+    if "stud" in r or "knowledge" in r or "scholar" in r or "research" in r:
+        return "scholar"
+    return "other"
+
+
+def residency_room(s: dict, cfg: dict) -> str | None:
+    """(r2 h9) Why the fort has no room for a visitor to stay, or None: beds
+    to spare, food and drink a dwarf, not strained (planner_growth)."""
+    import outcomes
+    m = outcomes.measure(s)
+    fb = m.get("free_beds")
+    if isinstance(fb, (int, float)) and fb < int(_h9(cfg, "h9_residency_neutral_beds")):
+        return f"{int(fb)} spare bed(s)"
+    if food_per_dwarf(s) < float(_h9(cfg, "h9_residency_neutral_food_pd")):
+        return f"food {food_per_dwarf(s):g} a dwarf"
+    dr = m.get("drink_pd")
+    if isinstance(dr, (int, float)) and dr < float(_h9(cfg, "h9_residency_neutral_drink_pd")):
+        return f"drink {dr:g} a dwarf"
+    try:
+        from planner_growth import fort_strain
+        strain = fort_strain(s, cfg)
+    except Exception:  # noqa: BLE001
+        strain = []
+    if strain:
+        return "the fort is strained (" + "; ".join(strain) + ")"
+    return None
+
+
+def residency_verdict(e: dict, s: dict, cfg: dict, stance: str, memory=None) -> tuple:
+    """(r2 h9) (accept, why) for one petition to stay. Never a vampire;
+    mercenaries and monster hunters only as Militarism takes them. A welcoming
+    fort takes the rest; a fort between closed and welcoming takes a visitor
+    only with room for one (residency_room), no heist lockout, and the place
+    the visitor comes for (a tavern for a performer, a library for a
+    scholar); below Outsiders 0 only those (an "other" reason is declined)."""
+    e = _d(e)
+    if e.get("vampire"):
+        return False, "a vampire"
+    if _d(e.get("applicant")).get("unit") is None:
+        return False, "the visitor can't be found"
+    kind = residency_kind(e)
+    fighters = petition_orders_wanted(s, cfg)
+    if kind in ("mercenary", "monster_hunter") and not fighters.get(kind):
+        return False, f"a {kind.replace('_', ' ')} (Militarism doesn't take them)"
+    if stance == "accept":
+        return True, "a welcoming fort"
+    traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    o = traits.get("outsiders", 0) or 0
+    room = residency_room(s, cfg)
+    if room:
+        return False, f"no room for a guest ({room})"
+    if memory is not None and heist_lockout(s, memory, cfg):
+        return False, "a heist lately: the fort is shut to visitors"
+    count = _d(_d(s.get("locations")).get("count"))
+    if kind == "performer" and not count.get("INN_TAVERN"):
+        return False, "a performer, and the fort has no tavern"
+    if kind == "scholar" and not count.get("LIBRARY"):
+        return False, "a scholar, and the fort has no library"
+    if kind == "other" and o < 0:
+        return False, f"the fort keeps to itself (Outsiders {o}) and the visitor brings nothing it needs"
+    return True, f"Outsiders {o}, room for a guest" + ("" if kind == "other" else f", a {kind.replace('_', ' ')}")
+
+
+def note_residency(s: dict, memory) -> None:
+    """(r2 h9) When each petition to stay was first seen (note_cycle): its
+    age where the report gives none."""
+    pt = _d(s.get("petitions"))
+    if "error" in pt:
+        return
+    ids = {str(e.get("id")) for e in _l(pt.get("pending")) if isinstance(e, dict) and e.get("type") == "Residency"}
+    st = getattr(memory, "residency", None)
+    if not isinstance(st, dict) or (not ids and "seen" not in st):
+        return
+    now = abs_tick(s)
+    seen = {k: v for k, v in _d(st.get("seen")).items() if k in ids and isinstance(v, int) and v <= now}
+    for k in ids:
+        seen.setdefault(k, now)
+    st["seen"] = seen
 
 
 def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """(0.105.9, 14.1) Petitions to stay (Residency) waited by the hundred in
     every fort (300+ each at y257), whatever the Outsiders slider said: DF's
-    standing orders that answer them are out of DFHack 53.16-r3's reach.
-    Now the AI answers them itself, by Outsiders (residency_stance):
-    a closed fort declines them, 25 at a time; every fort clears the ones
-    whose visitor has left or died; a welcoming fort agrees, first one as a
-    probe: agreeing is taken to work only once that visitor shows as DF's
-    resident (the report's petitions.residents) within a few days. If not,
-    it agrees to no more, and says so (they wait for you on DF's petitions
-    screen). With the Rules switch "accept visitors" off, none is agreed."""
+    standing orders that answer them are out of DFHack's reach (53.16-r3 and,
+    in the 15-16 Nov run, 53.17-r1: the report read no standing order).
+    The AI answers every one itself (r2 h9: none is left pending):
+      * a closed fort declines them, 25 at a time; every fort clears the ones
+        whose visitor has left or died;
+      * otherwise each is weighed (residency_verdict): declined when the fort
+        won't take that visitor (a vampire, a fighter Militarism doesn't
+        want; between closed and welcoming: no room, no tavern or library for
+        what they came to do);
+      * the rest the fort would take. Agreeing by the agreement's flag left
+        B's visitor a guest (0.105.11), so with residency_accept_by_flag off
+        (the default) they are left to the player's answer on DF's petitions
+        screen h9_residency_player_days, then declined, said plainly; with it
+        on, one is agreed as a probe and the rest follow once it shows as a
+        resident (petitions.residents).
+    With the Rules switch "accept visitors" off, none is agreed: they are
+    left the same days, then declined."""
     pt = _d(s.get("petitions"))
     if "error" in pt:
         return
@@ -175,8 +279,6 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
         return
     traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
     stance = residency_stance(traits, cfg)
-    if stance == "accept" and not player_rules(s).get("accept_visitors", True):
-        stance = "stale"
     gone = [e["id"] for e in pending
             if not _d(e.get("applicant")).get("on_map") or _d(e.get("applicant")).get("dead")]
     batch = cfg["residency_batch"]
@@ -194,57 +296,65 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
                                   f"{len(gone)} petition(s) to stay from visitors who have left or died: "
                                   f"clear {len(ids)}", 7))
         return
-    if stance != "accept":
-        # (r2h7) the dead band: a neutral fort (Outsiders between the two stances, or a
-        # welcoming one with "accept visitors" off) answered nothing, and DF reported the
-        # petitions ignored (B 21, C 52, E 6, F 7; E 30 waiting up to 78 days). One waiting
-        # `r2h7_residency_neutral_days` is declined: the fort doesn't take them, it says so
-        wait = int(cfg.get("r2h7_residency_neutral_days", 14))
-        old = [e["id"] for e in pending if isinstance(e.get("days"), int) and e["days"] >= wait]
-        if old:
-            ids = old[:batch]
-            proposals.append(Proposal("residency", {"type": "answer_petition", "ids": ids, "accept": False,
-                                                    "residency": True},
-                                      f"{len(old)} petition(s) to stay have waited {wait} days or more and this fort "
-                                      f"neither welcomes nor shuts out visitors (Outsiders "
-                                      f"{traits.get('outsiders', 0)}): decline {len(ids)} rather than leave them "
-                                      "to be ignored", 7))
+    # (r2 h9) every petition weighed: declined now, or one the fort would take
+    no, yes, why_no = [], [], {}
+    for e in pending:
+        ok, why = residency_verdict(e, s, cfg, stance, memory)
+        if ok:
+            yes.append(e)
+        else:
+            no.append(e)
+            why_no[why] = why_no.get(why, 0) + 1
+    if no:
+        ids = [e["id"] for e in no][:batch]
+        whys = "; ".join(f"{w} ({n})" if n > 1 else w for w, n in sorted(why_no.items(), key=lambda kv: -kv[1])[:3])
+        proposals.append(Proposal("residency", {"type": "answer_petition", "ids": ids, "accept": False,
+                                                "residency": True},
+                                  f"{len(no)} petition(s) to stay the fort won't take "
+                                  f"(Outsiders {traits.get('outsiders', 0)}): {whys}: decline {len(ids)}", 6))
         return
-    # (review) never a vampire; mercenaries and monster hunters only as the
-    # standing orders would take them (Militarism)
-    fighters = petition_orders_wanted(s, cfg)
-    def welcome(e):
-        if e.get("vampire") or _d(e.get("applicant")).get("unit") is None:
-            return False
-        r = str(e.get("reason") or "").lower()
-        if "mercenar" in r or "merc" == r:
-            return bool(fighters.get("mercenary"))
-        if "monster" in r or "hunt" in r:
-            return bool(fighters.get("monster_hunter"))
-        return True
-    here = [e for e in pending if welcome(e)]
+    here = yes
     if not here:
         return
     works = st.get("works")
-    if not cfg["residency_accept_by_flag"]:
-        # (0.105.11) B, 2 Nov: Mistêm Zonåm's petition agreed by the flag, and DF
-        # kept her a guest (the player looked: Other, "Guest / Listen to Story")
-        ask_player(notes, f"{len(here)} petition(s) to stay from visitors this welcoming fort would take: agree to "
-                          "them on DF's petitions screen (the AI can only decline; agreeing from outside the "
-                          "screen leaves the visitor a guest); meanwhile the AI clears the ones whose visitor "
-                          "left and leaves these waiting")
-        return
-    if works is False:
-        ask_player(notes, f"the AI agreed to a petition to stay and DF didn't make the visitor a resident: "
-                          f"{len(pending)} petition(s) to stay can be agreed only on DF's petitions screen; "
-                          f"meanwhile the AI clears the ones whose visitor left and tries one again in "
-                          f"{int(cfg['residency_reprobe_days'])} days")
+    agree_ok = cfg["residency_accept_by_flag"] and player_rules(s).get("accept_visitors", True) and works is not False
+    if not agree_ok:
+        # the AI can't make a resident: they wait for you a while, then are declined
+        wait = int(_h9(cfg, "h9_residency_player_days"))
+        # a petition's age: DF's (the report's days), else since the AI first saw it (note_residency)
+        seen = _d(st.get("seen"))
+
+        def age(e):
+            d = e.get("days")
+            if isinstance(d, int) and not isinstance(d, bool):
+                return d
+            t = seen.get(str(e["id"]))
+            return (now - t) // TICKS_PER_DAY if isinstance(t, int) and t <= now else 0
+        old = [e for e in here if age(e) >= wait]
+        if old:
+            ids = [e["id"] for e in old][:batch]
+            proposals.append(Proposal("residency", {"type": "answer_petition", "ids": ids, "accept": False,
+                                                    "residency": True},
+                                      f"{len(old)} petition(s) to stay waited {wait} days or more on DF's petitions "
+                                      "screen for you; the AI can't agree to them (DFHack can't reach DF's standing "
+                                      "orders, and agreeing outside the screen leaves the visitor a guest): "
+                                      f"decline {len(ids)} rather than leave them waiting", 7))
+            return
+        if not player_rules(s).get("accept_visitors", True):
+            notes.append(f"{len(here)} petition(s) to stay wait and the Rules keep visitors out: declined after "
+                         f"{wait} days unless you answer them on DF's petitions screen")
+            return
+        ask_player(notes, f"{len(here)} petition(s) to stay from visitors this fort would take: agree to them on "
+                          f"DF's petitions screen within {wait} days of their asking; the AI can't (DFHack can't "
+                          "reach DF's standing orders, and agreeing from outside the screen leaves the visitor a "
+                          "guest); meanwhile it declines the ones it wouldn't take and, after that, these")
         return
     if works is None and not probe:
         e = here[0]
         proposals.append(Proposal("residency", {"type": "answer_petition", "id": e["id"], "accept": True,
                                                 "residency": True},
-                                  f"a welcoming fort (Outsiders {traits.get('outsiders', 0)}): agree to "
+                                  f"{'a welcoming fort' if stance == 'accept' else 'room for a guest'} "
+                                  f"(Outsiders {traits.get('outsiders', 0)}): agree to "
                                   f"{e.get('name') or 'a visitor'}'s petition to stay (the first: the AI watches "
                                   "that DF makes them a resident)", 6))
         return
@@ -253,8 +363,8 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
     ids = [e["id"] for e in here][:batch]
     proposals.append(Proposal("residency", {"type": "answer_petition", "ids": ids, "accept": True,
                                             "residency": True},
-                              f"a welcoming fort (Outsiders {traits.get('outsiders', 0)}): agree to "
-                              f"{len(ids)} petition(s) to stay", 6))
+                              f"{'a welcoming fort' if stance == 'accept' else 'room for guests'} "
+                              f"(Outsiders {traits.get('outsiders', 0)}): agree to {len(ids)} petition(s) to stay", 6))
 
 
 CLOSABLE_LOCATIONS = ("INN_TAVERN", "TEMPLE", "LIBRARY", "GUILDHALL")

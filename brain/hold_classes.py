@@ -116,7 +116,7 @@ _SURVIVAL_RULES = {
     "jail_urgent", "jail_size", "jail_more", "prisoners_water", "pit_prisoners", "mothers", "mood",
     "mood_reserve", "mood_shelter", "instrument_orders", "join_levels",
     # the fort's offices and people
-    "appoint", "messenger", "pop_cap", "recovery_migrants", "census", "labor", "labor_trim", "petitions",
+    "appoint", "messenger", "pop_cap", "recovery_migrants", "migrant_drought", "stuck_caravan", "census", "labor", "labor_trim", "petitions",
     "petition_retarget", "residency", "location_access",
     # (r2h6) a temple or guildhall petition answered: held in a crisis it
     # lapsed, DF's "The guildhall petition by The Sienna Guild has been
@@ -197,7 +197,7 @@ _SURVIVAL_ACTIONS = {
     "bench_jobs", "scrub_dead_units", "prune_remains", "pit_prisoners",
     # justice, tantrums, offices, people
     "break_fights", "convict", "release_prisoners", "tantrum_step_down", "squad_release", "appoint",
-    "set_population_cap", "call_migrants", "answer_petition", "petition_orders", "narrow_detail", "trim_labor",
+    "set_population_cap", "call_migrants", "free_caravan", "answer_petition", "petition_orders", "narrow_detail", "trim_labor",
     "assign_labor",
     # the work: orders, projects, stone, hauling, dumps, cleanup
     "work_order", "cancel_work_order", "approve_orders", "unsuspend_orders", "clear_orphan_jobs", "order_slots",

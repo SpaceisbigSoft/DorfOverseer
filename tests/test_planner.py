@@ -734,13 +734,16 @@ def _():
     m = Memory()
     _residency_rule(st(-150, here), m, PLANNER_CONFIG, props, notes)
     assert len(props) == 1 and props[0].action["accept"] is False and len(props[0].action["ids"]) == 25, props
-    # neutral: only the gone ones cleared
+    # neutral: the gone ones cleared first
     props = []
     _residency_rule(st(0, here + [pet(99, None, on_map=False)]), Memory(), PLANNER_CONFIG, props, notes)
     assert len(props) == 1 and props[0].action["ids"] == [99] and props[0].action["accept"] is False, props
-    props = []
-    _residency_rule(st(0, here), Memory(), PLANNER_CONFIG, props, notes)
-    assert not props
+    # (r2 h9) then each weighed by room and character (planner_visitors.residency_verdict): answered or
+    # (the fort would take them) left to you a while, then declined; never left as they were
+    props, notes1 = [], []
+    _residency_rule(st(0, here), Memory(), PLANNER_CONFIG, props, notes1)
+    from planner import NEEDS_YOU as _NY
+    assert props or any(n.startswith(_NY) for n in notes1), (props, notes1)
     # (0.105.11) by default a welcoming fort agrees to none (the flag leaves a guest): a note for you
     from planner import NEEDS_YOU
     props, notes0 = [], []
@@ -770,7 +773,11 @@ def _():
     vamp = dict(pet(50, 150), vampire=True)
     props = []
     _residency_rule(st(100, [vamp, pet(51, 151)], residents=[]), m3, PLANNER_CONFIG, props, [])
-    assert props[0].action["ids"] == [51], props
+    # (r2 h9) the vampire declined (no longer left waiting), the other agreed next
+    assert props[0].action["ids"] == [50] and props[0].action["accept"] is False, props
+    props = []
+    _residency_rule(st(100, [pet(51, 151)], residents=[]), m3, PLANNER_CONFIG, props, [])
+    assert props[0].action["ids"] == [51] and props[0].action["accept"] is True, props
     # never seen: a second probe, then no more agreed, and a note for you
     m2 = Memory()
     m2.residency = {"probe": {"id": 1, "unit": 101, "tick": 0}}
@@ -783,14 +790,14 @@ def _():
     props, notes = [], []
     _residency_rule(s, m2, PLANNER_CONFIG, props, notes)
     assert m2.residency["works"] is False and not props and any(n.startswith(NEEDS_YOU) for n in notes), notes
-    # Outsiders -40: DF's orders still take guests, so nothing is declined (only the gone cleared)
+    # Outsiders -40: (r2 h9) weighed too; never agreed by the flag's probe below 0 for a visitor with no reason
     props = []
     _residency_rule(st(-40, here), Memory(), PLANNER_CONFIG, props, [])
-    assert not props
+    assert all(p.action["accept"] is False for p in props) or not props, props
     # the Rules switch "accept visitors" off: nothing agreed
     props = []
     _residency_rule(st(100, here, residents=[], accept_visitors=False), Memory(), PLANNER_CONFIG, props, [])
-    assert not props
+    assert all(p.action["accept"] is False for p in props), props
     PLANNER_CONFIG["residency_accept_by_flag"] = False
 
 
@@ -5767,6 +5774,11 @@ def _():
     assert not by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap"), "held until it's well past"
     s["stocks"]["drink"] = pop * 6
     s["stocks"]["prepared_meals"] = pop * 6
+    # (r2 h9) let go once that has lasted h9_pop_cap_release_days (note_cycle books it)
+    note_cycle(copy.deepcopy(s), m)
+    assert not by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap"), "not at once: no flip-flop"
+    s["date"]["tick"] += PLANNER_CONFIG["h9_pop_cap_release_days"] * 1200
+    note_cycle(copy.deepcopy(s), m)
     c = by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap")
     assert c and c[0].action["cap"] == 1000, c                  # let go
     record([(c[0], {"ok": True})], s, m)
@@ -5807,6 +5819,9 @@ def _():
     s["society"] = {"pop_cap": c[0].action["cap"], "strict_pop_cap": c[0].action["strict"]}
     s["stocks"]["drink"] = pop * 6
     s["stocks"]["prepared_meals"] = pop * 6
+    note_cycle(copy.deepcopy(s), m)                             # (r2 h9) the release time first
+    s["date"]["tick"] += PLANNER_CONFIG["h9_pop_cap_release_days"] * 1200
+    note_cycle(copy.deepcopy(s), m)
     c = by_rule(plan(copy.deepcopy(s), m)[0], "pop_cap")
     assert c and c[0].action["cap"] == pop + 100 and "strained" not in c[0].reason, c   # back to the slow-game hold
     record([(c[0], {"ok": True})], s, m)

@@ -179,6 +179,13 @@ function raid_sites()
     if not fs or not okf then return {rows = {}, error = 'the fort site'} end
     local fland = landmass(fs)
     local rel = relations(civ)
+    -- (r2 h9) both ways and through the fort's government (ai-missions resolver):
+    -- every raid_sites row read "unknown" (A5 finding 2)
+    local rel_of
+    pcall(function()
+        local M = reqscript('ai-missions')
+        if type(M.resolver) == 'function' then rel_of = M.resolver(nil, civ, group) end
+    end)
     local names, kinds = {}, {}
     local function ent_info(id)
         if not id or id < 0 then return nil, nil end
@@ -214,6 +221,10 @@ function raid_sites()
             local civ_id = (c and c >= 0) and c or (owner_kind == 'Civilization' and who or nil)
             local civ_name = civ_id and ent_info(civ_id) or owner_name
             local r = (civ_id and rel[civ_id]) or rel[who]
+            if not r and rel_of then
+                local okr, rr = pcall(rel_of, civ_id, who)
+                if okr then r = rr end
+            end
             local stype = enum_name(df.world_site_type, s.type)
             if not RAID_LIVED_IN[stype] then return nil end
             local pop = site_pop(s)

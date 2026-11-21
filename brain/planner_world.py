@@ -316,12 +316,28 @@ def _messenger_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     # a young fort appoints one too: Make contact waits for nobody else
     if not rules["make_contact"] or not rules["appoint_nobles"] or (young_fort(s, cfg) and not rules["send_messenger"]):
         return
-    o = _d(_d(_d(s.get("offices")).get("offices")).get("MESSENGER"))
-    if not o or _l(o.get("held")) or int(o.get("vacant") or 0) <= 0 or o.get("appointable") is False:
+    offices = _d(s.get("offices"))
+    o = _d(_d(offices.get("offices")).get("MESSENGER"))
+    if not o:
+        # (r2 h9) DF's civilisation gives this fort no messenger at all: said plainly
+        if _d(offices.get("messenger")).get("position") is False:
+            notes.append("Make contact is on, but this fort's civilisation has no messenger position (DF's "
+                         "nobles screen shows none): no messenger can be appointed or sent")
+        return
+    # (r2 h9) a messenger with no slot yet (DF's AS_NEEDED post: the nobles
+    # screen adds one when it is filled): the appointment adds it
+    no_slot = bool(o.get("no_slot")) and int(o.get("slots") or 0) == 0
+    if _l(o.get("held")) or (int(o.get("vacant") or 0) <= 0 and not no_slot):
+        return
+    if o.get("appointable") is False:
+        notes.append(f"Make contact is on, but the messenger is not the fort's to appoint "
+                     f"({o.get('not_why') or 'DF says so'}): it waits for whoever appoints it")
         return
     proposals.append(Proposal("messenger", {"type": "appoint", "office": "MESSENGER"},
                               "the fort has a messenger's post and nobody holds it: appoint a good talker who "
-                              "isn't needed at home (Make contact needs one)", 5))
+                              "isn't needed at home (Make contact needs one)"
+                              + ("; DF's nobles screen adds the slot as one is appointed: the AI does the same"
+                                 if no_slot else ""), 5))
 
 
 def _messenger_out(ms: dict) -> list:
