@@ -327,12 +327,12 @@ def _():
 def _():
     c = FakeClaude(answer=json.dumps({"note": "raise the garden, hold the dairy", "actions": [
         {"type": "raise", "rule": "grandeur", "why": "good times"},
-        {"type": "hold", "rule": "dairy", "days": 20, "why": "the herd is for war"}], "want": ["trade"]}))
+        {"type": "hold", "rule": "gems", "days": 20, "why": "the herd is for war"}], "want": ["trade"]}))   # (r4 k1) an expansion rule
     overseer.one_cycle(FakeBridge(), autopilot=False, backend=c)
     m = saved()["memory"]
-    assert m["steer"]["grandeur"]["mode"] == "raise" and m["steer"]["dairy"]["mode"] == "hold", m.get("steer")
+    assert m["steer"]["grandeur"]["mode"] == "raise" and m["steer"]["gems"]["mode"] == "hold", m.get("steer")
     assert m["strategist_wants"] == ["trade"] and m["token_ratio"] != 1.0, (m.get("strategist_wants"), m.get("token_ratio"))
-    assert any("AI steers: hold dairy for 20 day(s)" in x for x in SAID), SAID[-12:]
+    assert any("AI steers: hold gems for 20 day(s)" in x for x in SAID), SAID[-12:]
 
 
 # --- culture ----------------------------------------------------------------------------

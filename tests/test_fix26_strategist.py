@@ -71,15 +71,16 @@ def _():
 
 @test("steer: a rule shown in THE PLANNER PROPOSES NOW or RECENT ACTIONS is accepted; others are not")
 def _():
-    props = [Proposal("homes", {"type": "x"}, "homes for couples", 5),
+    # (r4 k1) an expansion rule: survival rules (homes) can't be held now
+    props = [Proposal("polish", {"type": "x"}, "polish the halls", 5),
              Proposal("waterworks_moat", {"type": "x"}, "a moat", 5)]
     recent = [{"rule": "gatehouse", "action": {"type": "build_gatehouse"}}, {"rule": "strategist", "action": {}}]
     shown = shown_rules(props, recent)
-    assert shown == {"homes", "waterworks_moat", "gatehouse"}, shown
-    a = _steer({"type": "hold", "rule": "homes", "days": 10, "why": "x"},
+    assert shown == {"polish", "waterworks_moat", "gatehouse"}, shown
+    a = _steer({"type": "hold", "rule": "polish", "days": 10, "why": "x"},
                {"type": "raise", "rule": "gatehouse", "why": "x"},
                {"type": "hold", "rule": "waterworks_moat", "days": 3, "why": "x"}, shown=shown)
-    assert [s["rule"] for s in a.steer] == ["homes", "gatehouse", "waterworks_moat"], a.rejected
+    assert [s["rule"] for s in a.steer] == ["polish", "gatehouse", "waterworks_moat"], a.rejected
     # not shown and not on the fixed list: refused, as before
     a = _steer({"type": "hold", "rule": "homes_dig", "days": 10, "why": "x"}, shown=shown)
     assert not a.steer and "unknown rule" in a.rejected[0]
@@ -93,7 +94,8 @@ def _():
     from review import maybe_review
     s, m = _ai(REAL), Memory()
     props, notes = plan(copy.deepcopy(s), m)
-    rule = next(p.rule for p in props if p.rule not in STEER_PROTECTED and p.rule != "build")
+    import steer_guard   # (r4 k1) a rule that may be held: an expansion rule
+    rule = next(p.rule for p in props if steer_guard.hold_refused(p.rule) is None and p.rule != "build")
     prot = next(p.rule for p in props if p.rule in STEER_PROTECTED)
     c = Fake(json.dumps({"note": "x", "actions": [{"type": "hold", "rule": rule, "days": 5, "why": "a"},
                                                   {"type": "hold", "rule": prot, "days": 5, "why": "b"}]}))

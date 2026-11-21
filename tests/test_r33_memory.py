@@ -140,7 +140,7 @@ def _():
         a = _ask([{"type": "raise", "rule": rule, "why": "y"}], shown={rule})
         assert not a.steer and "can't be raised" in a.rejected[0], (rule, a.rejected)
     a = _ask([{"type": "hold", "rule": "slaughter", "days": 7}], shown={"slaughter"})
-    assert a.steer and a.steer[0]["type"] == "hold"
+    assert not a.steer, a.steer          # (r4 k1, A7 B1) a survival rule: never held now
     a = _ask([{"type": "raise", "rule": "crafts", "why": "y"}])
     assert a.steer and a.steer[0]["rule"] == "crafts"
 
@@ -154,7 +154,7 @@ def _():
     assert a.steer and a.steer[0]["days"] == 14, a.rejected      # (0.105.33 fix) shortened, not lost
     a = _ask([{"type": "hold", "rule": "build", "days": 14}])
     assert a.steer and a.steer[0]["days"] == 14
-    a = _ask([{"type": "hold", "rule": "crafts", "days": 84}])
+    a = _ask([{"type": "hold", "rule": "grandeur", "days": 84}])     # (r4 k1) an expansion rule
     assert a.steer and a.steer[0]["days"] == 84
 
 

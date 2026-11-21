@@ -134,11 +134,12 @@ def _():
     m.steer = {"slaughter": {"mode": "raise", "until": far, "why": ""},
                "containers": {"mode": "hold", "until": far, "why": ""},
                "build": {"mode": "hold", "until": far, "why": ""},
-               "crafts": {"mode": "hold", "until": far, "why": ""}}
+               "grandeur": {"mode": "hold", "until": far, "why": ""},     # (r4 k1) an expansion rule
+               "crafts": {"mode": "hold", "until": far, "why": ""}}       # a survival rule: goes
     note_cycle(s, m)
     assert "slaughter" not in m.steer and "containers" not in m.steer, m.steer
     assert m.steer["build"]["until"] == now + 14 * TICKS_PER_DAY, m.steer["build"]
-    assert m.steer["crafts"]["until"] == far
+    assert m.steer["grandeur"]["until"] == far and "crafts" not in m.steer, m.steer
 
 
 @test("strategist: a 28-day build hold is shortened to 14, not rejected")

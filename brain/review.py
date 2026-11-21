@@ -17,7 +17,7 @@ import customs
 import learning
 import memstore
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, Proposal, abs_tick, level_refused
-from strategist import check_answer, detect, instructions, review_message, shown_rules
+from strategist import check_answer, detect, instructions, review_message, shown_rules, seen_actions
 import chronicle
 import season as season_mod
 from tokens import TokenBank, ai_plan, budget_settings, event_review_allowed, routine_due, routine_interval_ticks
@@ -269,6 +269,7 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     learn_token_ratio(memory, used, raw_estimate)
     answer = check_answer(reply.text, recipes, tools, my_orders, build,
                           shown=shown_rules(proposals, memory.recent_actions),
+                          seen=seen_actions(proposals, memory.recent_actions),
                           **({"design_ctx": dctx} if dctx else {}))
     design_said = []
     if design_ask:

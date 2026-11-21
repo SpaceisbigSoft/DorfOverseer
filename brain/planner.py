@@ -35,6 +35,7 @@ from planner_military import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_industry import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import crisis  # noqa: E402  (0.104.137)
+import steer_guard  # noqa: E402  (r4 k1) the strategist's holds and raises judged by class and action kind
 from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood's materials held from other orders
 from planner_moods import reserve_room, note_reserve_swap, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
 from planner_gates import note_gate_stuck, note_gate_stuck_cycle  # noqa: E402  (0.105.32) a gate the game holds shut
@@ -1376,7 +1377,16 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
 
     def _steer(p):
         try:
-            return steer_of(memory, p.rule, now)
+            st = steer_of(memory, p.rule, now)
+            # (r4 k1, A7 B1/B2) judged by what the step is: a hold waits only
+            # an expansion step (or build's ladder), a raise never speeds a
+            # kill/squad order, gate, lever, trade, butcher, conviction, lure,
+            # kill zone, hunt or an opened seal, whatever the rule's name
+            if st and st.get("mode") == "hold" and not steer_guard.hold_applies(p):
+                return None
+            if st and st.get("mode") == "raise" and not steer_guard.raise_applies(p):
+                return None
+            return st
         except Exception:  # noqa: BLE001  (0.105.48, K6) an odd steer is no steer
             return None
     # (0.105.26) a waiting strange mood's materials: no other rule's work order
@@ -2166,9 +2176,10 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
         if b_ and b_.get("mode") == "hold":       # and an older, longer hold of build is cut to its two weeks
             b_["until"] = min(b_["until"], now + BUILD_HOLD_MAX_DAYS * TICKS_PER_DAY)
         for k in [k for k, v in memory.steer.items()
-                  if (v.get("mode") == "raise" and k in RAISE_FORBIDDEN)
-                  or (v.get("mode") == "hold" and (k in HOLD_PROTECTED or steer_protected(k)))]:
-            del memory.steer[k]
+                  if (v.get("mode") == "raise" and (k in RAISE_FORBIDDEN or steer_guard.raise_refused(k)))
+                  or (v.get("mode") == "hold" and (k in HOLD_PROTECTED or steer_protected(k)
+                                                   or steer_guard.hold_refused(k)))]:
+            del memory.steer[k]     # (r4 k1) and one steer_guard refuses now (an older save's hold of arms)
     # (0.104.81) one-off keys (a zone, a dwarf, an order) left in the loop
     # log: each key's ticks are kept a year, but the keys themselves grew
     log = getattr(memory, "action_log", None)

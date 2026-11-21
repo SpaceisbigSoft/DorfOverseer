@@ -443,7 +443,8 @@ def _extract_json(text: str) -> dict | None:
 
 
 def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: set[int],
-                 build: dict | None = None, shown: set | None = None, design_ctx: dict | None = None) -> Answer:
+                 build: dict | None = None, shown: set | None = None, design_ctx: dict | None = None,
+                 seen: dict | None = None) -> Answer:
     """Turn the model's reply into safe, bounded instructions. Never trusts it.
     `shown`: the rule names the review showed (shown_rules), which may be
     raised or held as well as STEER_RULES (never a protected one held).
@@ -482,7 +483,10 @@ def check_answer(text: str, recipes: set[str], tools: set[str], ai_order_ids: se
 
     for act in _l(obj.get("actions")):
         if isinstance(act, dict) and act.get("type") in ("raise", "hold"):
-            ok, why = _check_steer(act, shown)
+            try:
+                ok, why = _check_steer(act, shown, seen)
+            except Exception as ex:  # noqa: BLE001  (never raises on a model's answer)
+                ok, why = None, f"{act.get('type')}: could not be checked ({type(ex).__name__})"
             if ok and len(a.steer) < MAX_STEER:
                 a.steer.append(ok)
             else:
@@ -622,24 +626,46 @@ def _check_design(obj: dict, ctx: dict, a: Answer) -> None:
         a.rejected.append("blueprint: asked for, not given")
 
 
-def _check_steer(act, shown: set | None = None) -> tuple[dict | None, str]:
-    """(0.104.89) A raise or hold of one of the planner's rules."""
+def _check_steer(act, shown: set | None = None, seen: dict | None = None) -> tuple[dict | None, str]:
+    """(0.104.89) A raise or hold of one of the planner's rules. (r4 k1, A7
+    B1/B2) judged by steer_guard: a hold by the rule's class (never survival
+    or defence), a raise by the kinds of action the rule takes (never a kill
+    or squad order, an expulsion, a gate, lever or hatch, trade, the butcher,
+    a conviction, the cavern seal opened, a lure, a kill zone or a hunt).
+    `seen`: rule -> the actions this review saw it propose."""
+    import steer_guard
     rule, why = act.get("rule"), act.get("why")
     if not isinstance(rule, str) or rule in NOT_STEERABLE or (rule not in STEER_RULES and rule not in (shown or ())):
         return None, f"{act.get('type')}: unknown rule {rule!r}"
     why = (why if isinstance(why, str) else "")[:120]
     if act["type"] == "raise":
-        if rule in RAISE_FORBIDDEN:
-            return None, f"raise: {rule} is paced by its wait and can't be raised"
+        no = steer_guard.raise_refused(rule, (seen or {}).get(rule) or ())
+        if no:
+            return None, f"raise: {rule} can't be raised ({no}): it keeps its own pace"
         return {"type": "raise", "rule": rule, "why": why}, ""
-    if steer_protected(rule) or rule in HOLD_PROTECTED:
-        return None, f"hold: {rule} keeps the fort safe and can't be held"
+    no = steer_guard.hold_refused(rule)
+    if no:
+        return None, f"hold: {rule} keeps the fort safe and can't be held ({no})"
     days = _int_in(act.get("days"), 1, STEER_MAX_DAYS)
     if days is None:
         return None, f"hold: days must be 1-{STEER_MAX_DAYS}"
     if rule == "build":
         days = min(days, BUILD_HOLD_MAX_DAYS)     # (0.105.33 fix) a longer build hold is shortened, not lost
     return {"type": "hold", "rule": rule, "days": days, "why": why}, ""
+
+
+def seen_actions(proposals: list | None, recent_decisions: list | None) -> dict:
+    """(r4 k1) rule -> the actions the review shows it taking (its proposals
+    now and its recent actions), for steer_guard.raise_refused."""
+    out: dict = {}
+    for p in proposals or []:
+        r, a = getattr(p, "rule", None), getattr(p, "action", None)
+        if isinstance(r, str) and isinstance(a, dict):
+            out.setdefault(r, []).append(a)
+    for d in recent_decisions or []:
+        if isinstance(d, dict) and isinstance(d.get("rule"), str) and isinstance(d.get("action"), dict):
+            out.setdefault(d["rule"], []).append(d["action"])
+    return out
 
 
 def _int(v) -> int | None:

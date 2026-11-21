@@ -778,12 +778,12 @@ def _():
 def _():
     reply = json.dumps({"note": "a garden for the good years", "actions": [
         {"type": "raise", "rule": "grandeur", "why": "good times"},
-        {"type": "hold", "rule": "dairy", "days": 30, "why": "beast-friends"},
+        {"type": "hold", "rule": "gems", "days": 30, "why": "beast-friends"},   # (r4 k1) an expansion rule
         {"type": "hold", "rule": "gate_guard", "days": 5, "why": "no"},
-        {"type": "hold", "rule": "dairy", "days": 999},
+        {"type": "hold", "rule": "gems", "days": 999},
         {"type": "raise", "rule": "nonsense"}], "want": ["trade", "secrets"]})
     a = check_answer(reply, set(), set(), set(), {})
-    assert [(s["type"], s["rule"]) for s in a.steer] == [("raise", "grandeur"), ("hold", "dairy")], a.steer
+    assert [(s["type"], s["rule"]) for s in a.steer] == [("raise", "grandeur"), ("hold", "gems")], a.steer
     assert a.want == ["trade"] and len(a.rejected) == 4, a.rejected
     assert any("can't be held" in r for r in a.rejected)
 
@@ -796,14 +796,14 @@ def _():
     s = {"date": {"year": 77, "tick": 100000}, "orders": [], "buildings": {}, "settings": {}}
     now = planner.abs_tick(s)
     m = Memory()
-    m.last_fired = {"dairy": now - 10, "eggs": now - 10}
+    m.last_fired = {"dairy": now - 10, "gems": now - 10}     # (r4 k1) gems: an expansion rule may be held
     props = [Proposal("dairy", {"type": "work_order", "recipe": "milk_creature", "amount": 5}, "milk", 6),
-             Proposal("eggs", {"type": "nest_boxes", "max": 3}, "boxes", 5)]
+             Proposal("gems", {"type": "work_order", "recipe": "cut_gems", "amount": 3}, "gems", 5)]
     allowed, held = select(props, s, m)
     assert not allowed, allowed                                          # both in their cooldown
     lines = review.apply_steer(m, [{"type": "raise", "rule": "dairy", "why": "cheese"},
-                                   {"type": "hold", "rule": "eggs", "days": 10, "why": "beast-friends"}], now)
-    assert len(lines) == 2 and m.steer["eggs"]["until"] == now + 10 * planner.TICKS_PER_DAY
+                                   {"type": "hold", "rule": "gems", "days": 10, "why": "beast-friends"}], now)
+    assert len(lines) == 2 and m.steer["gems"]["until"] == now + 10 * planner.TICKS_PER_DAY
     allowed, held = select(props, s, m)
     assert [p.rule for p in allowed] == ["dairy"], (allowed, held)
     assert any("held by the strategist (beast-friends)" in h for h in held), held
@@ -811,7 +811,7 @@ def _():
     assert planner.steer_of(m, "gate_guard", now) is None
     later = dict(s, date={"year": 77, "tick": 100000 + 11 * planner.TICKS_PER_DAY})
     note_cycle(later, m)
-    assert "eggs" not in m.steer and "dairy" not in m.steer, m.steer   # a raise lasts a week, the hold its 10 days
+    assert "gems" not in m.steer and "dairy" not in m.steer, m.steer   # a raise lasts a week, the hold its 10 days
 
 
 @test("steering (0.104.89): the message shows the Rules tab, the planner's proposals, the holds and wanted sections")
