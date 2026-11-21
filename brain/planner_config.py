@@ -1361,3 +1361,13 @@ PLANNER_CONFIG.update({
     "floor_full_retry_days": 28,          # a full floor is offered again after this long
     "floor_note_days": 3,                 # a fallback is said in the planner's notes for this many days after it happened
 })
+
+# (R1 g4) the civilians' shelter (brain/planner_shelter.py; the walk's own
+# numbers are lua/ai-shelter-plan.lua SHELTER_DANGER_*): A2/E's flee and
+# pick undid each other every cycle (18 moves in two minutes, civilians on
+# levels with 0 drink); B's pick sent them past the killer
+PLANNER_CONFIG.update({
+    "g4_shelter_hold_ticks": 1200,        # once the shelter moved (or went back to the whole fort) for the dangers
+                                          # on the map, it is held this long: only a new danger, a picked shelter
+                                          # an intruder comes close to, or one that no longer holds them moves it
+})

@@ -504,9 +504,9 @@ def _():
     s = state(splan([cand(165, 30, drink=100), cand(150, 70, wells=1)], dangers=d))
     p, n = run(s)
     assert [x.rule for x in p] == ["shelter_flee"] and p[0].action["levels"][0] == 150, [x.action for x in p]
-    # an invader (not a great danger) inside: no flee
+    # (R1 g4) an invader (not a great danger) inside: fled too (B's lone killer was one)
     d[0]["great"] = None
-    assert all(x.rule != "shelter_flee" for x in run(s)[0])
+    assert [x.rule for x in run(s)[0]] == ["shelter_flee"]
 
 
 CH = [{"x": 12, "y": 20, "z": 170, "from_src": 2, "to_shelter": 25, "width": 2},

@@ -29,6 +29,16 @@ the AI's pick in use. Here:
     for `shelter_widen_ticks` the whole fort again, the alarm up or not. A
     plan still being walked (the bridge walks it in slices) or made for
     other ways in moves nothing;
+  * (R1 g4) B (y262): the civilians sent down the one central stair a killer
+    stood by (14 of 26 dead within a tile of it); A2/E: the flee step sent
+    them to levels with 0 drink and 0 food and the ordinary pick undid it
+    the next cycle, 18 moves in two minutes. Now every danger inside the fort
+    (not only a great one) is measured from its own tile, a level whose way
+    there passes an intruder (`civ_exposed`) is never safe, a pick the
+    planner marks unsafe is never taken (the civilians stay where they are),
+    the flee step takes only a level that holds them (room, drink, food),
+    and once the shelter moved it is held `g4_shelter_hold_ticks` for the
+    same dangers (one decision a threat);
   * `squad_station_spot`: where the squads stand while the dwarves hide (a
     choke on the threat's walk to the shelter, inside the gate it faces,
     off the shelter's levels; else the barracks), read by planner_army's
@@ -80,11 +90,24 @@ def _usable(c: dict) -> bool:
     return isinstance(c, dict) and _int(c.get("z")) is not None and (_int(c.get("civ_reached")) or 0) > 0
 
 
+def _d_threat(c: dict):
+    """The threat's walk to a level: the nearest way in's or (R1 g4) an
+    intruder's own (d_inside); None: none reaches it."""
+    ds = [d for d in (_int(c.get("d_threat")), _int(c.get("d_inside"))) if d is not None]
+    return min(ds) if ds else None
+
+
 def _margin(c: dict) -> int:
-    d = _int(c.get("d_threat"))
+    d = _d_threat(c)
     if d is None:
         return INF
     return d - (_int(c.get("civ_p90")) or 0)
+
+
+def _exposed(c: dict) -> int:
+    """(R1 g4) Civilians whose walk to this level passes an intruder (the
+    bridge's zone round it, its level's stair)."""
+    return _int(c.get("civ_exposed")) or 0
 
 
 def _wet(c: dict) -> bool:
@@ -156,10 +179,11 @@ def choose_shelter(plan: dict, cfg: dict, exclude=(), citizens: int | None = Non
     need = _needs(civs, cfg)
 
     def safe(c):
-        return _margin(c) >= margin_min
+        # (R1 g4) and nobody's way there passes an intruder
+        return _margin(c) >= margin_min and _exposed(c) == 0
 
     def far(c):
-        d = _int(c.get("d_threat"))
+        d = _d_threat(c)
         return INF if d is None else d
 
     def group(main, most, span):
@@ -182,9 +206,9 @@ def choose_shelter(plan: dict, cfg: dict, exclude=(), citizens: int | None = Non
             g, tot = group(main, most, span)
             has_drink = tot["wells"] > 0 or tot["drink"] > 0
             short = _shortfalls(tot["tiles"], tot["drink"], tot["wells"], tot["food"], need)
-            row = {"levels": sorted(c["z"] for c in g), "main": main["z"], "d_threat": _int(main.get("d_threat")),
+            row = {"levels": sorted(c["z"] for c in g), "main": main["z"], "d_threat": _d_threat(main),
                    "civ_p90": _int(main.get("civ_p90")), "margin": None if _margin(main) >= INF else _margin(main),
-                   "safe": safe(main), "drink": has_drink,
+                   "safe": safe(main), "exposed": _exposed(main), "drink": has_drink,
                    "drink_short": has_drink and tot["wells"] == 0 and tot["drink"] < need["drink"],
                    "tiles": tot["tiles"], "food": tot["food"], "livable": not short, "short": short,
                    "way_in": main.get("way_in"), "chokes": _l(main.get("chokes"))}
@@ -198,7 +222,9 @@ def choose_shelter(plan: dict, cfg: dict, exclude=(), citizens: int | None = Non
     if best is None:
         return None
     w = _d(best.get("way_in"))
-    where = (f"the {w.get('kind') or 'entrance'} at x{w.get('x')} y{w.get('y')} z{w.get('z')}" if w
+    where = ((f"{w.get('name') or 'the intruder'} inside, at x{w.get('x')} y{w.get('y')} z{w.get('z')}"
+              if w.get("kind") == "intruder" else
+              f"the {w.get('kind') or 'entrance'} at x{w.get('x')} y{w.get('y')} z{w.get('z')}") if w
              else "its way in")
     if best["d_threat"] is None:
         reach = f"the threat can't walk there from {where}"
@@ -209,7 +235,8 @@ def choose_shelter(plan: dict, cfg: dict, exclude=(), citizens: int | None = Non
                    f"the farthest from the threat ({reach})"
                    + ("" if best["drink"] else "; no drink there")
                    + ("" if best["livable"] else f"; for {civs} civilians it holds only {', '.join(best['short'])}")
-                   + ("" if best["safe"] else "; none the civilians surely reach first"))
+                   + ("" if best["safe"] else "; none the civilians surely reach first")
+                   + (f"; the way there passes an intruder for {best['exposed']} civilian(s)" if best["exposed"] else ""))
     return best
 
 
@@ -227,6 +254,55 @@ def _pick_action(choice: dict) -> dict:
     if w:
         a["way_in"] = {k: w.get(k) for k in ("id", "kind", "x", "y", "z") if w.get(k) is not None}
     return a
+
+
+def _now(s: dict):
+    try:
+        from planner_core import abs_tick
+        return abs_tick(s)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _danger_ids(plan: dict) -> list:
+    return sorted(str(t.get("id")) for t in _l(plan.get("dangers")) if isinstance(t, dict) and t.get("id") is not None)
+
+
+def _hold_book(memory, cur: list, raw: dict, now) -> dict:
+    """(R1 g4) memory.shelter_hold {levels, tick, ids}: the shelter as last
+    seen, and since when (the tick it changed: the pick's own, else the cycle
+    the change was first seen). A change is seen in the report, so a move
+    proposed and not made holds nothing."""
+    if memory is None:
+        return {}
+    h = getattr(memory, "shelter_hold", None)
+    if not isinstance(h, dict):
+        h = {}
+    if "levels" not in h or sorted(_l(h.get("levels"))) != sorted(cur):
+        tick = _int(_d(raw.get("current")).get("tick")) if cur else None
+        if "levels" in h and tick is None:
+            tick = now                    # a change (a clear) seen this cycle
+        h = {"levels": list(cur), "tick": tick, "ids": _danger_ids(raw)}
+        try:
+            memory.shelter_hold = h
+        except Exception:  # noqa: BLE001
+            pass
+    return h
+
+
+def _held(h: dict, raw: dict, now, cfg: dict) -> int | None:
+    """(R1 g4) Ticks left of the hold on the shelter (one decision a threat):
+    None when not held (no move seen yet, the hold over, or a danger come
+    since that wasn't there when it moved)."""
+    tick = _int(h.get("tick")) if isinstance(h, dict) else None
+    if tick is None or not isinstance(now, int):
+        return None
+    left = int(cfg.get("g4_shelter_hold_ticks", 1200)) - (now - tick)
+    if left <= 0:
+        return None
+    if set(_danger_ids(raw)) - set(_l(h.get("ids"))):
+        return None                       # a new danger: a new decision
+    return left
 
 
 def _shelter_pick_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
@@ -268,10 +344,15 @@ def _shelter_pick_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=
                      "stays as it is meanwhile)")
         return
     flee = int(cfg.get("shelter_flee_tiles", 20))
-    # (rule 3) a great danger inside the fort, close to the shelter by walk
+    now = _now(s)
+    book = _hold_book(memory, cur, raw, now)
+    held = _held(book, raw, now, cfg)
+    # (rule 3) a danger inside the fort, close to the shelter by walk: (R1 g4)
+    # any danger (an invader, a thief, a beast), not only a great one: B's
+    # lone killer was an invader
     close = []
     for t in _l(plan.get("dangers")):
-        if not isinstance(t, dict) or not t.get("great") or not t.get("inside"):
+        if not isinstance(t, dict) or not t.get("inside"):
             continue
         d = _int(t.get("to_shelter"))
         if not cur:
@@ -280,18 +361,37 @@ def _shelter_pick_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=
             close.append((d, t))
     if close:
         d, t = min(close, key=lambda x: x[0])
+        name = t.get("name") or "a danger"
+        where = ("the whole fort" if not cur else f"level{'s' if len(cur) > 1 else ''} "
+                 f"{', '.join(str(z) for z in cur)}")
+        # (R1 g4) held: the shelter was set for these dangers a moment ago.
+        # Only a picked shelter the intruder comes close to is fled again
+        # (with the whole fort as the shelter it is always "in it": A2's flip)
+        if held is not None and not cur:
+            notes.append(f"{name} is inside the fort; the shelter ({where}) was set for it {now - book['tick']} "
+                         f"ticks ago and is held {held} more: the civilians stay where they are")
+            return
         choice = choose_shelter(plan, cfg, exclude=cur, citizens=civs)
-        name = t.get("name") or "a great danger"
-        if choice and not _same(choice["levels"], cur):
-            where = ("the whole fort" if not cur else f"level{'s' if len(cur) > 1 else ''} "
-                     f"{', '.join(str(z) for z in cur)}")
+        # (R1 g4) the flee step takes only what the ordinary pick would keep:
+        # a level the civilians surely reach first, whose way there passes no
+        # intruder, and that holds them (room, drink, food). Else they stay
+        # where they are, behind the doors (A2: 97 civilians sent to levels
+        # with 0 drink and 0 food, the next cycle undoing it)
+        why_not = None
+        if not choice or _same(choice["levels"], cur):
+            why_not = "no other level is farther from it"
+        elif not choice["safe"]:
+            why_not = f"no level the civilians surely reach first without passing it ({choice['why']})"
+        elif not choice["livable"] or not choice["drink"]:
+            why_not = f"no level away from it holds the civilians ({choice['why']})"
+        if why_not is None:
             reason = (f"{name} is inside the fort, {d} steps from the shelter ({where}): the civilians move at once "
                       f"to {choice['why']}")
             proposals.append(Proposal("shelter_flee", _pick_action(choice), reason, 0))
             notes.append(f"the shelter moved: {reason}")
         else:
-            notes.append(f"{name} is inside the fort, {d} steps from the shelter, and no other level is farther "
-                         "from it: the civilians stay where they are")
+            notes.append(f"{name} is inside the fort, {d} steps from the shelter ({where}), and {why_not}: "
+                         "the civilians stay where they are")
         return
     choice = choose_shelter(plan, cfg, citizens=civs)
     if not choice:
@@ -303,6 +403,13 @@ def _shelter_pick_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=
     cur_sup = shelter_supplies(plan, cur) if cur else None
     cur_short = (_shortfalls(cur_sup["tiles"], cur_sup["drink"], cur_sup["wells"], cur_sup["food"], need)
                  if cur_sup else [])
+    # (R1 g4) held: one decision a threat. Only a pick in use that no longer
+    # holds the civilians is changed meanwhile
+    if held is not None and not cur_short:
+        if not _same(choice["levels"], cur):
+            notes.append(f"a great danger or siege on the map: the shelter was set for it {now - book['tick']} "
+                         f"ticks ago and is held {held} more (the civilians aren't moved back and forth)")
+        return
     if not choice["livable"]:
         # no levels away from it hold them: the whole fort (a bigger shelter)
         # rather than one they starve or go thirsty in
@@ -318,17 +425,31 @@ def _shelter_pick_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=
         notes.append(f"a great danger or siege on the map: the level farthest from it ({choice['why']}) holds no "
                      "drink nor well, so the shelter stays as it is (the drink rule brings drink back to it)")
         return
+    if not choice["safe"]:
+        # (R1 g4) never a pick the planner itself marks unsafe (B: level 163,
+        # "none the civilians surely reach first", taken; they walked down the
+        # killer's stair). A pick in use that no longer holds them: the whole
+        # fort (a bigger burrow: nobody is sent walking for it)
+        if cur and cur_short:
+            proposals.append(Proposal("shelter_pick", {"type": "shelter_pick", "clear": True},
+                                      f"a great danger or siege on the map: the shelter in use holds only "
+                                      f"{', '.join(cur_short)} and no level away from it is safe to walk to "
+                                      f"({choice['why']}): the shelter covers the whole fort again", 0))
+        else:
+            notes.append(f"a great danger or siege on the map: no level the civilians surely reach first without "
+                         f"passing an intruder ({choice['why']}): the civilians stay where they are, behind the doors")
+        return
     if _same(choice["levels"], cur):
         return
     # hysteresis: a pick in use is kept unless the new one is clearly farther,
     # the old one unsafe, or (0.105.48) the old one can't hold the civilians
     walk = _d(plan.get("current_walk"))
     if cur and walk and not cur_short:
-        old_d = _int(walk.get("d_threat"))
+        old_d = _d_threat(walk)
         old_margin = INF if old_d is None else old_d - (_int(walk.get("civ_p90")) or 0)
         new_d = choice["d_threat"]
         gain = int(cfg.get("shelter_pick_hysteresis", 10))
-        if old_margin >= int(cfg.get("shelter_pick_margin", 5)) and (
+        if old_margin >= int(cfg.get("shelter_pick_margin", 5)) and _exposed(walk) == 0 and (
                 old_d is None or (new_d is not None and new_d < old_d + gain)):
             return
     proposals.append(Proposal("shelter_pick", _pick_action(choice),
