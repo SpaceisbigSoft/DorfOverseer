@@ -119,7 +119,7 @@ _SURVIVAL_RULES = {
     "mood_reserve", "mood_shelter", "instrument_orders", "join_levels",
     # the fort's offices and people
     "appoint", "messenger", "pop_cap", "recovery_migrants", "migrant_drought", "stuck_caravan", "census", "labor", "labor_trim", "petitions",
-    "petition_retarget", "residency", "location_access",
+    "petition_retarget", "residency", "citizenship", "location_access",
     # (r2h6) a temple or guildhall petition answered: held in a crisis it
     # lapsed, DF's "The guildhall petition by The Sienna Guild has been
     # ignored" (C, 16 Nov 07:36-07:44, four guilds), and IgnoredGuildhallPetition

@@ -11,7 +11,7 @@ shared in a program given to others.
 | What | Version | Notes |
 | --- | --- | --- |
 | Dwarf Fortress | 53.17 (Steam) | the game |
-| DFHack | 53.17-r1 (Steam, "DFHack"; 53.16-r3 also works) | Start the game from DFHack's Steam entry. Petitions to stay and citizenship are answered through DF's standing orders, which need a DFHack **newer than 53.16-r3**. On 53.16-r3 they wait for you, or show as a Needs you line. |
+| DFHack | 53.17-r1 (Steam, "DFHack"; 53.16-r3 also works) | Start the game from DFHack's Steam entry. Petitions to stay and citizenship are answered through DF's standing orders; on Windows the bridge reaches them by DF's own symbol names (r10), whatever the DFHack version. Old ones DF doesn't take may show as a Needs you line. |
 | Python | 3.10 or newer | from python.org; tick "Add python.exe to PATH" in the installer |
 | `lupa` | any | optional: only for the Lua tests (`pip install lupa`) |
 | `claude-agent-sdk` or `anthropic` | any | optional: only for the AI strategist (`--ai`); see [ai-setup.md](ai-setup.md) |

@@ -1014,7 +1014,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         if "paper" not in errors:
             _guard(_paper_rule, s, cfg, proposals, notes, memory)     # (item9) after the kiln: one paper step a cycle
         _guard(_glass_rule, s, cfg, proposals, notes)
-        _guard(_petition_rules, s, cfg, proposals, notes)
+        _guard(_petition_rules, s, cfg, proposals, notes, memory)        # (r10 p1) memory: your orders left alone
         _guard(_residency_rule, s, memory, cfg, proposals, notes)         # (0.105.9)
         _guard(_location_access_rule, s, memory, cfg, proposals, notes)   # (0.105.12)
         _guard(_anvil_rule, s, cfg, proposals, notes)

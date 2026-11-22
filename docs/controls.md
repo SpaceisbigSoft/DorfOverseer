@@ -434,8 +434,9 @@ window's "Now:" line shows them for your fort):
 Outsiders also answers residency petitions (0.105.9: declined in batches when
 closed, the visitors who left cleared, welcoming forts told to agree on DF's
 petitions screen) and, at -50 or lower, shuts the tavern, temples, library and
-guildhalls to visitors (0.105.12). DF's petition standing orders themselves
-need a DFHack newer than 53.16-r3.
+guildhalls to visitors (0.105.12). (r10) DF's petition standing orders
+themselves are set from it too: the bridge reaches them on Windows by DF's
+own symbol names; citizenship petitions the fort won't take are declined.
 
 ## What a mature fort keeps building, and which petitions it agrees (0.104.161)
 

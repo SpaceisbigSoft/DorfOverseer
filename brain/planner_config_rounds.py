@@ -355,3 +355,14 @@ PART.update({
     "r5p3_refusal_forget_days": 336,      # a streak is kept this long after its last refusal (the general one: 60)
     "r5p3_refusal_keep": 30,              # streaks kept at most (the oldest go first; r5 Z2: was 60, past the memory budget)
 })
+
+
+# (r10 p1, Phase 12b) petitions to stay and citizenship through DF's own
+# standing orders, which the bridge reaches on Windows by DF's symbol names
+# (lua/ai-bridge-report-fort.lua petition_orders_bind; docs/dfhack-notes.md, "Petitions (r10)")
+PART.update({
+    "r10p1_orders_sweep_days": 3,         # after an order is set to accept, the petitions of its kind that waited before:
+                                          # still waiting this many days on, DF's order didn't take them (recorded, said)
+    "r10p1_orders_yours_days": 336,       # a standing order you changed after the AI set it is left alone this long
+    "citizenship_cooldown_ticks": 1200,   # citizenship petitions declined a batch a day, as residency's
+})

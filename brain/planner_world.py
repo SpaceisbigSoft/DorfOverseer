@@ -22,9 +22,11 @@ screen when it is open. From it:
     (0.105.24) with the Rules switch send_messenger on, it drives the World
     screen itself as far as the recorded steps go (lua/ai-mission-send.lua).
 
-Citizenship petitions are not answered: DFHack 53.16-r3 can't set the
-standing orders, and agreeing to one in the save without DF's own steps is
-not known to make the visitor a citizen.
+Citizenship petitions (r10 p1): agreed by DF's own standing order, which the
+bridge reaches on Windows by DF's symbol names (planner_visitors
+_petition_rules; docs/dfhack-notes.md, "Petitions (r10)"); declined like
+petitions to stay when the fort won't take them; never agreed by the
+agreement's flag (not known to make the visitor a citizen).
 """
 
 from __future__ import annotations

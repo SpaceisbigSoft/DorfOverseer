@@ -197,6 +197,7 @@ class Memory:
     kill_sent_at: dict = field(default_factory=dict)     # (v35 fix) squad id -> tick it was last sent (kill_sent)
     labor_given: dict = field(default_factory=dict)      # (v35 fix) rule -> [[tick, dwarves], ...]: labours the AI gave (LABOR_CAPS)
     residency: dict = field(default_factory=dict)        # (0.105.9) {probe: {id, unit, tick}, works: True|False, since}
+    petition_orders: dict = field(default_factory=dict)  # (r10 p1) DF's petition standing orders: {set: {kind: 0|1}, at: {kind: tick}, before: {kind: [ids]}, swept: {kind: bool}, yours: {kind: tick}}
     character_projects: list = field(default_factory=list)   # (0.105.10) project ids the AI started as the fort's own
     locations_closed: list = field(default_factory=list)     # (0.105.12) location ids the AI shut to visitors
     gatehouses: dict = field(default_factory=dict)           # (0.105.23) entrance "x,y,z" -> {tick, bridge} built

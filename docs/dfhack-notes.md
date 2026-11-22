@@ -208,3 +208,92 @@ number, appointers), slots and holders; the civilisation's site templates, its o
 and its raw positions (`SITE`, `REQUIRES_POPULATION`, `APPOINTED_BY`, `NUMBER`); the citizens
 counted; and `ai.why`. If a fort with enough dwarves still has only a template, the next step is
 the Nobles screen (word-found buttons, as trade does), not a data write.
+
+## Petitions (r10)
+
+(r10 p1, Phase 12b, 22 Nov.) Evidence from `git clone --depth 1` of DFHack/df-structures
+(611369f), DFHack/dfhack (master; tag `53.17-r1` fetched: its `library/xml` submodule is the
+same df-structures commit 611369f) and DFHack/scripts. File references are to those repos.
+
+**Where pending petitions live.** `df.global.plotinfo.petitions`: a vector of agreement ids,
+DF's `unapproved_agreement_id` (df.plotinfo.xml:1027, "unapproved agreements"). Each is a
+`df.agreement` (df.agreement.xml:225, instance vector `world.agreements.all`): `parties`
+(`agreement_party`: `id`, `histfig_ids`, `entity_ids`), `details[0]` with `type`
+(`agreement_details_type`: `Residency` = BECOME_RESIDENT, `Citizenship` = BECOME_CITIZEN,
+`Location` = BUILD_LOCATION) and `data.Residency` {`reason`, `applicant`, `government`, `site`,
+`end_year`, `end_season_tick`} or `data.Citizenship` {the same without `reason`}
+(df.agreement.xml:46-62); `applicant` and `government` are party ids. `flags`: only
+`petition_not_accepted` (NOT_APPROVED, "this gets unset by accepting a petition") and
+`convicted_accepted` (CONCLUDED) (df.agreement.xml:220-223).
+
+**What approval and denial change.** Not in the repos beyond that flag. scripts/list-agreements.lua
+`is_resolved` (temple/guildhall agreements only) reads an agreement off the list with
+`petition_not_accepted` still set as "denied", which fits the AI's decline (take it off the
+list, the flag left). DF gives the applicant a thought either way (df.personality.xml:984-998:
+`BecomeResident`/`BecomeCitizen` = RESIDENCY/CITIZENSHIP_PETITION_ACCEPTED, `DenyResident`/`DenyCitizen`),
+so DF's own approval does more than clear the flag; what (unit flags2.resident CURRENT_RESIDENT
+df.unit.xml:1390, histfig entity links, the thought) is not documented anywhere in the three repos.
+0.105.11 saw it live: clearing the flag left B's visitor a guest. So route (a), setting the data
+DF sets on approval, has no evidence and is not taken.
+
+**makeown.** `dfhack.units.makeown` calls DF's own `unitst::make_own` (dfhack
+library/modules/Units.cpp:1126, global `unitst_make_own` in every 53.17 symbol table); the
+`makeown` script (scripts/makeown.lua) adds an armok fix-up: clears merchant/visitor/resident/guest
+flags, sets the unit's and histfig's civ, makes them former members of other civs and members of
+the fort's civ and site government, history events, clothing ownership. That is citizenship by
+force, not DF's answer to a petition (no agreement touched, no thought, no event of the
+petition), and nothing makes a *resident*. Route (c) is not taken.
+
+**The Petitions screen.** `game.main_interface.petitions` is `petitions_interfacest`
+(df.d_interface.xml:854): `open`, `have_responsible_person`, `agreement_id` (the list shown),
+`selected_agreement_id`, `scroll_position`, `scrolling`. DFHack's focus string is
+`dwarfmode/Petitions` (library/modules/Gui.cpp:691). There is no interface key for it or for
+approve/deny (df.g_src.keybindings.xml has none), and the buttons' words are not in any repo, so
+word-found buttons (lua/ai-screen-buttons.lua) would need the player to show them once. Route (b)
+is left for if the route below proves not enough.
+
+**The real cause, and the route taken: DF's own standing orders.** df.game_v.xml:218-223 declares
+`standing_orders_petition_resident_{monster_hunter,performer,mercenary,scholar,sanctuary}` and
+`standing_orders_petition_citizenship` (uint8, original-name `standingorder_petition_*`). DFHack
+binds a global by its `name` only (library/DataStatics.cpp `INIT_GLOBAL_FUNCTION_ITEM`:
+`getAddress(#name)`; VersionInfo.h:134 a plain map lookup). symbols.xml's win64 tables (STEAM
+:274-279, ITCH :1388-1393, CLASSIC :2502-2507) list the six under DF's names
+`standingorder_petition_*` (as some other orders: `standingorder_ignore_damp_stone`,
+`standingorder_forbid_*`); the linux64 tables use DFHack's names (:3586-3591, ...). So on Windows
+DFHack 53.17-r1 has no address for `df.global.standing_orders_petition_*` ("global address not
+known", LuaTypes.cpp:1132): the report's `orders: []` in all six forts. Not a DFHack version
+problem (the setup guide's "needs a DFHack newer than 53.16-r3" was wrong).
+
+The bridge now (lua/ai-bridge-report-fort.lua `petition_orders_bind`) asks
+`dfhack.internal.getAddress` for DF's names and, when DFHack's name has none, binds it with
+`dfhack.internal.setAddress(name, addr)` (LuaApi.cpp:4086: sets the VersionInfo entry and the
+global's pointer, so `df.global.<name>` reads and writes the byte, LuaTypes.cpp:1125-1150).
+Guards: every address within 128 bytes of `standing_orders_auto_collect_webs` (bound by DFHack's
+name on every platform; the petition bytes sit 2-7 bytes from it on win64, 16-21 on linux64),
+six different addresses, every byte 0 or 1 once bound (else all six unbound again: address 0),
+tried once a session; the report says `orders_via` (`names`, `symbols`) or `orders_why`. Then the
+existing `petition_orders` action (0.87) and `_petition_rules` set DF's orders from the weighing
+(performers, scholars, sanctuary by Outsiders; hunters and mercenaries by Militarism; citizenship
+under the population target) and DF itself answers the petitions.
+
+Not known from the repos (the probe and the planner's memory will show): whether DF applies an
+order to petitions already waiting when it is switched on, or only to new ones. The planner
+records it (`memory.petition_orders.swept[kind]`, r10p1_orders_sweep_days after the order was
+set) and keeps the Needs you for the old ones when DF leaves them.
+
+**Safety.** Nothing about petitions changes while DF's petitions screen or the standing orders'
+Petitions tab (`.../STANDING_ORDERS/PETITIONS`, Gui.cpp:403) is open (`waiting`, no back-off) or
+while threats can reach the dwarves; a refusal goes through the general back-off; an order you
+change after the AI set it is left alone a year; the Rules switch "accept visitors" off puts only
+the AI's accepts back to ask. Citizenship is declined (off the list, as residency since 0.105.9)
+for a visitor who left or died, a vampire, a closed fort, or after 28 days when not wanted; it is
+agreed only by DF's order or by you. Risk: a standing order set to accept lets DF take a vampire
+the AI would have declined (the orders are by kind, not by person).
+
+**The probe.** `lua/probes/probe-petitions.lua` (read only, one line of JSON): both names'
+addresses and values of the six orders, the waiting petitions with their agreement and applicant
+(histfig entity links, whereabouts, unit flags, DFHack's citizen/resident tests), the newest 40
+residency/citizenship agreements of the site no longer waiting (an approved one against a denied
+one shows what DF changes), and the petitions screen. Run it on a fort or two (runner `probe`,
+`probe-petitions`) before trusting the fix: `orders.*.df_name` set and `dfhack_name` nil on a
+fort the bridge hasn't reported from yet; after a report, `dfhack_name` = `df_name` and a value.

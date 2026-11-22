@@ -747,6 +747,9 @@ end
 
 function get_petitions()
     local out = {pending = {}, orders = {}}
+    -- (r10 p1) Windows: DF's names for the orders (ai-bridge-report-fort)
+    pcall(function() out.orders_via, out.orders_why = petition_orders_bind() end)
+    pcall(function() out.screen_busy = petitions_screen_busy() end)
     for _, k in ipairs(PETITION_ORDERS) do
         pcall(function() out.orders[k] = df.global[petition_order_name(k)] end)
     end
@@ -964,16 +967,18 @@ function answer_petition(id, accept, dry_run)
     local a = df.agreement.find(id)
     local d = a and a.details[0]
     local kind = d and df.agreement_details_type[d.type]
-    -- (0.105.9) residency too (every fort held 300+ waiting); citizenship stays yours
-    if not d or (kind ~= 'Location' and kind ~= 'Residency') then
-        return {ok = false, rejected = true, error = 'only temple, guildhall and residency petitions are answered by the AI'}
+    -- (0.105.9) residency too (every fort held 300+ waiting); (r10 p1) citizenship
+    -- declined as residency is (off the list); agreed only by DF's standing order
+    if not d or (kind ~= 'Location' and kind ~= 'Residency' and (kind ~= 'Citizenship' or accept)) then
+        return {ok = false, rejected = true, error = kind == 'Citizenship' and 'citizenship is agreed by DF\'s standing order or its petitions screen'
+                or 'only temple, guildhall, residency and (declined) citizenship petitions are answered by the AI'}
     end
     local wish = kind == 'Location' and location_wish(a) or nil
     local out = {ok = true, id = id, accepted = accept or nil, declined = (not accept) or nil, wish = wish,
                  kind = kind, dry_run = dry_run or nil}
-    if kind == 'Residency' then
+    if kind == 'Residency' or kind == 'Citizenship' then
         pcall(function()
-            local party = d.data.Residency.applicant
+            local party = d.data[kind].applicant
             for _, pt in ipairs(a.parties) do
                 if pt.id == party and #pt.histfig_ids > 0 then
                     local hf = df.historical_figure.find(pt.histfig_ids[0])
@@ -983,6 +988,8 @@ function answer_petition(id, accept, dry_run)
         end)
     end
     if dry_run then return out end
+    local busy = petitions_screen_busy()     -- (r10 p1) never under the player's eyes
+    if busy then return {ok = false, waiting = true, id = id, error = busy .. ': answered later'} end
     if accept then a.flags.petition_not_accepted = false end
     list:erase(idx)
     local still = false
