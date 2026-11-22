@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from snapshots import plan_cases, snapshot  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, Proposal, plan  # noqa: E402
@@ -482,7 +482,7 @@ def _():
     for k in ("siege_engines", "archer_posts", "caravan_guard", "wildlife_hunts"):
         assert f"{k} = s.{k}" in st and f"'{k}'" in st
     assert "siege_engines = true, archer_posts = true, caravan_guard = true, wildlife_hunts = true" in st
-    assert "Siege = 'ws'" not in (LUA_DIR / "ai-layouts.lua").read_text(encoding="utf-8")   # a 5x5: placed apart
+    assert "Siege = 'ws'" not in split_src("ai-layouts.lua")   # a 5x5: placed apart
     orders = (LUA_DIR / "ai-bridge-orders.lua").read_text(encoding="utf-8")
     for r in ("ballista_parts", "ballista_arrowheads", "ballista_arrows", "catapult_parts"):
         assert f"    {r} = {{job = " in orders

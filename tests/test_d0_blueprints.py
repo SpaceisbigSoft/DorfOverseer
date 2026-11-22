@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402  (r9) ai-layouts / ai-blueprints split: the parts' texts too
 
 try:
     import lupa  # noqa: F401
@@ -32,8 +33,8 @@ import blueprint  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures" / "blueprints"
 LIBRARY = ROOT / "brain" / "landmarks"
-LAYOUTS_SRC = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")
-BP_SRC = (ROOT / "lua" / "ai-blueprints.lua").read_text(encoding="utf-8")
+LAYOUTS_SRC = module_src("ai-layouts.lua")
+BP_SRC = module_src("ai-blueprints.lua")
 
 LUA = LuaRuntime(unpack_returned_tuples=True)
 _load = LUA.eval("""function(lsrc, bsrc)
@@ -121,8 +122,10 @@ def _():
     ok, err = check(BP_SRC)
     assert ok, err
     assert "--@ module = true" in BP_SRC
+    # (r9) the hub and its parts; the hub's loader alone names dfhack, to find a part's file
+    whole = split_src("ai-blueprints.lua").replace("    return dfhack.findScript and dfhack.findScript(name) or nil\n", "", 1)
     for word in ("df.", "dfhack.", "df.global"):
-        assert word not in BP_SRC, word
+        assert word not in whole, word
 
 
 @test("the fixtures: at least 12 good and 20 bad drawings, each bad one with its first code")

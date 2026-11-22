@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from snapshots import digest, snapshot  # noqa: E402
 from harness import make_test, finish  # noqa: E402
+from lua_modules_util import module_src  # noqa: E402  (r9) ai-layouts / ai-blueprints split: the parts' texts too
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -46,8 +47,8 @@ _load = PL.eval("""function(lsrc, bsrc)
   assert(load(bsrc, 'ai-blueprints', 't', env))()
   return env
 end""")
-LAYOUTS_SRC = (LUA_DIR / "ai-layouts.lua").read_text(encoding="utf-8")
-BP = _load(LAYOUTS_SRC, (LUA_DIR / "ai-blueprints.lua").read_text(encoding="utf-8"))
+LAYOUTS_SRC = module_src("ai-layouts.lua")
+BP = _load(LAYOUTS_SRC, module_src("ai-blueprints.lua"))
 DUMP = PL.eval("""function(fn, a, b)
   local v = table.pack(fn(a, b))
   local out = {}
@@ -474,7 +475,7 @@ def boot():
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.globals().LUA_DIR = str(LUA_DIR)
     B, W = lua.execute(HARNESS, LAYOUTS_SRC, (LUA_DIR / "ai-builder.lua").read_text(encoding="utf-8"))
-    src = (LUA_DIR / "ai-blueprints.lua").read_text(encoding="utf-8")
+    src = module_src("ai-blueprints.lua")
     lua.globals().BPM = lua.eval("""function(src)
         local env = setmetatable({}, {__index = _G})
         assert(load(src, 'ai-blueprints', 't', env))()

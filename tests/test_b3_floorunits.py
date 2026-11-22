@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
+from lua_modules_util import module_src  # noqa: E402  (r9) ai-layouts / ai-blueprints split: the parts' texts too
 
 try:
     import lupa  # noqa: F401
@@ -33,7 +34,7 @@ except Exception:  # noqa: BLE001
     _render = None
 
 SRC = (ROOT / "lua" / "ai-floorunits.lua").read_text(encoding="utf-8")
-LAYOUTS_SRC = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")
+LAYOUTS_SRC = module_src("ai-layouts.lua")
 
 LOADER = """function(src, name, extra)
   local env = setmetatable({}, {__index = _G})

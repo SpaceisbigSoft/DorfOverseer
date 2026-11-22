@@ -206,10 +206,12 @@ def real_module(name):
     """lua/<name>.lua loaded as a module (a pure one: ai-layouts and the like), for a hub
     whose handler reads its tables."""
     L = lua()
+    from lua_modules_util import SPLIT, module_src
     if ("mod", name) not in _STATE:
         _STATE[("mod", name)] = L.execute("""local src, name = ...
             local env = setmetatable({dfhack_flags = {module = true}}, {__index = _G})
             env.reqscript = function(n) error('no ' .. n .. ' for ' .. name) end
             assert(load(src, name, 't', env))()
-            return env""", (LUA_DIR / f"{name}.lua").read_text(encoding="utf-8"), name)
+            return env""", module_src(f"{name}.lua") if f"{name}.lua" in SPLIT     # (r9) a split hub: its parts' texts too
+            else (LUA_DIR / f"{name}.lua").read_text(encoding="utf-8"), name)
     return _STATE[("mod", name)]

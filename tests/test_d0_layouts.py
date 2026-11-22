@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
-from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import bridge_part_src, module_src  # noqa: E402  (r6) the bridge parts split
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -382,7 +382,7 @@ def to_lua_in(lua, v):
 def boot_fort():
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.globals().LUA_DIR = str(ROOT / "lua")
-    layouts = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")
+    layouts = module_src("ai-layouts.lua")
     builder = (ROOT / "lua" / "ai-builder.lua").read_text(encoding="utf-8")
     B, W = lua.execute(HARNESS, layouts, builder)
     return lua, B, W
@@ -441,7 +441,7 @@ def bridge_parse_style(with_layouts=True):
     src = bridge_part_src("ai-bridge-actions")
     fn = re.search(r"\nlocal function parse_style\(st\)\n.*?\nend\n", src, re.S).group(0)
     lua = LuaRuntime(unpack_returned_tuples=True)
-    lay = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")
+    lay = module_src("ai-layouts.lua")
     parse = lua.execute("""
         local lay_src, with_layouts = ...
         local LAY = setmetatable({}, {__index = _G})

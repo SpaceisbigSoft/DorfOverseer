@@ -25,6 +25,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import split_src  # noqa: E402  (r9) ai-blueprints split: the family's text
 
 try:
     from lupa.lua53 import LuaRuntime  # noqa: F401
@@ -591,7 +592,7 @@ def _():
             for st in E2["as_steps"](r):
                 assert not (st["kind"] == "remove" and st["cut"]), (name, q, st)
     assert planned >= 8, planned
-    src = (ROOT / "lua" / "ai-blueprints.lua").read_text(encoding="utf-8")
+    src = split_src("ai-blueprints.lua")   # (r9) the hub and its parts
     assert "if #cuts[s] > 0 then return false end" in src
 
 

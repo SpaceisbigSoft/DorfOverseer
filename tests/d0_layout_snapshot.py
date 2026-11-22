@@ -69,7 +69,8 @@ def cases():
 def lua_runtime():
     from lupa.lua53 import LuaRuntime
     lua = LuaRuntime(unpack_returned_tuples=True)
-    src = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")
+    from lua_modules_util import module_src   # (r9) ai-layouts split: its part's text too
+    src = module_src("ai-layouts.lua")
     env = lua.eval("function(src) local env = setmetatable({}, {__index=_G}); "
                    "assert(load(src, 'ai-layouts', 't', env))(); return env end")(src)
     ser = lua.eval(r"""function(L)

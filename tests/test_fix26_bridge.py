@@ -181,7 +181,7 @@ def _():
     M.PART_VERSIONS["ai-bridge-probes"] = "0.0.1"
     stale = lua_list(M.stale_parts())
     assert stale == ["ai-bridge-probes (0.0.1)", "ai-builder-rooms (0.0.1)", "ai-society-burrows (no version mark)"], stale
-    H.scripts["ai-layouts"] = t({"KINDS": [], "STOCKPILES": {}, "WORKSHOPS": {}})
+    H.scripts["ai-layouts"].KINDS, H.scripts["ai-layouts"].STOCKPILES, H.scripts["ai-layouts"].WORKSHOPS = t([]), t({}), t({})   # (r9) its marks kept
     v = H.rerun(M, "version")                 # the probes part ran again with the command: marked
     assert v.ok and v.bridge_version == VERSION, dict(v)
     assert lua_list(v.stale_parts) == ["ai-builder-rooms (0.0.1)", "ai-society-burrows (no version mark)"], \

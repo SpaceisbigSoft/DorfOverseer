@@ -10,7 +10,7 @@ Moved out of the handoff at 0.105.64 (its "How it fits together" table). Add a r
 | `lua/ai-util.lua` | shared helpers: `fort_entity`, `abs_tick`, `site_get`/`site_put`, the one item-free check |
 | `lua/ai-military-gear.lua`, `ai-society-burrows.lua` | the gear half of ai-military; the recreation, hospital and calm burrows (the old modules forward every name) |
 | `lua/ai-moods.lua`, `ai-missions.lua`, `ai-mission-send.lua`, `ai-camera.lua` | a mood's missing materials; the missions report; sending the messenger by the World screen; the camera director |
-| `lua/ai-builder.lua`, `ai-layouts.lua` | Digging and furnishing projects; room layouts for each kind |
+| `lua/ai-builder.lua`, `ai-layouts.lua` (hub; `ai-layouts-kinds`), `ai-blueprints.lua` (hub; `-translate`, `-stages`) | Digging and furnishing projects; room layouts for each kind; the landmarks' blueprint format |
 | `lua/ai-gates.lua` | Maps entrances, finds what closes them, the gate watcher, doors and fortified gates |
 | `lua/ai-military.lua` | Squads, routines, kill orders, gear report |
 | `lua/ai-society.lua` | Shelter burrow, pastures, population cap, sending dwarves away |
