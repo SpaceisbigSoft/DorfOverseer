@@ -240,8 +240,3 @@ function report(squads, messenger_uid)
     if #h > 0 then out.holds = h end
     return out
 end
-
--- A set-up mission's waiting travellers that can't walk out (unit ids)
-function blocked_of(unit_ids)
-    return way(unit_ids).blocked
-end

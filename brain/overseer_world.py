@@ -100,11 +100,17 @@ def remember_world(state: dict, memory, events: list[dict], key: str, cfg: dict,
                                                 key=lambda kv: -kv[1])[:5])})
     except Exception:  # noqa: BLE001  (the soak row is only a log)
         pass
-    if finished:
-        memstore.log_day(key, finished, timeline.FIELDS)
-    seasons = memory.timeline.get("seasons") or []
-    if _newest_season(memory) != seasons_before:
-        memstore.log_seasons(key, seasons, timeline.season_name)
+    # (r9, A10 #14) the two csv files are only logs: one open in Excel (locked)
+    # or a full disk raised out of this step, and the atlas, the master plan,
+    # the phase and the sieges below were skipped that day
+    try:
+        if finished:
+            memstore.log_day(key, finished, timeline.FIELDS)
+        seasons = memory.timeline.get("seasons") or []
+        if _newest_season(memory) != seasons_before:
+            memstore.log_seasons(key, seasons, timeline.season_name)
+    except OSError as e:
+        say(f"Timeline: couldn't write timeline.csv or seasons.csv ({e}); the day is still in memory.")
     surveyed = atlas.survey_due(state, memory)
     if surveyed:
         for line in atlas.survey(state, memory):        # (this notes the entrances too)

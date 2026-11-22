@@ -65,6 +65,10 @@ function act_scrub_dead_units(a)
     local out, rv = dfhack.run_command_silent('fix/dead-units', '--active', '-q')
     if rv ~= CR_OK then return {ok = false, error = 'fix/dead-units failed: ' .. tostring(out):sub(1, 160)} end
     local removed = before - #df.global.world.units.active
+    -- (r9) the cleanup report's dead counts made true now (lua/ai-cleanup.lua
+    -- recount_dead): its last pass still counted the dead scrubbed here, and
+    -- cleanup_dead_units was asked for them and refused 5 times in 5
+    pcall(function() reqscript('ai-cleanup').recount_dead() end)
     if removed <= 0 then return {ok = false, rejected = true, error = 'no dead unit old enough to scrub'} end
     return {ok = true, removed = removed, units = #df.global.world.units.active}
 end

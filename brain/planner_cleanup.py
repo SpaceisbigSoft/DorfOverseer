@@ -49,7 +49,7 @@ from __future__ import annotations
 import math
 
 from digest import _d, _l
-from planner_core import Proposal, abs_tick, player_rules
+from planner_core import TICKS_PER_DAY, Proposal, abs_tick, player_rules
 
 __all__ = ["CLEANUP_ACTIONS", "CLEANUP_LEVELS", "cleanup_report", "cleanup_thresholds", "_world_cleanup_rule",
            "note_cleanup", "cleanup_journal", "cleanup_line", "cleanup_words", "dry_key"]
@@ -78,6 +78,24 @@ def cleanup_report(s: dict) -> dict | None:
 
 def _slow(s: dict) -> bool:
     return bool(s.get("fps_low"))
+
+
+def _scrub_takes_dead(s: dict, cfg: dict, memory, now: int) -> bool:
+    """(r9, B3) The two dead-unit rules merged: DFHack's fix/dead-units
+    (scrub_dead_units, planner_industry_disposal _clutter_rules) takes every
+    dead this one would and more (a month dead, not a year), so while the
+    last census (four weeks at most) has it past its own bar, this rule
+    leaves the dead to it. Both were asked together, and this one was then
+    refused for the dead the scrub had taken (5 of 5 on 21 Nov)."""
+    cen = _d(getattr(memory, "census", None)) if memory is not None else {}
+    t = cen.get("tick")
+    if not (isinstance(t, int) and 0 <= now - t < 28 * TICKS_PER_DAY):
+        return False
+    scrub = _d(_d(cen.get("units")).get("counts")).get("dead_scrubbable")
+    if not isinstance(scrub, int) or isinstance(scrub, bool):
+        return False
+    lo = cfg.get("dead_scrub_slow_min", 100) if _slow(s) else cfg.get("dead_scrub_min", 1000)
+    return scrub >= lo
 
 
 def cleanup_thresholds(s: dict, cfg: dict, c: dict) -> dict:
@@ -157,7 +175,7 @@ def _world_cleanup_rule(s: dict, cfg: dict, proposals: list, notes: list, memory
                 "inside the fort too (mud and snow kept)")
     # dead units long dead and unreferenced, off the active list
     dead = _int(un.get("dead_removable"))
-    if dead >= th["dead"]:
+    if dead >= th["dead"] and not _scrub_takes_dead(s, cfg, memory, now):
         propose("dead", {"type": "cleanup_dead_units", "min_age": cfg["cleanup_dead_age_ticks"]},
                 f"{dead} of the {_int(un.get('dead_active'))} dead on the game's active list died over a year ago "
                 f"and nothing refers to them{why_slow} (past {th['dead']}): taken off the list (the fort's own "

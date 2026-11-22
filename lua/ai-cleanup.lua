@@ -1242,6 +1242,36 @@ function cleanup_spatter(o, dry_run)
     return res
 end
 
+-- (r9) The last pass's dead counts made true now, by the report's own test
+-- (dead_keep, a year): the counts were the last finished pass's, and DFHack's
+-- fix/dead-units (scrub_dead_units) or the game took those dead off the list
+-- after it, so the report said 106 long dead and unreferenced while the list
+-- held 40 dead, all kept ("own 35, recent 4, visitor 1"): cleanup_dead_units
+-- was refused 5 times in 5. Called after this cleanup (refused or a trial
+-- too) and after scrub_dead_units. Returns the live counts (nil, nil when
+-- there is no finished pass to correct).
+function recount_dead()
+    local st = state()
+    if not (st.last and type(st.last.units) == 'table') then return nil, nil end
+    local now = now_tick()
+    local race, civ = U.fort_race_civ()
+    local active = df.global.world.units.active
+    local dead, removable = 0, 0
+    for i = 0, vlen(active) - 1 do
+        local u = vget(active, i)
+        if u then
+            local okd, isdead = pcall(function() return is(dfhack.units.isDead, u) or u.flags2.killed end)
+            if okd and isdead then
+                dead = dead + 1
+                local ok, why = pcall(dead_keep, u, now, YEAR, race, civ)
+                if ok and why == nil then removable = removable + 1 end
+            end
+        end
+    end
+    st.last.units.dead_active, st.last.units.dead_removable = dead, removable
+    return dead, removable
+end
+
 -- o: min_age (ticks dead, at least a season, default a year), max (default 500)
 function cleanup_dead_units(o, dry_run)
     o = o or {}
@@ -1267,19 +1297,15 @@ function cleanup_dead_units(o, dry_run)
     res.candidates = #go + (res.more and 1 or 0)
     if #go == 0 then
         res.ok, res.rejected, res.error = false, true, 'no dead unit long dead and unreferenced on the active list'
+        pcall(recount_dead)           -- (r9) the report says so too: not asked again
         return res
     end
-    if dry_run then res.would_remove = #go; return res end
+    if dry_run then res.would_remove = #go; pcall(recount_dead); return res end
     -- go holds indexes from the back: erased in that order, the others don't move
     for _, i in ipairs(go) do
         if pcall(verase, active, i) then res.removed = res.removed + 1 end
     end
     res.active = vlen(active)
-    local st = state()
-    if st.last and type(st.last.units) == 'table' then
-        local c = st.last.units
-        c.dead_removable = math.max(0, (c.dead_removable or 0) - res.removed)
-        c.dead_active = math.max(0, (c.dead_active or 0) - res.removed)
-    end
+    pcall(recount_dead)               -- (r9) live, not the last pass less the removed
     return res
 end

@@ -66,5 +66,21 @@ def mark(bridge, state: dict, say=print) -> bool:
         say(f"Scenario: couldn't mark this test copy as run {rid} ({(r or {}).get('error')}).")
         return False
     fort["run_id"] = rid
+    _drop(fort["save_dir"], rid)
     say(f"Scenario: this test copy is run {rid}; its logs go to their own folder, apart from the real fort.")
     return True
+
+
+def _drop(save_dir: str, rid: str) -> None:
+    """(r9) The pending entry taken off once its copy is marked: it stayed, and
+    a later save reusing the name ("AI Run A" made again by hand, or a real
+    fort) got that old run id written into it. Never raises."""
+    try:
+        d = _read()
+        if d.get(save_dir) != rid:
+            return
+        del d[save_dir]
+        from dfhack import write_atomic
+        write_atomic(PENDING, json.dumps(d, indent=1))
+    except Exception:  # noqa: BLE001  (a mark never stops the fort)
+        pass

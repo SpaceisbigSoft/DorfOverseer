@@ -317,6 +317,14 @@ def _run(args) -> int:
                 write_soak(st, fps_samples, fps_low, unpauses, int(nowt - date_since), controls["halted"])
             controls["fps"] = fps_samples[-1][1] if fps_samples else None
             controls["fps_low"] = fps_low if args.unattended else None
+            # (r9, B8) what the back-off judged by, for the saved state: the
+            # median over the window (fps_state's measure), the samples in it
+            # and fps_low. The saved states read fps_low None while their
+            # perf.fps said 4-24: perf.fps is read while the report itself
+            # holds the game; this is the loop's own 10 minutes
+            vals = sorted(v for _, v in fps_samples)
+            controls["fps_seen"] = ({"median": int(vals[len(vals) // 2]), "samples": len(vals), "low": fps_low}
+                                    if vals else None)
             controls["unattended"] = args.unattended
             controls["save_seasons"] = args.save_seasons
             if (args.unattended and args.autopilot and st.get("in_fort") and st.get("paused")

@@ -537,6 +537,40 @@ def _():
     assert not r.ok and r.rejected, py(r)
 
 
+@test("(r9, B3) cleanup_dead_units: the report's dead counts are made true by the action's own test, refused or not "
+      "(the dead scrubbed by fix/dead-units after the pass: 106 said, 0 found, refused 5 times in 5)")
+def _():
+    need_lua()
+    lua, env, w = world()
+    fort(lua, w)
+    w.incidents[1] = T(lua, {"event_year": 198, "event_time": 0})
+    mk = lambda **kw: w.unit(T(lua, {"dead": True, "counters": {"death_id": 1}, **kw}))
+    for i in range(3):
+        mk(id=8101 + i, civ_id=33, race=4)                   # goblins, long dead: removable
+    mk(id=8110, civ_id=10, race=1, hist_figure_id=3)          # the fort's own: kept
+    c = py(full_pass(env)["units"])
+    assert c["dead_active"] == 4 and c["dead_removable"] == 3, c
+    # something else (DFHack's fix/dead-units) takes the goblins off the list after the pass
+    lua.execute("""local W = ...
+        for i = #W.units, 1, -1 do if W.units[i].race == 4 then table.remove(W.units, i) end end""", w)
+    r = env.cleanup_dead_units(T(lua, {}), True)              # the trial is refused: nothing found
+    assert not r.ok and r.rejected, py(r)
+    c = py(env.report()["units"])                              # the same pass, now corrected
+    assert c["dead_removable"] == 0 and c["dead_active"] == 1, c
+    # the same after scrub_dead_units: recount_dead gives the live numbers
+    mk(id=8120, civ_id=33, race=4)
+    dead, removable = env.recount_dead()
+    assert (dead, removable) == (2, 1), (dead, removable)
+    assert py(env.report()["units"])["dead_removable"] == 1
+
+
+@test("(r9, B3) scrub_dead_units recounts the cleanup report's dead after fix/dead-units ran")
+def _():
+    src = (ROOT / "lua" / "ai-bridge-actions-fort.lua").read_text(encoding="utf-8")
+    body = src[src.index("function act_scrub_dead_units("):src.index("function act_census(")]
+    assert "reqscript('ai-cleanup').recount_dead()" in body and body.index("recount_dead") < body.index("removed <= 0")
+
+
 @test("spatter: counted (outside the fort's areas apart, mud and snow not), cleaned outside first, 'all' inside too; "
       "a dry run removes nothing")
 def _():
@@ -789,6 +823,21 @@ def _():
                          "level": "safe"}, it.action
     sp = [p for p in props if p.action["type"] == "cleanup_spatter"][0]
     assert sp.action["scope"] == "outside"
+
+
+@test("(r9, B3) brain: the dead left to fix/dead-units while the last census has it past its own bar")
+def _():
+    from planner_core import abs_tick
+    s = fort_state(section(units__dead_removable=10 ** 4))
+    now = abs_tick(s)
+    m = Memory()
+    m.cleanup_seen = {"dry": {"dead@safe": 1}}
+    m.census = {"tick": now, "units": {"counts": {"dead_scrubbable": CFG["dead_scrub_min"]}}}
+    assert not [p for p in mine(s, m)[0] if p.rule == "cleanup_dead"]          # the scrub takes them
+    m.census["units"]["counts"]["dead_scrubbable"] = CFG["dead_scrub_min"] - 1
+    assert [p for p in mine(s, m)[0] if p.rule == "cleanup_dead"]              # under its bar: this rule's
+    m.census = {"tick": now - 40 * 1200, "units": {"counts": {"dead_scrubbable": 10 ** 5}}}
+    assert [p for p in mine(s, m)[0] if p.rule == "cleanup_dead"]              # a census too old says nothing
 
 
 @test("brain: spatter inside the fort only while slow and past the whole map's threshold, after the outside")
