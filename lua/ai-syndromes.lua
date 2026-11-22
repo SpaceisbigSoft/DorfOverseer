@@ -873,11 +873,16 @@ local function miasma_blocks(boxes)
             local ok, t, d, x, y, z = pcall(function() return f.type, f.density, f.pos.x, f.pos.y, f.pos.z end)
             if ok and t == kind and (d or 0) > 0 and x and x >= 0 then
                 tiles = tiles + 1
-                local inside = not tile_outside(x, y, z)
+                -- (r5 p4) the tile's flags read once (outside, then a cavern only
+                -- for an indoor tile near the fort): two reads a miasma tile before
+                local okf, fl = pcall(dfhack.maps.getTileFlags, x, y, z)
+                fl = okf and fl or nil
+                local inside = not (fl and fl.outside == true)
                 local bx = boxes[z]
                 local near = bx ~= nil and x >= bx.x1 and x <= bx.x2 and y >= bx.y1 and y <= bx.y2
                 if inside then indoor = indoor + 1 end
-                local spot = inside and near and not tile_cavern(x, y, z)
+                local spot = inside and near
+                    and not (fl and (fl.feature_global or fl.feature_local) and true or false)
                 if spot then living = living + 1 end
                 if spot then
                     local key = (x // 16) .. ',' .. (y // 16) .. ',' .. z
@@ -1021,7 +1026,9 @@ function miasma_report()
         table.insert(out.spots, {x = s.x, y = s.y, z = s.z, tiles = s.n, density = s.density,
                                  living = s.living > 0 or nil})
     end
-    local ctx = ctx_for(dumps)
+    -- (r5 p4) the danger spots, the walk groups and the butcher's shop read
+    -- only when something rots near the miasma (most reports: nothing)
+    local ctx = #m.found > 0 and ctx_for(dumps) or nil
     for _, e in ipairs(m.found) do
         local why = keep_rotting(e, ctx, dumps)
         local k = why == 'own_dead' and 'own_dead' or (BODY_KINDS[e.kind] and (e.kind == 'REMAINS' and 'remains'

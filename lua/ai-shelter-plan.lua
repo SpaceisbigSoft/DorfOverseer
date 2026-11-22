@@ -108,20 +108,36 @@ end
 -- whether the cap stopped it.
 -- (R1 g4) zone (a set of keys, optional): bad[k] = true when every
 -- shortest walk from the seeds to k crosses the zone (k's own tile counts).
-function bfs(grid, seeds, cap, zone)
-    cap = cap or SHELTER_PLAN_CAP
-    local dist, q, head, n = {}, {}, 1, 0
-    local bad = zone and {} or nil
+-- (r5 p4) The walk in steps: bfs_begin makes its state, bfs_step(st, n)
+-- walks on from at most n more tiles (nil: to the end) and says whether it
+-- is whole. The levels' walk in slices stops inside one level's walk (one
+-- level's walk over a 100,000-tile fort was ~0.5 s, more than a report's
+-- budget, and the slice could not stop in it); bfs() is the two at once.
+function bfs_begin(grid, seeds, cap, zone)
+    local st = {grid = grid, cap = cap or SHELTER_PLAN_CAP, zone = zone, dist = {}, q = {}, head = 1, n = 0,
+                bad = zone and {} or nil, capped = false, done = false}
+    local dist, q, bad = st.dist, st.q, st.bad
     for _, k in ipairs(seeds) do
         if grid[k] and not dist[k] then
-            dist[k] = 0; n = n + 1; q[n] = k
+            dist[k] = 0; st.n = st.n + 1; q[st.n] = k
             if zone and zone[k] then bad[k] = true end
         end
     end
+    if st.n == 0 then st.done = true end
+    return st
+end
+
+function bfs_step(st, max_tiles)
+    if st.done then return true end
+    local grid, dist, q, zone, bad, cap = st.grid, st.dist, st.q, st.zone, st.bad, st.cap
+    local head, n = st.head, st.n
     local capped = false
+    local walked = 0
     while head <= n do
+        if max_tiles and walked >= max_tiles then break end
         local k = q[head]
         head = head + 1
+        walked = walked + 1
         local d = dist[k] + 1
         local kb = bad and bad[k] or false
         neighbours(grid, k, function(nk)
@@ -137,8 +153,17 @@ function bfs(grid, seeds, cap, zone)
         end)
         if capped then break end
     end
-    if bad then return dist, n, capped, bad end
-    return dist, n, capped
+    st.head, st.n = head, n
+    if capped then st.capped = true end
+    if capped or head > n then st.done = true end
+    return st.done
+end
+
+function bfs(grid, seeds, cap, zone)
+    local st = bfs_begin(grid, seeds, cap, zone)
+    bfs_step(st)
+    if st.bad then return st.dist, st.n, st.capped, st.bad end
+    return st.dist, st.n, st.capped
 end
 
 -- (R1 g4) The tiles no civilian's walk to a shelter may cross: within
@@ -281,47 +306,55 @@ function plan(grid, cands, sources, civs, inside, opts)
     if zone and next(zone) == nil then zone = nil end
     for _, c in ipairs(cands) do
         local dist, n, capped, bad = bfs(grid, c.seeds, opts.cap, zone)
-        c.reached, c.capped = n, capped or nil
-        local best, bi
-        for i, s in ipairs(sources) do
-            local d = dist[s]
-            if d and (not best or d < best) then best, bi = d, i end
-        end
-        c.d_threat, c.src = best, bi
-        local ds, unreached, exposed, in_zone = {}, 0, 0, 0
-        for _, k in ipairs(civs) do
-            local d = dist[k]
-            if d then
-                table.insert(ds, d)
-                -- (R1 g4) a civilian whose walk there passes an intruder (one
-                -- already beside it is counted apart: no walk saves it)
-                if zone and zone[k] then in_zone = in_zone + 1
-                elseif bad and bad[k] then exposed = exposed + 1 end
-            else unreached = unreached + 1 end
-        end
-        if zone then c.civ_exposed, c.civ_in_zone = exposed, in_zone end
-        ds = sorted_copy(ds)
-        c.civ_reached, c.civ_unreached = #ds, unreached
-        c.civ_med, c.civ_p90, c.civ_max = quantile(ds, 0.5), quantile(ds, 0.9), ds[#ds]
-        local late = 0
-        if best then
-            for _, d in ipairs(ds) do if d >= best then late = late + 1 end end
-        end
-        c.civ_late = late
-        local din
-        for _, k in ipairs(inside or {}) do
-            local d = dist[k]
-            if d and (not din or d < din) then din = d end
-        end
-        c.d_inside = din
-        if bi then
-            local okc, ch, plen = pcall(chokes, grid, dist, sources[bi], opts.choke)
-            if okc then c.chokes, c.path = ch, plen end
-        end
-        c.seeds = nil
-        if opts.keep and opts.keep == c.key then kept = dist end
+        local k = plan_one(grid, c, dist, n, capped, bad, sources, civs, inside, opts, zone)
+        if k then kept = k end
     end
     return cands, kept
+end
+
+-- (r5 p4) One candidate's plan from its walk (dist, n, capped, bad: bfs's);
+-- returns the walk when it is the one kept (opts.keep).
+function plan_one(grid, c, dist, n, capped, bad, sources, civs, inside, opts, zone)
+    c.reached, c.capped = n, capped or nil
+    local best, bi
+    for i, s in ipairs(sources) do
+        local d = dist[s]
+        if d and (not best or d < best) then best, bi = d, i end
+    end
+    c.d_threat, c.src = best, bi
+    local ds, unreached, exposed, in_zone = {}, 0, 0, 0
+    for _, k in ipairs(civs) do
+        local d = dist[k]
+        if d then
+            table.insert(ds, d)
+            -- (R1 g4) a civilian whose walk there passes an intruder (one
+            -- already beside it is counted apart: no walk saves it)
+            if zone and zone[k] then in_zone = in_zone + 1
+            elseif bad and bad[k] then exposed = exposed + 1 end
+        else unreached = unreached + 1 end
+    end
+    if zone then c.civ_exposed, c.civ_in_zone = exposed, in_zone end
+    ds = sorted_copy(ds)
+    c.civ_reached, c.civ_unreached = #ds, unreached
+    c.civ_med, c.civ_p90, c.civ_max = quantile(ds, 0.5), quantile(ds, 0.9), ds[#ds]
+    local late = 0
+    if best then
+        for _, d in ipairs(ds) do if d >= best then late = late + 1 end end
+    end
+    c.civ_late = late
+    local din
+    for _, k in ipairs(inside or {}) do
+        local d = dist[k]
+        if d and (not din or d < din) then din = d end
+    end
+    c.d_inside = din
+    if bi then
+        local okc, ch, plen = pcall(chokes, grid, dist, sources[bi], opts.choke)
+        if okc then c.chokes, c.path = ch, plen end
+    end
+    c.seeds = nil
+    if opts.keep and opts.keep == c.key then return dist end
+    return nil
 end
 
 -- --- the game's side ---------------------------------------------------------------
@@ -741,6 +774,14 @@ SHELTER_SLICE_MS_FIRST = 1000     -- ...a pulse's or a full report's with no pla
 SHELTER_SLICE_MS_FULL = 700       -- ...a full report's (0.105.51: was 3000)
 SHELTER_GRID_TICKS = 1200         -- the inside tiles walked again at most this often
 SHELTER_PLAN_KEEP_TICKS = 2 * 1200   -- (0.105.51) nothing changed and calm inside: the plan kept this long
+-- (r5 p4) A's forgotten beast (run 2, 16 Nov): 1,038 ms each report, the
+-- levels' walk never finished (passes 0, 2 of 6 levels a report): a level's
+-- walk was one slice item, longer than the budget; and each report the beast
+-- stood on an unrevealed tile (calm) threw the range, the walk under way
+-- and the last plan away, so the next began again with the larger budget.
+SHELTER_WALK_CHUNK = 3000         -- tiles of one level's walk a slice item walks at most (~10 ms)
+SHELTER_WALK_MAX_ITEMS = nil      -- items a report walks at most (nil: by the time budget alone)
+SHELTER_CALM_KEEP_TICKS = 1200    -- a calm shorter than this keeps the range, the walk and the last plan
 
 local function run_slices(name, spec)
     local ok, SL = pcall(reqscript, 'ai-slices')
@@ -829,8 +870,9 @@ local function walk_items(base, info)
         return wa > wb
     end)
     -- each level's inside tiles, in one pass over the grid
-    local by_z = {}
+    local by_z, ngrid = {}, 0
     for k, f in pairs(grid) do
+        ngrid = ngrid + 1
         if f >= INSIDE then
             local z = k // 1048576
             by_z[z] = by_z[z] or {}
@@ -863,16 +905,37 @@ local function walk_items(base, info)
     local ctx = {grid = grid, sources = sources, src_rows = src_rows, civs = civs, civ_out = civ_out,
                  keep_key = keep_key, rest = rest, info = info, inside = inside_keys, zone = zone, zone_n = zone_n}
     WALK_CTX = ctx
+    -- (r5 p4) each candidate's walk in parts of SHELTER_WALK_CHUNK tiles (a
+    -- walk reaches at most every grid tile: the last part finishes it, then
+    -- the candidate's plan), so a slice stops inside one level's walk
+    local chunk = math.max(1, math.floor(tonumber(SHELTER_WALK_CHUNK) or 3000))
+    local parts = math.max(1, math.ceil(ngrid / chunk)) + 1
     local items = {}
-    for _, c in ipairs(walk) do table.insert(items, {c = c, ctx = ctx}) end
+    for _, c in ipairs(walk) do
+        for i = 1, parts do table.insert(items, {c = c, ctx = ctx, part = i, parts = parts, chunk = chunk}) end
+    end
     return items
 end
 
 local function walk_visit(acc, it)
-    local ctx = it.ctx
-    local cands, kept = plan(ctx.grid, {it.c}, ctx.sources, ctx.civs, ctx.inside or {},
-                             {keep = ctx.keep_key, zone = ctx.zone})
-    table.insert(acc.cands, cands[1])
+    local ctx, c = it.ctx, it.c
+    local zone = ctx.zone
+    if zone and next(zone) == nil then zone = nil end
+    -- the walk under way (a part that threw starts it again: a whole walk)
+    local st = acc.walks[c]
+    if not st then
+        st = bfs_begin(ctx.grid, c.seeds or {}, nil, zone)
+        acc.walks[c] = st
+    end
+    if it.part < it.parts then
+        bfs_step(st, it.chunk)
+        return
+    end
+    bfs_step(st)
+    acc.walks[c] = nil
+    local kept = plan_one(ctx.grid, c, st.dist, st.n, st.capped, st.bad, ctx.sources, ctx.civs, ctx.inside or {},
+                          {keep = ctx.keep_key, zone = ctx.zone}, zone)
+    table.insert(acc.cands, c)
     if kept then acc.keep = kept end
 end
 
@@ -959,10 +1022,14 @@ function report(txt, tier)
     if type(away) == 'table' and #away > 0 then out.left_out = away end
     if #list == 0 then
         out.danger = false
-        MEMO = nil
-        RANGE = nil
         if CALM_SINCE == nil or CALM_SINCE > now then CALM_SINCE = now end
         out.calm_ticks = now - CALM_SINCE
+        -- (r5 p4) only a calm that lasts drops them (a beast stepping on and
+        -- off unrevealed tiles restarted the walk each time)
+        if out.calm_ticks >= (tonumber(SHELTER_CALM_KEEP_TICKS) or 0) then
+            MEMO = nil
+            RANGE = nil
+        end
         return out
     end
     CALM_SINCE = nil
@@ -1015,8 +1082,8 @@ function report(txt, tier)
         local r, wst, wdone, wtotal = run_slices('shelter_walk', {
             key = table.concat(sig, ',') .. '|' .. lo .. '-' .. hi, now = now, ttl = 0,
             items = function() return walk_items(base, info) end,
-            init = function() return {cands = {}} end,
-            visit = walk_visit, finish = walk_finish, max_ms = left})
+            init = function() return {cands = {}, walks = {}} end,
+            visit = walk_visit, finish = walk_finish, max_ms = left, max_items = SHELTER_WALK_MAX_ITEMS})
         if wst == 'done' and r then MEMO = r end
         if wst == 'partial' then out.walk = {done = wdone, total = wtotal} end
     end
