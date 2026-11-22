@@ -209,14 +209,6 @@ function shaft_threats(wells)
     return out
 end
 
--- (kept for callers of the old name) the first well with a danger, and the unit
-function shaft_threat_near(wells)
-    local hits = shaft_threats(wells)
-    for i, w in ipairs(wells) do
-        if hits[i] then return w, hits[i].u, hits[i].v end
-    end
-end
-
 -- (0.105.48, K3) the AI halted in the game: false when it can't be read
 local function ai_halted()
     local ok, yes = pcall(function() return reqscript('ai-status').is_halted() end)

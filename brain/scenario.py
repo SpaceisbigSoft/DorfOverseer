@@ -210,7 +210,28 @@ def looks_like_test(save_dir: str) -> bool:
     return re.search(r"(^|[^a-z])test([^a-z]|$)", s) is not None or s.startswith(("ai run", "ai_run"))
 
 
+# (r9) the folder the one-autopilot lock lives in (logs/keeper.lock)
+LOCK_DIR = LOG_DIR
+
+
 def cmd_run(args) -> int:
+    """(r9) A run plays the fort itself, as the overseer's autopilot does: it
+    takes the same folder lock (logs/keeper.lock), so it refuses beside a
+    running keeper or autopilot (it only said "don't run them together", and
+    the two then fought over the fort and its memory)."""
+    from util import folder_lock
+    lock = folder_lock(LOCK_DIR)
+    if lock is None:
+        say("A keeper (or an autopilot) is already running for this folder: not starting a scenario run beside "
+            "it (both would play the fort). Stop the keeper first.")
+        return 1
+    try:
+        return _cmd_run(args)
+    finally:
+        lock.close()
+
+
+def _cmd_run(args) -> int:
     days = args.days if args.days else round(args.years * 336)
     try:
         bridge = Bridge()
@@ -247,7 +268,6 @@ def cmd_run(args) -> int:
     say(f'Run "{label}" ({args.mode}) on "{save_dir}" for {days} in-game days -> {run_dir}')
     snapshot(run_dir / "start-state.json", state)     # (0.100) for brain/compare_runs.py
     say("Ctrl-C stops the run cleanly (the summary is still written). Ctrl-Shift-H in game halts the AI.")
-    say("Don't run brain/overseer.py at the same time: the run does the overseer's job itself.")
     if st.get("halted") is True and args.mode in ("planner", "ai", "baseline"):
         say("Note: the AI is halted in this save (Ctrl-Shift-H), so it will only watch. Resume it to test it.")
 

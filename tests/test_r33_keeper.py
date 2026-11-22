@@ -107,6 +107,19 @@ def _():
     assert loaded[:3] == ["region1", "region1", "autosave 1"], loaded
 
 
+@test("(r9, A10 #13) revive: another game's saves of the same names are said plainly (hourly), not only counted")
+def _():
+    logs = []
+    err = "no save of the world W among autosave 1: two saves of that name (another game's too), skipped"
+    rv = revive.Reviver(logs.append, dfhack=TitleDF(json.dumps({"ok": False, "error": err})))
+    rv.candidates = lambda: (["autosave 1"], "W")
+    rv.restore = lambda log: None
+    run_day(rv, minutes=200)
+    said = [x for x in logs if "another game's saves under the same names" in x]
+    assert len(said) == 1 and "%APPDATA%" in said[0], logs
+    assert rv.load_fails == {"autosave 1": 2}, rv.load_fails
+
+
 @test("revive: a list left open ('backed out') and 'not at the title screen' are never counted")
 def _():
     for err in ("a list was open on the title screen (mode 2): backed out to the menu; the next try starts from there",

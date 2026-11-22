@@ -874,6 +874,16 @@ class Reviver:
                         # the backup restore was never reached
                         for f in refused_folders(out, folders, folder, bool(world)):
                             self._count_fail(f, "the title screen refused it")
+                        if "two saves" in out:
+                            # (r9, A10 #13) DF lists the user folder's saves beside a
+                            # portable copy's own: same-named saves of another game are
+                            # refused, and the fort falls back to a day-old backup; only
+                            # the player can clear that folder (said hourly)
+                            self._say_hourly("dup_names", now, "Revive: the title screen lists another game's "
+                                             "saves under the same names as this fort's (DF shows the user save "
+                                             "folder, %APPDATA%\\Bay 12 Games\\Dwarf Fortress\\save, beside "
+                                             "this copy's own): they are not loaded. Move that folder's saves "
+                                             "aside so the newest autosave can load.")
                 except DFHackError as e:
                     self.log(f"Revive: couldn't load '{folder}' ({str(e)[:160]}).")
         elif state == "world":

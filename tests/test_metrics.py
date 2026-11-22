@@ -291,6 +291,28 @@ def _():
     assert scenario.cmd_run(args) == 1 and game.acted == []
 
 
+@test("(r9) a run takes the folder lock: refused beside a keeper, the lock let go after")
+def _():
+    from util import folder_lock
+    scenario.LOCK_DIR = TMP / "lockdir"
+    held = folder_lock(scenario.LOCK_DIR)
+    game = GameForRun()
+    scenario.Bridge = lambda: game
+    said = []
+    scenario.say = said.append
+    args = type("A", (), {"days": 1, "years": 0, "mode": "none", "label": "", "yes": False})()
+    try:
+        assert scenario.cmd_run(args) == 1 and game.acted == [] and "keeper" in said[-1], said
+    finally:
+        held.close()
+    game._state["fort"]["save_dir"] = "region1"        # refused by name, after the lock is taken
+    assert scenario.cmd_run(args) == 1
+    again = folder_lock(scenario.LOCK_DIR)              # let go when the run returned
+    assert again is not None
+    again.close()
+    scenario.say = lambda m: None
+
+
 @test("scenario (0.100): a stalled run takes the popup off; announcements quieted at the start")
 def _():
     import scenario

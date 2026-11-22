@@ -153,6 +153,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
     state = get_state(bridge, tier)
     if controls.get("fps_low"):
         state["fps_low"] = controls["fps_low"]     # measured by the main loop (unattended)
+    if isinstance(controls.get("fps_seen"), dict):
+        state["fps_seen"] = controls["fps_seen"]   # (r9, B8) and what it judged by (kept in the saved states)
     # (0.105.48, K9) nobody at the game (--unattended, or the keeper's DFAI_PIN):
     # the planner answers DF's meeting screen only then (planner_world)
     state["unattended"] = bool(controls.get("unattended") or os.environ.get("DFAI_PIN"))

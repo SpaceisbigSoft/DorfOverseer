@@ -314,9 +314,6 @@ function split_part_names(mod)
     return out
 end
 
--- The builder's parts by name ('ai-builder-sites', ...).
-function builder_part_names() return split_part_names('ai-builder') end
-
 -- (0.105.26) The parts whose version mark isn't BRIDGE_VERSION, as
 -- 'name (mark)': a file left behind at delivery, or (the builder's) still the
 -- one loaded before it changed (touch ai-builder.lua, ai-gates.lua). The bridge's own parts

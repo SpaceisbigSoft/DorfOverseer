@@ -860,6 +860,9 @@ def _():
     st = {"fort": {"save_dir": "AI Run X", "site_id": 239}}
     assert scenario_mark.mark(b, st, lambda *_: None) and st["fort"]["run_id"] == rid
     assert not scenario_mark.mark(b, st, lambda *_: None) and len(b.acted) == 1     # marked: never again
+    # (r9) the pending entry is taken off once marked: a later save of that name isn't marked
+    assert "AI Run X" not in json.loads(scenario_mark.PENDING.read_text())
+    assert not scenario_mark.mark(b, {"fort": {"save_dir": "AI Run X", "site_id": 239}}, lambda *_: None)
     assert not scenario_mark.mark(b, {"fort": {"save_dir": "region2", "site_id": 239}}, lambda *_: None)
     memstore.ALIASES.clear()
 

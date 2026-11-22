@@ -554,8 +554,6 @@ function plan_memo_key(G, e, held)
                          tostring(e.gatehouse), table.concat(ids, ';')}, '|')
 end
 
-function plan_memo_clear() PLAN_MEMO = {} end
-
 local PLAN_FIELDS = {'state', 'corridor', 'trap_tiles', 'depth', 'drawbridge', 'why'}
 
 function report(txt)
