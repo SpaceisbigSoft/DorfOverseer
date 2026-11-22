@@ -341,7 +341,8 @@ def _():
 @test("2 brain: a well for every 70 waits for no ordinary slot while the needs' pool has room (r1 g3's silent return)")
 def _():
     import planner_wells
-    src = (ROOT / "brain" / "planner_wells.py").read_text(encoding="utf-8")
+    from py_parts import py_family_src  # (r7 d4) planner_wells and its parts
+    src = py_family_src("planner_wells")
     assert src.count("not need_slots_free(s)") == 2
     s = {"projects": {"need_slots_free": 2}}
     assert planner_wells.need_slots_free(s) == 2 and SL.need_slots_free({"projects": {}}) == 0

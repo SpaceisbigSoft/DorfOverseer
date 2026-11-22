@@ -354,7 +354,8 @@ def _():
     m.culture["season_choice"]["until"] = abs_tick(s) - 1           # the season over
     assert not barracks_wanted(s, {}, m)
     assert barracks_wanted(s, {"militarism": 50}, None) and barracks_wanted(fort(military={"soldiers": 3}), {}, None)
-    src = (ROOT / "brain" / "planner_building.py").read_text(encoding="utf-8")
+    from py_parts import py_family_src  # (r7 d4) planner_building and its parts
+    src = py_family_src("planner_building")
     assert code_has(src, 'if (allow["barracks"] and barracks_wanted(s, traits, memory)')
 
 
