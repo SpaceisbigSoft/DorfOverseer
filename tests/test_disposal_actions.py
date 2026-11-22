@@ -476,18 +476,13 @@ NAMES = ["unforbid_items", "mark_melt", "mark_dump", "empty_dump", "set_standing
 
 @test("bridge: the six actions in ACTIONS, DRY_OK and CACHE_INVALIDATES; disposal a cached SECTION; the module listed")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    for n in NAMES:
-        assert code_has(src, f"{n} = act_{n},"), n
-        assert f"'{n}'" in src.split("DRY_OK = {}")[1].split("DISPLAY_ONLY")[0], n
-        assert re.search(rf"^function act_{n}\(a\)", acts, re.M), n
-    assert code_has(src, "disposal = function() return safe(function() return reqscript('ai-disposal').report() end) end,")
-    assert code_has(src, "disposal = 1}")
-    assert code_has(src, "CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}")
-    assert "'ai-disposal'" in src.split("BRIDGE_MODULES = {")[1].split("}")[0]
-    assert code_has((LUA_DIR / "ai-bridge-orders.lua").read_text(encoding="utf-8"),
-                    "melt_metal = {job = 'MeltMetalObject'},")
+    if not need_lua():
+        return
+    # (r5 p5) the loaded hub's tables and a stand-in ai-disposal (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    env = BB.wired(section="disposal", module="ai-disposal", actions=NAMES, dry=NAMES, handlers=NAMES,
+                   cache_days=1, modules=["ai-disposal"], invalidates={"set_standing_orders": ["disposal", "dead"]})
+    assert env.ORDER_RECIPES.melt_metal.job == "MeltMetalObject"
 
 
 # The bridge's disposal handlers (ai-bridge-actions, from its disposal

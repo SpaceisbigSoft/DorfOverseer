@@ -365,37 +365,26 @@ def _():
 
 @test("bridge: the killers section (safe), killer_cell (ids checked, dry run, release_only while halted), the module listed")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "killers = function() return safe(function() return reqscript('ai-killers').report() end) end," in src
-    actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
-    assert "killer_cell = function(a)" in actions and "reqscript('ai-killers').cell" in actions
-    dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
-    assert "'killer_cell'" in dry
-    assert "killer_cell = 'release_only'" in src
-    mods = src[src.index("BRIDGE_MODULES = {"):src.index("}", src.index("BRIDGE_MODULES = {"))]
-    assert "'ai-killers'" in mods
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-killers (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(section="killers", module="ai-killers", actions=["killer_cell"], dry=["killer_cell"],
+             modules=["ai-killers"], release={"killer_cell": "release_only"})
     assert SECTION_DEFAULTS["killers"] == {}
     import overseer
     import planner_core
     import strategist
     assert "killer_cell" in overseer.SHORT_WORDS
     assert "killer" in planner_core.STEER_PROTECTED and "killer" in strategist.RAISE_FORBIDDEN
-    need_lua()
-    i = src.index("    killer_cell = function(a)")
-    j = src.index("    end,\n", i) + len("    end,\n")
-    fn = src[i:j].strip().rstrip(",").replace("killer_cell = function(a)", "return function(a)", 1)
-    lua = LuaRuntime(unpack_returned_tuples=True)
-    lua.execute("""
-        GOT = nil
-        function reject(r) return {ok = false, rejected = true, error = r} end
-        function reqscript() return {cell = function(o, dry) GOT = {o = o, dry = dry}; return {ok = true} end} end
-    """)
-    f = lua.execute(fn)
-    assert f(lua.table_from({}))["rejected"] is True
-    assert f(lua.table_from({"units": lua.table_from([1.5])}))["rejected"] is True
-    assert f(lua.table_from({"units": lua.table_from([3, 4.0]), "dry_run": True}))["ok"] is True
-    got = lua.globals().GOT
-    assert list(got.o.units.values()) == [3, 4] and got.dry is True and got.o.release_only is False
+
+    def send(a):
+        got, out, _ = BB.forwarded("killer_cell", a, "ai-killers", "cell")
+        return (got[0][1] if got else None), out
+    for bad in ({}, {"units": [1.5]}):
+        g, out = send(bad)
+        assert g is None and out.rejected is True, (bad, BB.to_py(out))
+    g, out = send({"units": [3, 4.0], "dry_run": True})
+    assert out.ok and g[0]["units"] == [3, 4] and g[1] is True and g[0]["release_only"] is False, g
 
 
 @test("death_details: a death more than a day old when told is `again` (F: ghosts laid to rest after a restart)")

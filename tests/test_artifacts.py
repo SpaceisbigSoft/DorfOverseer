@@ -433,36 +433,16 @@ def _():
       "the display_artifacts switch on the Rules tab, set on refresh, clear of the other controls")
 def _():
     need_lua()
-    src = (LUA_DIR / "ai-artifacts.lua").read_text(encoding="utf-8")
-    assert "buildings.other.DISPLAY_CASE end" in src and "DISPLAY_FURNITURE end" not in src
     lua, env, w = world()
     w.display(T(lua, {"x": 11, "y": 11}))
     assert len(py(env.display_buildings())) == 1
     env.df["global"]["world"]["buildings"]["other"]["DISPLAY_CASE"] = None
     env.df["global"]["world"]["buildings"]["all"] = w.displays
     assert len(py(env.display_buildings())) == 1        # the fallback
-    gui = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "view_id = 'display_artifacts'" in gui and "subviews.display_artifacts:setOption" in gui
-    import re
-    jrow, hrow, t = 8, 2, 14
-    page = gui[gui.index("function RulesPage:init()"):gui.index("MilitaryPage = defclass")]
-    frames = []
-    for m in re.finditer(r"view_id = '(\w+)',\s*frame = \{t = ([^,]+), l = (\d+), w = (\d+)\}", page):
-        expr = m.group(2)
-        if "i" in expr.replace("hrow", "").replace("jrow", ""):
-            continue                                    # the levels' loop rows (left column, l < 56)
-        frames.append((eval(expr, {"jrow": jrow, "hrow": hrow, "t": t}), int(m.group(3)), int(m.group(4)),
-                       m.group(1)))
-    for m in re.finditer(r"widgets\.Label\{frame = \{t = ([^,]+), l = (\d+)\}, text = \{\s*\{text = '([^']*)'", page):
-        frames.append((eval(m.group(1), {"jrow": jrow, "hrow": hrow, "t": t}), int(m.group(2)), len(m.group(3)),
-                       "label"))
-    mine = [f for f in frames if f[3] == "display_artifacts"]
-    assert len(mine) == 1, frames
-    r, l, wd, _ = mine[0]
-    for r2, l2, w2, v in frames:
-        if v != "display_artifacts" and r2 == r:
-            assert l2 + w2 <= l or l + wd <= l2, (mine[0], (r2, l2, w2, v))
-    assert l >= 52                                      # clear of the levels' rows (l 2, w 50)
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its frames parsed from the text
+    import gui_behaviour as GB
+    w = GB.control("RulesPage", "display_artifacts", kind="ToggleHotkeyLabel", values=[False, True], default=True)
+    assert w.l >= 52, w                                 # clear of the levels' rows (l 2, w 50)
 
 
 # --- 3. the bridge and the guards ----------------------------------------------------------
@@ -471,16 +451,11 @@ def _():
       "cleared by the actions), ai-artifacts in BRIDGE_MODULES; the handlers check their arguments")
 def _():
     need_lua()
-    dry = BRIDGE[BRIDGE.index("DRY_OK = {}"):BRIDGE.index("}) do DRY_OK[name] = true end")]
-    for a in ("place_display", "display_artifact"):
-        assert code_has(BRIDGE, f"{a} = act_{a},"), a
-        assert f"'{a}'" in dry, a
-        assert f"function act_{a}(a)" in ACTS
-        assert f"CACHE_INVALIDATES.{a} = {{'artifacts'}}" in BRIDGE
-    assert code_has(BRIDGE, "artifacts = function() return safe(function() return reqscript('ai-artifacts').report() end) end,")
-    assert "SECTION_CACHE_DAYS.artifacts = 1" in BRIDGE
-    mods = BRIDGE[BRIDGE.index("BRIDGE_MODULES = {"):BRIDGE.index("}", BRIDGE.index("BRIDGE_MODULES = {"))]
-    assert "'ai-artifacts'" in mods
+    # (r5 p5) the loaded hub's tables and a stand-in ai-artifacts (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["place_display", "display_artifact"]
+    BB.wired(section="artifacts", module="ai-artifacts", actions=acts, dry=acts, handlers=acts, cache_days=1,
+             modules=["ai-artifacts"], invalidates={a: ["artifacts"] for a in acts})
     lua = LuaRuntime(unpack_returned_tuples=True)
     f = lua.eval("""function(src)
         local seen = {}
@@ -508,7 +483,7 @@ def _():
     assert seen[len(seen)][2].building_id == 4 and seen[len(seen)][3] is False
     src = (LUA_DIR / "ai-artifacts.lua").read_text(encoding="utf-8")
     assert lua.eval("function(s) local f, e = load(s, 'c', 't', {}); return e end")(src) is None
-    assert "--@ module = true" in src
+    assert "--@ module = true" in src                    # contract: DFHack loads it as a module
 
 
 @test("guards: an artifact is never sold (ai-trade), melted, dumped or removed from the dump (ai-disposal), deleted "

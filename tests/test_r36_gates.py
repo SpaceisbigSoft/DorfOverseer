@@ -168,8 +168,13 @@ def _():
     G.blds[77].getBuildStage = LUA.eval("function() return 1 end")
     kept = E.prune_gate_planned(t(["30,31,170@50", "1,2,3@77", "4,5,6@999"]))
     assert list(kept.values()) == ["30,31,170@50"], list(kept.values())
-    acts_src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "free_gate_jobs(id, a.dry_run == true, a.ai_plan == true)" in acts_src
+    # (r5 p5) the bridge's free_gate_jobs run on a stand-in ai-gates (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    got, _, _ = BB.forwarded("free_gate_jobs", {"entrance_id": 1, "ai_plan": True, "dry_run": True}, "ai-gates",
+                             "free_gate_jobs")
+    assert got == [("free_gate_jobs", [1, True, True])], got
+    got, _, _ = BB.forwarded("free_gate_jobs", {"entrance_id": 1}, "ai-gates", "free_gate_jobs")
+    assert got == [("free_gate_jobs", [1, False, False])], got
 
 
 # --- brain ------------------------------------------------------------------------------

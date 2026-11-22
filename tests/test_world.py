@@ -378,8 +378,10 @@ def _():
 @test("the bridge: answer_meeting in the action table, bounded; the world section; probe_meeting and meeting_here")
 def _():
     src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert code_has(src, "answer_meeting = act_answer_meeting,")
-    assert code_has(src, "world = function() return safe(function() return reqscript('ai-diplomacy').world_report(txt) end) end,")
+    # (r5 p5) the loaded hub's own tables and a stand-in ai-diplomacy (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(section="world", module="ai-diplomacy", fn="world_report", txt=True, actions=["answer_meeting"],
+             handlers=["answer_meeting"])
     assert code_has(src, "probe_meeting = cmd_probe_meeting,") and code_has(src, "meeting_here = cmd_meeting_here,")
     assert code_has(src, "meeting = meeting_focus() ~= nil or nil,")
     import test_bridge_memory as tbm
@@ -430,11 +432,12 @@ def _():
     assert player_rules({"settings": {"tribute": "pay"}})["tribute"] == "pay"
     assert player_rules({"settings": {"tribute": "x"}})["tribute"] == "small"
     assert player_rules({"settings": {"make_contact": False}})["make_contact"] is False
-    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    for v in ("tribute", "make_contact"):
-        assert code_has(gui, f"view_id = '{v}'") and code_has(gui, f"p:set_field('{v}', v)") and code_has(gui, f"self.subviews.{v}:setOption(")
-    ok = lua.eval("function(src) local f, e = load(src, 'gui', 't', {}); return f ~= nil, e end")(gui)
-    assert ok[0], ok
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its text
+    import gui_behaviour as GB
+    # (fit=False: the default's long name, "refuse (the sum asked can't be read yet)", is cut at w = 56 today)
+    GB.control("RulesPage", "tribute", kind="CycleHotkeyLabel", values=["pay", "refuse", "small"], default="small",
+               fit=False)
+    GB.control("RulesPage", "make_contact", kind="ToggleHotkeyLabel", values=[False, True], default=True)
     ok = lua.eval("function(src) local f, e = load(src, 'd', 't', {}); return f ~= nil, e end")(SRC)
     assert ok[0], ok
 
@@ -668,9 +671,8 @@ def _():
     s2 = S.sanitize(lua.table_from({"send_messenger": True}))
     assert s2.send_messenger is True and S.for_ai(s2).send_messenger is True
     assert player_rules({"settings": {"send_messenger": True}})["send_messenger"] is True
-    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert code_has(gui, "view_id = 'send_messenger'") and code_has(gui, "p:set_field('send_messenger', v)")
-    assert code_has(gui, "self.subviews.send_messenger:setOption(")
+    import gui_behaviour as GB                   # (r5 p5) the window built, not its text
+    GB.control("RulesPage", "send_messenger", kind="ToggleHotkeyLabel", values=[True, False], default=False)
     ok = lua.eval("function(src) local f, e = load(src, 'm', 't', {}); return f ~= nil, e end")(
         module_src("ai-mission-send.lua"))
     assert ok[0], ok

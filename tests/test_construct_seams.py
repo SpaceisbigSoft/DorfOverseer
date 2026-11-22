@@ -186,48 +186,14 @@ def _():
     TP.reset()
 
 
-def rules_frames():
-    """(row, l, w, view) of the Rules page's controls before the military
-    section, with the window's numbers (9 optional levels, the jail 8th, the
-    hospital 2nd: t = 15)."""
-    src = GUI[GUI.index("function RulesPage:init()"):GUI.index("t = t + 11")]
-    jrow, hrow, t = 8, 2, 15
-    out = []
-    for m in re.finditer(r"view_id = '(\w+)',\s*frame = \{t = ([^,]+), l = (\d+), w = (\d+)\}", src):
-        view, expr, l, w = m.group(1), m.group(2).strip(), int(m.group(3)), int(m.group(4))
-        rows = []
-        if " + i" in expr:
-            for i in (1, 2, 3):
-                rows.append(eval(expr, {"jrow": jrow, "hrow": hrow, "t": t, "i": i}))
-        else:
-            rows.append(eval(expr, {"jrow": jrow, "hrow": hrow, "t": t}))
-        for r in rows:
-            out.append((r, l, w, view))
-    for m in re.finditer(r"widgets\.Label\{frame = \{t = ([^,]+), l = (\d+)\}, text = \{\s*\{text = '([^']*)'", src):
-        expr = m.group(1).strip()
-        if "i" in expr.split("+")[-1] and "t +" not in expr:
-            continue
-        r = eval(expr, {"jrow": jrow, "hrow": hrow, "t": t})
-        out.append((r, int(m.group(2)), len(m.group(3)), "label"))
-    return out
-
-
 @test("construct switch: the Rules tab's toggle, set and refreshed, in a free row of the right-hand column")
 def _():
-    assert code_has(GUI, "view_id = 'construct'") and code_has(GUI, "p:set_field('construct', v)")
-    assert code_has(GUI, "self.subviews.construct:setOption(s.construct ~= false, false)")
-    m = re.search(r"view_id = 'construct',.*?label = '([^']*)',\s*label_width = (\d+)", GUI, re.S)
-    assert m and len(m.group(1)) <= int(m.group(2)), m and m.groups()
-    frames = rules_frames()
-    mine = [f for f in frames if f[3] == "construct"]
-    assert len(mine) == 1, frames
-    r, l, w, _ = mine[0]
-    for r2, l2, w2, v in frames:
-        if v != "construct" and r2 == r:
-            assert l2 + w2 <= l or l + w <= l2, (v, r2, l2, w2, mine)
-    assert l + w <= 118
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its frames parsed from the text
+    import gui_behaviour as GB
+    w = GB.control("RulesPage", "construct", kind="ToggleHotkeyLabel", values=[False, True], default=True)
+    assert w.l >= 56, w
     doc = (ROOT / "docs" / "controls.md").read_text(encoding="utf-8")
-    assert "`construct`" in doc and "Construct halls, gate wings, floors" in doc
+    assert "`construct`" in doc and "Construct halls, gate wings, floors" in doc   # contract: the docs name it
 
 
 # --- 4. the wings, recorded and counted ---------------------------------------------

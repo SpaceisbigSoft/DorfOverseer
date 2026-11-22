@@ -426,10 +426,16 @@ def _():
 @test("bridge: paint_traffic in ACTIONS and DRY_OK, the traffic section, ai-traffic among the modules; "
       "digest default; short words; camera quiet; config keys")
 def _():
-    assert code_has(BRIDGE, "paint_traffic = function(a)")
-    assert re.search(r"'paint_traffic',\s+-- \(0\.105\.41\)", BRIDGE)
-    assert code_has(BRIDGE, "traffic = function() return safe(function() return reqscript('ai-traffic').report() end) end,")
-    assert "'ai-traffic'" in BRIDGE[BRIDGE.index("BRIDGE_MODULES = {"):]
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-traffic (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(section="traffic", module="ai-traffic", actions=["paint_traffic"], dry=["paint_traffic"],
+             modules=["ai-traffic"])
+    got, out, _ = BB.forwarded("paint_traffic", {"dry_run": True, "key": "L3", "max": 5}, "ai-traffic", "paint")
+    assert len(got) == 1 and got[0][1][1] is True, got                      # the dry run passed on
+    assert got[0][1][0]["key"] == "L3" and got[0][1][0]["max"] == 5 and got[0][1][0]["audit"] is False, got
+    got, out, _ = BB.forwarded("paint_traffic", {"max": "lots"}, "ai-traffic", "paint")
+    assert not got and out.rejected, BB.to_py(out)
     assert digest.SECTION_DEFAULTS["traffic"] == {}
     import overseer
     assert "paint_traffic" in overseer.SHORT_WORDS and "paint_traffic" in overseer.CAMERA_QUIET
@@ -456,23 +462,14 @@ def _():
     assert S.sanitize(lua.table_from({})).traffic is True
     assert player_rules({"settings": {"traffic": False}})["traffic"] is False
     assert player_rules({"settings": {}})["traffic"] is True
-    assert code_has(GUI, "view_id = 'traffic',") and code_has(GUI, "p:set_field('traffic', v)")
-    assert "self.subviews.traffic:setOption(" in GUI
-    src = GUI[GUI.index("function RulesPage:init()"):GUI.index("MilitaryPage = defclass")]
-    jrow, hrow, t = 8, 2, 14
-    rows = []
-    for m in re.finditer(r"frame = \{t = ([^,}]+), l = (\d+)(?:, w = (\d+))?\}", src):
-        expr = m.group(1).strip()
-        for i in ((1, 2, 3) if " + i" in expr else (0,)):
-            rows.append((eval(expr, {"jrow": jrow, "hrow": hrow, "t": t, "i": i}), int(m.group(2)),
-                         int(m.group(3) or 60), m.start()))
-    mine = src.index("view_id = 'traffic',")
-    me = [r for r in rows if r[3] > mine][:2]          # the switch and its help line
-    assert me[0][0] == 9 and me[1][0] == 10, me
-    for r, l, wd, pos in rows:
-        for mr, ml, mw, mpos in me:
-            if pos != mpos and r == mr:
-                assert l + wd <= ml or ml + mw <= l, (r, l, wd, mr, ml, mw)
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its frames parsed from the text
+    import gui_behaviour as GB
+    w = GB.control("RulesPage", "traffic", kind="ToggleHotkeyLabel", values=[False, True], default=True)
+    assert w.row == 9, w
+    rules = GB.page(GB.window(), "RulesPage")
+    help_line = [x for x in GB.widgets(rules) if x.row == w.row + 1 and x.l is not None and x.l >= w.l and x.text]
+    assert help_line, "its help line under it"
+    assert GB.refresh(rules, {"traffic": None})["traffic"] is True       # unset: on
 
 
 # --- 5. the brain ----------------------------------------------------------------------------

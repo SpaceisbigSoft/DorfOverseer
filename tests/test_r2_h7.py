@@ -469,8 +469,12 @@ def _():
         assert not got.ok and "well" in got.error, dict(got)
     finally:
         B.drop_waiting_shops, B.furnish_progress = real_drop, real_prog
-    acts = module_src("ai-bridge-actions.lua")
-    assert "a.leave_planned == true" in acts
+    # (r5 p5) the bridge's finish_project run on a stand-in ai-builder (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    got, _, _ = BB.forwarded("finish_project", {"project_id": 4, "leave_planned": True}, "ai-builder", "finish_project")
+    assert got[0][1][0] == 4 and got[0][1][5] is True, got                  # leave_planned passed on
+    got, _, _ = BB.forwarded("finish_project", {"project_id": 4, "leave_planned": "yes"}, "ai-builder", "finish_project")
+    assert got[0][1][5] is False, got                                       # only true
 
 
 # --- 4. hunts ---------------------------------------------------------------------------

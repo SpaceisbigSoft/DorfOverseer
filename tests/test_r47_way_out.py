@@ -612,15 +612,15 @@ def _():
 @test("wiring: the way_out section (in the pulse too) and its digest default, the two actions with dry runs and "
       "labels, the module listed, the rules emergencies, the planner calls")
 def _():
-    br = (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "way_out = function() return safe(function() return reqscript('ai-way-out').report() end) end" in br
-    assert "'way_out',       --" in br
-    assert "way_out_open = function(a)" in br and "way_out_leave = function(a)" in br
-    assert "'way_out_open', 'way_out_leave'," in br and "'ai-way-out'," in br
+    # (r5 p5) the loaded hub's tables and a stand-in ai-way-out (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["way_out_open", "way_out_leave"]
+    BB.wired(section="way_out", module="ai-way-out", pulse=True, actions=acts, dry=acts, modules=["ai-way-out"])
     import overseer
     import planner
     from planner_core import EMERGENCY, NO_COOLDOWN, STEER_PROTECTED
-    assert "\"way_out\": {}" in (ROOT / "brain" / "digest.py").read_text(encoding="utf-8")
+    import digest
+    assert digest.SECTION_DEFAULTS["way_out"] == {}
     assert "way_out_open" in overseer.SHORT_WORDS and "way_out_leave" in overseer.SHORT_WORDS
     assert {"way_out", "way_out_dig"} <= EMERGENCY & NO_COOLDOWN & STEER_PROTECTED
     assert planner._way_out_rule and planner.note_way_out and planner.note_way_out_cycle

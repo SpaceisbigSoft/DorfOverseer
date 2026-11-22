@@ -630,11 +630,13 @@ def _():
 @test("wiring: open_meeting in ACTIONS and DRY_OK, never batched (Lua and Python), the pulse's meeting_waiting, the modules")
 def _():
     hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert code_has(hub, "open_meeting = function(a)") and code_has(hub, "reqscript('ai-meeting-open').open(a.dry_run == true)")
-    assert code_has(hub, "'open_meeting',    -- (0.105.47)")
-    assert code_has(hub, "BATCH_NEVER.open_meeting = true")
+    # (r5 p5) the loaded hub run on a stand-in ai-meeting-open (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    env = BB.wired(actions=["open_meeting"], dry=["open_meeting"], modules=["ai-screen-buttons", "ai-meeting-open"])
+    assert env.BATCH_NEVER.open_meeting is True
+    got, _, _ = BB.forwarded("open_meeting", {"dry_run": True}, "ai-meeting-open", "open")
+    assert got == [("open", [True])], got
     assert code_has(hub, "meeting_waiting = (function()")
-    assert code_has(hub, "'ai-screen-buttons', 'ai-meeting-open',")
     import bridge
     assert "open_meeting" in bridge.BATCH_NEVER
     import overseer

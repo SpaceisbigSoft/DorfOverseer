@@ -603,12 +603,11 @@ else:
 
 @test("wiring: actions, DRY_OK, the section in SECTIONS and the pulse, the modules, digest, the overseer's words")
 def _():
-    hub = (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "    near_gates = function(a)\n" in hub and "    retire_water_zones = function(a)\n" in hub
-    assert "'near_gates', 'retire_water_zones',   -- (0.105.47, I7d)" in hub
-    assert "    near_gates = function() return safe(function() return reqscript('ai-near-gates').status(txt)" in hub
-    assert "    'near_gates',    -- (0.105.47, I7d)" in hub
-    assert "'ai-near-gates', 'ai-ice'," in hub
+    # (r5 p5) the loaded hub's tables and a stand-in ai-near-gates (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["near_gates", "retire_water_zones"]
+    BB.wired(section="near_gates", module="ai-near-gates", fn="status", txt=True, pulse=True, actions=acts, dry=acts,
+             modules=["ai-near-gates", "ai-ice"])
     assert SECTION_DEFAULTS["near_gates"] == {}
 
 

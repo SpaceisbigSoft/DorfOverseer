@@ -469,13 +469,17 @@ def _():
 @test("bridge: the hauling section (safe), the two actions on ACTIONS and DRY_OK, the module listed, the "
       "handlers' counts checked; the brain's labels and the section's default")
 def _():
-    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "hauling = function() return safe(function() return reqscript('ai-hauling').report(txt) end) end" in hub
-    assert "add_haulers = act_add_haulers" in hub and "relieve_haulers = act_relieve_haulers" in hub
-    assert "'add_haulers', 'relieve_haulers'," in hub and "'ai-hauling'," in hub
-    assert "function act_add_haulers(a)" in acts and "int_in(a.count, 1, 10)" in acts
-    assert "function act_relieve_haulers(a)" in acts and "int_in(a.count, 1, 5)" in acts
+    # (r5 p5) the loaded hub's tables and a stand-in ai-hauling (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["add_haulers", "relieve_haulers"]
+    BB.wired(section="hauling", module="ai-hauling", txt=True, actions=acts, dry=acts, handlers=acts,
+             modules=["ai-hauling"])
+    for act, top in (("add_haulers", 10), ("relieve_haulers", 5)):           # the counts checked
+        for bad in (0, top + 1, 2.5, None):
+            got, out, _ = BB.forwarded(act, {"count": bad}, "ai-hauling", act)
+            assert not got and out.rejected, (act, bad, BB.to_py(out))
+        got, out, _ = BB.forwarded(act, {"count": top, "dry_run": True}, "ai-hauling", act)
+        assert len(got) == 1 and got[0][1][0] == top and True in got[0][1], (act, got)
     assert "add_haulers" in overseer.SHORT_WORDS and "relieve_haulers" in overseer.SHORT_WORDS
     assert digest.SECTION_DEFAULTS["hauling"] == {}
 
@@ -694,8 +698,18 @@ def _():
     r = py(env.add_haulers(2, False))
     assert not r["ok"] and r["rejected"] and r["yours"] and "only selected" in r["error"], r
     assert n(lua, w.details) == 3
-    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "relieve_haulers(n, a.back == true, a.dry_run == true, txt, a.shrink == true)" in acts
+    # (r5 p5) the bridge's relieve_haulers run on a stand-in ai-hauling (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    got, out, env = BB.forwarded("relieve_haulers", {"count": 2, "shrink": True, "dry_run": True}, "ai-hauling",
+                                 "relieve_haulers")
+    assert len(got) == 1, BB.to_py(out)
+    n_, back, dry, txt_, shrink = got[0][1]
+    assert (n_, back, dry, shrink) == (2, False, True, True) and BB.same(txt_, env.txt), got
+    got, _, _ = BB.forwarded("relieve_haulers", {"count": 1, "back": True}, "ai-hauling", "relieve_haulers")
+    assert got[0][1][1:3] == [True, False], got
+    got, out, _ = BB.forwarded("relieve_haulers", {"count": 1, "back": True, "shrink": True}, "ai-hauling",
+                               "relieve_haulers")
+    assert not got and out.rejected, BB.to_py(out)
 
 
 @test("fix 11 (brain): haulers to spare for a week (note_hauling's since): the AI's added taken off, a few a call; "

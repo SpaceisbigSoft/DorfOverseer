@@ -258,8 +258,16 @@ def _():
     B.open_projects = lambda data: urgent
     r = B.start_project(p(kind="workshops", shops=["Jewelers"], urgent=True, mood=True), lua.table(), True)
     assert not r.ok and "unfinished building projects" in str(r.error), dict(r)
-    src = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "p.mood = (a.mood == true and a.kind == 'workshops') or nil" in src
+    # (r5 p5) the bridge's start_project run on a stand-in ai-builder (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    lay = BB.real_module("ai-layouts")
+
+    def marked(**a):
+        got, _, _ = BB.forwarded("start_project", a, "ai-builder", "start_project", extra={"ai-layouts": lay})
+        return got[0][1][0].get("mood")
+    assert marked(kind="workshops", shops=["Jewelers"], mood=True) is True
+    assert marked(kind="workshops", shops=["Jewelers"], mood="yes") is None
+    assert marked(kind="bedrooms", rooms=4, room_size=3, mood=True) is None
 
 
 # ---- 2. the reserves ---------------------------------------------------------------------------

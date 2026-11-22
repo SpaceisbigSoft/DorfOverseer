@@ -278,33 +278,22 @@ def _():
 
 @test("bridge: the stuck section (safe), stuck_reset (kind and mode checked, dry run), DRY_OK, the module listed; digest, label")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "stuck = function() return safe(function() return reqscript('ai-stuck').report() end) end," in src
-    actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
-    assert "stuck_reset = function(a)" in actions and "reqscript('ai-stuck').reset(" in actions
-    dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
-    assert "'stuck_reset'" in dry
-    mods = src[src.index("BRIDGE_MODULES = {"):src.index("}", src.index("BRIDGE_MODULES = {"))]
-    assert "'ai-stuck'" in mods
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-stuck (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(section="stuck", module="ai-stuck", actions=["stuck_reset"], dry=["stuck_reset"], modules=["ai-stuck"])
     assert SECTION_DEFAULTS["stuck"] == {}
     import overseer
     assert "stuck_reset" in overseer.SHORT_WORDS
-    need_lua()
-    i = src.index("    stuck_reset = function(a)")
-    j = src.index("    end,\n", i) + len("    end,\n")
-    fn = src[i:j].strip().rstrip(",").replace("stuck_reset = function(a)", "return function(a)", 1)
-    lua = LuaRuntime(unpack_returned_tuples=True)
-    lua.execute("""
-        GOT = nil
-        function reject(r) return {ok = false, rejected = true, error = r} end
-        function reqscript() return {reset = function(o, dry) GOT = {o = o, dry = dry}; return {ok = true} end} end
-    """)
-    f = lua.execute(fn)
-    assert f(lua.table_from({"kind": "squad", "id": 1}))["rejected"] is True
-    assert f(lua.table_from({"kind": "lever", "id": 1, "mode": "x"}))["rejected"] is True
-    assert f(lua.table_from({"kind": "lever", "id": 3, "mode": "drop", "dry_run": True}))["ok"] is True
-    got = lua.globals().GOT
-    assert (got.o.kind, got.o.id, got.o.mode, got.dry) == ("lever", 3, "drop", True)
+
+    def send(a):
+        got, out, _ = BB.forwarded("stuck_reset", a, "ai-stuck", "reset")
+        return (got[0][1] if got else None), out
+    for bad in ({"kind": "squad", "id": 1}, {"kind": "lever", "id": 1, "mode": "x"}):
+        g, out = send(bad)
+        assert g is None and out.rejected is True, (bad, BB.to_py(out))
+    g, out = send({"kind": "lever", "id": 3, "mode": "drop", "dry_run": True})
+    assert out.ok and (g[0]["kind"], g[0]["id"], g[0]["mode"], g[1]) == ("lever", 3, "drop", True), g
 
 
 # --- 4. the brain ---------------------------------------------------------------------------

@@ -473,60 +473,39 @@ def _():
 
 @test("bridge: the syndromes and miasma sections (safe), the three actions (dry runs, values checked), the module listed")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "syndromes = function() return safe(function() return reqscript('ai-syndromes').report() end) end," in src
-    assert "miasma = function() return safe(function() return reqscript('ai-syndromes').miasma_report() end) end," in src
-    actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
-    for a in ("clean_contaminants", "quarantine_syndromes", "clear_miasma"):
-        assert f"    {a} = function(a)" in actions, a
-    dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
-    assert "'clean_contaminants', 'quarantine_syndromes', 'clear_miasma'" in dry
-    mods = src[src.index("BRIDGE_MODULES = {"):src.index("}", src.index("BRIDGE_MODULES = {"))]
-    assert "'ai-syndromes'" in mods
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-syndromes (tests/bridge_behaviour.py): the handlers run,
+    # not cut out of the hub's text
+    import bridge_behaviour as BB
+    acts = ["clean_contaminants", "quarantine_syndromes", "clear_miasma"]
+    BB.wired(section="syndromes", module="ai-syndromes", actions=acts, dry=acts, modules=["ai-syndromes"])
+    BB.wired(section="miasma", module="ai-syndromes", fn="miasma_report")
     assert SECTION_DEFAULTS["syndromes"] == {} and SECTION_DEFAULTS["miasma"] == {}
     import overseer
-    for a in ("clean_contaminants", "quarantine_syndromes", "clear_miasma"):
+    for a in acts:
         assert a in overseer.SHORT_WORDS and a in overseer.CAMERA_QUIET, a
-    need_lua()
-    lua = LuaRuntime(unpack_returned_tuples=True)
-    lua.execute("""
-        GOT = nil
-        function reject(r) return {ok = false, rejected = true, error = r} end
-        function int_in(v, lo, hi)
-            local n = type(v) == 'number' and math.tointeger(v) or nil
-            if n and n >= lo and n <= hi then return n end
-            return nil
-        end
-        function reqscript() return setmetatable({}, {__index = function(_, k)
-            return function(o, dry) GOT = {k = k, o = o, dry = dry}; return {ok = true} end end}) end
-    """)
-    fns = {}
-    for a in ("clean_contaminants", "quarantine_syndromes", "clear_miasma"):
-        i = actions.index(f"    {a} = function(a)")
-        j = actions.index("    end,\n", i) + len("    end,\n")
-        fns[a] = lua.execute(actions[i:j].strip().rstrip(",").replace(f"{a} = function(a)", "return function(a)", 1))
-    tf = lua.table_from
-    assert fns["clean_contaminants"](tf({"units": "x"}))["rejected"] is True
-    assert fns["clean_contaminants"](tf({"budget_ms": 5}))["rejected"] is True
-    assert fns["clean_contaminants"](tf({"tiles": False, "dry_run": True}))["ok"] is True
-    g = lua.globals().GOT
-    assert g.k == "clean" and g.o.tiles is False and g.dry is True
-    assert fns["quarantine_syndromes"](tf({"days": 99}))["rejected"] is True
-    assert fns["quarantine_syndromes"](tf({"release": 1}))["rejected"] is True
-    fns["quarantine_syndromes"](tf({"days": 7, "max": 20}))
-    g = lua.globals().GOT
-    assert g.k == "quarantine" and g.o.days == 7 and g.o.max == 20 and g.o.release is False
-    assert fns["clear_miasma"](tf({"max": 0}))["rejected"] is True
-    fns["clear_miasma"](tf({"max": 50}))
-    assert lua.globals().GOT.k == "clear_miasma"
+
+    def send(action, a):
+        got, out, _ = BB.forwarded(action, a, "ai-syndromes")
+        return got, out
+    for action, bad in (("clean_contaminants", {"units": "x"}), ("clean_contaminants", {"budget_ms": 5}),
+                        ("quarantine_syndromes", {"days": 99}), ("quarantine_syndromes", {"release": 1}),
+                        ("clear_miasma", {"max": 0})):
+        got, out = send(action, bad)
+        assert not got and out.rejected is True, (action, bad, BB.to_py(out))
+    got, out = send("clean_contaminants", {"tiles": False, "dry_run": True})
+    assert out.ok and got[0][0] == "clean" and got[0][1][0]["tiles"] is False and got[0][1][1] is True, got
+    got, _ = send("quarantine_syndromes", {"days": 7, "max": 20})
+    o = got[0][1][0]
+    assert got[0][0] == "quarantine" and (o["days"], o["max"], o["release"]) == (7, 20, False), got
+    got, _ = send("clear_miasma", {"max": 50})
+    assert got[0][0] == "clear_miasma" and got[0][1][0]["max"] == 50, got
 
 
 @test("settings: the syndrome_care switch (on by default), saved, sent to the AI and on the Rules tab")
 def _():
-    src = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert "syndrome_care = true," in src and "'syndrome_care'," in src and "syndrome_care = s.syndrome_care," in src
-    gui = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "view_id = 'syndrome_care'" in gui and "subviews.syndrome_care:setOption" in gui
+    import gui_behaviour as GB              # (r5 p5) the settings and the window run, not their text
+    GB.rule_switch("syndrome_care", "RulesPage", True)
     assert player_rules({"settings": {}})["syndrome_care"] is True
     assert player_rules({"settings": {"syndrome_care": False}})["syndrome_care"] is False
 

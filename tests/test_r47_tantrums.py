@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -491,18 +491,15 @@ BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 
 @test("bridge: the tantrums section (safe, in the pulse), the two actions (dry runs ok), the module listed; digest default")
 def _():
-    assert "tantrums = function() return safe(function() return reqscript('ai-tantrums').report(txt) end) end," in BRIDGE
-    pulse = re.search(r"PULSE_SECTIONS = \{(.*?)\n\}", BRIDGE, re.S).group(1)
-    assert "'tantrums'" in pulse
-    acts = re.search(r"\nACTIONS = \{(.*?)\n\}\n", BRIDGE, re.S).group(1)
-    assert "hospital_guard = function(a)" in acts and "tantrum_step_down = function(a)" in acts
-    assert "'hospital_guard', 'tantrum_step_down'," in BRIDGE
-    assert "'ai-tantrums'," in BRIDGE
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-tantrums (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["hospital_guard", "tantrum_step_down"]
+    BB.wired(section="tantrums", module="ai-tantrums", txt=True, pulse=True, actions=acts, dry=acts,
+             modules=["ai-tantrums"])
     assert SECTION_DEFAULTS.get("tantrums") == {}
     import overseer
-    labels = overseer.ACTION_LABELS if hasattr(overseer, "ACTION_LABELS") else None
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
-    assert '"hospital_guard":' in src and '"tantrum_step_down":' in src, labels is None
+    assert "hospital_guard" in overseer.SHORT_WORDS and "tantrum_step_down" in overseer.SHORT_WORDS
 
 
 @test("bridge: convict takes unit_id (that culprit's cases only); the death event marks a tantrum's or berserker's kill")

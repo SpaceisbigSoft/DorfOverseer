@@ -295,16 +295,11 @@ ACTS = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
       "the actions), ai-food-store in BRIDGE_MODULES; the kitchen's feeder pile remembered as the AI's")
 def _():
     need_lua()
-    dry = BRIDGE[BRIDGE.index("DRY_OK = {}"):BRIDGE.index("}) do DRY_OK[name] = true end")]
-    for a in ("food_pile", "food_barrels"):
-        assert code_has(BRIDGE, f"{a} = act_{a},"), a
-        assert f"'{a}'" in dry, a
-        assert f"function act_{a}(a)" in ACTS
-        assert f"CACHE_INVALIDATES.{a} = {{'food_store'" in BRIDGE
-    assert code_has(BRIDGE, "food_store = function() return safe(function() return reqscript('ai-food-store').report() end) end,")
-    assert "SECTION_CACHE_DAYS.food_store = 1" in BRIDGE
-    mods = BRIDGE[BRIDGE.index("BRIDGE_MODULES = {"):BRIDGE.index("}", BRIDGE.index("BRIDGE_MODULES = {"))]
-    assert "'ai-food-store'" in mods
+    # (r5 p5) the loaded hub's tables and a stand-in ai-food-store (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["food_pile", "food_barrels"]
+    BB.wired(section="food_store", module="ai-food-store", actions=acts, dry=acts, handlers=acts, cache_days=1,
+             modules=["ai-food-store"], invalidates={a: ["food_store"] for a in acts})
     rooms = (LUA_DIR / "ai-builder-rooms.lua").read_text(encoding="utf-8")
     assert "reqscript('ai-food-store').remember(r.x, r.y, r.z)" in rooms
     src = (LUA_DIR / "ai-food-store.lua").read_text(encoding="utf-8")

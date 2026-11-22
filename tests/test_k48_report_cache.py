@@ -91,10 +91,15 @@ def _():
 
 @test("A3 5: redig_projects is a bridge action (dry runs allowed), labelled, and asked by a planner rule")
 def _():
-    assert "redig_projects = function(a) return reqscript('ai-builder').redig_projects(a.dry_run == true) end," in BRIDGE
-    dry = BRIDGE[BRIDGE.index("DRY_OK = {}"):BRIDGE.index("}) do DRY_OK[name] = true end")]
-    assert "'redig_projects'" in dry
-    assert '"redig_projects": ' in (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    # (r5 p5) the loaded hub run on a stand-in ai-builder (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(actions=["redig_projects"], dry=["redig_projects"])
+    got, _, _ = BB.forwarded("redig_projects", {"dry_run": True}, "ai-builder", "redig_projects")
+    assert got == [("redig_projects", [True])], got
+    got, _, _ = BB.forwarded("redig_projects", {}, "ai-builder", "redig_projects")
+    assert got == [("redig_projects", [False])], got
+    import overseer
+    assert "redig_projects" in overseer.SHORT_WORDS
     props = []
     pb._redig_rule([{"id": 4, "kind": "well", "phase": "dig", "dig": {"redig_due": 2}},
                     {"id": 5, "kind": "bedrooms", "phase": "dig", "dig": {"stuck": 3}}], props)

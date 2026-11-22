@@ -9,13 +9,12 @@ engine (lupa, Lua 5.3).
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import make_test, finish, code_has  # noqa: E402
+from harness import make_test, finish  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -23,9 +22,9 @@ except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
 
+import gui_behaviour as GB  # noqa: E402  (r5 p5) the window on a stub gui
 import test_preset as TP      # the bridge and the settings with a stub DFHack  # noqa: E402
 
-GUI = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
 
 test = make_test(before=TP.reset)
 
@@ -162,68 +161,46 @@ def _():
 
 # --- the window ---------------------------------------------------------------------------
 
-def army() -> str:
-    a = GUI.index("function MilitaryPage:init()")
-    return GUI[a:GUI.index("\nend\n", a)]
-
-
-def army_refresh() -> str:
-    a = GUI.index("function MilitaryPage:refresh()")
-    return GUI[a:GUI.index("\nend\n", a)]
-
+# (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its source cut by regexes
 
 @test("window: the Army tab's Missions cycle and World screen switch, refreshed, with their help")
 def _():
-    src = army()
-    assert "widgets.CycleHotkeyLabel{\n        view_id = 'missions'" in src
-    assert code_has(src, "p:set_field('missions', v)") and code_has(src, "S.MISSION_CHOICES")
-    assert code_has(src, "S.MISSION_NAMES[m]") and code_has(src, "S.MISSION_HELP")
-    assert "widgets.ToggleHotkeyLabel{\n        view_id = 'send_missions'" in src
-    assert code_has(src, "p:set_field('send_missions', v)")
-    assert code_has(src, "initial_option = p.settings.send_missions == true")
-    ref = army_refresh()
-    assert code_has(ref, "self.subviews.missions:setOption(") and code_has(ref, "self.subviews.send_missions:setOption(")
-    # labels fit their widths; the longest choice fits beside the label
+    # (r5 p5) behaviour, not source text
     S = TP.H.settings()
-    longest = max(len(S.MISSION_NAMES[m]) for m in lua_list(S.MISSION_CHOICES))
-    m = re.search(r"view_id = 'missions',\s*frame = \{t = [^,]+, l = (\d+), w = (\d+)\},\s*label = '([^']*)',"
-                  r"\s*label_width = (\d+)", src)
-    assert m, "missions frame"
-    l, w, label, lw = int(m.group(1)), int(m.group(2)), m.group(3), int(m.group(4))
-    assert len(label) <= lw and lw + longest + 4 <= w and l + w <= 118
-    m = re.search(r"view_id = 'send_missions',\s*frame = \{t = [^,]+, l = (\d+), w = (\d+)\},\s*label = '([^']*)',"
-                  r"\s*label_width = (\d+)", src)
-    assert m and len(m.group(3)) <= int(m.group(4)) and int(m.group(1)) + int(m.group(2)) <= 118
+    m = GB.control("MilitaryPage", "missions", kind="CycleHotkeyLabel", values=lua_list(S.MISSION_CHOICES), pad=4)
+    assert [v for _, v in m.options] == lua_list(S.MISSION_CHOICES)
+    assert [n for n, _ in m.options] == [S.MISSION_NAMES[x] for x in lua_list(S.MISSION_CHOICES)]
+    GB.control("MilitaryPage", "send_missions", kind="ToggleHotkeyLabel", values=[True, False], default=False)
+    on = GB.find(GB.page(GB.window({"send_missions": True}), "MilitaryPage"), "send_missions")
+    assert on.initial_option is True
+    odd = GB.find(GB.page(GB.window({"send_missions": "yes"}), "MilitaryPage"), "send_missions")
+    assert odd.initial_option is False                                 # only true is on
+    texts = [w.text for w in GB.widgets(GB.page(GB.window(), "MilitaryPage")) if w.text]
+    assert S.MISSION_HELP in texts, texts
 
 
 @test("window (J17): the Raids cycle on the Army tab's free row t+14, l=76, set and refreshed")
 def _():
+    # (r5 p5) behaviour, not source text
     S = TP.H.settings()
-    # the window: the cycle on the Army tab's free row t+14, l=76, refreshed
-    src = army()
-    m = re.search(r"view_id = 'raid_policy',\s*frame = \{t = t \+ (\d+), l = (\d+), w = (\d+)\},\s*label = '([^']*)',"
-                  r"\s*label_width = (\d+)", src)
-    assert m, "raid_policy frame"
-    t, l, w, label, lw = int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4), int(m.group(5))
-    longest = max(len(S.RAID_POLICY_NAMES[x]) for x in lua_list(S.RAID_POLICY_CHOICES))
-    assert t == 14 and l >= 76 and l + w <= 118 and len(label) <= lw and lw + longest + 4 <= w
-    assert code_has(src, "p:set_field('raid_policy', v)") and code_has(army_refresh(), "self.subviews.raid_policy:setOption(")
+    w = GB.control("MilitaryPage", "raid_policy", kind="CycleHotkeyLabel", values=lua_list(S.RAID_POLICY_CHOICES), pad=4)
+    assert w.row == 11 and w.l >= 76, w                                # t + 14 with the header's t = -3
 
 
 @test("window: the Army tab's left-column rows don't collide and stay inside the 28 shown")
 def _():
-    src = army()
-    cut = src.index("\n    t = t + 20\n")
-    rows = []                                   # t = -3: the header at row 0
-    for m in re.finditer(r"frame = \{t = t \+ (\d+), l = (\d+)", src[:cut]):
-        if int(m.group(2)) < 56:
-            rows.append(int(m.group(1)) - 3)
-    rows += [1 + i for i in range(1, 8)]        # the seven military switches: t + 4 + i
-    rows += [11 + i for i in (1, 2)]            # moon_cells, seal_caverns: t + 14 + i
+    # (r5 p5) behaviour, not source text
+    win = GB.window()
+    army = GB.page(win, "MilitaryPage")
+    ws = GB.widgets(army)
+    left = [w for w in ws if w.row is not None and w.l is not None and w.l < 56 and w.kind != "WrappedLabel"]
+    rows = [w.row for w in left if w.l < 30]                           # one control per row in the left column
     assert len(rows) == len(set(rows)), sorted(rows)
-    assert {15, 16} <= set(rows), sorted(rows)  # the missions rows under the caverns' switch
-    help_row = int(re.search(r"frame = \{t = t \+ (\d+), l = 0", src[cut:]).group(1)) + 20 - 3
-    assert help_row > max(rows) and help_row + 3 <= 27, (help_row, sorted(rows))
+    assert GB.find(army, "missions").row == 15 and GB.find(army, "send_missions").row == 16
+    assert GB.find(army, "seal_caverns").row < 15                      # the missions rows under the caverns' switch
+    help_row = max(w.row for w in ws if w.kind == "WrappedLabel")
+    assert help_row > max(rows) and help_row + 3 <= GB.visible_rows(win) - 1, (help_row, sorted(rows))
+    assert GB.overlaps(army) == [], GB.overlaps(army)
 
 
 @test("the settings, the window and the bridge actions compile under Lua 5.3")

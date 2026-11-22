@@ -379,9 +379,12 @@ def _():
 def _():
     soc = (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8")
     assert soc.count("reqscript('ai-mood-help').add_mood_spots(b, false)") == 2
-    br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter({dry_run = a.dry_run == true}) end" in br
-    assert "'mood_shelter'," in br and "'mood_help'," in br and "'ai-mood-help'," in br
+    # (r5 p5) the loaded hub run on a stand-in ai-mood-help (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    env = BB.wired(actions=["mood_shelter"], dry=["mood_shelter"], modules=["ai-mood-help"])
+    assert env.SECTIONS.mood_help is not None
+    got, _, _ = BB.forwarded("mood_shelter", {"dry_run": True}, "ai-mood-help", "act_mood_shelter")
+    assert got == [("act_mood_shelter", [{"dry_run": True}])], got
 
 
 def help_world():

@@ -460,18 +460,14 @@ def _():
 
 @test("bridge: the hunt section (safe), hunt_send / hunt_recall in ACTIONS and DRY_OK, ai-hunt listed; digest default; words")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    sections = src[src.index("SECTIONS = {"):src.index("PULSE_SECTIONS = {")]
-    assert "hunt = function()" in sections and "reqscript('ai-hunt').report(txt" in sections
-    i = sections.index("hunt = function()")
-    assert "safe(function()" in sections[i:i + 200]
-    actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
-    assert "hunt_send = function(a)" in actions and "reqscript('ai-hunt').send" in actions
-    assert "hunt_recall = function(a)" in actions and "reqscript('ai-hunt').recall" in actions
-    dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
-    assert "'hunt_send'" in dry and "'hunt_recall'" in dry
-    mods = src[src.index("BRIDGE_MODULES = {"):src.index("}", src.index("BRIDGE_MODULES = {"))]
-    assert "'ai-hunt'" in mods
+    # (r5 p5) the loaded hub's tables and a stand-in ai-hunt (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["hunt_send", "hunt_recall"]
+    BB.wired(section="hunt", module="ai-hunt", txt=True, actions=acts, dry=acts, modules=["ai-hunt"])
+    got, out, _ = BB.forwarded("hunt_send", {"target_id": 500, "squad_ids": [1, 2], "dry_run": True}, "ai-hunt", "send")
+    assert len(got) == 1, BB.to_py(out)
+    got, out, _ = BB.forwarded("hunt_recall", {"squad_ids": [1], "dry_run": True}, "ai-hunt", "recall")
+    assert len(got) == 1, BB.to_py(out)
     assert SECTION_DEFAULTS["hunt"] == {"targets": [], "squads": [], "hunts": []}
     s = normalize({"hunt": {"error": "boom"}})
     assert s["hunt"] == {"targets": [], "squads": [], "hunts": []}

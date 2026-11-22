@@ -543,14 +543,10 @@ BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 
 @test("bridge: the three actions, DRY_OK, the lures section (pulse too), the module listed")
 def _():
-    for a in ("build_lure", "lure_open", "lure_shut"):
-        assert code_has(BRIDGE, f"{a} = function(a)"), a
-    dry = BRIDGE[BRIDGE.index("DRY_OK = {}"):BRIDGE.index("}) do DRY_OK[name] = true end")]
-    assert "'build_lure', 'lure_open', 'lure_shut'" in dry
-    assert code_has(BRIDGE, "lures = function() return safe(function() return reqscript('ai-lure').report() end) end,")
-    pulse = BRIDGE[BRIDGE.index("PULSE_SECTIONS = {"):BRIDGE.index("TIERS = ")]
-    assert "'lures'" in pulse
-    assert "'ai-lure'," in BRIDGE[BRIDGE.index("BRIDGE_MODULES = {"):BRIDGE.index("MARKED_MODULES")]
+    # (r5 p5) the loaded hub's tables and a stand-in ai-lure (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["build_lure", "lure_open", "lure_shut"]
+    BB.wired(section="lures", module="ai-lure", pulse=True, actions=acts, dry=acts, modules=["ai-lure"])
 
 
 @test("brain: digest default, labels, config, Rules switch (settings, window, player_rules)")
@@ -566,10 +562,8 @@ def _():
         assert k in PLANNER_CONFIG, k
     assert planner_core.player_rules({"settings": {}})["lure_beasts"] is True
     assert planner_core.player_rules({"settings": {"lure_beasts": False}})["lure_beasts"] is False
-    st = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert code_has(st, "lure_beasts = true,") and "'lure_beasts'," in st and code_has(st, "lure_beasts = s.lure_beasts,")
-    gui = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert code_has(gui, "view_id = 'lure_beasts'") and code_has(gui, "self.subviews.lure_beasts:setOption(")
+    import gui_behaviour as GB              # (r5 p5) the settings and the window run, not their text
+    GB.rule_switch("lure_beasts", "MilitaryPage", True)
 
 
 @test("ai-lure.lua compiles under Lua 5.3")

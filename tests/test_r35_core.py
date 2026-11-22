@@ -109,7 +109,9 @@ def _():
     assert max(abs(r.x - 52), abs(r.y - 50)) > 10, (r.x, r.y)
     r = TB.B.found_fort(False, True)
     assert r.ok and TB.W.get(r.x, r.y, 80).designated, dict(r)
-    assert code_has(ACTIONS_SRC, "found_fort(a.dry_run == true, a.wide == true)")
+    import bridge_behaviour as BB           # (r5 p5) the action run on a stand-in ai-builder, not its text
+    got, _, _ = BB.forwarded("found_fort", {"wide": True, "dry_run": True}, "ai-builder", "found_fort")
+    assert got == [("found_fort", [True, True])], got
 
 
 # --- marker-only dig tiles -----------------------------------------------------------
@@ -181,9 +183,11 @@ def _():
 
 @test("marker-only dig tiles: wired as a bridge action whose dry run passes while halted, with words on the panel")
 def _():
-    assert code_has(BRIDGE, "unmark_project_dig = act_unmark_project_dig,")
-    assert code_has(BRIDGE, "'unmark_project_dig', -- (0.105.35)")
-    assert code_has(ACTIONS_SRC, "reqscript('ai-builder').unmark_project_dig(id, a.dry_run == true)")
+    # (r5 p5) the loaded hub run on a stand-in ai-builder (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(actions=["unmark_project_dig"], dry=["unmark_project_dig"], handlers=["unmark_project_dig"])
+    got, _, _ = BB.forwarded("unmark_project_dig", {"project_id": 3, "dry_run": True}, "ai-builder", "unmark_project_dig")
+    assert got == [("unmark_project_dig", [3, True])], got
     assert overseer.short({"type": "unmark_project_dig", "project_id": 3}) != "unmark_project_dig"
 
 
