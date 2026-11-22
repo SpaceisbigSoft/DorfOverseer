@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LUA_DIR = ROOT / "lua"
-from lua_modules_util import module_src, split_parts  # noqa: E402
+from lua_modules_util import module_src, split_parts, UTIL_SRC  # noqa: E402
 from snapshots import recorded  # noqa: E402
 from harness import test, finish  # noqa: E402
 
@@ -110,7 +110,7 @@ return seen.n
 @test("split: in the game the hub loads its parts from the files beside it (no PART_SOURCES)")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    util = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
+    util = UTIL_SRC   # (r9) ai-util with its parts
     env = lua.execute(r"""
 local path, util = ...
 local env = setmetatable({}, {__index = _G})

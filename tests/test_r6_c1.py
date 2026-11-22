@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
+from lua_modules_util import UTIL_SRC, split_src  # noqa: E402  (r9) ai-util is a hub and parts
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -39,7 +40,7 @@ DEF = re.compile(r"^(local\s+)?function\s+(%s)\b(.*)$|^local\s+(%s)\s*=\s*(.*)$"
 def module_defs():
     out = []
     for p in sorted(LUA_DIR.glob("*.lua")):
-        if p.name in C3 or p.name == "ai-util.lua":
+        if p.name in C3 or p.name == "ai-util.lua" or p.name.startswith("ai-util-"):   # (r9) and its parts
             continue
         for m in DEF.finditer(p.read_text(encoding="utf-8")):
             out.append((p.name, m.group(2) or m.group(4), m.group(0)))
@@ -66,7 +67,7 @@ def _():
 
 @test("ai-util has the helpers, once each, in the marked block")
 def _():
-    src = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
+    src = split_src("ai-util.lua")   # (r9) the hub and its parts
     assert "(r6 c1, code health)" in src
     for n in ("report_citizens", "report_units", "now_tick", "name_of", "name_of_raw", "name_of_then",
               "name_of_conv", "enum_name", "enum_name_num", "enum_value", "enum_text"):
@@ -173,7 +174,7 @@ return {W = W, U = env, O = O, N = N, call = call}
 def runtime():
     lua = LuaRuntime(unpack_returned_tuples=True)
     T = lua.table_from
-    R = lua.execute(FAKE, (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8"), T(OLD), T(NEW))
+    R = lua.execute(FAKE, UTIL_SRC, T(OLD), T(NEW))
     return lua, R
 
 

@@ -430,7 +430,7 @@ def _():
     need_lua()
     from lupa.lua53 import LuaRuntime
     lua = LuaRuntime(unpack_returned_tuples=True)
-    util = (ROOT / "lua" / "ai-util.lua").read_text(encoding="utf-8")
+    from lua_modules_util import UTIL_SRC as util   # (r9) ai-util with its parts
     env = lua.execute(r"""
       local src = ...
       local env = setmetatable({}, {__index = _G})

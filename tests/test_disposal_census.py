@@ -16,12 +16,12 @@ except ImportError:
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
-from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import bridge_part_src, UTIL_SRC  # noqa: E402  (r6) the bridge parts split; (r9) ai-util with its parts
 from py_parts import py_family_src  # noqa: E402  (r7) planner_core's parts
 
 CENSUS = (ROOT / "lua" / "ai-census.lua").read_text(encoding="utf-8")
 REPORT = bridge_part_src("ai-bridge-report")
-UTIL = (ROOT / "lua" / "ai-util.lua").read_text(encoding="utf-8")
+UTIL = UTIL_SRC
 
 # A fake world: the fort is dwarves (race 1, civ 7) on level 10. Tiles: x >= 70
 # is a cavern, y >= 80 outside, (90, 90) a walk group no citizen stands in.

@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, skip, need_lua  # noqa: E402
-from lua_modules_util import bridge_part_src, split_src  # noqa: E402  (r6) the bridge parts split; (r9) burrows
+from lua_modules_util import bridge_part_src, UTIL_SRC, split_src  # noqa: E402  (r6) the bridge parts split; (r9) ai-util
 from planner import PLANNER_CONFIG, Memory  # noqa: E402
 from planner_core import Proposal  # noqa: E402
 import planner_welfare as W  # noqa: E402
@@ -37,7 +37,7 @@ import planner_thirst as PT  # noqa: E402
 
 CFG = PLANNER_CONFIG
 LUA = ROOT / "lua"
-UTIL = (LUA / "ai-util.lua").read_text(encoding="utf-8")
+UTIL = UTIL_SRC   # (r9) ai-util with its parts
 DISPOSAL = (LUA / "ai-disposal.lua").read_text(encoding="utf-8")
 SYND = (LUA / "ai-syndromes.lua").read_text(encoding="utf-8")
 REPORT = bridge_part_src("ai-bridge-report")
@@ -144,7 +144,7 @@ def _():
     assert "if U.fort_remains(it, e.kind, ctx) then return 'own_dead' end" in SYND
     assert "if U.fort_remains(it, kind, ctx) then skip(res, 'own_remains'); return end" in DISPOSAL
     assert "side_ctx.U.corpse_side(it, 'CORPSE', side_ctx) == 'own'" in REPORT
-    assert "ctx.race, ctx.civ, ctx.group = fort_race_civ()" in UTIL
+    assert "ctx.race, ctx.civ, ctx.group = fort_race_civ()" in split_src("ai-util.lua")
 
 
 def disposal_world(dump_z=150):

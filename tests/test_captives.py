@@ -258,7 +258,8 @@ def _():
     assert one(lambda lua, w: w.shaft(55, 50, 100, 8, 1)) is None               # lands where the dwarves walk
 
     import re
-    util = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
+    from lua_modules_util import split_src
+    util = split_src("ai-util.lua")   # (r9) ai-util with its parts
     ck = re.search(r"CISTERN_KEY = '([^']+)'", util).group(1)
 
     def cistern2(lua, w):

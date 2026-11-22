@@ -64,7 +64,7 @@ ALLOWED = {
     ("ai-society-needs.lua", "df.unit_inventory_item.T_mode.Worn"): "first try; df.inv_item_role_type.Worn follows",
     # (0.105.51) a Lua table, not a C++ function: library/lua/dfhack.lua sets it
     # (internal.scripts = internal.scripts or {}, the Script objects by path)
-    ("ai-util.lua", "dfhack.internal.scripts"): "dfhack.lua's own table of loaded scripts (module_flags_reset)",
+    ("ai-util-doors.lua", "dfhack.internal.scripts"): "dfhack.lua's own table of loaded scripts (module_flags_reset)",
     # (r8 s9) seen since ai-threats.lua was split: a table key `other = 0` further down the one file (now in
     # ai-threats-survey.lua) kept this check from following the alias `local other = df.global...`
     ("ai-threats.lua", "df.global.world.buildings.other.ZONE_PIT_POND"): "second try after other.ZONE_POND",

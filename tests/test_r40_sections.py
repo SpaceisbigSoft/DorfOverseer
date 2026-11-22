@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import bridge_part_src, UTIL_SRC  # noqa: E402  (r6) the bridge parts split; (r9) ai-util
 from lua_modules_util import split_parts, _lua_string  # noqa: E402  (r8) ai-military and ai-threats hubs and parts
 from snapshots import snapshot  # noqa: E402
 
@@ -48,6 +48,8 @@ VERSION_RE = re.compile(r"'0\.105\.\d+'")
 
 def new(name: str) -> str:
     # (delivery) the version marks are bumped each round: compared without them
+    if name == "ai-util.lua":
+        return VERSION_RE.sub("'V'", UTIL_SRC)            # (r9) ai-util's hub with its parts' texts
     return VERSION_RE.sub("'V'", bridge_part_src(name))   # (r6) a split bridge part: its files together
 
 

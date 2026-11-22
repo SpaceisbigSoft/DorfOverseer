@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, code_has, need_lua  # noqa: E402
-from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src, UTIL_SRC  # noqa: E402  (r9) UTIL_SRC: ai-util with its parts
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan, player_rules  # noqa: E402
@@ -510,7 +510,7 @@ def _():
         env.dfhack = {items = {getHolderUnit = function() return nil end}}
         assert(load(src, 'ai-util', 't', env))()
         return env
-    """, (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8"))
+    """, UTIL_SRC)
     it = T(lua, {"flags": {"artifact": True, "on_ground": True}})
     assert env.item_unfree(it)[0] == "artifact"
 

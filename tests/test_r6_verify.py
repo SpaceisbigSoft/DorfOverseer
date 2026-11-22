@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
+from lua_modules_util import UTIL_SRC, _lua_string  # noqa: E402  (r9) ai-util is a hub and parts
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -43,11 +44,14 @@ WRAPPER = "local function report_citizens(...) return U.report_citizens(...) end
 
 def _old_util(new_util: str) -> str | None:
     """ai-util.lua as before r6 (the one in the game while a delivery of r6
-    is being written): the file without the r6 block at its end."""
-    i = new_util.find(R6_MARK)
-    if i < 0:
+    is being written): the file without the r6 block at its end. (r9) The
+    block is the ai-util-helpers part now: new_util is UTIL_SRC, and the old
+    one the same with that part's text empty."""
+    helpers = (LUA_DIR / "ai-util-helpers.lua").read_text(encoding="utf-8")
+    quoted = _lua_string(helpers)
+    if R6_MARK not in helpers or new_util.count(quoted) != 1:
         return None
-    return new_util[:new_util.rfind("\n-- =====", 0, i)] + "\n"
+    return new_util.replace(quoted, '""')
 
 
 def _old_module(new_mod: str) -> str | None:
@@ -112,7 +116,7 @@ def _():
     if LuaRuntime is None:
         skip("lupa.lua53 not installed")
         return
-    new_util = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
+    new_util = UTIL_SRC   # (r9) the hub with its parts
     new_mod = (LUA_DIR / "ai-noble-demands.lua").read_text(encoding="utf-8")
     old_util, old_mod = _old_util(new_util), _old_module(new_mod)
     assert old_util and "function report_citizens" not in old_util, "the r6 block was not found in ai-util"
