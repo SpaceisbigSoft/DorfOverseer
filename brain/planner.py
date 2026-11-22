@@ -88,6 +88,7 @@ from planner_lure import _lure_rule  # noqa: E402  (0.105.45) a sealed cavern be
 from planner_wells import _winter_water_rule  # noqa: E402  (r1 g3) water that works in winter
 from planner_wellsafe import _well_safety_rule  # noqa: E402  (0.105.47) cavern wells made safe, the stranded under one let out
 from planner_recovery import _migrants_rule, note_recovery, recovery_apply  # noqa: E402  (0.105.46, I4) collapse recovery
+import planner_refusal_streak as refusal_streak  # noqa: E402  (r5 p3) repeated refusals backed off
 from planner_outside import _drought_rule, note_outside  # noqa: E402  (r2 h9) the migrant drought, a caravan that never left
 from planner_growth import note_pop_cap  # noqa: E402  (r2 h9) the population cap's hold booked
 from planner_visitors import note_residency  # noqa: E402  (r2 h9) petitions to stay first seen
@@ -1274,6 +1275,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (R2 h3) the small needs (paper shop, mood workshops, wells, a still or kitchen
     # while drink or meals are short) marked for the bridge's pool of their own
     _guard(needs_pass, s, cfg, proposals, memory)
+    # (r5 p3) a refusal streak's wait, said once when it begins (select() clears it)
+    said = _guard(refusal_streak.notes, memory, cfg)
+    notes.extend(n for n in (said or []) if n not in notes)
     proposals.sort(key=lambda p: p.priority)
     return proposals, notes
 
@@ -1599,6 +1603,12 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                             else f"{p.rule}: waiting on the game (its last answer was to wait); asks again in "
                                  f"{wait} day(s)")      # (0.97: it said "refused 0 time(s)")
                 continue
+            # (r5 p3) the same no for the same reason N times in a row: a longer
+            # wait, kept a year, ended by a change in what it depends on
+            rs = refusal_streak.wait(memory, p, state, now, cfg)
+            if rs is not None:
+                held.append(refusal_streak.held_line(p, *rs))
+                continue
             alt = free_squad_for(p, squads_claimed, state, cfg, proposed_sq, memory)
             if alt is not None:
                 taken_ = p.action["squad_id"]
@@ -1652,6 +1662,10 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             elif p not in allowed:
                 held.append(f"{p.rule}: the limits' check failed on it ({type(e).__name__}: {str(e)[:80]}); "
                             "it waits a cycle")
+    try:
+        refusal_streak.said(memory)      # (r5 p3) the waits begun were in this cycle's notes
+    except Exception:  # noqa: BLE001
+        pass
     if not failed_:
         guard_ok(memory, "select")
     return allowed, held
@@ -1983,6 +1997,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         _hook("note_labor_given", note_labor_given, memory, p, r, now)              # (v35 fix) LABOR_CAPS
         _hook("record_outcome", _record_any_outcome, p.action, r, state, memory, now, brief=brief_timeout_now)
         _hook("note_refusal", note_refusal, memory, p, r, now, state.get("bridge_version"))
+        _hook("note_refusal_streak", refusal_streak.note, memory, p, r, state, now, cfg,
+              brief=brief_timeout_now)                                               # (r5 p3) the same no in a row
         _hook("note_no_effect", note_no_effect, memory, p, ok, now)                 # (0.105.24)
         _hook("note_construct", note_construct, p, r, state, memory, now)           # (0.105.30) wings, seals, soil floors, the hall
         _hook("note_reserve_swap", note_reserve_swap, p, r, state, memory)          # (0.105.31 reserve fixes) a fibre swap that did nothing
@@ -2027,7 +2043,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 guard_ok(memory, "record_" + name)
 
 
-RECORD_STEPS = ("brief_timeout", "note_labor_given", "record_outcome", "note_refusal", "note_no_effect",
+RECORD_STEPS = ("brief_timeout", "note_labor_given", "record_outcome", "note_refusal", "note_refusal_streak",
+                "note_no_effect",
                 "note_construct", "note_reserve_swap", "note_gate_stuck", "note_way_out", "note_cleanup",
                 "note_captives", "note_order_loop", "note_mood_help", "note_syndromes", "note_food_level",
                 "note_training", "note_stuck", "note_holdfast", "note_contact_sent", "note_keep_in", "note_quarry_dug",
