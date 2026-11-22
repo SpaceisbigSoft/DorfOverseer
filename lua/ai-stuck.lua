@@ -63,10 +63,7 @@ PLAYER_LEVER = 'ai gate'      -- the player's own lever named for the AI to work
 
 -- --- pure helpers (tests/test_stuck.py runs these in lupa) -------------------
 
-local function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and t or 0
-end
+local function now_tick() return U.now_tick(0) end            -- (r6) ai-util's: 0 when it can't be read
 
 -- A {year, tick} date as ticks, or nil.
 function tick_of(d)

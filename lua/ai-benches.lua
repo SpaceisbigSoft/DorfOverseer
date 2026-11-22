@@ -53,10 +53,7 @@ BENCH_KINDS = {
 }
 SKILLS_MAX = 40                    -- ratings reported a kind
 
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
 
 local function load_state()
     local d = U.site_get(BENCH_KEY, {})

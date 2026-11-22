@@ -64,10 +64,7 @@ GROVE_TRIES = 25
 
 CENSUS = CENSUS
 
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
 
 local function key(x, y, z) return ('%d,%d,%d'):format(x, y, z) end
 

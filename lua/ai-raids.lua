@@ -58,6 +58,9 @@ local function short(s, max)
     return s:sub(1, max or RAID_NAME)
 end
 
+-- (r6) kept here: this module takes no ai-util at load (its tests run it
+-- without one); enum_name and name_of (a translated name, not a unit's) are
+-- its own: ai-util's enum_name_num is the same rule (with an enum).
 local function enum_name(enum, v)
     if v == nil or enum == nil then return nil end
     local ok, n = pcall(function() return enum[v] end)

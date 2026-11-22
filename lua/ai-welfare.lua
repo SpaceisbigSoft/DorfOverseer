@@ -65,10 +65,8 @@ local function save(d) U.site_put(WELFARE_KEY, d) end
 
 local function txt(s) return dfhack.df2utf and dfhack.df2utf(s) or s end
 
-local function name_of(u)
-    local ok, n = pcall(function() return txt(dfhack.units.getReadableName(u)) end)
-    return ok and n or ('unit ' .. tostring(u and u.id))
-end
+local function unnamed(u) return 'unit ' .. tostring(u and u.id) end
+local function name_of(u) return U.name_of(u, txt, unnamed) end   -- (r6) ai-util's
 
 local function anchor()
     local from

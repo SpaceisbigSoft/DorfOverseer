@@ -150,6 +150,8 @@ function job_words(j)
 end
 
 -- The game's moment as ticks since year 0 (0 when it can't be read).
+-- (r6) kept here, not ai-util's now_tick: this module takes ai-util only when
+-- it needs it (util_module), and the tests swap this global.
 function now_tick()
     local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
     return ok and t or 0

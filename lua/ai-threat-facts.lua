@@ -160,6 +160,8 @@ end
 
 -- --- reading DF (all behind pcall) ----------------------------------------
 
+-- (r6) kept here: this module takes no ai-util at load (its tests run it
+-- without one); the same rule as ai-util's enum_name.
 local function enum_name(enum, v)
     if v == nil then return nil end
     local ok, n = pcall(function() return enum[v] end)

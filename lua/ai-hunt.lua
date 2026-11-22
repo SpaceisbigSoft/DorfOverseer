@@ -37,14 +37,8 @@ REASON_MAX = 80              -- characters of a recall's reason kept
 local KINDS = {'ForgottenBeast', 'Undead', 'Megabeast', 'SemiMegabeast', 'NightCreature', 'Titan', 'Demon'}
 
 -- inside a report, the report's one walk of the units (ai-util REPORT_CTX)
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
-local function report_units()
-    if U.REPORT_CTX and U.units_active then return U.units_active() end
-    return df.global.world.units.active
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
 
 local function is(fn, u)
     if type(fn) ~= 'function' then return false end
@@ -181,16 +175,9 @@ end
 
 -- --- the game -----------------------------------------------------------------------
 
-local function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and t or 0
-end
+local function now_tick() return U.now_tick(0) end            -- (r6) ai-util's: 0 when it can't be read
 
-local function name_of(u, txt)
-    local ok, n = pcall(function() return dfhack.units.getReadableName(u) end)
-    n = ok and n or ('unit ' .. tostring(u.id))
-    return txt and txt(n) or n
-end
+local function name_of(u, txt) return U.name_of_then(u, txt) end   -- (r6) ai-util's
 
 local function outside_at(p)
     local ok, des = pcall(dfhack.maps.getTileFlags, p.x, p.y, p.z)

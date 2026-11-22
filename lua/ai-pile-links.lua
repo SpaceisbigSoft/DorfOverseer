@@ -56,10 +56,7 @@ WHEELBARROW = 'ITEM_TOOL_WHEELBARROW'
 -- swapped by the tests
 function builder() return reqscript('ai-builder') end
 function food_store() return reqscript('ai-food-store') end
-function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and t or 0
-end
+function now_tick() return U.now_tick(0) end                  -- (r6) ai-util's: 0 when it can't be read
 
 local function offset()
     local ok, v = pcall(function() return df.global.world.map.region_z - 100 end)

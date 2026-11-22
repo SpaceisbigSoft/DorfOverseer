@@ -85,10 +85,8 @@ end
 
 local function now() return os.time() end
 
-local function name_of(u)
-    local ok, n = pcall(function() return dfhack.df2utf(dfhack.units.getReadableName(u)) end)
-    return ok and n or 'a dwarf'
-end
+local function utf_of(s) return dfhack.df2utf(s) end
+local function name_of(u) return U.name_of(u, utf_of, 'a dwarf') end   -- (r6) ai-util's
 
 -- (0.104.91) the name alone: the readable name ends ", <profession>", which
 -- doubled up in "X, militia captain is the new militia captain"

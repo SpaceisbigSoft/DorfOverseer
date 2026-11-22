@@ -147,22 +147,14 @@ RUN = RUN or nil                             -- the run under way (one at a time
 -- ---------------------------------------------------------------------------
 -- small helpers
 
-local function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and t or 0
-end
+local function now_tick() return U.now_tick(0) end            -- (r6) ai-util's: 0 when it can't be read
 
 local function log_path()
     local ok, p = pcall(function() return dfhack.getDFPath() .. '/dfhack-config/ai-overseer/mission-send.json' end)
     return ok and p or 'mission-send.json'
 end
 
-local function enum_name(enum, v)
-    if v == nil or enum == nil then return nil end
-    local ok, n = pcall(function() return enum[v] end)
-    if ok and type(n) == 'string' then return n end
-    return nil
-end
+local function enum_name(enum, v) return U.enum_name(enum, v) end   -- (r6) ai-util's (no enum: nil there too)
 
 local function focus_string()
     local ok, f = pcall(function() return dfhack.gui.getCurFocus(true)[1] end)

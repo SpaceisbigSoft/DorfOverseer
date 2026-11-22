@@ -68,10 +68,7 @@ HEALTH_RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_
 
 -- --- helpers ---------------------------------------------------------------
 
-local function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and t or 0
-end
+local function now_tick() return U.now_tick(0) end            -- (r6) ai-util's: 0 when it can't be read
 
 local function txt(s)
     if s == nil then return nil end
@@ -79,10 +76,7 @@ local function txt(s)
     return ok and v or s
 end
 
-local function name_of(u)
-    local ok, n = pcall(function() return dfhack.units.getReadableName(u) end)
-    return ok and txt(n) or ('unit ' .. tostring(u.id))
-end
+local function name_of(u) return U.name_of_conv(u, txt) end   -- (r6) ai-util's
 
 local function is(fn, u)
     if type(fn) ~= 'function' then return false end

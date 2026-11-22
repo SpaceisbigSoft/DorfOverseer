@@ -40,10 +40,7 @@ RADIUS_MIN, RADIUS_MAX = 5, 60
 NEAR_Z = 3               -- levels up and down round a way in
 FAR_MAX = 12             -- far-out citizens listed by name at most
 
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
 
 -- --- pure parts ---------------------------------------------------------------------
 
@@ -140,11 +137,7 @@ local function burrows_of(u, bid)
     return mine, other
 end
 
-local function name_of(u, txt)
-    local ok, n = pcall(function() return dfhack.units.getReadableName(u) end)
-    n = ok and n or ('unit ' .. tostring(u.id))
-    return txt and txt(n) or n
-end
+local function name_of(u, txt) return U.name_of_then(u, txt) end   -- (r6) ai-util's
 
 local function outside_at(p)
     local ok, des = pcall(dfhack.maps.getTileFlags, xyz2pos(p.x, p.y, p.z))

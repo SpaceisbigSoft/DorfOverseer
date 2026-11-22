@@ -33,14 +33,8 @@ local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
 -- (0.105.40 E3) inside a report, the report's one walk of the units
 -- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
-local function report_units()
-    if U.REPORT_CTX and U.units_active then return U.units_active() end
-    return df.global.world.units.active
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
 
 STATE_KEY = 'ai-overseer/threats'
 FIRE_RADIUS = 6              -- tiles round a fire restricted, jobs taken off
@@ -53,14 +47,9 @@ local FIRE_FLOWS = {Fire = true, Dragonfire = true}
 local CLOUD_FLOWS = {MaterialDust = true, MaterialGas = true, MaterialVapor = true}
 local GREAT = {'isForgottenBeast', 'isTitan', 'isMegabeast', 'isDemon'}
 
-local function now_tick()
-    return U.abs_tick()
-end
+local function now_tick() return U.abs_tick() end             -- (r6) not protected: an error goes to the caller
 
-local function name_of(u, txt)
-    local ok, n = pcall(function() return (txt or tostring)(dfhack.units.getReadableName(u)) end)
-    return ok and n or ('unit ' .. tostring(u.id))
-end
+local function name_of(u, txt) return U.name_of(u, txt) end   -- (r6) ai-util's
 
 -- --- (r1 g7) visitors turned killers -------------------------------------------
 -- B (16 Nov): lone heroes came in as guests for the fort's artifacts. Len

@@ -38,10 +38,7 @@ QUALITY_MULT = {[0] = 1, 2, 3, 4, 5, 10}
 SMOOTHABLE = {STONE = true, MINERAL = true, LAVA_STONE = true}
 ROOMS_MAX = 40            -- noble rooms read in one report (a guard; a fort has a handful)
 
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
 
 -- A DF name in words.
 local function readable(u, txt)

@@ -70,10 +70,7 @@ STRONG_CRIMES = {Murder = true, BloodDrinking = true, AttemptedMurder = true}
 
 -- --- helpers ---------------------------------------------------------------
 
-local function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and t or 0
-end
+local function now_tick() return U.now_tick(0) end            -- (r6) ai-util's: 0 when it can't be read
 
 local function txt(s)
     if s == nil then return nil end
@@ -81,10 +78,7 @@ local function txt(s)
     return ok and v or s
 end
 
-local function name_of(u)
-    local ok, n = pcall(function() return dfhack.units.getReadableName(u) end)
-    return ok and txt(n) or ('unit ' .. tostring(u.id))
-end
+local function name_of(u) return U.name_of_conv(u, txt) end   -- (r6) ai-util's
 
 local function is(fn, u)
     if type(fn) ~= 'function' then return false end
@@ -118,11 +112,7 @@ local function changed(u)
     return ok and yes == true
 end
 
-local function enum_name(enum, v)
-    local ok, n = pcall(function() return enum[v] end)
-    if ok and n ~= nil then return tostring(n) end
-    return tostring(v)
-end
+local function enum_name(enum, v) return U.enum_text(enum, v) end   -- (r6) ai-util's
 
 -- the curse tags set on a mask (unit.curse.add_tags1/2, a syndrome effect's tags1/2)
 local function mask_tags(mask, into)

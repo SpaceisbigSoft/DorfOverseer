@@ -90,10 +90,7 @@ local function hurt(u)
     return ok and yes or false
 end
 
-local function name_of(u, txt)
-    local ok, n = pcall(function() return (txt or tostring)(dfhack.units.getReadableName(u)) end)
-    return ok and n or ('unit ' .. tostring(u.id))
-end
+local function name_of(u, txt) return U.name_of(u, txt) end   -- (r6) ai-util's
 
 -- --- the ledger ----------------------------------------------------------------
 

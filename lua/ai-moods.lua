@@ -454,9 +454,7 @@ end
 AVAIL_TICKS = 600
 AVAIL_CACHE = AVAIL_CACHE or {}
 
-local function now_tick()
-    return U.abs_tick()
-end
+local function now_tick() return U.abs_tick() end             -- (r6) not protected: an error goes to the caller
 
 -- (0.105.31) the sizes of the item lists a request is looked for in: a
 -- count kept while nothing within reach would do is taken again at once when

@@ -40,10 +40,7 @@
 
 local U = reqscript('ai-util')
 
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
 
 HAUL_LABORS = {'HAUL_STONE', 'HAUL_WOOD', 'HAUL_BODY', 'HAUL_FOOD', 'HAUL_REFUSE', 'HAUL_ITEM',
                'HAUL_FURNITURE', 'HAUL_ANIMALS', 'HAUL_TRADE', 'HAUL_WATER'}
@@ -527,9 +524,7 @@ local function haulers(st, game, mine)
     return out, cands, order_specialists(keys)
 end
 
-local function name_of(u, txt)
-    return (txt or tostring)(dfhack.units.getReadableName(u))
-end
+local function name_of(u, txt) return U.name_of_raw(u, txt) end   -- (r6) ai-util's, not protected
 
 -- The report's `hauling` section.
 function report(txt)

@@ -50,14 +50,8 @@ pcall(function() require('dfhack.buildings') end)
 
 -- (0.105.40 E3) inside a report, the report's one walk of the units
 -- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
-local function report_units()
-    if U.REPORT_CTX and U.units_active then return U.units_active() end
-    return df.global.world.units.active
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
 
 ROUGH_THOUGHTS = {SleptFloor = true, SleptMud = true, SleptGrass = true, SleptRoughFloor = true,
                   SleptRocks = true, SleptIce = true, SleptDirt = true, SleptDriftwood = true}
@@ -500,10 +494,7 @@ PLACE_SPAN = 40             -- tiles: a room this far (or farther) from what sui
 PLACE_Z = 5                 -- a level up or down counts as this many tiles
 PLACE_FLOOR = 20            -- a bare room in the right place is worth this much more, at most
 
-local function enum_name(enum, v)
-    local ok, n = pcall(function() return enum[v] end)
-    return ok and n or nil
-end
+local function enum_name(enum, v) return U.enum_value(enum, v) end   -- (r6) ai-util's
 
 local function strength_points(s)
     return s >= 41 and 3 or (s >= 26 and 2 or 1)

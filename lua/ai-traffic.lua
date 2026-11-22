@@ -57,10 +57,7 @@ HANDS_OFF_MIN = 4             -- ...and never for fewer tiles than this (a fire 
 PENDING_LIST = 10
 DEEP_KEY = 'deep'
 
-local function now_tick()
-    local ok, t = pcall(function() return U.abs_tick() end)
-    return ok and math.tointeger(t) or 0
-end
+local function now_tick() return U.now_tick(0, false, true) end   -- (r6) ai-util's: an integer, else 0
 
 local function int(v) return math.tointeger(tonumber(v)) end
 
