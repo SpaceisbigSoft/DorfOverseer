@@ -7,7 +7,7 @@
 -- reqscript('ai-mission-send').name and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-mission-send-steps is a part of ai-mission-send; run ai-mission-send') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.67'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.68'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local id_of, click, press = PART_LOCALS.id_of, PART_LOCALS.click, PART_LOCALS.press   -- (r9) the hub's and earlier parts' locals
 
@@ -177,7 +177,12 @@ end
 STEP_DEFS = {
     open = {name = 'open',
      expect = function(st) return not st.world, 'the World screen is open already' end,
-     act = function(run) return press('World') end,
+     act = function(run)
+         WORLD_VIA_KEY = false
+         local ok, a, b = press('World')
+         run.world_via_key = WORLD_VIA_KEY or nil          -- (r12) opened by DF's key, not a click
+         return ok, a, b
+     end,
      check = function(st)
          if not st.world then return 'wait', 'the World screen did not open' end
          if st.mode == 'NORMAL' then return 'ok' end

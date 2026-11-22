@@ -541,8 +541,32 @@ local function click(x, y)
     gps.mouse_x, gps.mouse_y = ox, oy
 end
 
+-- (r12) DF's World screen opened by its own interface key (D_WORLD) when the
+-- World button's place was never shown in this save or on this PC (every new
+-- fort: live 22 Nov, all six refused "can't find DF's World button"). Tried
+-- once a DF session: a run whose World screen didn't open that way marks it
+-- failed (WORLD_KEY_FAILED) and the old ask (show the button once) returns.
+WORLD_KEY_FAILED = WORLD_KEY_FAILED or false
+function world_by_key()
+    if WORLD_KEY_FAILED then return false end
+    local ok, k = pcall(function() return df.interface_key.D_WORLD end)
+    return ok and k ~= nil
+end
+
 local function press(name)
     local b = buttons()[name]
+    if not b and name == 'World' and world_by_key() then
+        local ok, err = pcall(function()
+            require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'D_WORLD')
+        end)
+        if not ok then
+            WORLD_KEY_FAILED = true
+            return false, 'needs_button', 'DF\'s World key failed (' .. tostring(err):sub(1, 80) ..
+                ') and the AI doesn\'t know where the World button is: python brain\\probe_missions.py --here World'
+        end
+        WORLD_VIA_KEY = true
+        return true
+    end
     if not b then
         return false, 'needs_button', 'the AI doesn\'t know where the ' .. name ..
             ' button is yet: python brain\\probe_missions.py --here ' .. name
@@ -573,7 +597,7 @@ PART_LOCALS = {U = U, now_tick = now_tick, log_path = log_path, focus_string = f
 PARTS = {'steps', 'run'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-mission-send'] = '0.105.67'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-mission-send'] = '0.105.68'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

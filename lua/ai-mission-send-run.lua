@@ -7,7 +7,7 @@
 -- reqscript('ai-mission-send').name and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-mission-send-run is a part of ai-mission-send; run ai-mission-send') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-run'] = '0.105.67'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-run'] = '0.105.68'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, now_tick, log_path, focus_string, id_of, seen, click, first_name, contains = PART_LOCALS.U, PART_LOCALS.now_tick, PART_LOCALS.log_path, PART_LOCALS.focus_string, PART_LOCALS.id_of, PART_LOCALS.seen, PART_LOCALS.click, PART_LOCALS.first_name, PART_LOCALS.contains   -- (r9) the hub's and earlier parts' locals
 
@@ -245,6 +245,15 @@ function stop(run, result, reason)
     run.result = result
     run.reason = reason or run.reason
     run.stopped_at = run.step_name
+    -- (r12) the World screen didn't open by DF's key: not tried again this DF
+    -- session (the ask to show the button returns)
+    if run.world_via_key and run.step_name == 'open' and result ~= 'sent' then
+        local okw, open = pcall(world_screen)
+        if not (okw and open) then
+            WORLD_KEY_FAILED = true
+            run.why = (run.why and run.why .. '; ' or '') .. 'DF\'s World key (D_WORLD) did not open the World screen'
+        end
+    end
     local ok, err = pcall(function()
         local st = read_state(run)
         run.saw = seen(st)
@@ -503,7 +512,9 @@ end
 
 local function sorted_buttons()
     local o = {}
-    for k in pairs(buttons()) do table.insert(o, k) end
+    local b = buttons()
+    for k in pairs(b) do table.insert(o, k) end
+    if not b.World and world_by_key() then table.insert(o, 'World') end   -- (r12) by DF's key
     table.sort(o)
     return o
 end
@@ -617,7 +628,7 @@ function start(a)
             if okq and not found then return {ok = false, rejected = true, error = 'no squad ' .. sq} end
         end
     end
-    if not buttons().World then
+    if not buttons().World and not world_by_key() then   -- (r12) else DF's World key
         return {ok = false, rejected = true, needs_button = 'World',
                 error = 'the AI doesn\'t know where the World button is yet: python brain\\probe_missions.py --here World'}
     end
