@@ -33,7 +33,7 @@ Moved out of the handoff at 0.105.64 (its "How it fits together" table). Add a r
 | (0.105.64) hubs `ai-waterworks`, `ai-society`, `ai-military`, `ai-threats` + `<hub>-<theme>.lua` parts (PARTS); builder parts `projects-*`, `wells-*`, `cistern-*`, `keep`, `deepdepot`, `wagonroad`, `dump`; `ai-bridge-catalog`, `ai-bridge-sections` (HUB_PARTS) | the 13c splits: names stay `reqscript('<hub>').name`; tests read a family with `split_src`, `builder_part_src`, `bridge_hub_src` (`tests/lua_modules_util.py`) |
 | `lua/ai-labor.lua` | Who does what: miners, woodcutters, plant gatherers, fishers, farmers through the game's work details; shrubs marked for gathering; water to fish in |
 | `lua/ai-reports.lua` | Turns game announcements into events (moods, tantrums, sieges...) |
-| `lua/ai-overseer-settings.lua`, `gui/ai-overseer.lua` | Sliders, Rules tab, Needs you tab |
+| `lua/ai-overseer-settings.lua`, `gui/ai-overseer.lua` (+ `gui/ai-overseer-rules`: Rules and Army tabs; `gui/ai-overseer-culture`: Needs you, Culture, Camera tabs) | Sliders, Rules tab, Needs you tab |
 | `lua/ai-status.lua`, `ai-overlay.lua` | Status and the on-screen overlay |
 | `brain/overseer.py` | The main loop, modes (Advisor, Co-pilot, Autopilot), Needs you list |
 | `brain/planner.py` | `plan()`, `note_cycle()`, `select()`, `record()`; re-exports every rule module |

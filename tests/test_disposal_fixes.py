@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, make_test, finish, code_has  # noqa: E402
-from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import bridge_part_src, split_src  # noqa: E402  (r6) the bridge parts split; (r9) the panel
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -54,7 +54,7 @@ UTIL = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
 DISPOSAL = (LUA_DIR / "ai-disposal.lua").read_text(encoding="utf-8")
 CENSUS = (LUA_DIR / "ai-census.lua").read_text(encoding="utf-8")
 ACTS = bridge_part_src("ai-bridge-actions")
-GUI = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
+GUI = split_src("gui/ai-overseer.lua")   # (r9) the panel is a hub and parts (lua/gui/ai-overseer-*.lua)
 from cistern_src import cistern_src  # noqa: E402  (r8 s8) the cistern is three files now
 CISTERN = cistern_src()
 

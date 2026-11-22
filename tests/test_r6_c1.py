@@ -265,7 +265,8 @@ if LuaRuntime is not None:
         import subprocess
         changed = subprocess.run(["git", "diff", "--name-only", "de94504", "--", "lua"], cwd=ROOT,
                                  capture_output=True, text=True).stdout.split()
-        names = [Path(c).name for c in changed if c.endswith(".lua")] or \
+        # (r9) by the path under lua/: gui/ai-overseer.lua is not lua/ai-overseer.lua
+        names = [Path(c).relative_to("lua").as_posix() for c in changed if c.endswith(".lua")] or \
             ["ai-threats.lua", "ai-captives.lua", "ai-hunt.lua", "ai-traffic.lua"]
         lua = LuaRuntime(unpack_returned_tuples=True)
         for n in names:
