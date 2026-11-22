@@ -397,7 +397,7 @@ def _():
     assert code_has(th, "pull_failed = pull_failed > 0 and pull_failed or nil")
     nb = (LUA_DIR / "ai-nobles.lua").read_text(encoding="utf-8")
     assert "mothers()[u.id]" not in nb and code_has(nb, "(military or CIVILIAN_AWAY_OFFICES[code]) and mothers()")
-    ms = (LUA_DIR / "ai-missions.lua").read_text(encoding="utf-8")
+    ms = split_src("ai-missions.lua")   # (r9) a hub and parts: their texts together
     assert code_has(ms, "rel == 'Skirmishing'")
     for f in ("ai-probe-axes.lua", "ai-probe-gear.lua"):
         assert not (LUA_DIR / f).exists(), f

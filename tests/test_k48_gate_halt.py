@@ -319,7 +319,7 @@ def _():
     _, G = gates_world()
     assert int(G.UNATTENDED_TICKS) == int(U.BRAIN_AWAY_TICKS)
     assert int(G.UNATTENDED_REAL_S) == int(U.BRAIN_AWAY_REAL_S)
-    for name in ("ai-gates-watch.lua", "ai-status.lua"):
+    for name in ("ai-gates-watch-look.lua", "ai-status.lua"):   # (r9) the watcher's look
         assert "U.brain_away(" in (LUA / name).read_text(encoding="utf-8"), name
 
 

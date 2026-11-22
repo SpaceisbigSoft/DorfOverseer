@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src, split_src  # noqa: E402
 from harness import test, finish, code_has  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
@@ -256,7 +256,7 @@ def _():
     fn = _bridge_fn("act_send_mission")
     assert "owner = {h.civ, h.owner}" in fn
     assert "attacks = owner and {owner[1], owner[2]} or nil" in fn and "note_attacked" not in fn
-    missions = (LUA_DIR / "ai-missions.lua").read_text(encoding="utf-8")
+    missions = split_src("ai-missions.lua")   # (r9) a hub and parts: their texts together
     assert "civ = c and int(c) or nil}" in missions
 
 

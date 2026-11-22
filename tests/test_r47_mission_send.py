@@ -21,7 +21,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish  # noqa: E402
 from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_parts, _lua_string  # noqa: E402
+
+# (r9) ai-missions is a hub and parts: the parts' texts handed in (PART_SOURCES), as the
+# tests' prelude does, without its reqscript (the module runs here without one)
+MISSIONS_SRC = "PART_SOURCES = {" + ", ".join(
+    f"[{_lua_string(p)}] = {_lua_string((ROOT / 'lua' / (p + '.lua')).read_text(encoding='utf-8'))}"
+    for p in split_parts("ai-missions.lua")) + "}; " + (ROOT / "lua" / "ai-missions.lua").read_text(encoding="utf-8")
+
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -535,7 +542,7 @@ return env, RM
       "an unreadable landmass says nothing")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, RM = lua.execute(MISSIONS_FAKE, (ROOT / "lua" / "ai-missions.lua").read_text(encoding="utf-8"))
+    env, RM = lua.execute(MISSIONS_FAKE, MISSIONS_SRC)
     lua.execute("""local RM = ...
       RM[40] = {[60] = {landmass_id = 1}}
       RM[98] = {[104] = {landmass_id = 2}}""", RM)
