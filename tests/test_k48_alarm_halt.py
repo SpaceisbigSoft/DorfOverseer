@@ -305,7 +305,7 @@ if LuaRuntime:
     def _():
         for f, marker in (("ai-builder-wells-watch.lua", "local function shaft_watch_tick()"),
                           ("ai-well-safety.lua", "local function tick()"),
-                          ("ai-mission-send.lua", "local function tick(run)"),
+                          ("ai-mission-send-run.lua", "local function tick(run)"),
                           ("ai-gates-watch.lua", "local function link_watch_tick()")):
             src = (LUA_DIR / f).read_text(encoding="utf-8")
             i = src.index(marker)

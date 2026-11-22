@@ -42,7 +42,7 @@ COMPANIONS = {"ai-military.lua": ["ai-military-gear"], "ai-society.lua": ["ai-so
 # (13e) a module split into a hub and parts (lua/ai-gates.lua): the hub loads
 # its parts (PARTS) from the files beside it; loaded from text in a test, it
 # takes their texts from PART_SOURCES, which the prelude sets
-SPLIT = ("ai-gates.lua", "ai-society.lua", "ai-military.lua", "ai-threats.lua", "ai-waterworks.lua")
+SPLIT = ("ai-gates.lua", "ai-society.lua", "ai-military.lua", "ai-threats.lua", "ai-waterworks.lua", "ai-mission-send.lua")
 
 
 def split_parts(name: str) -> list[str]:
