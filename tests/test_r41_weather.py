@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 from harness import test, finish, skip  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
@@ -361,7 +361,7 @@ return e
 
     @test("lua (fix41): the weather is its own report section, in the pulse too, not in the daily survey")
     def _():
-        src = (ROOT / "lua" / "ai-threats.lua").read_text(encoding="utf-8")
+        src = split_src("ai-threats.lua")   # (r8) ai-threats is a hub and parts: their texts together
         assert "part('weather'" not in src
         # (r5 p5) the loaded hub's own tables and a stand-in ai-threats (tests/bridge_behaviour.py), not its text
         import bridge_behaviour as BB

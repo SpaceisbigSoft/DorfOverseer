@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, Proposal  # noqa: E402
@@ -482,7 +482,7 @@ def _():
     assert "'thirst'" in pulse[:pulse.index("}")]
     assert "'ai-thirst'" in b[b.index("BRIDGE_MODULES = {"):b.index("MARKED_MODULES")]
     assert "thirst_unforbid = function(a)" in b and "'thirst_unforbid'," in b
-    t = (LUA_DIR / "ai-threats.lua").read_text(encoding="utf-8")
+    t = split_src("ai-threats.lua")   # (r8) ai-threats is a hub and parts: their texts together
     assert "function cancel_rows(window)" in t
     assert SECTION_DEFAULTS["thirst"] == {}
     s = normalize({"thirst": {"error": "boom"}})

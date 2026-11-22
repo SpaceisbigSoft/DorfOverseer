@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import PLANNER_CONFIG  # noqa: E402
@@ -41,7 +41,7 @@ LUA_DIR = ROOT / "lua"
 
 
 def lua_text(name: str) -> str:
-    return (LUA_DIR / name).read_text(encoding="utf-8")
+    return split_src(name)   # (r8) a hub and its parts (ai-threats): their texts together
 
 
 def code_lines(text: str) -> str:

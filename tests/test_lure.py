@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import code_has, finish, test, need_lua  # noqa: E402
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG  # noqa: E402
@@ -491,7 +491,7 @@ def _():
 
 # --- 3. the seal and the watcher leave a lure's door to it -----------------------------
 
-THREATS_SRC = (LUA_DIR / "ai-threats.lua").read_text(encoding="utf-8")
+THREATS_SRC = split_src("ai-threats.lua")   # (r8) ai-threats is a hub and parts: their texts together
 WATCH_SRC = (LUA_DIR / "ai-gates-watch.lua").read_text(encoding="utf-8")
 
 

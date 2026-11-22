@@ -193,7 +193,8 @@ def _():
     for k in ("cavern_well_cooldown_days", "cavern_well_site_tries", "well_rescue_after_ticks", "well_rescue_near",
               "well_safety_cooldown_ticks", "well_rescue_cooldown_ticks"):
         assert k in CFG, k
-    threats = (ROOT / "lua" / "ai-threats.lua").read_text(encoding="utf-8")
+    from lua_modules_util import split_src   # (r8) ai-threats is a hub and parts: their texts together
+    threats = split_src("ai-threats.lua")
     assert "reqscript('ai-well-safety').fort_doors()" in threats and "door_blocked(o)" in threats
 
 

@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -67,7 +67,7 @@ def _():
     # and the eleven files that wrote them before call it
     for name in ("ai-lure", "ai-builder-wells-shaft", "ai-well-safety", "ai-gates-watch", "ai-threats", "ai-insane",
                  "ai-gates-stuck", "ai-gates-save", "ai-waterworks", "ai-killers"):
-        src = (LUA / f"{name}.lua").read_text(encoding="utf-8")
+        src = split_src(f"{name}.lua")   # (r8) a hub and its parts (ai-threats): their texts together
         assert "lock_door(" in src or "lock_gate(" in src or "shut_door(" in src, name
 
 

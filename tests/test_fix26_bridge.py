@@ -130,6 +130,7 @@ def _():
 MARKED = BRIDGE_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-gates"] + GATES_PARTS + ["ai-military-gear", "ai-society-burrows", "ai-constructions"]
 MARKED += ["ai-society", "ai-society-animals", "ai-society-needs", "ai-society-posts"]   # (r8 s3) the hub and its parts
 MARKED += ["ai-military", "ai-military-draft", "ai-military-uniforms", "ai-military-duty"]   # (r8 s7) ai-military a hub and parts
+MARKED += ["ai-threats", "ai-threats-survey", "ai-threats-actions"]   # (r8 s9) the threats' hub and parts
 
 
 @test("marks: every part carries one version mark, the same string as BRIDGE_VERSION")
