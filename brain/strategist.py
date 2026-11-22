@@ -745,14 +745,7 @@ def seen_actions(proposals: list | None, recent_decisions: list | None) -> dict:
     return out
 
 
-def _int(v) -> int | None:
-    if isinstance(v, bool):
-        return None
-    if isinstance(v, int):
-        return v
-    if isinstance(v, float) and v.is_integer():
-        return int(v)
-    return None
+from util import whole_or_none as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def _int_in(v, lo, hi):

@@ -51,9 +51,7 @@ def _state(memory) -> dict:
     return a
 
 
-def _date(state: dict) -> str:
-    d = _d(state.get("date"))
-    return f"{d.get('day')} {d.get('month')} y{d.get('year')}"
+from util import date_text as _date  # noqa: E402  (r6 c2) was a copy here
 
 
 def _offset(s: dict) -> int:

@@ -86,16 +86,13 @@ WORDS = {"homes": "the homes", "halls": "the halls", "storage": "the stores", "i
          "defence": "the guard"}
 
 
-def _whole(v) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
+from util import is_int as _whole  # noqa: E402  (r6 c2) was a copy here
 
 
-def _d(v) -> dict:
-    return v if isinstance(v, dict) else {}
+from util import as_dict as _d  # noqa: E402  (r6 c2) was a copy here
 
 
-def _l(v) -> list:
-    return v if isinstance(v, list) else []
+from util import as_list as _l  # noqa: E402  (r6 c2) was a copy here
 
 
 def _group(action: dict | None) -> str | None:

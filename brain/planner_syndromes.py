@@ -109,8 +109,7 @@ def miasma_report(s: dict) -> dict | None:
     return m
 
 
-def _int(v) -> int:
-    return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
+from util import trunc_or_zero as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def _seen(memory) -> dict:

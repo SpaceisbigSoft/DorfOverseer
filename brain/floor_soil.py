@@ -37,16 +37,13 @@ _SOIL_RE = re.compile(r"not natural rock \(" + SOIL_MATS + r"\)(?:\s+at\s+x(\d+)
 SACRED_ROLES = ("worship", "crypt")
 
 
-def _whole(v) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
+from util import is_int as _whole  # noqa: E402  (r6 c2) was a copy here
 
 
-def _d(v) -> dict:
-    return v if isinstance(v, dict) else {}
+from util import as_dict as _d  # noqa: E402  (r6 c2) was a copy here
 
 
-def _l(v) -> list:
-    return v if isinstance(v, list) else []
+from util import as_list as _l  # noqa: E402  (r6 c2) was a copy here
 
 
 def _now(s) -> int | None:

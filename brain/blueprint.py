@@ -64,14 +64,7 @@ _NAME = re.compile(r"[A-Za-z' ]+")
 _SHOWN = re.compile(r"[A-Za-z0-9_:]+")
 
 
-def _int(v):
-    if isinstance(v, bool):
-        return None
-    if isinstance(v, int):
-        return v
-    if isinstance(v, float) and v.is_integer():
-        return int(v)
-    return None
+from util import whole_or_none as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def _is_object(v) -> bool:

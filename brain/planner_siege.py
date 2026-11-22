@@ -108,12 +108,12 @@ for _r, _shop in (("ballista_parts", "Siege"), ("catapult_parts", "Siege"), ("ba
     RECIPE_SHOPS.setdefault(_r, _shop)
 
 
+# (r6 c2) kept local: unlike util's helpers (SIEGE_CONFIG)
 def _c(cfg: dict, k: str):
     return cfg.get(k, SIEGE_CONFIG[k])
 
 
-def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+from util import is_num as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def _on(s: dict, k: str) -> bool:

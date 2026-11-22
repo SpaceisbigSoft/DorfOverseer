@@ -55,8 +55,7 @@ MEAL_INGREDIENTS = {"prepare_easy_meal": 2, "prepare_fine_meal": 3, "prepare_lav
 FIXED_MODES = ("EverybodyDoesThis", "NobodyDoesThis")
 
 
-def _int(v) -> int:
-    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+from util import int_or_zero as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def provisions(s: dict) -> dict | None:

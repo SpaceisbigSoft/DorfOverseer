@@ -41,6 +41,7 @@ CAUTION_ALARM_CONFIG = {
 PLANNER_CONFIG.update({k: v for k, v in CAUTION_ALARM_CONFIG.items() if k not in PLANNER_CONFIG})
 
 
+# (r6 c2) kept local: unlike util's helpers (None falls back, `default`)
 def _c(cfg: dict, k: str, default=None):
     v = (cfg or {}).get(k)
     if v is None:
@@ -48,8 +49,7 @@ def _c(cfg: dict, k: str, default=None):
     return v
 
 
-def _clamp(v, lo, hi):
-    return max(lo, min(hi, v))
+from util import clamp as _clamp  # noqa: E402  (r6 c2) was a copy here
 
 
 def caution(traits) -> float:

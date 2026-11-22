@@ -31,6 +31,7 @@ WHY_LINE = 80                # ... and in the digest line
 _WORD_RE = re.compile(r"^[a-z_]{1,24}$")
 
 
+# (r6 c2) kept local: unlike util's helpers (finite floats cut, else 0)
 def _int(v) -> int:
     """A whole number from the report, 0 for anything else (a bool is not a count)."""
     if isinstance(v, bool):

@@ -47,10 +47,12 @@ TRAPLEAN_CONFIG = {
 PLANNER_CONFIG.update({k: v for k, v in TRAPLEAN_CONFIG.items() if k not in PLANNER_CONFIG})
 
 
+# (r6 c2) kept local: unlike util's helpers (cfg may be None, strict table)
 def _c(cfg: dict, k: str):
     return (cfg or {}).get(k, PLANNER_CONFIG[k])
 
 
+# (r6 c2) kept local: unlike util's helpers (a trait read as float)
 def _num(traits: dict, k: str) -> float:
     try:
         return float((traits or {}).get(k, 0) or 0)

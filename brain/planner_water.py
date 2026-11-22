@@ -64,6 +64,7 @@ def far_on(cfg: dict | None) -> bool:
             and _int(cfg.get("water_job_max"), JOB_MAX_DEFAULT) != 0)
 
 
+# (r6 c2) kept local: unlike util's helpers (integral floats, `default` given)
 def _int(v, default: int) -> int:
     if isinstance(v, bool):
         return default

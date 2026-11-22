@@ -34,8 +34,7 @@ from planner_core import Proposal, player_rules
 __all__ = ["traffic_report", "_traffic_rule", "traffic_line"]
 
 
-def _int(v) -> int:
-    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+from util import int_or_zero as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def traffic_report(s: dict) -> dict | None:

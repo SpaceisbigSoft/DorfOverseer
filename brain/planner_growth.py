@@ -120,8 +120,7 @@ def fort_strain(s: dict, cfg: dict, held: bool = False, traits: dict | None = No
     return out
 
 
-def _h9(cfg: dict, k: str):
-    return cfg[k] if k in cfg else PLANNER_CONFIG[k]
+from util import conf_lookup as _h9  # noqa: E402  (r6 c2) was a copy here
 
 
 def _beds_short(s: dict) -> bool:

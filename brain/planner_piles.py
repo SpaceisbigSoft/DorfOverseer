@@ -51,8 +51,7 @@ AGENDA_THEMES.update({"barrows": "shorten the hauling", "barrow_order": "shorten
                       "feeder_link": "shorten the hauling"})
 
 
-def _int(v) -> int:
-    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+from util import int_or_zero as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def pile_links(s: dict) -> dict | None:

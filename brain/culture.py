@@ -64,8 +64,7 @@ def new_history() -> dict:
             "eras": [], "overrides": {}, "guide": ""}
 
 
-def _clamp(v, lo, hi):
-    return max(lo, min(hi, v))
+from util import clamp as _clamp  # noqa: E402  (r6 c2) was a copy here
 
 
 def beast_name(full: str) -> str:

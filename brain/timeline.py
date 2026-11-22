@@ -57,8 +57,7 @@ TREND_TOL = {"drink_pd": 1.0, "meals_pd": 1.0, "plants_pd": 1.0, "unhappy_pct": 
              "idle_pct": 5.0, "idle_free_pct": 5.0, "pop": 3, "wealth": None, "needs_care": 1.0, "hungry": 1.0, "report_ms": 50}
 
 
-def _num(v):
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+from util import num_or_none as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def _state(memory) -> dict:

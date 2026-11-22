@@ -59,10 +59,10 @@ __all__ = ["UNFOUGHT_WHY", "lone_hunted", "unfought", "unfought_raise_held", "bo
 UNFOUGHT_WHY = "no squad has gone at"
 
 
-def _int(v) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
+from util import is_int as _int  # noqa: E402  (r6 c2) was a copy here
 
 
+# (r6 c2) kept local: unlike util's helpers (no table, `default`)
 def _c(cfg: dict, k: str, default):
     v = cfg.get(k, default) if isinstance(cfg, dict) else default
     return default if v is None else v

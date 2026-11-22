@@ -76,12 +76,10 @@ AGENDA_THEMES.update({"magma_guard": "keep the dwarves away from spilt magma",
                       "frost_water_zone": "water from underground while the surface water is frozen"})
 
 
-def _c(cfg: dict, k: str):
-    return cfg.get(k, PLANNER_CONFIG[k])
+from util import conf_get as _c  # noqa: E402  (r6 c2) was a copy here
 
 
-def _int(v) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
+from util import is_int as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def _where(r: dict) -> str:

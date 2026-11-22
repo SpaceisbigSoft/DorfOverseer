@@ -58,8 +58,7 @@ AGENDA_THEMES.update({"shelter_pick": "the shelter away from the threat",
 INF = 10 ** 9
 
 
-def _int(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def plan_ready(s: dict) -> dict:

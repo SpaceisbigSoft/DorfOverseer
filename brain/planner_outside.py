@@ -42,8 +42,7 @@ from planner_core import (PLANNER_CONFIG, TICKS_PER_DAY, Proposal, abs_tick, ask
 
 __all__ = ["note_outside", "stuck_caravans", "drought_cause", "_drought_rule"]
 
-def _c(cfg: dict, k: str):
-    return cfg[k] if k in cfg else PLANNER_CONFIG[k]
+from util import conf_lookup as _c  # noqa: E402  (r6 c2) was a copy here
 
 
 def _mem(memory, write: bool = False) -> dict:

@@ -57,8 +57,7 @@ BREATH_WORDS = {"dragonfire": "dragonfire", "fire": "fire", "poison_gas": "poiso
                 "web": "webs", "spit": "spit", "rock": "rocks", "other": "something"}
 
 
-def _num(v):
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+from util import num_or_none as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def _breath(t: dict) -> list:

@@ -58,6 +58,7 @@ GROW = {"grid": (["arm", "turn"], "alternate"), "rings": (["turn", "arm"], "righ
 BIG = 10 ** 9                         # no slider or tuning number is past this (keeps the sums finite)
 
 
+# (r6 c2) kept local: unlike util's helpers (finite, held within BIG)
 def _num(v, default=0):
     """A finite number (held inside +-BIG), else the default (junk, a bool, NaN, an endless number)."""
     if isinstance(v, bool) or not isinstance(v, (int, float)):
@@ -67,6 +68,7 @@ def _num(v, default=0):
     return max(-BIG, min(BIG, v))
 
 
+# (r6 c2) kept local: unlike util's helpers (int(v) first)
 def _clamp(v, lo: int, hi: int) -> int:
     return max(lo, min(hi, int(v)))
 

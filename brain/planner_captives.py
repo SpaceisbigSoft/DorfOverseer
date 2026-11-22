@@ -55,8 +55,7 @@ CAPTIVES_KEYS = ("pit_min_drop", "pit_batch", "undead_overwhelm_min", "undead_pe
 YEAR = 336 * TICKS_PER_DAY
 
 
-def _c(cfg: dict, k: str):
-    return cfg[k] if k in cfg else PLANNER_CONFIG[k]
+from util import conf_lookup as _c  # noqa: E402  (r6 c2) was a copy here
 
 
 def _seen(memory) -> dict:
@@ -89,8 +88,7 @@ def decide(row: dict, choice: str) -> tuple[str, str]:
     return "keep", "kept caged (Rules tab: keep)"
 
 
-def _int(v) -> int:
-    return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
+from util import trunc_or_zero as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def _captives_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:

@@ -71,12 +71,10 @@ SIGHTS_MAX = 300          # sites remembered (first seen) at most
 LIVED_IN = ("Town", "Hamlet", "Fortress", "DarkFortress", "MountainHalls", "ForestRetreat", "Camp", "Tower")
 
 
-def _num(v):
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+from util import num_or_none as _num  # noqa: E402  (r6 c2) was a copy here
 
 
-def _int(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def _trait(s: dict, k: str) -> float:

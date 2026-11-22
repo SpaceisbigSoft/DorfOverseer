@@ -53,12 +53,10 @@ AGENDA_THEMES.update({"lure_build": "a lure pocket for the beast in the caverns"
                       "lure_archer": "crossbows at the beast shut in the pocket"})
 
 
-def _c(cfg: dict, k: str):
-    return (cfg or {}).get(k, PLANNER_CONFIG.get(k))
+from util import conf_soft as _c  # noqa: E402  (r6 c2) was a copy here
 
 
-def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+from util import is_num as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def lure_rows(s: dict) -> list:

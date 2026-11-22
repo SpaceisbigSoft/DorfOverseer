@@ -150,12 +150,12 @@ def threat_rules_of(s: dict) -> dict:
             "seal_caverns": st.get("seal_caverns") is not False}
 
 
+# (r6 c2) kept local: unlike util's helpers (THREAT_CONFIG)
 def _c(cfg: dict, k: str):
     return cfg.get(k, THREAT_CONFIG[k])
 
 
-def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+from util import is_num as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def threat_alert(s: dict, cfg: dict) -> str:

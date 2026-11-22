@@ -88,8 +88,7 @@ def stuck_key(r: dict) -> str:
     return r["key"] if isinstance(r.get("key"), str) else f"{r.get('kind')}:{r.get('id')}"
 
 
-def _int(v, default=None):
-    return v if isinstance(v, int) and not isinstance(v, bool) else default
+from util import int_or as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def _projects(s: dict) -> dict:

@@ -60,8 +60,7 @@ __all__ = ["killzones_of", "entrance_records", "zone_reasons", "zone_kind", "_ki
 RECIPE_SHOPS.setdefault("metal_trap_blades", "MetalsmithsForge")
 
 
-def _c(cfg: dict, k: str):
-    return cfg.get(k, PLANNER_CONFIG[k])
+from util import conf_get as _c  # noqa: E402  (r6 c2) was a copy here
 
 
 def killzones_of(s: dict) -> dict:

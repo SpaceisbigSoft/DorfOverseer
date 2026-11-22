@@ -55,8 +55,7 @@ __all__ = ["FOOD_SHOP_ORDER", "food_store", "food_tiles_want", "food_barrels_for
 FOOD_SHOP_ORDER = ("Kitchen", "Still")
 
 
-def _int(v) -> int:
-    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+from util import int_or_zero as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def food_store(s: dict) -> dict | None:

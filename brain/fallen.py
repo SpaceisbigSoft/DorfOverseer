@@ -45,6 +45,7 @@ def mark_path() -> Path:
     return LOG_DIR / MARK_NAME
 
 
+# (r6 c2) kept local: unlike util's helpers (str(key or ''))
 def _site(key) -> str:
     return str(key or "").rpartition("#")[2]
 

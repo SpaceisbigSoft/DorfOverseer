@@ -971,16 +971,7 @@ def short(a: dict) -> str:
 STATES_KEPT = 80          # (0.100.1) every season of a long run (~60 KB each)
 
 
-def state_run(path: Path) -> str | None:
-    """(0.105.26) The run a kept season state belongs to: its leading "_run"
-    (None for one kept before runs were marked)."""
-    try:
-        with open(path, "rb") as f:
-            head = f.read(200).decode("utf-8", "replace")
-    except OSError:
-        return None
-    m = re.match(r'\{"_run": "([^"]*)"', head)
-    return m.group(1) if m else None
+from util import state_run  # noqa: E402  (r6 c2) was a copy here
 
 
 def _season_order(stem: str):
@@ -2322,8 +2313,7 @@ def preset_due(key: str, name: str, fort_preset) -> str | None:
     return None
 
 
-def _site(key: str) -> str:
-    return str(key).rpartition("#")[2]
+from util import site_of as _site  # noqa: E402  (r6 c2) was a copy here
 
 
 def fort_run(key: str) -> str | None:

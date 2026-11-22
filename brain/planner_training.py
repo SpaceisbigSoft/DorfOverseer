@@ -59,16 +59,13 @@ from planner_core import (AGENDA_THEMES, PLANNER_CONFIG, TICKS_PER_DAY, Proposal
                           reachable_threats, _traits)
 
 
-def _d(v) -> dict:
-    return v if isinstance(v, dict) else {}
+from util import as_dict as _d  # noqa: E402  (r6 c2) was a copy here
 
 
-def _l(v) -> list:
-    return v if isinstance(v, list) else []
+from util import as_list as _l  # noqa: E402  (r6 c2) was a copy here
 
 
-def _int(v) -> int | None:
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 __all__ = ["FIGHT_NEEDS", "prepare_training", "training_squads", "training_needed", "training_cap",
