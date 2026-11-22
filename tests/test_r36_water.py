@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402  (r8) ai-waterworks: a hub and its parts
 from planner import PLANNER_CONFIG as CFG, Memory  # noqa: E402
 import planner_core  # noqa: E402
 import planner_farms  # noqa: E402
@@ -35,7 +36,8 @@ try:
 except ImportError:
     LuaRuntime = None
 
-SRC = (ROOT / "lua" / "ai-waterworks.lua").read_text(encoding="utf-8")
+SRC = module_src("ai-waterworks.lua")
+SRC_TEXT = split_src("ai-waterworks.lua")   # (r8) the family's text, for the tests that read it
 FAKE = re.search(r'FAKE = r"""(.*?)"""', (ROOT / "tests" / "test_waterworks.py").read_text(encoding="utf-8"),
                  re.S).group(1)
 LUA = LuaRuntime(unpack_returned_tuples=True) if LuaRuntime else None
@@ -438,7 +440,7 @@ def _():
 
 @test("D4 Med: the Lua sets building_screw_pumpst.pump_manually (df-structures' name)")
 def _():
-    code = "\n".join(line.split("--")[0] for line in SRC.splitlines())
+    code = "\n".join(line.split("--")[0] for line in SRC_TEXT.splitlines())
     assert "pump_manually = on == true" in code
 
 
@@ -474,9 +476,9 @@ def _():
 
 @test("D4 Low: texts: no 'by hand' in the works' holds; the reopen label; the retire words")
 def _():
-    holds = re.findall(r"hold\(\(?'([^']*)'", SRC)
+    holds = re.findall(r"hold\(\(?'([^']*)'", SRC_TEXT)
     assert holds and not any("by hand" in h for h in holds), holds
-    assert "mend it by hand" not in SRC and "link it by hand" not in SRC and "dry it by hand" not in SRC
+    assert "mend it by hand" not in SRC_TEXT and "link it by hand" not in SRC_TEXT and "dry it by hand" not in SRC_TEXT
     assert overseer.short({"type": "water_work", "kind": "moat", "reopen": True}) == \
         "open the moat's floodgate again (the flood is over)"
     s = water_fort({"irrigation": {"kind": "irrigation", "stage": "held", "why": "the floor dried without mud"}}, {})

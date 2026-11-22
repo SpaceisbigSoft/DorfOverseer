@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 from snapshots import snapshot  # noqa: E402
 from harness import test, finish  # noqa: E402
-from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import bridge_part_src, module_src  # noqa: E402  (r6) the bridge parts split
 sys.path.insert(0, str(ROOT / "brain"))
 
 try:
@@ -28,7 +28,7 @@ except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
 
-SRC = (ROOT / "lua" / "ai-waterworks.lua").read_text(encoding="utf-8")
+SRC = module_src("ai-waterworks.lua")   # (r8) the hub and its parts
 
 # The fake map (as tests/test_waterworks.py): the surface floor at z 100
 # (outside, over stone), open sky above, natural stone below; the machines

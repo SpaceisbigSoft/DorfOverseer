@@ -331,7 +331,7 @@ def _():
 
 # --- the muddied farm level through the river-fed cistern (lua/ai-waterworks.lua) ----------
 
-WW_SRC = (ROOT / "lua" / "ai-waterworks.lua").read_text(encoding="utf-8")
+WW_SRC = module_src("ai-waterworks.lua")   # (r8) the hub and its parts
 WW_FAKE = lua_const("test_waterworks.py", "FAKE")
 
 

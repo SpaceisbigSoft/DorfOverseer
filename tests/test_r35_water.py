@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import make_test, test as plain_test, finish, skip  # noqa: E402
+from lua_modules_util import module_src  # noqa: E402  (r8) ai-waterworks: a hub and its parts
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 import planner_wells  # noqa: E402
 import planner_water  # noqa: E402
@@ -338,7 +339,7 @@ if LuaRuntime is not None:
         finally:
             LUA.execute(GAME_CLEAN)
 
-    WW_SRC = (ROOT / "lua" / "ai-waterworks.lua").read_text(encoding="utf-8")
+    WW_SRC = module_src("ai-waterworks.lua")   # (r8) the hub and its parts
     WW_FAKE = _const("test_waterworks.py", "FAKE")
 
     @test("bridge: water_work retire: not begun again for a while (refused), never after twice; dry run changes nothing")
@@ -369,7 +370,8 @@ if LuaRuntime is not None:
         assert got == [("cistern_retire", [True, "leaked twice"])], got
         got, _, _ = BB.forwarded("cistern_step", {"relink": True}, "ai-builder")
         assert got == [("cistern_relink", [False])], got
-        for f in ("ai-builder-cistern.lua", "ai-bridge-actions.lua", "ai-waterworks.lua", "ai-bridge.lua"):
+        for f in ("ai-builder-cistern.lua", "ai-bridge-actions.lua", "ai-waterworks.lua", "ai-waterworks-plans.lua",
+                  "ai-waterworks-power.lua", "ai-waterworks-steps.lua", "ai-bridge.lua"):   # (r8) and its parts
             text = (ROOT / "lua" / f).read_text(encoding="utf-8")
             assert LUA.eval("function(s, n) local f, e = load(s, n, 't', {}); return e end")(text, f) is None, f
 else:

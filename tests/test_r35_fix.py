@@ -405,7 +405,7 @@ def _():
 @test("risk lua: water_work retire refuses a leak-watch hold")
 def _():
     L = LuaRuntime(unpack_returned_tuples=True)
-    env = L.execute(_const("test_waterworks.py", "FAKE"), (ROOT / "lua" / "ai-waterworks.lua").read_text(encoding="utf-8"))
+    env = L.execute(_const("test_waterworks.py", "FAKE"), module_src("ai-waterworks.lua"))
     st = env.load_state()
     st.works["irrigation"] = L.table_from({"kind": "irrigation", "stage": "held",
                                            "why": "the farm room is still wet after 20 days (3 tile(s)): water is "

@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
+from lua_modules_util import module_src  # noqa: E402  (r8) ai-waterworks: a hub and its parts
 sys.path.insert(0, str(ROOT / "brain"))
 
 try:
@@ -20,7 +21,7 @@ except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
 
-SRC = (ROOT / "lua" / "ai-waterworks.lua").read_text(encoding="utf-8")
+SRC = module_src("ai-waterworks.lua")
 
 # The fake map: the surface floor at z 100 (outside, over stone), open sky
 # above, natural stone below; tiles set by the tests in W.tiles.
