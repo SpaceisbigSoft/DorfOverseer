@@ -36,7 +36,8 @@ def _lua_string(s: str) -> str:
 
 
 # (13c) a module split in two: the half the first loads on call, by name
-COMPANIONS = {"ai-military.lua": ["ai-military-gear"], "ai-society.lua": ["ai-society-burrows"]}
+COMPANIONS = {"ai-military.lua": ["ai-military-gear"], "ai-society.lua": ["ai-society-burrows"],
+              "ai-nobles.lua": ["ai-nobles-swap"]}   # (r11 n1) the swaps, looked up on call
 
 # (13e) a module split into a hub and parts (lua/ai-gates.lua): the hub loads
 # its parts (PARTS) from the files beside it; loaded from text in a test, it

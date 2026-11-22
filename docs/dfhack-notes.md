@@ -303,3 +303,22 @@ fort the bridge hasn't reported from yet; after a report, `dfhack_name` = `df_na
 holds the post, then the planner decides (`brain/planner_contact.py`). The sender's guards are
 unchanged. Saved settings hold the full sanitized table, so a stored `false` can't be told from the old
 default: a save without `contact_rev` reads those old defaults as the new ones once.
+
+## Taking a dwarf off an office (r11 n1)
+
+No DFHack call removes a noble; `lua/ai-nobles-swap.lua` does what DFHack's own code does when it
+takes an officer or a mayor off (cloned 22 Nov: `dfhack/library/modules/Military.cpp`
+`remove_officer_entity_link`, `scripts/internal/emigration/unit-link-utils.lua` `unassignMayor`):
+the slot's `histfig` set to -1, the figure's `histfig_entity_link_positionst` for that assignment
+erased, then a `histfig_entity_link_former_positionst` (assignment, entity, start and end year) and a
+`history_event_remove_hf_entity_linkst` (civ, histfig, POSITION, position id). The AI adds the last two
+only after the new holder's appointment reads back through `getNoblePositions`; if it doesn't, the old
+holder's link is put back as it was (start year kept) and nothing else is left behind.
+
+**DF's reaction.** df-structures' `unit_thought_type` has `Elected`, `Reelected`, `NoblePromotion`,
+`BecomeNoble` and `MilitaryRemoved` ("after being removed from a military group", squads only), but
+nothing for losing an office: no evidence of an unhappy thought. Not confirmed in game; the margin is
+kept high (twice the skill score and 10 more) and one swap a season per office, because the post's
+rooms, demands and work in hand go with it. A tiny fort's interim messenger is simply a second
+position link on an office holder (DF lets one figure hold several posts, as the expedition leader
+and a broker often are at embark).

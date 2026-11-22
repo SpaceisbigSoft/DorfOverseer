@@ -386,3 +386,20 @@ PART.update({
     "contact_food_short_per_dwarf": 5,    # food a dwarf under this: a needed trade (a real shortage, not a wishlist)
     "contact_initial_wait_days": 336,     # the aggressive fort waits for initial contact at most this long
 })
+
+# (r11 n1, the player 22 Nov 01:43) the interim messenger and better office
+# holders (brain/planner_office_swap.py, lua/ai-nobles-swap.lua). The margin is
+# high on purpose: a swap takes a post from a dwarf who has it (DF has no
+# "lost an office" thought, but the rooms, the demands and the work in hand
+# go with the post), so only a far better holder is worth it. Skill scores are
+# the office's skill levels summed, the first counting double (a level runs
+# 0-20): holder 0 -> 10 needed (a primary skill of 5), 6 -> 16, 10 -> 20,
+# 20 -> 40, 30 -> 60: twice the holder's, and never less than 10 more.
+PART.update({
+    "n1_messenger_interim": True,         # nobody free suitable: an office holder doubles as messenger meanwhile
+    "n1_office_swaps": True,              # the swaps themselves (the interim out, a far better holder)
+    "n1_swap_margin_add": 10,             # a candidate's skill score must reach the holder's plus this...
+    "n1_swap_margin_factor": 2.0,         # ...and the holder's times this (the higher of the two)
+    "office_swap_cooldown_ticks": 84 * 1200,   # one swap a season per office (cooldown_key office_swap:<CODE>)
+    "n1_swap_gap_days": 1,                # one swap a day, fort-wide
+})

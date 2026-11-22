@@ -64,6 +64,8 @@ table.insert(OFFICE_ORDER, 'MILITIA_CAPTAIN')
 -- the post, and never a soldier, a mother of a baby, a hospital's or any
 -- location's staff, a patient, nor a dwarf holding another office (they'd be
 -- away for seasons): the best talker of the rest. (0.105.24) Nor one wounded.
+-- (r11 n1) When nobody else is suitable, an office holder with `interim`
+-- (pick_interim), swapped out later (lua/ai-nobles-swap.lua).
 OFFICES.MESSENGER = {'PERSUASION', 'NEGOTIATION', 'CONVERSATION', 'JUDGING_INTENT'}
 CIVILIAN_AWAY_OFFICES = {MESSENGER = true}
 table.insert(OFFICE_ORDER, 'MESSENGER')
@@ -96,6 +98,47 @@ function pick_holder(cands, military)
     return best
 end
 
+-- Pure: an office's skill score (the first skill counts double), as pick_holder weighs it.
+function skill_score(skills)
+    local score = 0
+    for i, lvl in ipairs(skills or {}) do score = score + (i == 1 and 2 or 1) * (tonumber(lvl) or 0) end
+    return score
+end
+
+-- (r11 n1, the player 22 Nov 01:43) A tiny fort's interim messenger: when no
+-- free citizen is suitable, an office holder carries the fort's word too. The
+-- office that matters least at home first (a lower rank); never a holder of
+-- any office not ranked here (the expedition leader, mayor, militia...), a
+-- soldier, a child, a patient, staff, the wounded, a mother of a baby (one in
+-- a mood never reaches the candidates). Among them the best talker.
+INTERIM_RANK = {BOOKKEEPER = 1, BROKER = 2, SHERIFF = 3, CAPTAIN_OF_THE_GUARD = 4, CHIEF_MEDICAL_DWARF = 5,
+                MANAGER = 6}
+
+-- Pure: the interim messenger of the candidates (each with `codes`, the
+-- offices held), and the office that ranks them; nil when none fits.
+function pick_interim(cands)
+    local best, best_tier, best_score, best_code
+    for _, c in ipairs(cands) do
+        if not (c.child or c.soldier or c.mother or c.patient or c.staff or c.hurt) and (c.offices or 0) > 0
+                and type(c.codes) == 'table' and #c.codes > 0 then
+            local tier, code = 0, nil
+            for _, k in ipairs(c.codes) do
+                local r = INTERIM_RANK[k]
+                if not r then tier = nil; break end
+                if r > tier then tier, code = r, k end
+            end
+            if tier then
+                local score = skill_score(c.skills) - (c.miserable and 5000 or 0)
+                if best == nil or tier < best_tier or (tier == best_tier and (score > best_score
+                        or (score == best_score and c.id < best.id))) then
+                    best, best_tier, best_score, best_code = c, tier, score, code
+                end
+            end
+        end
+    end
+    return best, best_code
+end
+
 -- --- the game -----------------------------------------------------------------
 
 
@@ -115,12 +158,40 @@ local function skill(u, name)
     return 0
 end
 
-local function offices_held(u)
-    local ok, n = pcall(function()
-        local list = dfhack.units.getNoblePositions(u)
-        return list and #list or 0
+-- (r11 n1) the codes of the offices a dwarf holds
+local function codes_held(u)
+    local out = {}
+    pcall(function()
+        for _, p in ipairs(dfhack.units.getNoblePositions(u) or {}) do table.insert(out, p.position.code) end
     end)
-    return ok and n or 0
+    return out
+end
+
+-- (r11 n1) a dwarf's levels in an office's skills, in its order
+function office_skills(u, code)
+    local out = {}
+    for i, name in ipairs(OFFICES[code] or {}) do out[i] = skill(u, name) end
+    return out
+end
+
+-- (r11 n1) Why a figure (an office holder) is away, or nil: on an army's roll
+-- (a mission), no unit on the map, an inactive or departed unit; for the
+-- messenger also a mission being sent right now (lua/ai-mission-send.lua RUN:
+-- a Make contact run picks the messenger on the World screen).
+function holder_away(hf, messenger)
+    if not hf then return 'not found' end
+    local oka, army = pcall(function() return hf.info.whereabouts.army_id end)
+    if oka and type(army) == 'number' and army >= 0 then return 'away with an army (a mission)' end
+    local u = df.unit.find(hf.unit_id)
+    if not u then return 'not on the map' end
+    local oki, inactive = pcall(function() return u.flags1.inactive end)
+    local okl, left = pcall(function() return u.flags1.left end)
+    if (oki and inactive) or (okl and left) then return 'off the map' end
+    if messenger then
+        local okr, run = pcall(function() return reqscript('ai-mission-send').RUN end)
+        if okr and run then return 'a mission is being sent (' .. tostring(run.goal or '?') .. ')' end
+    end
+    return nil
 end
 
 local function holds(u, code)
@@ -234,7 +305,9 @@ function survey(txt)
     pcall(function()
         local st = messenger_status(txt, ent)
         out.messenger = out.messenger or {position = false}
-        for _, k in ipairs({'post', 'code', 'why', 'requires_population', 'population', 'pop_met'}) do
+        for _, k in ipairs({'post', 'code', 'why', 'requires_population', 'population', 'pop_met', 'interim',
+                            'interim_possible', 'interim_unit', 'interim_name', 'interim_office', 'holder_unit',
+                            'free_unit', 'free_name', 'away'}) do
             out.messenger[k] = st[k]
         end
         local o = out.offices.MESSENGER
@@ -242,6 +315,9 @@ function survey(txt)
                      and pop_gate(st.requires_population, st.population, st.pop_met)
         if o and gate then o.appointable, o.not_why = false, gate end
     end)
+    -- (r11 n1) each civilian office's holder against the best free candidate
+    -- (lua/ai-nobles-swap.lua): the planner's swaps
+    pcall(function() out.swap = reqscript('ai-nobles-swap').swap_survey(ent, txt) end)
     return out
 end
 
@@ -393,7 +469,8 @@ local function candidates(code)
             local skills = {}
             for i, name in ipairs(wants) do skills[i] = skill(u, name) end
             local okm, cat = pcall(function() return dfhack.units.getStressCategory(u) end)
-            local c = {id = u.id, skills = skills, offices = offices_held(u),
+            local codes = codes_held(u)
+            local c = {id = u.id, skills = skills, offices = #codes, codes = codes,
                        soldier = u.military.squad_id >= 0,
                        child = dfhack.units.isChild(u) or dfhack.units.isBaby(u),
                        mother = moms[u.id] or nil,
@@ -422,6 +499,11 @@ local function candidates(code)
     end
     return out
 end
+
+-- (r11 n1) for lua/ai-nobles-swap.lua
+function office_candidates(code) return candidates(code) end
+function holds_office(u, code) return holds(u, code) end
+function translate_name(n, english) return translate(n, english) end
 
 -- (0.104.168) May the fort fill this office itself? Only one appointed by
 -- an office of the fort's own government that someone holds (the mayor,
@@ -507,7 +589,27 @@ function messenger_status(txt, ent, pop)
             end
         end
         out.slots, out.vacant = slots, vacant
-        if out.held_by then return out end
+        if out.held_by then
+            -- (r11 n1) an interim messenger (one holding another office too):
+            -- the free suitable citizen who'd take over, and whether they're away
+            pcall(function()
+                local hf = df.historical_figure.find(out.holder_hf)
+                local u = hf and df.unit.find(hf.unit_id)
+                out.holder_unit = u and u.id or nil
+                out.away = holder_away(hf, true)
+                local codes = u and codes_held(u) or {}
+                if #codes > 1 then
+                    out.interim = true
+                    local c = pick_holder(candidates('MESSENGER'), false)
+                    if c and c.id ~= out.holder_unit and (c.offices or 0) == 0 then
+                        local cu = df.unit.find(c.id)
+                        out.free_unit = c.id
+                        out.free_name = cu and (txt or tostring)(dfhack.units.getReadableName(cu)) or nil
+                    end
+                end
+            end)
+            return out
+        end
         local gate = pop_gate(out.requires_population, pop, out.pop_met)
         if gate then out.why, out.appointable = gate, false; return out end
         local okc, can, nwhy = pcall(appointable, ent, p)
@@ -520,6 +622,16 @@ function messenger_status(txt, ent, pop)
         if okk and c == nil then
             out.why = 'post exists, nobody suitable to appoint (soldiers, office holders, staff, patients, '
                       .. 'the wounded, mothers of babies and children stay home)'
+            -- (r11 n1) an office holder who may double as messenger meanwhile
+            pcall(function()
+                local ic, icode = pick_interim(candidates('MESSENGER'))
+                out.interim_possible = ic ~= nil
+                if ic then
+                    local iu = df.unit.find(ic.id)
+                    out.interim_unit, out.interim_office = ic.id, icode
+                    out.interim_name = iu and (txt or tostring)(dfhack.units.getReadableName(iu)) or nil
+                end
+            end)
         else
             out.why = 'post exists, nobody appointed'
         end
@@ -565,11 +677,26 @@ function messenger_status(txt, ent, pop)
     return out
 end
 
--- Appoint the best-suited citizen to a vacant `code` office.
-function appoint(code, dry_run, txt)
+-- (r11 n1) The holder for `code`: the best suitable citizen; for the
+-- messenger with `interim`, when none is free, an office holder (pick_interim).
+-- Returns the candidate, and the office it keeps when it is an interim.
+local function choose(code, interim)
+    local cands = candidates(code)
+    local c = pick_holder(cands, MILITARY_OFFICES[code])
+    if c or not (interim and code == 'MESSENGER') then return c end
+    return pick_interim(cands)
+end
+
+-- Appoint the best-suited citizen to a vacant `code` office. (r11 n1) opts:
+-- `interim` (the messenger: an office holder when nobody free is suitable);
+-- `replace` (a held civilian office's holder replaced: lua/ai-nobles-swap.lua).
+function appoint(code, dry_run, txt, opts)
+    opts = type(opts) == 'table' and opts or {}
     if not OFFICES[code] then
         return {ok = false, rejected = true, error = 'the AI only appoints ' .. table.concat(OFFICE_ORDER, ', ')}
     end
+    if opts.replace then return reqscript('ai-nobles-swap').replace(code, dry_run, txt, opts) end
+    local interim = opts.interim == true
     local ent = U.fort_entity()
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
     local assignment, a_idx, pos
@@ -622,13 +749,16 @@ function appoint(code, dry_run, txt)
             if not can then
                 return {ok = false, rejected = true, error = code:lower() .. " is not the fort's to fill (" .. tostring(why) .. ')'}
             end
-            if pick_holder(candidates(code), false) == nil then
-                return {ok = false, rejected = true, error = 'no grown citizen to appoint'}
+            local c0, keeps0 = choose(code, interim)
+            if c0 == nil then
+                return {ok = false, rejected = true, error = 'no grown citizen to appoint'
+                        .. (code == 'MESSENGER' and (interim and ' (nor an office holder who may double as messenger)'
+                            or ' (an office holder may double as messenger: interim)') or '')}
             end
             if dry_run then
-                local c0 = pick_holder(candidates(code), false)
                 local u0 = df.unit.find(c0.id)
                 return {ok = true, dry_run = true, office = code, slot_added = true, unit_id = c0.id,
+                        interim = keeps0 and true or nil, keeps = keeps0,
                         name = u0 and (txt or tostring)(dfhack.units.getReadableName(u0)) or nil}
             end
             local why2
@@ -641,7 +771,7 @@ function appoint(code, dry_run, txt)
             return {ok = false, rejected = true, error = 'the fort has no ' .. code .. ' office yet'}
         end
     end
-    local c = pick_holder(candidates(code), MILITARY_OFFICES[code])
+    local c, keeps = choose(code, interim)
     if not c and added_slot then drop_slot(ent, assignment) end
     if not c then
         if MILITARY_OFFICES[code] then          -- (0.104.168, review) left empty, said
@@ -660,7 +790,7 @@ function appoint(code, dry_run, txt)
     end
     local name = (txt or tostring)(dfhack.units.getReadableName(u))
     local out = {ok = true, office = code, name = name, unit_id = u.id, skills = c.skills, dry_run = dry_run or nil,
-                 slot_added = added_slot or nil}
+                 slot_added = added_slot or nil, interim = keeps and true or nil, keeps = keeps}
     if dry_run then return out end
     local ok = write_appointment(ent, assignment, a_idx, pos, u)
     if not ok and added_slot then drop_slot(ent, assignment) end

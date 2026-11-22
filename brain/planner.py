@@ -52,6 +52,7 @@ from planner_threats import _threat_rules, unseen_intrusion, alarm_held, lone_sn
 from planner_world import note_contact_sent  # noqa: E402  (0.105.48, K9)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
                            _messenger_rule, _world_notes, note_world)  # (0.105.0: the world outside, 12b and 13b)
+from planner_office_swap import _office_swap_rule  # noqa: E402  (r11 n1)
 from planner_peace import _peace_notes  # noqa: E402  (0.105.41, item 8: war and peace)
 from planner_bans import _export_bans_notes  # noqa: E402  (0.105.41, item 8: the nobles' export bans)
 from planner_missions import _mission_rule, note_missions  # noqa: E402  (0.105.39) missions on the world map
@@ -1000,6 +1001,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             _guard(_export_rule, s, cfg, proposals, notes, memory)
         if can_use("offices"):
             _guard(_messenger_rule, s, cfg, proposals, notes)
+            _guard(_office_swap_rule, s, cfg, proposals, notes, memory)   # (r11 n1) the interim out, a far better holder
             if can_use("missions"):
                 _guard(_contact_rule, s, cfg, proposals, notes, memory)   # (0.105.24) proposals: send_mission
         if can_use("missions"):

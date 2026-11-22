@@ -104,6 +104,8 @@ def cooldown_key(p: Proposal) -> str:
     a = _d(getattr(p, "action", None))
     if p.rule in PER_ID_COOLDOWN and a.get("id") is not None:
         return f"{p.rule}:{a['id']}"
+    if p.rule == "office_swap" and a.get("office"):      # (r11 n1) a season per office
+        return f"office_swap:{a['office']}"
     return p.rule
 
 

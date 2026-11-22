@@ -247,6 +247,7 @@ BRIDGE_MODULES = {
     'ai-herd',   -- (0.105.47) the herd by Husbandry
     'ai-raids',   -- (0.105.47, J17) the raid policy's sites; the raid party's pets let out and put back
     'ai-floorunits',   -- (layout B) a level cut into room units for a floor
+    'ai-nobles-swap',   -- (r11 n1) the interim messenger swapped out, a vastly better office holder
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}

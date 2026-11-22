@@ -787,7 +787,10 @@ end
 -- broker, chief medical dwarf; read back through DFHack, undone if unseen.
 function act_appoint(a)
     if type(a.office) ~= 'string' then return reject('appoint needs office') end
-    return reqscript('ai-nobles').appoint(a.office, a.dry_run == true, txt)
+    -- (r11 n1) interim (the messenger doubled by an office holder), replace (a better holder)
+    return reqscript('ai-nobles').appoint(a.office, a.dry_run == true, txt,
+        {interim = a.interim == true, replace = a.replace == true, interim_out = a.interim_out == true,
+         margin_add = tonumber(a.margin_add), margin_factor = tonumber(a.margin_factor)})
 end
 
 -- A new squad, led by an appointed militia commander or captain (lua/ai-military.lua).

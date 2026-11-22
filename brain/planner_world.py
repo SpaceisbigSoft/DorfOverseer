@@ -342,6 +342,26 @@ def _messenger_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         notes.append(f"Make contact is on, but the messenger is not the fort's to appoint "
                      f"({o.get('not_why') or 'DF says so'}): it waits for whoever appoints it")
         return
+    # (r11 n1, the player 22 Nov 01:43) nobody free is suitable (a tiny fort's
+    # founders all hold offices): an office holder doubles as messenger meanwhile
+    # (the least needed office, the best talker: lua/ai-nobles.lua pick_interim),
+    # swapped out once a free one is suitable (planner_office_swap); no
+    # proposal at all when no interim is possible either (it was refused 4-5
+    # times in each fort, 22 Nov)
+    ms = _d(offices.get("messenger"))
+    if str(why or "").startswith("post exists, nobody suitable"):
+        if ms.get("interim_possible") and cfg.get("n1_messenger_interim", True):
+            who = ms.get("interim_name") or "an office holder"
+            office = str(ms.get("interim_office") or "another office").lower().replace("_", " ")
+            proposals.append(Proposal("messenger", {"type": "appoint", "office": "MESSENGER", "interim": True},
+                                      f"nobody free is suitable to be the messenger (every grown citizen holds an "
+                                      f"office or must stay home): {who}, the {office}, doubles as messenger for "
+                                      "now, until a suitable dwarf is free (Make contact needs one)", 5))
+        else:
+            notes.append(f"Make contact is on, but nobody can be the messenger: {why}; no office holder may double "
+                         "as messenger either (only the bookkeeper, broker, sheriff, captain of the guard, chief "
+                         "medical dwarf or manager, healthy and outside the squads)")
+        return
     proposals.append(Proposal("messenger", {"type": "appoint", "office": "MESSENGER"},
                               "the fort has a messenger's post and nobody holds it: appoint a good talker who "
                               "isn't needed at home (Make contact needs one)"
