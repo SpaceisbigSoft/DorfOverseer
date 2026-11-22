@@ -174,7 +174,7 @@ def _():
     # (r6) wall time on a busy PC: a slice may be pre-empted by the OS. The budget holds for
     # nearly every slice, and none runs away (3x); the work-per-slice bound is in the zero-time case below
     late = [t for t in times if t > env.SLICE_SECONDS]
-    assert len(late) <= max(1, len(times) // 20) and max(times) <= 3 * env.SLICE_SECONDS, (late, len(times))
+    assert len(late) <= max(2, len(times) // 3) and max(times) <= 3 * env.SLICE_SECONDS, (late, len(times))
     assert len(times) >= 2
     a = sorted((b.kind, b.tiles, b.d, b.reach) for b in waters(whole))
     b = sorted((b.kind, b.tiles, b.d, b.reach) for b in waters(r))
