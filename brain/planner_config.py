@@ -1605,7 +1605,7 @@ PLANNER_CONFIG.update({
     "r5p3_refusal_first_days": 1,         # the first wait, game days (doubles each refusal after)
     "r5p3_refusal_wait_max_days": 28,     # ...never more than this
     "r5p3_refusal_forget_days": 336,      # a streak is kept this long after its last refusal (the general one: 60)
-    "r5p3_refusal_keep": 60,              # streaks kept at most (the oldest go first)
+    "r5p3_refusal_keep": 30,              # streaks kept at most (the oldest go first; r5 Z2: was 60, past the memory budget)
 })
 
 

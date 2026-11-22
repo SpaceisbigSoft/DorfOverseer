@@ -22,7 +22,17 @@ the scorecard, the strategist, culture, visitors) goes through citizen_death.
 from __future__ import annotations
 
 REST_WORDS = ("put to rest", "laid to rest")
-TOLD_KEEP = 2000          # [unit id, tick] of citizens told dead, kept in memory (the newest)
+def _old_death(e: dict, now) -> bool:
+    """(r5 Z1) A death that happened over a day before now (told again), or that can't be dated."""
+    if e.get("unit_id") is None:
+        return True
+    t = _ev_tick(e)
+    if not isinstance(t, int) or not isinstance(now, int):
+        return True
+    return now - t > 1200
+
+
+TOLD_KEEP = 300           # (r5 Z2: was 2000, past the memory budget)          # [unit id, tick] of citizens told dead, kept in memory (the newest)
 YEAR_TICKS = 403200
 REWIND_SLACK = 1200       # a day: the report's date and the event's tick may differ a little
 
@@ -110,7 +120,9 @@ def mark_rests(events, told=None, now=None) -> list:
         if e.get("kind") == "death" and e.get("own_civ") and not e.get("animal"):
             uid = e.get("unit_id")
             if (e.get("again") or e.get("ghost") or (uid is not None and uid in seen)
-                    or (rest_names and _who(e.get("name")) in rest_names)):
+                    or (rest_names and _who(e.get("name")) in rest_names and _old_death(e, now))):
+                # (r5 Z1) by name only for a death told again (it happened over a day ago, or has no
+                # unit id or date): a fresh death that shares a ghost's name in the same batch is real
                 out.append(dict(e, again=True, rest=True))
                 continue
             if uid is not None and isinstance(told, list):

@@ -113,7 +113,8 @@ def _():
     assert rests.mark_rests([dict(DEATH)], told, Y * 403200 + T + 10)[0]["rest"]
     # a ghost's own death, and one named by a rest announcement in the batch (another unit id)
     g = rests.mark_rests([dict(DEATH, unit_id=5, ghost=True)], [], 0)[0]
-    n = rests.mark_rests([dict(DEATH, unit_id=6), dict(REST_REPORT)], [], 0)
+    # (r5 Z1) a death told again: it happened over a day before now
+    n = rests.mark_rests([dict(DEATH, unit_id=6), dict(REST_REPORT)], [], Y * 403200 + T + 5000)
     assert g["rest"] and g["again"] and n[0]["rest"] and n[1]["topic"] == "rest", (g, n)
     # an older save loaded (now before the death): the death never happened; told again later it is a death
     told = [[16786, Y * 403200 + T - 500]]

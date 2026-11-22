@@ -114,6 +114,13 @@ def exempt(p, memory=None, state=None) -> bool:
     crisis = bool(_d(getattr(memory, "crisis", None)).get("why")) if memory is not None else False
     if _water(p) and (crisis or a.get("urgent")):
         return True
+    # (r5 Z3) an urgent survival step (a hospital in a crisis, a Still for the thirsty, the ghosts'
+    # tombs) is never held: its refusal may clear any day
+    try:
+        if a.get("urgent") and _hc.step_class(p) == _hc.SURVIVAL and (crisis or getattr(p, "rule", None) == "bottleneck"):
+            return True
+    except Exception:  # noqa: BLE001
+        return True
     return False
 
 
@@ -166,7 +173,9 @@ def _prune(book: dict, now: int, cfg: dict) -> None:
         book.pop(k, None)
     most = max(1, int(cfg.get("r5p3_refusal_keep", 60) or 60))
     if len(book) > most:     # the working memory stays small: the oldest go first
-        for k in sorted(book, key=lambda k: book[k]["at"])[:len(book) - most]:
+        streak = max(1, int(cfg.get("r5p3_refusal_streak", 3) or 3))
+        # (r5 merge) one-off refusals go first, the oldest of them first: a real streak is what is kept
+        for k in sorted(book, key=lambda k: (int(book[k].get("n") or 0) >= streak, book[k]["at"]))[:len(book) - most]:
             book.pop(k, None)
 
 
@@ -179,6 +188,9 @@ def wait(memory, p, state: dict, now: int, cfg: dict):
     until = rec.get("until")
     if not isinstance(until, int) or not 0 <= now < until:
         return None
+    cap = max(1, int(cfg.get("r5p3_refusal_wait_max_days", 28) or 28)) * TICKS_PER_DAY
+    if until - now > cap or (isinstance(rec.get("at"), int) and rec["at"] > now):
+        return None      # (r5 Z4) the game's time went back (an older save): the wait no longer holds
     if rec.get("sig") != signature(p, state):
         return None
     return max(1, -(-(until - now) // TICKS_PER_DAY)), rec
