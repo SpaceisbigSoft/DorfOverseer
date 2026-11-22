@@ -262,6 +262,10 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 and not a.get("ids")):
             # (0.105.9) the probe: is the applicant DF's resident within a few days?
             memory.residency["probe"] = {"id": a.get("id"), "unit": r.get("unit"), "tick": now}
+        if a["type"] == "petition_orders" and r.get("ok") is True and not a.get("dry_run"):
+            # (r10 p1) what the AI set (a later other reading is yours) and what waited then
+            from planner_visitors import orders_set_by_ai
+            orders_set_by_ai(state, memory, _d(a.get("orders")), now)
         if a["type"] == "answer_petition" and a.get("accept") and a.get("wish"):
             memory.wishes_agreed[str(a["wish"])] = now
             for k in [k for k, t in memory.wishes_agreed.items() if not isinstance(t, int) or now - t > 2 * TICKS_PER_YEAR]:

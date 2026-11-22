@@ -386,6 +386,8 @@ def short(a: dict) -> str:
             return f"{what}: look again at its leak watch"
         return f"{what}: next step"
     if t == "answer_petition":
+        if a.get("citizenship"):     # (r10 p1)
+            return ("agree to" if a.get("accept") else "decline") + f" {len(a.get('ids') or [1])} citizenship petition(s)"
         if a.get("ids"):
             return ("agree to" if a.get("accept") else "decline") + f" {len(a['ids'])} petitions to stay"
         if a.get("residency"):

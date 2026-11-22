@@ -11,7 +11,7 @@ from digest import _d, _l
 from rests import citizen_death  # (r5 p2) a ghost laid to rest is no death
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "residency_kind", "residency_room", "residency_verdict", "note_residency", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since", "sought_artifact", "artifacts_at_risk", "note_artifact_risk", "claimed_shut"]
+__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "petition_kind", "orders_set_by_ai", "note_petition_orders", "_citizenship_rule", "residency_stance", "residency_kind", "residency_room", "residency_verdict", "note_residency", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since", "sought_artifact", "artifacts_at_risk", "note_artifact_risk", "claimed_shut"]
 
 
 PETITION_KINDS = ("performer", "scholar", "monster_hunter", "mercenary", "sanctuary", "citizenship")
@@ -37,13 +37,103 @@ def petition_orders_wanted(s: dict, cfg: dict) -> dict:
                                  and not o["closed"]) else 0}
 
 
-def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+def _petition_danger(s: dict, cfg: dict) -> bool:
+    """(r10 p1) Threats that can reach the dwarves: nothing about petitions is
+    changed then (a visitor taken in, or turned out, mid-attack)."""
+    try:
+        traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
+        return bool(reachable_threats(s, traits, cfg))
+    except Exception:  # noqa: BLE001  (a report without others_on_map: no danger known)
+        return False
+
+
+def petition_kind(e: dict) -> str:
+    """(r10 p1) The standing order a waiting petition falls under:
+    citizenship, or a petition to stay's kind (residency_kind)."""
+    e = _d(e)
+    if str(e.get("type") or "").lower() == "citizenship":
+        return "citizenship"
+    return residency_kind(e) if e.get("type") == "Residency" else "?"
+
+
+def _pending_ids(pt: dict, kind: str) -> list:
+    return [e.get("id") for e in _l(_d(pt).get("pending"))
+            if isinstance(e, dict) and isinstance(e.get("id"), int) and petition_kind(e) == kind]
+
+
+def orders_set_by_ai(s: dict, memory, wanted: dict, now: int) -> None:
+    """(r10 p1) The AI set DF's petition standing orders (planner_record):
+    what it set (a later different reading is yours), and for each kind set
+    to accept, when and which petitions of that kind waited then (did DF's
+    order take those too? note_petition_orders says, r10p1_orders_sweep_days on)."""
+    if memory is None or not isinstance(wanted, dict):
+        return
+    po = memory.petition_orders if isinstance(memory.petition_orders, dict) else {}
+    memory.petition_orders = po
+    pt = _d(s.get("petitions"))
+    for k, v in wanted.items():
+        if k not in PETITION_KINDS or v not in (0, 1):
+            continue
+        po.setdefault("set", {})[k] = v
+        _d(po.get("yours")).pop(k, None)
+        if v == 1:
+            po.setdefault("at", {})[k] = now
+            po.setdefault("before", {})[k] = _pending_ids(pt, k)[:50]
+            _d(po.get("swept")).pop(k, None)
+        else:
+            _d(po.get("at")).pop(k, None)
+            _d(po.get("before")).pop(k, None)
+
+
+def note_petition_orders(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> None:
+    """(r10 p1) Bookkeeping before planning: a standing order that reads other
+    than the AI set it was changed by you (left alone
+    r10p1_orders_yours_days); and once r10p1_orders_sweep_days have passed
+    since an order was set to accept, whether the petitions of its kind that
+    waited before were taken by DF (gone from the waiting list: swept True)
+    or left (False: they wait for the petitions screen)."""
+    if memory is None:
+        return
+    pt = _d(s.get("petitions"))
+    orders = _d(pt.get("orders"))
+    if "error" in pt or not orders:
+        return
+    po = memory.petition_orders if isinstance(memory.petition_orders, dict) else {}
+    memory.petition_orders = po
+    now = abs_tick(s)
+    st = _d(po.get("set"))
+    for k, v in list(st.items()):
+        if orders.get(k) in (0, 1) and orders.get(k) != v:
+            po.setdefault("yours", {})[k] = now
+            del st[k]
+            _d(po.get("at")).pop(k, None)
+            _d(po.get("before")).pop(k, None)
+    at, before = _d(po.get("at")), _d(po.get("before"))
+    for k, t in list(at.items()):
+        ids = before.get(k)
+        if not isinstance(t, int) or not isinstance(ids, list):
+            continue
+        if now - t >= cfg["r10p1_orders_sweep_days"] * TICKS_PER_DAY:
+            if ids:                                  # nothing waited before: nothing to learn
+                still = set(_pending_ids(pt, k))
+                po.setdefault("swept", {})[k] = not any(i in still for i in ids)
+            before.pop(k, None)
+
+
+def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """(0.87) Petitions DF waits on an answer for (the log: citizenship and
     guildhall petitions "ignored" again and again): with the Rules switch on,
     DF's own standing orders answer residency and citizenship petitions
     (petition_orders_wanted); the AI changes them only when they differ.
     Petitions waiting are noted by kind; temples and guildhalls stay yours
-    (0.89: the AI answers and builds them itself, _location_petition_rules)."""
+    (0.89: the AI answers and builds them itself, _location_petition_rules).
+    (r10 p1) The orders are reached on Windows now (the bridge binds DF's
+    own symbol names, `orders_via` "symbols"). Nothing is changed while DF's
+    petitions screen or the standing orders' Petitions tab is open, or while
+    threats can reach the dwarves; a standing order you changed after the AI
+    set it is left alone r10p1_orders_yours_days; with the Rules switch
+    "accept visitors" off the orders are not touched, but those the AI set
+    to accept are put back to ask (0)."""
     pt = s.get("petitions")
     if not isinstance(pt, dict) or "error" in pt:
         return
@@ -56,48 +146,72 @@ def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         vamp = [e.get("name") for e in pending if e.get("vampire")]
         notes.append("petitions waiting for an answer: " + ", ".join(f"{k} {n}" for k, n in sorted(kinds.items()))
                      + (f" (a vampire among them: {', '.join(str(v) for v in vamp)})" if vamp else ""))
-        _citizenship_notes(s, cfg, pending, notes)
+        _citizenship_notes(s, cfg, pending, notes, memory)
     orders = _d(pt.get("orders"))
-    if not player_rules(s).get("accept_visitors", True):
-        return
+    welcome = player_rules(s).get("accept_visitors", True)
     if not orders:
-        # (live, 0.87.0: DFHack 53.16-r3 doesn't expose these globals; newer
-        # df-structures have them for 53.16, so a DFHack update turns this on)
-        if pending:
+        # (live, 0.87.0 to 0.105.65: on Windows DFHack 53.16-r3 and 53.17-r1
+        # bind these by names the win64 symbol tables don't use; r10 p1's
+        # bridge binds DF's own names, so this is now a bridge that couldn't)
+        if pending and welcome:
             # (0.105.35) the residency rule answers them one by one meanwhile
-            notes.append("this DFHack can't reach DF's petition standing orders: the AI answers the petitions "
-                         "to stay one by one instead (a newer DFHack lets it set the orders)")
+            why = pt.get("orders_why")
+            notes.append("the bridge can't reach DF's petition standing orders" + (f" ({why})" if why else "")
+                         + ": the AI answers the petitions to stay one by one instead")
         return
     if any(orders.get(k) not in (0, 1) for k in PETITION_KINDS):
         notes.append("DF's petition standing orders hold values the AI doesn't know: left alone")
         return
-    want = petition_orders_wanted(s, cfg)
-    change = {k: v for k, v in want.items() if orders.get(k) != v}
-    if change:
-        what = ", ".join(f"{'accept' if v else 'ask about'} {k.replace('_', ' ')}" for k, v in change.items())
-        proposals.append(Proposal("petitions", {"type": "petition_orders", "orders": change},
-                                  f"petitions to stay: {what} (DF's standing orders answer them)", 6))
+    po = _d(getattr(memory, "petition_orders", None)) if memory is not None else {}
+    # the switch off: the orders are never touched, but for the AI's own
+    # accepts, put back to ask (DF would go on taking visitors in by them)
+    want = (petition_orders_wanted(s, cfg) if welcome
+            else {k: 0 for k, v in _d(po.get("set")).items() if v == 1 and k in PETITION_KINDS})
+    now = abs_tick(s)
+    held = sorted(k for k, t in _d(po.get("yours")).items()
+                  if isinstance(t, int) and 0 <= now - t < cfg["r10p1_orders_yours_days"] * TICKS_PER_DAY)
+    change = {k: v for k, v in want.items() if orders.get(k) != v and k not in held}
+    if held and any(orders.get(k) != want.get(k) for k in held):
+        notes.append("you changed DF's petition standing order for " + ", ".join(k.replace("_", " ") for k in held)
+                     + ": the AI leaves it as you set it")
+    if not change:
+        return
+    busy = pt.get("screen_busy")
+    if busy:
+        notes.append(f"{busy}: DF's petition standing orders are set once it is closed")
+        return
+    if _petition_danger(s, cfg):
+        notes.append("threats can reach the dwarves: DF's petition standing orders are set once they are gone")
+        return
+    what = ", ".join(f"{'accept' if v else 'ask about'} {k.replace('_', ' ')}" for k, v in change.items())
+    proposals.append(Proposal("petitions", {"type": "petition_orders", "orders": change},
+                              f"petitions to stay: {what} (DF's standing orders answer them)", 6))
 
 
-def _citizenship_notes(s: dict, cfg: dict, pending: list, notes: list) -> None:
-    """(0.105.24, 12b) Citizenship petitions are the player's: DFHack 53.16-r3
-    can't reach DF's standing order for them (the self-test's missing
-    standing_orders_petition_citizenship), the bridge answers only temple,
-    guildhall and residency petitions, and agreeing by the agreement's flag
-    left a residency applicant a guest in B (0.105.11), so agreeing to
-    citizenship that way isn't known to make a citizen. Said with counts:
-    a Needs you when the fort would take them (under its population target,
-    not closed, the Rules let visitors stay), else a note. Applicants who
-    left or died are counted apart (nothing to agree to)."""
+def _citizenship_notes(s: dict, cfg: dict, pending: list, notes: list, memory=None) -> None:
+    """(0.105.24, 12b) Citizenship petitions waiting. The bridge answers
+    temple, guildhall and residency petitions only: agreeing by the
+    agreement's flag left a residency applicant a guest in B (0.105.11), so
+    agreeing to citizenship that way isn't known to make a citizen. (r10 p1)
+    DF's own standing order is how the AI agrees now (_petition_rules):
+    while it is set to accept and the AI waits r10p1_orders_sweep_days to see
+    whether DF takes the ones that waited before, a note; once DF is seen to
+    leave them (or the order can't be reached), a Needs you when the fort
+    would take them (under its population target, not closed, the Rules let
+    visitors stay), else a note. Applicants who left or died are counted
+    apart (nothing to agree to)."""
     cit = [e for e in pending if str(e.get("type") or "").lower() == "citizenship"]
     if not cit:
         return
     gone = [e for e in cit if not _d(e.get("applicant")).get("on_map") or _d(e.get("applicant")).get("dead")]
     here = [e for e in cit if e not in gone]
     tail = f" ({len(gone)} more from visitors who left or died)" if gone else ""
+    pt = _d(s.get("petitions"))
+    orders = _d(pt.get("orders"))
+    po = _d(getattr(memory, "petition_orders", None)) if memory is not None else {}
     if not here:
         notes.append(f"{len(gone)} citizenship petition(s) from visitors who left or died wait on DF's petitions "
-                     "screen (the AI can't answer citizenship)")
+                     "screen (nobody to agree to)")
         return
     vamp = [e for e in here if e.get("vampire")]
     names = ", ".join(str(e.get("name")) for e in here[:3] if e.get("name"))
@@ -105,18 +219,75 @@ def _citizenship_notes(s: dict, cfg: dict, pending: list, notes: list) -> None:
     target = growth_target(s, cfg)
     wanted = petition_orders_wanted(s, cfg).get("citizenship") == 1 and player_rules(s).get("accept_visitors", True)
     if wanted and len(vamp) < len(here):
+        swept = _d(po.get("swept")).get("citizenship")
+        before = _l(_d(po.get("before")).get("citizenship"))
+        if orders.get("citizenship") == 1 and any(e.get("id") in before for e in here):
+            notes.append(f"{len(here) - len(vamp)} citizenship petition(s) waited before DF's standing order was set "
+                         "to accept: the AI watches whether DF takes them in by the order")
+            return
+        if orders.get("citizenship") == 1:
+            how = ("DF's standing order, set to accept, takes new ones" + (", and left these" if swept is False else ""))
+        elif orders:
+            how = "DF's standing order for citizenship isn't set to accept yet"
+        else:
+            how = ("the bridge can't reach DF's standing order" + (f" ({pt.get('orders_why')})" if pt.get("orders_why")
+                                                                 else "")
+                   + ", and agreeing outside the screen isn't known to make a citizen")
         ask_player(notes, f"{len(here) - len(vamp)} citizenship petition(s) wait and the fort would take them "
                           f"({citizens} citizens, the target {target}): agree on DF's petitions screen"
                           + (f" ({names})" if names else "") + tail
-                          + "; the AI can't (DFHack can't reach the standing order, and agreeing outside the "
-                            "screen isn't known to make a citizen); meanwhile the applicants stay as visitors "
-                            "and the AI grows the fort by its migrants"
+                          + f" ({how}); meanwhile the applicants stay as visitors and the AI grows the fort by its "
+                            "migrants"
                           + (f"; {len(vamp)} of them a vampire: leave that one" if vamp else ""))
     else:
         why = ("a vampire" if wanted else "this fort isn't taking citizens now (closed, at its population target, "
                                           "or the Rules keep visitors out)")
-        notes.append(f"{len(here)} citizenship petition(s) wait{tail}: {why}; they are left waiting (the AI "
-                     "can't answer citizenship)")
+        notes.append(f"{len(here)} citizenship petition(s) wait{tail}: {why}; they are left waiting")
+
+
+def _citizenship_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(r10 p1, 12b) Citizenship petitions the fort won't take are declined,
+    as petitions to stay are (taken off DF's waiting list: lua answer_petition):
+    at once from a visitor who left or died, a vampire, or a closed fort
+    (Outsiders -50 or lower); after h9_residency_player_days when the fort is
+    at its population target or the Rules keep visitors out (you may still
+    agree on DF's petitions screen meanwhile). The ones it would take are
+    agreed by DF's own standing order (_petition_rules) or by you on the
+    screen (_citizenship_notes says which). Never while DF's petitions screen
+    is open or threats can reach the dwarves."""
+    pt = _d(s.get("petitions"))
+    if "error" in pt:
+        return
+    cit = [e for e in _l(pt.get("pending")) if isinstance(e, dict) and isinstance(e.get("id"), int)
+           and str(e.get("type") or "").lower() == "citizenship"]
+    if not cit or pt.get("screen_busy") or _petition_danger(s, cfg):
+        return                                   # (said by the residency rule's notes)
+    traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
+    batch = cfg["residency_batch"]
+    wanted = petition_orders_wanted(s, cfg).get("citizenship") == 1 and player_rules(s).get("accept_visitors", True)
+    wait = int(_h9(cfg, "h9_residency_player_days"))
+    no, why = [], {}
+    for e in cit:
+        a = _d(e.get("applicant"))
+        w = None
+        if not a.get("on_map") or a.get("dead"):
+            w = "the visitor left or died"
+        elif e.get("vampire"):
+            w = "a vampire"
+        elif residency_stance(traits, cfg) == "decline":
+            w = f"the fort keeps to itself (Outsiders {traits.get('outsiders', 0)})"
+        elif not wanted and isinstance(e.get("days"), int) and e["days"] >= wait:
+            w = f"not taking citizens now, and it waited {wait} days or more"
+        if w:
+            no.append(e["id"])
+            why[w] = why.get(w, 0) + 1
+    if not no:
+        return
+    ids = no[:batch]
+    whys = "; ".join(f"{w} ({n})" if n > 1 else w for w, n in sorted(why.items(), key=lambda kv: -kv[1])[:3])
+    proposals.append(Proposal("citizenship", {"type": "answer_petition", "ids": ids, "accept": False,
+                                              "citizenship": True},
+                              f"{len(no)} citizenship petition(s) the fort won't take: {whys}: decline {len(ids)}", 6))
 
 
 def residency_stance(traits: dict, cfg: dict) -> str:
@@ -210,10 +381,15 @@ def residency_verdict(e: dict, s: dict, cfg: dict, stance: str, memory=None) -> 
 
 def note_residency(s: dict, memory) -> None:
     """(r2 h9) When each petition to stay was first seen (note_cycle): its
-    age where the report gives none."""
+    age where the report gives none. (r10 p1) Then DF's petition standing
+    orders' bookkeeping (note_petition_orders)."""
     pt = _d(s.get("petitions"))
     if "error" in pt:
         return
+    try:
+        note_petition_orders(s, memory)
+    except Exception:  # noqa: BLE001  (bookkeeping only: the residency ages still go on)
+        pass
     ids = {str(e.get("id")) for e in _l(pt.get("pending")) if isinstance(e, dict) and e.get("type") == "Residency"}
     st = getattr(memory, "residency", None)
     if not isinstance(st, dict) or (not ids and "seen" not in st):
@@ -244,10 +420,15 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
         on, one is agreed as a probe and the rest follow once it shows as a
         resident (petitions.residents).
     With the Rules switch "accept visitors" off, none is agreed: they are
-    left the same days, then declined."""
+    left the same days, then declined. (r10 p1) Citizenship petitions the
+    fort won't take are declined first (_citizenship_rule, a rule of its own)."""
     pt = _d(s.get("petitions"))
     if "error" in pt:
         return
+    try:
+        _citizenship_rule(s, memory, cfg, proposals, notes)
+    except Exception as e:  # noqa: BLE001  (its own failure never stops the petitions to stay)
+        notes.append(f"rule citizenship failed: {e}")
     pending = [e for e in _l(pt.get("pending")) if isinstance(e, dict) and e.get("type") == "Residency"
                and isinstance(e.get("id"), int)]
     st = _d(memory.residency)
@@ -277,6 +458,16 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
         probe = {}
     if not pending:
         return
+    # (r10 p1) never under the player's eyes, never while threats reach the dwarves
+    if pt.get("screen_busy"):
+        notes.append(f"{pt['screen_busy']}: the petitions to stay are answered once it is closed")
+        return
+    if _petition_danger(s, cfg):
+        notes.append(f"{len(pending)} petition(s) to stay wait: answered once no threat can reach the dwarves")
+        return
+    # (r10 p1) why the AI doesn't agree itself, as it stands in this fort
+    cant = ("DF's standing orders take new ones as they come, not these" if _d(pt.get("orders"))
+            else "DFHack can't reach DF's standing orders")
     traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
     stance = residency_stance(traits, cfg)
     gone = [e["id"] for e in pending
@@ -336,8 +527,8 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
             proposals.append(Proposal("residency", {"type": "answer_petition", "ids": ids, "accept": False,
                                                     "residency": True},
                                       f"{len(old)} petition(s) to stay waited {wait} days or more on DF's petitions "
-                                      "screen for you; the AI can't agree to them (DFHack can't reach DF's standing "
-                                      "orders, and agreeing outside the screen leaves the visitor a guest): "
+                                      f"screen for you; the AI can't agree to them ({cant}, and agreeing outside "
+                                      "the screen leaves the visitor a guest): "
                                       f"decline {len(ids)} rather than leave them waiting", 7))
             return
         if not player_rules(s).get("accept_visitors", True):
@@ -345,8 +536,8 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
                          f"{wait} days unless you answer them on DF's petitions screen")
             return
         ask_player(notes, f"{len(here)} petition(s) to stay from visitors this fort would take: agree to them on "
-                          f"DF's petitions screen within {wait} days of their asking; the AI can't (DFHack can't "
-                          "reach DF's standing orders, and agreeing from outside the screen leaves the visitor a "
+                          f"DF's petitions screen within {wait} days of their asking; the AI can't ({cant}, "
+                          "and agreeing from outside the screen leaves the visitor a "
                           "guest); meanwhile it declines the ones it wouldn't take and, after that, these")
         return
     if works is None and not probe:

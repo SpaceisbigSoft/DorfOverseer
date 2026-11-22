@@ -766,5 +766,88 @@ function get_justice()
     return out
 end
 
+-- (r10 p1, Phase 12b) DF's petition standing orders, reached where DFHack's
+-- names miss them. In DFHack 53.17-r1 (df-structures 611369f, the same commit
+-- at the 53.17-r1 tag and on master) df.game_v.xml declares the six globals as
+-- standing_orders_petition_* (original-name standingorder_petition_*), and
+-- DFHack binds a global by that name (DataStatics.cpp INIT_GLOBAL_FUNCTION_ITEM,
+-- VersionInfo::getAddress). symbols.xml's win64 tables (STEAM, ITCH, CLASSIC)
+-- list these six under DF's own names, standingorder_petition_*, so on Windows
+-- df.global.standing_orders_petition_* reads "global address not known": every
+-- fort's `orders: []`. The linux64 tables use DFHack's names. The fix: when
+-- DFHack's name has no address and DF's name has one, bind DFHack's name to it
+-- (dfhack.internal.setAddress, LuaApi.cpp: it sets the global's pointer, so
+-- df.global reads and writes it). Guards: each address within
+-- PETITION_ORDER_NEAR bytes of standing_orders_auto_collect_webs (a standing
+-- order DFHack binds by name on every platform: 2-21 bytes away in all five
+-- 53.17 tables), six different addresses, and each byte reads 0 or 1 once
+-- bound; otherwise unbound again and left alone. Tried once a session.
+PETITION_ORDER_SYMBOLS = {
+    performer = 'standingorder_petition_resident_performer', scholar = 'standingorder_petition_resident_scholar',
+    monster_hunter = 'standingorder_petition_resident_monster_hunter',
+    mercenary = 'standingorder_petition_resident_mercenary', sanctuary = 'standingorder_petition_resident_sanctuary',
+    citizenship = 'standingorder_petition_citizenship',
+}
+PETITION_ORDER_ANCHOR = 'standing_orders_auto_collect_webs'
+PETITION_ORDER_NEAR = 128
+PETITION_BIND = PETITION_BIND or nil       -- {via = 'names'|'symbols'|nil, why = ...}, once a session
+
+function petition_orders_bind()
+    if PETITION_BIND then return PETITION_BIND.via, PETITION_BIND.why end
+    local I = dfhack.internal
+    local via, why
+    local ok, err = pcall(function()
+        if type(I) ~= 'table' or not I.getAddress or not I.setAddress then why = 'no dfhack.internal'; return end
+        local todo, mine = {}, 0
+        for _, k in ipairs(PETITION_ORDERS) do
+            local a = I.getAddress(petition_order_name(k))
+            if a == nil then table.insert(todo, k)
+            elseif a == I.getAddress(PETITION_ORDER_SYMBOLS[k]) then mine = mine + 1 end   -- bound by an earlier load
+        end
+        if #todo == 0 then via = (mine > 0) and 'symbols' or 'names'; return end
+        local anchor = I.getAddress(PETITION_ORDER_ANCHOR)
+        if not anchor then why = PETITION_ORDER_ANCHOR .. ' has no address'; return end
+        local addrs, seen = {}, {}
+        for _, k in ipairs(todo) do
+            local a = I.getAddress(PETITION_ORDER_SYMBOLS[k])
+            if not a then why = 'no address for ' .. PETITION_ORDER_SYMBOLS[k]; return end
+            if math.abs(a - anchor) > PETITION_ORDER_NEAR then why = PETITION_ORDER_SYMBOLS[k] .. ' is not by the other standing orders'; return end
+            if seen[a] then why = 'two petition orders share an address'; return end
+            seen[a], addrs[k] = true, a
+        end
+        for k, a in pairs(addrs) do I.setAddress(petition_order_name(k), a) end
+        for k in pairs(addrs) do
+            local okv, v = pcall(function() return df.global[petition_order_name(k)] end)
+            if not okv or (v ~= 0 and v ~= 1) then
+                for k2 in pairs(addrs) do pcall(I.setAddress, petition_order_name(k2), 0) end
+                why = 'standing order ' .. k .. ' read ' .. tostring(v) .. ' at DF\'s address: unbound, left alone'
+                return
+            end
+        end
+        via = 'symbols'
+    end)
+    if not ok then via, why = nil, tostring(err) end
+    PETITION_BIND = {via = via, why = why}
+    return via, why
+end
+
+-- (r10 p1) The player reading petitions: DF's petitions screen
+-- (main_interface.petitions.open, Gui.cpp's ".../Petitions" focus) or the
+-- standing orders' Petitions tab (".../STANDING_ORDERS/PETITIONS"). Nothing
+-- about petitions is changed under it; nil when neither is open.
+function petitions_screen_busy()
+    local ok, open = pcall(function() return df.global.game.main_interface.petitions.open end)
+    if ok and open then return 'DF\'s petitions screen is open' end
+    local okf, fs = pcall(function() return dfhack.gui.getFocusStrings(dfhack.gui.getDFViewscreen(true)) end)
+    if okf and type(fs) == 'table' then
+        for _, f in ipairs(fs) do
+            f = tostring(f)
+            if f:find('/Petitions', 1, true) then return 'DF\'s petitions screen is open' end
+            if f:find('STANDING_ORDERS/PETITIONS', 1, true) then return 'the standing orders\' Petitions tab is open' end
+        end
+    end
+    return nil
+end
+
 -- (r6) shared with ai-bridge-report-world
 REPORT_PART_LOCALS.layer_at, REPORT_PART_LOCALS.citizen_positions, REPORT_PART_LOCALS.nearest = layer_at, citizen_positions, nearest

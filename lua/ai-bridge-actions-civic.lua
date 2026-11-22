@@ -555,11 +555,13 @@ end
 -- or 1 now (anything else would mean the game uses these values otherwise)
 function act_petition_orders(a)
     if type(a.orders) ~= 'table' then return reject('petition_orders needs orders {kind = 0|1}') end
+    local via, why = petition_orders_bind()     -- (r10 p1) Windows: DF's own names for them
     local cur, set = {}, {}
     for _, k in ipairs(PETITION_ORDERS) do
         local okv, v = pcall(function() return df.global[petition_order_name(k)] end)
         if not okv or (v ~= 0 and v ~= 1) then
-            return {ok = false, rejected = true, error = 'standing order ' .. k .. ' reads ' .. tostring(v) .. ', not 0 or 1: left alone'}
+            return {ok = false, rejected = true, error = 'standing order ' .. k .. ' reads ' .. tostring(v) .. ', not 0 or 1: left alone'
+                    .. (not okv and why and (' (' .. why .. ')') or '')}
         end
         cur[k] = v
     end
@@ -567,12 +569,14 @@ function act_petition_orders(a)
         if cur[k] == nil or (v ~= 0 and v ~= 1) then return reject('petition_orders: unknown ' .. tostring(k) .. '=' .. tostring(v)) end
         if cur[k] ~= v then set[k] = v end
     end
-    if a.dry_run then return {ok = true, dry_run = true, would_set = set, now = cur} end
+    if a.dry_run then return {ok = true, dry_run = true, would_set = set, now = cur, via = via} end
+    local busy = next(set) and petitions_screen_busy()     -- (r10 p1) never under the player's eyes
+    if busy then return {ok = false, waiting = true, error = busy .. ': the orders are set later'} end
     for k, v in pairs(set) do df.global[petition_order_name(k)] = v end
     for k, v in pairs(set) do
         if df.global[petition_order_name(k)] ~= v then return {ok = false, error = 'the game did not keep ' .. k} end
     end
-    return {ok = true, set = next(set) and set or nil, was = cur}
+    return {ok = true, set = next(set) and set or nil, was = cur, via = via}
 end
 
 -- A squad given one of the fort's uniform templates (lua/ai-military.lua).
