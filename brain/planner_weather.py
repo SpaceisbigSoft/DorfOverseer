@@ -153,8 +153,9 @@ def note_keep_in(memory, now, action: dict, ok) -> None:
 
 
 def _kept_members(s: dict) -> int:
-    """(r9) The civilians the bridge keeps in for the weather now (the
-    society section's weather_keep_in; 0 unread)."""
+    """(r9, audit A7 #20) Citizens the bridge holds in the weather keep-in
+    burrow now (society.weather_keep_in.members; 0 when unread or an older
+    bridge)."""
     wk = _d(_d(s.get("society")).get("weather_keep_in"))
     n = wk.get("members")
     return n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
@@ -242,22 +243,20 @@ def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
             return
         why = f"{wa.get('why') or 'evil weather'}, gone {gone // TICKS_PER_HOUR} game hour(s) ago (held {lift} after)"
     else:
-        if _kept(wa):
+        strays = _kept_members(s)
+        if _kept(wa) or strays:
             # (item4) a letting-out that didn't go through: tried again
+            # (r9, audit A7 #20) or citizens still in the weather burrow with
+            # no keep-in in memory (a keeper stopped mid-spell, memory lost)
             proposals.append(Proposal("threat_alert", dict(LET_OUT),
-                                      "no evil weather about: the civilians kept in go back to work outside", 0))
-        elif _kept_members(s):
-            # (r9, A7 2) the bridge still keeps civilians in the shelter for
-            # the weather with no spell in memory (memory lost, a brain from
-            # before): let out
-            proposals.append(Proposal("threat_alert", dict(LET_OUT),
-                                      f"no evil weather about and {_kept_members(s)} civilian(s) still kept in the "
-                                      "shelter for it: back to work outside", 0))
+                                      "no evil weather about: the civilians kept in go back to work outside"
+                                      + (f" ({strays} civilian(s) still in the AI shelter's burrow)" if strays and not _kept(wa)
+                                         else ""), 0))
         memory.weather_alarm = {}
         return
     days = (now - wa["since"]) // TICKS_PER_DAY
     if days >= _c(cfg, "weather_alarm_max_days"):
-        if _kept(wa):
+        if _kept(wa) or (_kept_members(s) and not wa.get("capped")):
             proposals.append(Proposal("threat_alert", dict(LET_OUT),
                                       f"{why}: the civilians have been kept in {days} days for it; let out (the "
                                       "fort can't stay indoors for ever); the weather is still watched", 0))

@@ -660,7 +660,7 @@ ACTIONS = {
     tame_wild = function(a)
         local n = int_in(a.max, 1, 10)
         if not n then return reject('tame_wild needs max 1-10') end
-        return reqscript('ai-herd').tame(n, a.dry_run == true, txt)
+        return reqscript('ai-herd').tame(n, a.dry_run == true, txt, a.predators == true)   -- (r9) large predators too
     end,
     train_hunt = function(a)
         local n = int_in(a.max, 1, 6)

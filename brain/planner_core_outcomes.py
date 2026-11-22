@@ -48,6 +48,10 @@ def _record_any_outcome(a: dict, r: dict, state: dict, memory, now: int, brief: 
                                                        "food_units", "well_tiles", "dry", "widened_for_drink",
                                                        "water_short")
                                     if sh.get(k) is not None}}
+    # (r9, audit A7 #20) the shelter couldn't be drawn as the alarm sounded:
+    # booked, so _shelter_supply_rule draws it again next cycle and says why
+    if t == "civ_alert" and a.get("on") is True and r.get("shelter_error"):
+        memory.shelter_supply = {"tick": now, "error": str(r["shelter_error"])[:120]}
     # (0.105.52) the AI's alarm lowered for the thirsty (a shelter with no
     # drink even over the whole fort): not sounded again for half a day
     if t == "civ_alert" and a.get("on") is False and a.get("why") == "thirst" and r.get("ok") is not False:

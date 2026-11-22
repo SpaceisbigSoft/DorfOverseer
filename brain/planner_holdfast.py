@@ -673,9 +673,9 @@ def _kill_hold_filter(s: dict, memory, cfg: dict, proposals: list, notes: list) 
         great = [t for t in rows if t.get("great_danger")]
         on = [x for x in squads.values() if x.get("ai_orders") and _kill_set(x) & kill]
         if great:
-            from planner_military import fight_or_hide
+            from planner_matchup import fight_judged      # (r9, audit A6 #13) asks, writes no memory
             able = [x for x in on if can_fight(x, cfg)] or on
-            go = fight_or_hide(s, memory, cfg, great, able)[0]
+            go = fight_judged(s, memory, cfg, great, able)[0]
         else:
             # (0.105.54) about even odds (planner_matchup.strike_bar), a fight
             # begun going on above three quarters of it, unless it turned bad

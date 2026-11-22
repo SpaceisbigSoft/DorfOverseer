@@ -613,6 +613,21 @@ def _():
     assert [x["name"] for x in r["wanted"]] == ["Drowned", "Gone"] and r["wanted"][0]["why"] == "unreachable", r
 
 
+@test("(r9, audit A7 #25) ai-welfare dead_scan: the walk over every unit kept a game day for the report; fresh for the action")
+def _():
+    if not need_lua():
+        return
+    lua, env, w = lua_world()
+    dead_fort(lua, w)
+    assert py(env.dead_scan())["total"] == 4
+    w.citizen(T(lua, {"id": 11, "nm": "Late", "dead": True, "hist_figure_id": 211}))   # died since: no body
+    assert py(env.dead_scan())["total"] == 4                                          # the day's walk
+    assert py(env.dead_scan(True))["total"] == 5                                      # fresh
+    lua.execute("local env = ...; env.df.global.cur_year_tick = env.df.global.cur_year_tick + 1200", env)
+    w.citizen(T(lua, {"id": 12, "nm": "Later", "dead": True, "hist_figure_id": 212}))
+    assert py(env.dead_scan())["total"] == 6                                          # a day on: walked again
+
+
 @test("ai-welfare engrave_memorials: an approved EngraveSlab order naming each; the dry run orders nothing; then nothing to do")
 def _():
     if not need_lua():

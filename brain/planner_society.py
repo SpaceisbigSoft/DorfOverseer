@@ -832,6 +832,8 @@ def _shelter_supply_rule(s: dict, memory, proposals: list, notes: list) -> None:
         memory.shelter_supply = {}
         return
     short = [str(sup[k]) for k in ("no_water", "drink_short", "no_food") if sup.get(k)]
+    if sup.get("error"):            # (r9, audit A7 #20) the fill as the alarm sounded failed
+        short.append("the shelter couldn't be drawn as the alarm sounded (" + str(sup["error"])[:80] + ")")
     # (0.105.52) with the AI's alarm up, the shelter is drawn again each quarter
     # day: a citizen cut off from it since (a gate shut, a stair lost) gets a
     # patch where they stand (cover_cut_off), not a whole-map path search every
@@ -850,7 +852,7 @@ def _shelter_supply_rule(s: dict, memory, proposals: list, notes: list) -> None:
     what = "; ".join(short)
     if s.get("civ_alert") is True:
         now = abs_tick(s)
-        if now - sup["tick"] >= TICKS_PER_DAY:
+        if now - sup["tick"] >= TICKS_PER_DAY or sup.get("error"):
             proposals.append(Proposal("shelter_supply", {"type": "refresh_shelter"},
                                       f"the alarm is on and {what}: the shelter is made again over the fort as it "
                                       "is now, to take in the drink and food brought inside since", 1))

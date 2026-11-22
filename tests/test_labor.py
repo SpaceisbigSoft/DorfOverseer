@@ -389,5 +389,22 @@ def _():
     assert r.ok is False and "unknown job" in r.error
 
 
+@test("(r9, audit A7 #22) take_labors: out of the work detail, so the game's recompute doesn't give it back; give_labor: into it")
+def _():
+    units = [{"id": 9, "labors": ["BREWER"]}, {"id": 10}]
+    g = game(units, [], DETAILS + [{"name": "Brewers", "labor": "BREWER", "members": [9]}])
+    env, u9, u10, lab = g["env"], g["by_id"][9], g["by_id"][10], g["lab"]
+    off = env.take_labors(u9, g["lua"].table_from(["BREWER"]))
+    assert list(off.values()) == ["BREWER"] and members(g, 5) == [] and not u9.status.labors[lab.BREWER]
+    g["recompute"](u9)                                              # the game's next recompute
+    assert not u9.status.labors[lab.BREWER]
+    assert env.give_labor(u10, "BREWER") is True and members(g, 5) == [10]
+    g["recompute"](u10)
+    assert u10.status.labors[lab.BREWER] is True
+    # a detail set to nobody is the player's: no labour given
+    g = game([{"id": 10}], [], DETAILS + [{"name": "Brewers", "labor": "BREWER", "mode": 2}])
+    assert g["env"].give_labor(g["by_id"][10], "BREWER") is False and members(g, 5) == []
+
+
 if __name__ == "__main__":
     finish()

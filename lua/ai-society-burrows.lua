@@ -746,17 +746,46 @@ local function hb_citizen(u)
     return not (oks and sane == false)
 end
 
--- Whether in a burrow other than ours and the recreation one, and whether
--- in the recreation one.
-local function burrows_of(u, own_id, rec_id)
-    local other, rec = false, false
-    local ok = pcall(function()
-        for _, bid in ipairs(u.burrows or {}) do
-            if bid == rec_id then rec = true elseif bid ~= own_id then other = true end
+-- (r9, audit A7 #21) The AI shelter's burrow, whose members are the
+-- evil-weather keep-in's (weather_keep_in): the AI's own, not a player's
+-- burrow, for the hospital and calm-down burrows. Its id, or -3 with none.
+local function shelter_id()
+    local ok, b = pcall(S.find_burrow, S.SHELTER_NAME)
+    return ok and b and b.id or -3
+end
+
+-- (r9, audit A7 #21) One taken into the hospital or a calm room comes out of
+-- the weather keep-in (the next keep-in skips them while they are there, as
+-- one in another burrow; let out of it, they are kept in again)
+local function wk_take_out(u, sid)
+    pcall(function()
+        for _, b in ipairs(df.global.plotinfo.burrows.list) do
+            if b.id == sid then dfhack.burrows.setAssignedUnit(b, u, false) break end
         end
     end)
-    if not ok then return true, false end
-    return other, rec
+    pcall(function()
+        local d = U.site_get(WEATHER_KEEP_KEY, nil)
+        if type(d) == 'table' and type(d.members) == 'table' and d.members[tostring(u.id)] then
+            d.members[tostring(u.id)] = nil
+            U.site_put(WEATHER_KEEP_KEY, d)
+        end
+    end)
+end
+
+-- Whether in a burrow other than ours and the recreation one, and whether
+-- in the recreation one; (r9) and whether in the AI shelter's (the weather
+-- keep-in: no player's burrow)
+local function burrows_of(u, own_id, rec_id, sid)
+    local other, rec, wk = false, false, false
+    local ok = pcall(function()
+        for _, bid in ipairs(u.burrows or {}) do
+            if bid == rec_id then rec = true
+            elseif bid == sid then wk = true
+            elseif bid ~= own_id then other = true end
+        end
+    end)
+    if not ok then return true, false, false end
+    return other, rec, wk
 end
 
 local function in_hospital_bed(u, zones)
@@ -769,16 +798,16 @@ local function in_hospital_bed(u, zones)
     return ok and yes or false
 end
 
--- eligible, and whether in the recreation burrow now
-local function hb_eligible(u, staff, own_id, rec_id)
+-- eligible, and whether in the recreation burrow now (r9: and the weather keep-in's)
+local function hb_eligible(u, staff, own_id, rec_id, sid)
     local okb, baby = pcall(dfhack.units.isBaby, u)
     if okb and baby then return false end
     if not hb_citizen(u) or u.military.squad_id ~= -1 or staff[u.id] or in_tantrum(u) then return false end
     if in_mood(u) then return false end              -- (0.105.51) a strange mood needs its workshop
     if not is_patient(u) then return false end
-    local other, rec = burrows_of(u, own_id, rec_id)
+    local other, rec, wk = burrows_of(u, own_id, rec_id, sid)
     if other then return false end
-    return true, rec
+    return true, rec, wk
 end
 
 -- (0.105.33, L6) The report's sources, cached: hospital_sources reads every
@@ -909,7 +938,7 @@ local function hb_maintain(d, b, zones, staff, src, now, dry_run, name, released
         since = tonumber(since) or now
         local keep = u and hb_citizen(u) and u.military.squad_id == -1 and not staff[u.id] and is_patient(u)
                      and not in_tantrum(u) and not in_mood(u)
-                     and not (burrows_of(u, b and b.id or -1, rec_id)) and true or false
+                     and not (burrows_of(u, b and b.id or -1, rec_id, shelter_id())) and true or false
         if keep and hb_dry(u) then
             let_out(id, u, true)                 -- (0.105.22) to drink and eat
         elseif keep and now - since >= days * 1200 then
@@ -1016,17 +1045,18 @@ function hospital_burrow_tick(max, per, dry_run, txt, days, release)
     local rec_b = S.find_burrow(RECREATION_NAME)
     local rec_id = rec_b and rec_b.id or -2
     local cands = {}
+    local sid = shelter_id()
     for _, u in ipairs(report_citizens(true)) do
         local key = tostring(u.id)
         local was = tonumber(d.out[key])
         if was and now - was >= HOSP_OUT_DAYS * 1200 then d.out[key] = nil; was = nil end
         if not d.members[key] and not was then
-            local ok, in_rec = hb_eligible(u, staff, b.id, rec_id)
+            local ok, in_rec, in_wk = hb_eligible(u, staff, b.id, rec_id, sid)
             -- (0.105.22) never one already thirsty or hungry; a bedridden one
             -- (in a hospital bed) only with a well giving water
             local bed = in_hospital_bed(u, zones)
             if ok and not hb_dry(u) and ((src.food and not bed) or (bed and src.well)) then
-                table.insert(cands, {u = u, inside = in_zones(u.pos, zones) and 1 or 0, rec = in_rec})
+                table.insert(cands, {u = u, inside = in_zones(u.pos, zones) and 1 or 0, rec = in_rec, wk = in_wk})
             end
         end
     end
@@ -1048,6 +1078,7 @@ function hospital_burrow_tick(max, per, dry_run, txt, days, release)
                 rec.out[key] = now
                 U.site_put(RECREATION_KEY, rec)
             end
+            if c.wk then wk_take_out(c.u, sid) end            -- (r9) out of the weather keep-in
             -- (review) each one listed and saved as moved in: a throw can't leave one assigned unlisted
             local oka = pcall(dfhack.burrows.setAssignedUnit, b, c.u, true)
             if oka then
@@ -1203,6 +1234,9 @@ local function calm_ai_ids(calm_by)
     local hb = hb_state()
     if hb.burrow_id ~= nil then ids[hb.burrow_id] = 'hosp' end
     for id in pairs(calm_by) do ids[id] = 'calm' end
+    -- (r9, audit A7 #21) the AI shelter's: the weather keep-in's members, no player's burrow
+    local sid = shelter_id()
+    if sid >= 0 and not ids[sid] then ids[sid] = 'wk' end
     return ids
 end
 
@@ -1687,6 +1721,7 @@ function calm_burrow_tick(max, days, dry_run, txt, release)
                     rec.out[key] = now
                     U.site_put(RECREATION_KEY, rec)
                 end
+                if c.which.wk then wk_take_out(c.u, c.which.wk) end   -- (r9) out of the weather keep-in
                 local tiles = fill_calm(b, best.z, src, best.pos)
                 local oka = pcall(dfhack.burrows.setAssignedUnit, b, c.u, true)
                 if oka then

@@ -74,7 +74,9 @@ for _, s in ipairs(spec.zones) do
                             contained_items = vec(items)})
     end
     if s.statue then table.insert(subs, {getType = function() return BT.Statue end, contained_items = vec()}) end
+    -- (r9) each zone a tile at x = its id (z 1), for the AI's levels (spec.ai_areas)
     local z = {id = s.id, type = 7, assigned_unit_id = -1, contained_buildings = vec(subs),
+               x1 = s.id, y1 = 0, x2 = s.id, y2 = 0, z = 1,
                getType = function() return BT.Civzone end}
     table.insert(zones, z)
 end
@@ -141,6 +143,14 @@ env.ipairs = function(t)
     return ipairs(t)
 end
 assert(load(src, 'ai-homes', 't', env))()
+-- (r9) the levels the AI dug: rooms with these ids (x = id) lie in them
+if spec.ai_rooms then
+    env.ai_areas = function()
+        local out = {}
+        for _, id in ipairs(spec.ai_rooms) do table.insert(out, {x1 = id, y1 = 0, x2 = id, y2 = 0, z = 1}) end
+        return out
+    end
+end
 local function owner_of(id) for _, z in ipairs(zones) do if z.id == id then return z.assigned_unit_id end end end
 local function rooms_of(uid)
     local out = {}
@@ -153,7 +163,7 @@ return env, owner_of, rooms_of
 """
 
 
-def game(units, zones):
+def game(units, zones, ai_rooms=None):
     lua = LuaRuntime(unpack_returned_tuples=True)
 
     def lt(v):
@@ -162,7 +172,10 @@ def game(units, zones):
         if isinstance(v, (list, tuple)):
             return lua.table_from([lt(x) for x in v])
         return v
-    return lua.execute(FAKE, SRC, lt({"units": units, "zones": zones}))
+    spec = {"units": units, "zones": zones}
+    if ai_rooms is not None:
+        spec["ai_rooms"] = ai_rooms
+    return lua.execute(FAKE, SRC, lt(spec))
 
 
 BED = [{"v": 10}]
@@ -259,10 +272,22 @@ def _():
 @test("a dwarf owning two bedrooms keeps the best")
 def _():
     env, owner_of, rooms_of = game([{"id": 1}], [{"id": 10, "owner": 1, "items": [{"v": 3}]},
-                                                  {"id": 11, "owner": 1, "items": [{"v": 9}]}])
+                                                  {"id": 11, "owner": 1, "items": [{"v": 9}]}], ai_rooms=[10, 11])
     assert env.census().hoarders == 1
     r = env.house(3, 0, False)
     assert r.merged == 1 and rooms_of(1) == "11" and owner_of(10) == -1, dict(r)
+
+
+@test("(r9, audit A7 #24) a second room the player gave (outside the AI's levels) is kept; only an AI-dug one is freed")
+def _():
+    two = [{"id": 10, "owner": 1, "items": [{"v": 3}]}, {"id": 11, "owner": 1, "items": [{"v": 9}]}]
+    env, owner_of, rooms_of = game([{"id": 1}], two, ai_rooms=[])            # both the player's
+    assert env.census().hoarders == 0
+    assert not env.house(3, 0, False).ok and rooms_of(1) == "10,11"
+    env, owner_of, rooms_of = game([{"id": 1}], two, ai_rooms=[11])          # the better one the AI's
+    assert env.census().hoarders == 1
+    r = env.house(3, 0, False)
+    assert r.merged == 1 and rooms_of(1) == "10" and owner_of(11) == -1, dict(r)   # the player's room kept
 
 
 @test("review: a noble spouse's room is never left in an upgrade; two nobles in two rooms keep both")

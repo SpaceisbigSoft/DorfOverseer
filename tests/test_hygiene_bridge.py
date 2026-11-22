@@ -251,6 +251,23 @@ def _():
     assert s.pop_cap == 50 and s.pastures_error is None
 
 
+@test("(r9, audit A7 #20) report: society carries the weather keep-in burrow's members; a failing read says so")
+def _():
+    M = H.module()
+    LUA.execute("""local H = ...
+      H.scripts['ai-society'] = {
+        pasture_report = function() return {grazers = 0, count = 0, needs = {}, ai = {}} end,
+        get_popcap = function() return {cap = 50, strict = 0} end,
+        weather_keep_in_status = function() return {members = 4} end}
+      H.df.historical_entity = {find = function() return nil end}
+      H.dfhack.units.getCitizens = function() return {} end
+    """, H)
+    assert M.get_society().weather_keep_in.members == 4
+    LUA.execute("""local H = ...
+      H.scripts['ai-society'].weather_keep_in_status = function() error('boom') end""", H)
+    assert "boom" in M.get_society().weather_keep_in.error
+
+
 @test("ai-society: pasture_report gives what pasture_count, pasture_needs and ai_pastures gave, in one pass")
 def _():
     L = LuaRuntime(unpack_returned_tuples=True)

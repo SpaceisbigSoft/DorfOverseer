@@ -1492,5 +1492,44 @@ def _():
     assert r.tiles == 13 * 512 and r.excluded_tiles == 0, dict(r)
 
 
+# --- (r9, audit A7 #21) the weather keep-in's members are no player's burrow --------------
+
+def _shelter(lua, w, uid):
+    """The AI shelter's burrow (id 99, the fakes' "player burrow") holding `uid` for the weather keep-in."""
+    lua.execute("""local W, uid = ...
+        local b = {id = 99, name = 'AI shelter', units_ = {[uid] = W.units[uid]}, units = {uid}, tiles_ = {}}
+        W.burrows:insert('#', b)
+        W.persist['ai-overseer/weather-keep-in'] = {members = {[tostring(uid)] = true}}""", w, uid)
+
+
+@test("(r9, audit A7 #21) hospital burrow: a patient kept in by the weather (the AI shelter's burrow) is taken in, and out of the keep-in")
+def _():
+    lua, env, w = hosp_fresh()
+    r = env.hospital_burrow_tick(30, 10, False)
+    assert 8 not in _ids(w), _ids(w)                                   # burrow 99 a player's: left
+    lua, env, w = hosp_fresh()
+    _shelter(lua, w, 8)
+    r = env.hospital_burrow_tick(30, 10, False)
+    assert r.ok and 8 in _ids(w), (dict(r), _ids(w))
+    assert 99 not in list(w.units[8].burrows.values()), list(w.units[8].burrows.values())
+    assert "8" not in dict(w.persist["ai-overseer/weather-keep-in"].members)
+    r = env.hospital_burrow_tick(30, 10, False)                         # kept at the next tick
+    assert 8 in _ids(w), _ids(w)
+
+
+@test("(r9, audit A7 #21) calm burrow: a citizen in a tantrum kept in by the weather is no 'player burrow'; taken out of the keep-in")
+def _():
+    lua, env, w = calm_fresh()
+    _shelter(lua, w, 6)
+    for i in (1, 2, 9):                                                 # calm: the rooms for dwarf 6
+        w.units[i].counters.soldier_mood = -1
+    r = env.calm_burrow_tick(6, 3, False)
+    assert 6 in _calm_ids(w), (dict(r), _calm_ids(w))
+    assert 99 not in list(w.units[6].burrows.values())
+    assert "8" not in dict(w.persist["ai-overseer/weather-keep-in"].members) and \
+        "6" not in dict(w.persist["ai-overseer/weather-keep-in"].members)
+    assert "player burrow" not in dict(env.calm_burrow_status().held or {}), dict(env.calm_burrow_status().held)
+
+
 if __name__ == "__main__":
     finish()

@@ -111,9 +111,9 @@ def _squads_win(s: dict, memory, cfg: dict, beast: dict) -> tuple[bool, str]:
     reach = any(isinstance(x, dict) and x.get("id") == beast.get("id") and x.get("can_reach_dwarves") is True
                 for x in _l(_d(s.get("deep")).get("dangers")))
     try:
-        from planner_military import fight_or_hide
+        from planner_matchup import fight_judged      # (r9, audit A6 #13) asks, writes no memory
         th = {str(o.get("id")): o for o in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(o, dict)}
-        fight, verdict = fight_or_hide(s, memory, cfg, [th.get(str(beast.get("id"))) or {"name": beast.get("name"),
+        fight, verdict = fight_judged(s, memory, cfg, [th.get(str(beast.get("id"))) or {"name": beast.get("name"),
                                                                                           "id": beast.get("id")}],
                                        able)
     except Exception:  # noqa: BLE001

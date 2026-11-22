@@ -244,7 +244,7 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
     """(hide, targets): the AI hides when great dangers can reach the dwarves,
     the squads aren't sent at them (fight or hide), and nothing else in reach
     is theirs to fight. Read the same way as _military_rules does."""
-    from planner_military import fight_or_hide
+    from planner_matchup import fight_judged     # (r9, audit A6 #13) asks, writes no memory
     rules_ = player_rules(s)
     traits = _d(_d(s.get("settings")).get("traits"))
     threats = {t.get("id"): t for t in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(t, dict)}
@@ -275,7 +275,7 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
     great = [i for i in reach if threats[i].get("great_danger") and i not in fire]
     if policy == "never":
         return bool(great) or bool(fire), []
-    fight = fight_or_hide(s, memory, cfg, [threats[i] for i in great], able)[0] if great else False
+    fight = fight_judged(s, memory, cfg, [threats[i] for i in great], able)[0] if great else False
     targets = [i for i in reach if i not in fire and (not threats[i].get("great_danger") or fight)]
     return ((bool(great) and not fight) or bool(fire)) and not targets, targets
 

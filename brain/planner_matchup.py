@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from digest import _d, _l
 
-__all__ = ["BREATH_WEIGHT", "facts_mult", "squad_weights", "squad_split", "judge", "matchup", "fight_bar", "strike_bar", "weakened", "clusters", "groups_apart", "all_out", "siege_days", "losses_turned", "fire_breather", "melee_bar", "shoots", "ranged_only", "fight_bar_of", "beast_plan", "TACTICS"]
+__all__ = ["BREATH_WEIGHT", "facts_mult", "squad_weights", "squad_split", "judge", "matchup", "fight_bar", "strike_bar", "weakened", "clusters", "groups_apart", "all_out", "siege_days", "losses_turned", "fire_breather", "melee_bar", "shoots", "ranged_only", "fight_bar_of", "beast_plan", "TACTICS", "fight_judged"]
 
 # (0.105.45) a breath's weight against squads that close in (the highest of
 # its kinds counts): fire and dragonfire burn a squad in its armour, deadly
@@ -518,3 +518,31 @@ def beast_plan(t: dict, squads: list, bar: float, factor=None, trap_avoid=None) 
                why=(f"{nm}: no melee; " if nm else "") + f"the squads {full['army']:.0f}, the crossbows "
                    f"{rng['army']:.0f} against its {need:.0f}: not yet even")
     return out
+
+
+class _Peek:
+    """(r9, audit A6 #13) The memory as fight_or_hide reads it, with its own
+    copies of what that writes (called_off, fight, fight_factor): the writes
+    stay here. Everything else is read from the real memory."""
+
+    def __init__(self, memory):
+        import copy
+        self._m = memory
+        for k in ("called_off", "fight", "fight_factor"):
+            object.__setattr__(self, k, copy.deepcopy(getattr(memory, k, None)))
+
+    def __getattr__(self, k):
+        return getattr(object.__getattribute__(self, "_m"), k)
+
+
+def fight_judged(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[bool, str]:
+    """(r9, audit A6 #13) planner_military.fight_or_hide's verdict with no
+    memory written: for the callers that only ask (the cavern beasts in
+    planner_holdfast, the lure, planner_army.hiding). fight_or_hide books a
+    fight called off, its lesson (fight_factor) and a fight begun again for
+    whatever list it is given; asked first in a cycle about the cavern
+    beasts, it flagged them called off and wrote the titan's lesson from
+    their power. Only the military rules' own call (the great dangers in
+    reach) books now."""
+    from planner_military import fight_or_hide
+    return fight_or_hide(s, _Peek(memory) if memory is not None else None, cfg, great, able)
