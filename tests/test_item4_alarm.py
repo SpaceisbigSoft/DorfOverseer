@@ -364,6 +364,18 @@ def _():
     assert not alarms(props, True)
 
 
+@test("(r9, audit A7 #20) citizens left in the weather burrow with no keep-in remembered (memory lost, a keeper stopped): let out")
+def _():
+    s = fort(weather=CALM, tick=200100, society={"weather_keep_in": {"members": 7}})
+    props, _ = plan(s, Memory())
+    out = [p for p in props if p.action == {"type": "weather_burrow", "on": False}]
+    assert out and "7 still in" in out[0].reason, [p.reason for p in props]
+    props, _ = plan(fort(weather=CALM, tick=200100, society={"weather_keep_in": {"members": 0}}), Memory())
+    assert not [p for p in props if p.action.get("type") == "weather_burrow"]
+    props, _ = plan(fort(weather=CALM, tick=200100), Memory())                       # an older bridge: nothing said
+    assert not [p for p in props if p.action.get("type") == "weather_burrow"]
+
+
 @test("an evil cloud near dwarves out there (the threats round's): no alarm while the burrow keeps them in")
 def _():
     m = Memory()

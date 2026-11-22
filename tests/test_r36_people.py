@@ -204,6 +204,26 @@ def _():
     assert any(x.rule == "shelter_supply" for x in p), [x.rule for x in p]
 
 
+@test("(r9, audit A7 #20) the shelter failing as the alarm sounded (shelter_error) is booked: drawn again next cycle, said why")
+def _():
+    s = fort()
+    s["civ_alert"] = True
+    m = Memory()
+    _record_any_outcome({"type": "civ_alert", "on": True},
+                        {"ok": True, "on": True, "shelter_error": "attempt to index a nil value"}, s, m, abs_tick(s))
+    assert m.shelter_supply.get("error") == "attempt to index a nil value", m.shelter_supply
+    props, notes = [], []
+    planner_society._shelter_supply_rule(s, m, props, notes)
+    assert [p.action for p in props] == [{"type": "refresh_shelter"}], (props, notes)
+    assert "couldn't be drawn" in props[0].reason, props[0].reason
+    import planner_war_hold
+    assert "couldn't be drawn" in planner_war_hold.shelter_holds(s, m, PLANNER_CONFIG), \
+        planner_war_hold.shelter_holds(s, m, PLANNER_CONFIG)
+    _record_any_outcome({"type": "refresh_shelter"}, {"ok": True, "tiles": 400, "drink_units": 90,
+                                                      "food_units": 50}, s, m, abs_tick(s))
+    assert not m.shelter_supply.get("error"), m.shelter_supply                        # a good fill replaces it
+
+
 # --- a mood's workshop ------------------------------------------------------------
 
 def _mood_fort(open_):

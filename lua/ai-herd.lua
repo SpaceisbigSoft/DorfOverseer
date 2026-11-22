@@ -180,15 +180,26 @@ end
 -- A caged wild animal DF's trainers can tame: not tame, not intelligent
 -- (those are prisoners: ai-captives), no great danger (a forgotten beast
 -- stays caged), a pet or trainable kind (DF's PET, PET_EXOTIC,
--- TRAINABLE_WAR, TRAINABLE_HUNTING).
-local function tameable(u)
+-- TRAINABLE_WAR, TRAINABLE_HUNTING). (r9, audit A7 #26) Never an invader's
+-- beast (a caged goblin's mount: invader, or another civ's), and a large
+-- predator only with `predators` (Husbandry at its top: a half-trained one
+-- turns wild again among the dwarves). Returns the second value 'predator'
+-- for one left out only for being a large predator.
+local function tameable(u, predators)
     if not caged(u) or not yes(dfhack.units.isAlive, u) or not yes(dfhack.units.isAnimal, u) then return false end
     if yes(dfhack.units.isTame, u) or yes(dfhack.units.isCitizen, u) or yes(dfhack.units.isGreatDanger, u) then
         return false
     end
+    if yes(dfhack.units.isInvader, u) then return false end
+    local okc, civ = pcall(function() return u.civ_id end)
+    if okc and type(civ) == 'number' and civ >= 0 and not yes(dfhack.units.isOwnCiv, u) then return false end
     local c = caste_of(u)
     if not c or flag(c, 'CAN_LEARN') or flag(c, 'CAN_SPEAK') then return false end
-    return flag(c, 'PET') or flag(c, 'PET_EXOTIC') or flag(c, 'TRAINABLE_WAR') or flag(c, 'TRAINABLE_HUNTING')
+    if not (flag(c, 'PET') or flag(c, 'PET_EXOTIC') or flag(c, 'TRAINABLE_WAR') or flag(c, 'TRAINABLE_HUNTING')) then
+        return false
+    end
+    if not predators and flag(c, 'LARGE_PREDATOR') then return false, 'predator' end
+    return true
 end
 
 local function training_list()
@@ -453,10 +464,15 @@ function report()
                     and flag(c, 'TRAINABLE_HUNTING') and yes(dfhack.units.isOwnCiv, u) then
                 out.hunt_candidates = out.hunt_candidates + 1
             end
-        elseif tameable(u) and not assigned[u.id] then
-            out.tameable = out.tameable + 1
-            local r = race_name(u)
-            tame_races[r] = (tame_races[r] or 0) + 1
+        elseif not assigned[u.id] then
+            local ok_t, why_t = tameable(u)
+            if ok_t then
+                out.tameable = out.tameable + 1
+                local r = race_name(u)
+                tame_races[r] = (tame_races[r] or 0) + 1
+            elseif why_t == 'predator' then
+                out.tameable_predators = (out.tameable_predators or 0) + 1   -- (r9) only at Husbandry's top
+            end
         end
     end
     table.sort(order, function(a, b)
@@ -502,7 +518,10 @@ function keep_breeders(females, dry_run, txt)
         if fort_animal(u) and yes(dfhack.units.isAdult, u) then
             local nick = nickname(u)
             local c = caste_of(u)
-            if bset[u.id] or (nick == '' and not caged(u) and not is_pet(u) and not trained(u)
+            -- (r9, audit A7 #23) never a new one already marked for the butcher
+            -- (the player's mark, or autobutcher's: left as it is; another is kept)
+            local marked = not bset[u.id] and yes(function() return u.flags2.slaughter end)
+            if bset[u.id] or (nick == '' and not caged(u) and not is_pet(u) and not trained(u) and not marked
                     and not yes(function() return u.name.has_name end) and breeding_kind(u, c)) then
                 local r = race_name(u)
                 by[r] = by[r] or {f = {}, m = {}}
@@ -524,12 +543,6 @@ function keep_breeders(females, dry_run, txt)
     local function keep(u)
         keep_set[u.id] = true
         if bset[u.id] then kept = kept + 1; return true end
-        if not dry_run then
-            if yes(function() return u.flags2.slaughter end) then
-                pcall(function() u.flags2.slaughter = false end)
-                unmarked = unmarked + 1
-            end
-        end
         kept = kept + 1
         local okn, n = pcall(function() return (txt or tostring)(dfhack.units.getReadableName(u)) end)
         if #named < 12 then table.insert(named, okn and n or ('#' .. u.id)) end
@@ -574,14 +587,14 @@ end
 -- Tame up to `max` caged wild animals: a training assignment with any
 -- trainer and no war or hunting flag, as DF's own "tame" on a caged
 -- creature makes; DF's animal trainers go to the cage and tame it.
-function tame(max, dry_run, txt)
+function tame(max, dry_run, txt, predators)
     max = math.max(1, math.min(tonumber(max) or 2, 10))
     local list = training_list()
     local assigned = {}
     for _, a in ipairs(list) do assigned[a.animal_id] = true end
     local cands = {}
     for _, u in ipairs(report_units()) do
-        if not assigned[u.id] and tameable(u) then table.insert(cands, u) end
+        if not assigned[u.id] and tameable(u, predators == true) then table.insert(cands, u) end
     end
     if #cands == 0 then return {ok = false, rejected = true, error = 'no caged wild animal here can be tamed'} end
     table.sort(cands, function(a, b) return a.id < b.id end)

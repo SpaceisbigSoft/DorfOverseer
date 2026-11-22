@@ -228,6 +228,59 @@ local function recompute(u)
     return false
 end
 
+-- (r9, audit A7 #22) One dwarf given a labour, or taken off labours, the
+-- way DF 50 keeps them: through the work details. A flag set directly is
+-- set back by the game's next recompute of a detail that holds the dwarf
+-- (step_down's surgeon was back at surgery the next day). give_labor: into
+-- the detail carrying it ("only selected"); a detail set to nobody is the
+-- player's choice, left; with no detail (or an old DFHack) the flag directly.
+-- Returns whether the dwarf has the labour after.
+function give_labor(u, token)
+    local labor = enum(df.unit_labor, token)
+    if not (u and labor) then return false end
+    local wd, mode = detail_for(token)
+    if wd and mode == 'NobodyDoesThis' then return has_labor(u, labor) end
+    if wd and mode ~= 'EverybodyDoesThis' then
+        insert_sorted(wd, u.id)
+        recompute(u)
+    end
+    if not has_labor(u, labor) then pcall(function() u.status.labors[labor] = true end) end
+    return has_labor(u, labor)
+end
+
+-- take_labors: out of every work detail carrying one of the labours (all
+-- that detail's labours go with it), then recomputed; a labour still on
+-- (no detail holds it, an old DFHack) off directly. Returns the tokens now
+-- off, in the order given.
+function take_labors(u, tokens)
+    local labs = {}
+    for _, tk in ipairs(tokens or {}) do
+        local l = enum(df.unit_labor, tk)
+        if l then table.insert(labs, {tk, l}) end
+    end
+    if not u or #labs == 0 then return {} end
+    local changed = false
+    for _, d in ipairs(details() or {}) do
+        local carries = false
+        for _, x in ipairs(labs) do
+            pcall(function() if d.allowed_labors[x[2]] then carries = true end end)
+        end
+        if carries and is_member(d, u.id) then
+            for i = #d.assigned_units - 1, 0, -1 do
+                if d.assigned_units[i] == u.id then d.assigned_units:erase(i) end
+            end
+            changed = true
+        end
+    end
+    if changed then recompute(u) end
+    local off = {}
+    for _, x in ipairs(labs) do
+        if has_labor(u, x[2]) then pcall(function() u.status.labors[x[2]] = false end) end
+        if not has_labor(u, x[2]) then table.insert(off, x[1]) end
+    end
+    return off
+end
+
 -- A detail whose members are out of order (bridge 0.38.0 appended them):
 -- put them in order and recompute everyone's labours. Returns true if fixed.
 local function repair(wd)

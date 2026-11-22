@@ -173,6 +173,11 @@ function get_society()
     local okc, cb = pcall(soc.calm_burrow_status, txt)
     if okc and cb then out.calm_burrow = cb
     elseif not okc then out.calm_burrow = {error = tostring(cb):sub(1, 160)} end
+    -- (r9, audit A7 #20) the evil-weather keep-in burrow's members: the brain
+    -- lets out those it no longer remembers keeping (a keeper stopped mid-spell)
+    local okw, wk = pcall(soc.weather_keep_in_status)
+    if okw and wk then out.weather_keep_in = wk
+    elseif not okw then out.weather_keep_in = {error = tostring(wk):sub(1, 160)} end
     -- (0.104.81) war dogs: who can be trained, who is, who trains them
     local oka, an = pcall(soc.animal_training_report)
     if oka and an then out.animals = an elseif not oka then out.animals = {error = tostring(an):sub(1, 160)} end

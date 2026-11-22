@@ -244,6 +244,8 @@ def shelter_holds(s: dict, memory, cfg: dict) -> str:
         short = ["no drink in it"]
     if short:
         return f"{'; '.join(short)[:80]} at its last fill: it is made again each day to take in drink and food"
+    if rec.get("error"):        # (r9, audit A7 #20) the fill as the alarm sounded failed
+        return "it couldn't be drawn as the alarm sounded: it is drawn again"
     if rec:
         return "drink and food in it at its last fill (made again while the alarm stands)"
     return "it is filled with the drink and food inside the fort while the alarm stands"

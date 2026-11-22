@@ -355,6 +355,29 @@ def _():
     assert not py(env.step_down(77, True, False))["ok"]
 
 
+@test("(r9, audit A7 #22) step_down: the hospital labours off through the work details (ai-labor take_labors)")
+def _():
+    lua, env, w = world()
+    u = w.unit(T(lua, {"id": 1}))
+    u.status.labors[2] = True
+    u.status.labors[4] = True
+    lua.execute("""local env, W = ...
+        local real = env.reqscript
+        W.taken = {}
+        env.reqscript = function(name)
+            if name == 'ai-labor' then
+                return {take_labors = function(u, tokens)
+                    for _, t in ipairs(tokens) do table.insert(W.taken, t); u.status.labors[env.df.unit_labor[t]] = false end
+                    return tokens
+                end}
+            end
+            return real(name)
+        end""", env, w)
+    r = py(env.step_down(1, True, False))
+    assert r["ok"] and r["labors"] == ["SURGERY", "SUTURING"] and py(w.taken) == ["SURGERY", "SUTURING"], (r, py(w.taken))
+    assert u.status.labors[2] is False and u.status.labors[4] is False
+
+
 # --- can_staff (lua/ai-society.lua) --------------------------------------------------
 
 STAFF_FAKE = r"""

@@ -223,14 +223,53 @@ end
 -- (0.104.168, review) what step 1 of house() will do for this dwarf, so the
 -- census counts only that: 'apart' (a couple in two rooms, at most one of
 -- them a noble: the noble's kept), 'unlinked', 'hoard' (a single non-noble
--- owning two or more), or nil
-local function merge_kind(by, p)
+-- owning two or more), or nil. (r9, audit A7 #24) 'hoard' only when one of
+-- the rooms is in a level the AI dug (`areas`, a function giving ai_areas()
+-- once): a second room the player gave (an office-bedroom) is theirs to keep
+local function zone_in_ai_areas(z, areas)
+    local ok, yes = pcall(function()
+        local pos = {x = (z.x1 + z.x2) // 2, y = (z.y1 + z.y2) // 2, z = z.z}
+        for _, a in ipairs(areas) do
+            if type(a) == 'table' and a.z == pos.z and tonumber(a.x1) and pos.x >= a.x1 and pos.x <= a.x2
+                    and pos.y >= a.y1 and pos.y <= a.y2 then
+                return true
+            end
+        end
+        return false
+    end)
+    return ok and yes or false
+end
+
+local function memo_areas()
+    local got
+    return function()
+        if got == nil then
+            local ok, a = pcall(function() return ai_areas() end)
+            got = ok and type(a) == 'table' and a or {}
+        end
+        return got
+    end
+end
+
+local function hoard_rooms(p, areas)
+    local ai, other = {}, {}
+    for _, z in ipairs(p.own) do
+        if zone_in_ai_areas(z, areas()) then table.insert(ai, z) else table.insert(other, z) end
+    end
+    return ai, other
+end
+
+local function merge_kind(by, p, areas)
     local q = p.spouse and by[p.spouse]
     if q then
         if #p.own > 0 and #q.own > 0 then return nobles_in(by, p) < 2 and 'apart' or nil end
         return unlinked(p, q) and 'unlinked' or nil
     end
-    if #p.own > 1 and not noble(p) then return 'hoard' end
+    if #p.own > 1 and not noble(p) then
+        if not areas then return 'hoard' end
+        local ai = hoard_rooms(p, areas)
+        return #ai > 0 and 'hoard' or nil
+    end
     return nil
 end
 
@@ -286,6 +325,7 @@ function census(units, txt)
     local function sample(line) if #c.samples < SAMPLES then table.insert(c.samples, line) end end
     local function name(p) return txt(dfhack.units.getReadableName(p.u)) end
     local roomless = {}      -- one per household with no bedroom
+    local areas = memo_areas()          -- (r9) the AI's levels, read once if a hoarder is seen
     for _, p in ipairs(order) do
         local home = housed(by, p)
         if p.child then
@@ -310,7 +350,7 @@ function census(units, txt)
             end
         end
         local q = p.spouse and by[p.spouse]
-        local mk = merge_kind(by, p)
+        local mk = merge_kind(by, p, areas)
         if q and p.id < q.id then
             c.couples = c.couples + 1
             if mk == 'apart' then
@@ -820,25 +860,36 @@ function house(n_house, n_upgrade, dry_run, txt, units, place)
     local function line(s) if #out.lines < 8 then table.insert(out.lines, s) end end
     local done = 0
     local seen = {}
+    local areas = memo_areas()
     -- 1. one room per household: a couple in two keeps the better (a noble's
     -- own room if one of them needs a bedroom), a single dwarf keeps the best
     for _, p in ipairs(order) do
         if done >= n_house then break end
         local q = p.spouse and by[p.spouse]
-        local mk = not seen[p.id] and merge_kind(by, p) or nil
+        local mk = not seen[p.id] and merge_kind(by, p, areas) or nil
         if mk == 'apart' or mk == 'hoard' then
             seen[p.id] = true
             if q then seen[q.id] = true end
             local ps = household(by, p)
             local rooms = {}
-            for _, x in ipairs(ps) do
-                for _, z in ipairs(x.own) do table.insert(rooms, {r = room_of(z), owner = x}) end
+            local mine = nil
+            if mk == 'hoard' then
+                -- (r9, audit A7 #24) only the rooms in the AI's levels are freed;
+                -- with a room of the player's, the dwarf keeps that one (and it)
+                local ai, other = hoard_rooms(p, areas)
+                mine = #other > 0 and other[1] or nil
+                for _, z in ipairs(ai) do table.insert(rooms, {r = room_of(z), owner = p}) end
+            else
+                for _, x in ipairs(ps) do
+                    for _, z in ipairs(x.own) do table.insert(rooms, {r = room_of(z), owner = x}) end
+                end
             end
             local keep, kv = nil, -1
             for _, e in ipairs(rooms) do
                 local v = room_value(e.r, ps) + (noble(e.owner) and 1e9 or 0)
                 if v > kv then keep, kv = e, v end
             end
+            if mine then keep = {r = room_of(mine), owner = p} end
             local freed = 0
             for _, e in ipairs(rooms) do
                 -- (0.104.168, review) not handed out again in this call: the

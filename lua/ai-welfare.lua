@@ -141,8 +141,31 @@ local function fort_own(u, race, civ, group)
     return member ~= false
 end
 
+-- (r9, audit A7 #25) the walk over every unit the world has ever had (tens
+-- of thousands in an old world, a pcall each) kept a day for the report:
+-- dead_scan() reuses it, dead_scan(true) (the memorial action) walks again;
+-- an order placed drops it. Kept per fort (the group id) and game day.
+DEAD_TTL = 1200
+local DEAD_CACHE = nil           -- {key, at, out}
+
+local function dead_key()
+    local ok, g = pcall(function() return df.global.plotinfo.group_id end)
+    return ok and g or -1
+end
+
 -- {unreachable, gone, total (both), without_slab, ordered, wanted = {{hf, id, name, why}}}
-function dead_scan()
+function dead_scan(fresh)
+    local now = U.abs_tick()
+    if not fresh and DEAD_CACHE and DEAD_CACHE.key == dead_key() and type(now) == 'number'
+            and now >= DEAD_CACHE.at and now - DEAD_CACHE.at < DEAD_TTL then
+        return DEAD_CACHE.out
+    end
+    local out = dead_scan_walk()
+    DEAD_CACHE = type(now) == 'number' and {key = dead_key(), at = now, out = out} or nil
+    return out
+end
+
+function dead_scan_walk()
     local out = {unreachable = 0, gone = 0, total = 0, without_slab = 0, ordered = 0, wanted = {}}
     local race, civ = U.fort_race_civ()
     local group
@@ -275,7 +298,8 @@ function engrave_memorials(max, dry_run, ghosts)
         return {ok = true, ordered = named, order_ids = (#ids > 0) and ids or nil, ghosts = true,
                 left = #list - #named, dry_run = dry_run or nil}
     end
-    local scan = dead_scan()
+    local scan = dead_scan(true)
+    DEAD_CACHE = nil                 -- (r9) the orders placed now: the report walks again
     if #scan.wanted == 0 then
         return {ok = false, rejected = true, nothing_to_do = true,
                 error = 'every dead citizen out of reach has a memorial slab or an order for one'}
@@ -592,7 +616,15 @@ function train_cook(dry_run, release)
     -- the cooking labour on, for the work details that hold it back
     local labour = false
     if not dry_run then
-        pcall(function() pick.status.labors[df.unit_labor.COOK] = true; labour = true end)
+        -- (r9, audit A7 #22) through the work details (ai-labor), so the
+        -- game's next recompute doesn't take it back; the flag alone without it
+        local okl, L = pcall(reqscript, 'ai-labor')
+        if okl and type(L) == 'table' and L.give_labor then
+            local okg, has = pcall(L.give_labor, pick, 'COOK')
+            labour = okg and has == true
+        else
+            pcall(function() pick.status.labors[df.unit_labor.COOK] = true; labour = true end)
+        end
         local changed = d.cook.unit ~= pick.id
         d.cook = {unit = pick.id, name = name_of(pick), kitchens = mine,
                   since = changed and U.abs_tick() or d.cook.since, skill0 = changed and cook_skill(pick) or d.cook.skill0}

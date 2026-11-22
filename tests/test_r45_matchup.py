@@ -366,5 +366,27 @@ def _():
     assert not fight and "come back" in words and m.fight_factor.get("ForgottenBeast", 1) > 1, (words, m.fight_factor)
 
 
+@test("(r9, audit A6 #13) fight_judged (the cavern, lure, holdfast and hiding callers) asks fight_or_hide, nothing written")
+def _():
+    from planner_matchup import fight_judged
+    s = fort_with(a_beast(), squads(150, n=len(BASE["military"]["squads"])))
+    m = Memory()
+    m.fight = {"tick": PM.abs_tick(s), "keys": ["Titan"], "soldiers": 30}
+    fight, words = fight_judged(s, m, CFG, [a_beast()], squads(150))
+    assert not fight and "come back" in words, words                   # the same verdict...
+    assert not m.fight_factor and not m.called_off, (m.fight_factor, m.called_off)   # ...nothing booked
+    assert not m.fight.get("learned"), m.fight
+    m.called_off = {"901": 1}
+    fight, words = fight_judged(s, m, CFG, [a_beast()], squads(150))
+    assert fight and "goes again" in words and m.called_off == {"901": 1} and m.fight.get("soldiers") == 30, words
+    assert fight_judged(s, None, CFG, [a_beast()], squads(150))[0]
+    # fight_or_hide itself is called only by the military rules (and through fight_judged)
+    import re
+    for f in (ROOT / "brain").glob("*.py"):
+        if f.name in ("planner_military.py", "planner_military_threats.py", "planner_matchup.py"):
+            continue
+        assert not re.search(r"fight_or_hide\(", f.read_text(encoding="utf-8")), f.name
+
+
 if __name__ == "__main__":
     finish()

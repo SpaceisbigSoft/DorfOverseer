@@ -196,7 +196,7 @@ def _():
     assert r["hunt_candidates"] == 2                            # the plain adult dogs (no pet, no war dog)
 
 
-@test("keep_breeders: a male and n females a kind, the youngest first, unmarked; f=0 lets them go; a dry run changes nothing")
+@test("keep_breeders: a male and n females a kind, the youngest first; (r9) never one marked for the butcher; f=0 lets them go; a dry run changes nothing")
 def _():
     need_lua()
     lua, env, w = world()
@@ -206,18 +206,24 @@ def _():
         return sorted(int(i) for i in py(env.kept_ids("breeders")).keys())
 
     dry = py(env.keep_breeders(2, True))
-    assert dry["ok"] and dry["kept"] == 6 and dry["kinds"] == 2
+    assert dry["ok"] and dry["kept"] == 3 and dry["kinds"] == 1, dry
     assert kept() == []
     r = py(env.keep_breeders(2, False))
-    assert r["kept"] == 6 and r["unmarked"] == 1, r
-    assert kept() == [1, 3, 4, 10, 11, 12], kept()                      # the youngest cow (3) first
+    # (r9, audit A7 #23) the hens' only male is marked for slaughter (the player's mark,
+    # or autobutcher's): left marked, not taken as a breeder, so the hens have no pair
+    assert r["kept"] == 3 and r["unmarked"] == 0, r
+    assert kept() == [1, 3, 4], kept()                                  # the youngest cow (3) first
     assert 5 not in kept() and 20 not in kept() and 22 not in kept()   # calf, pet, dogs left
     # (0.105.51) no animal renamed: the kept list only
     assert all(py(u.name.nickname) == "" for u in w.units.values())
-    assert w.units[12].flags2.slaughter is False
+    hen = next(u for u in w.units.values() if u.id == 12)               # (w.units is a list, not by id)
+    assert hen.flags2.slaughter is True
+    hen.flags2.slaughter = False                                        # unmarked: a breeder now
     again = py(env.keep_breeders(2, False))
-    assert again["kept"] == 6 and not again.get("named")
+    assert again["kept"] == 6 and kept() == [1, 3, 4, 10, 11, 12], again
     assert py(env.report())["breeders"] == 6
+    hen.flags2.slaughter = True                                         # a kept one stays kept
+    assert py(env.keep_breeders(2, False))["kept"] == 6
     out = py(env.keep_breeders(0, False))
     assert out["released"] == 6 and kept() == []
 
@@ -234,6 +240,21 @@ def _():
     assert a.animal_id == 30 and a.flags.any_trainer is True and not a.flags.train_war and not a.flags.train_hunt
     assert py(env.tame(2, False))["rejected"] is True          # nothing else to tame (the goblin, the great beast)
     assert py(env.report())["tamed"] == 1
+
+
+@test("(r9, audit A7 #26) tame: never an invader's beast; a large predator only when asked (Husbandry at its top)")
+def _():
+    need_lua()
+    lua, env, w = world()
+    w.race(60, "TIGER", T(lua, {"PET_EXOTIC": True, "TRAINABLE_WAR": True, "LARGE_PREDATOR": True}))
+    w.race(61, "HORSE", T(lua, {"PET": True}))
+    w.unit(T(lua, {"id": 50, "race": 60, "sex": "m", "flags1": {"caged": True, "merchant": False}}))
+    w.unit(T(lua, {"id": 51, "race": 61, "sex": "m", "civ_id": 20, "flags1": {"caged": True, "merchant": False}}))
+    r = py(env.report())
+    assert r["tameable"] == 0 and r["tameable_predators"] == 1, r
+    assert py(env.tame(2, False))["rejected"] is True                 # the tiger left, the goblins' horse never
+    r = py(env.tame(2, False, None, True))
+    assert r["assigned"] == 1 and w.training[1].animal_id == 50, r
 
 
 @test("train_hunt: plain adult dogs get hunting training; breeders, pets, the war dog left")
@@ -377,8 +398,12 @@ def _():
 @test("autobutcher's targets follow the slider while it is on, and are not set again once set")
 def _():
     on = {"autobutcher": True}
-    assert run(MID, state(tools=on))[0]["herd_targets"].action == {"type": "herd_targets", "fk": 1, "mk": 1, "fa": 3, "ma": 1}
-    assert run(GARDEN, state(tools=on))[0]["herd_targets"].action["fa"] == 6
+    ai = Memory()
+    ai.tools_enabled_by_ai = ["autobutcher"]
+    assert run(MID, state(tools=on), ai)[0]["herd_targets"].action == {"type": "herd_targets", "fk": 1, "mk": 1, "fa": 3, "ma": 1}
+    assert run(GARDEN, state(tools=on), ai)[0]["herd_targets"].action["fa"] == 6
+    # (r9, audit A7 #23) the player's own autobutcher (the AI never turned it on, never set targets): left as set
+    assert "herd_targets" not in run(MID, state(tools=on))[0]
     done = state(herd(targets={"fk": 1, "mk": 1, "fa": 3, "ma": 1}), tools=on)
     assert "herd_targets" not in run(MID, done)[0]
 
@@ -467,6 +492,14 @@ def _():
     lines = {(sl, k): own for sl, _w, k, own, _lo in scorecard.LINES}
     assert lines[("Husbandry", "breeding_pairs")] == {"Garden fort"}
     assert lines[("Husbandry", "tamed")] == {"Garden fort"}
+
+
+@test("(r9, audit A7 #26) the planner tames caged large predators only from TAME_PREDATORS_AT")
+def _():
+    h = herd(tameable=0, tameable_predators=2)
+    assert "tame_wild" not in run(GARDEN, state(h))[0]
+    got = run(dict(GARDEN, husbandry=PH.TAME_PREDATORS_AT), state(h))[0]
+    assert got["tame_wild"].action == {"type": "tame_wild", "max": 2, "predators": True}, got.get("tame_wild")
 
 
 if __name__ == "__main__":

@@ -444,10 +444,18 @@ function step_down(unit_id, medical, dry_run, txt)
         local r = S.vacate_post(p.location_id, unit_id, dry_run, txt)
         if r and r.ok then table.insert(out.posts, r.post or p.post) end
     end
-    for _, l in ipairs(med) do
-        if dry_run then
-            table.insert(out.labors, l)
-        else
+    -- (r9, audit A7 #22) off through the work details (ai-labor), not the
+    -- flag alone: a detail holding the dwarf set it back at its next recompute
+    local okl, L = pcall(reqscript, 'ai-labor')
+    if dry_run then
+        for _, l in ipairs(med) do table.insert(out.labors, l) end
+    elseif #med > 0 and okl and type(L) == 'table' and L.take_labors then
+        local okt, off = pcall(L.take_labors, u, med)
+        if okt and type(off) == 'table' then
+            for _, l in ipairs(off) do table.insert(out.labors, l) end
+        end
+    else
+        for _, l in ipairs(med) do
             local ok = pcall(function() u.status.labors[df.unit_labor[l]] = false end)
             if ok then table.insert(out.labors, l) end
         end

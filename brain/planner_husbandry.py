@@ -59,6 +59,11 @@ __all__ = ["herd_band", "herd_cap", "herd_targets_for", "breeders_wanted", "_hus
            "hunt_animals_wanted"]
 
 
+# (r9, audit A7 #26) Husbandry from here: caged large predators tamed too
+# (a module value: PLANNER_CONFIG is frozen by tests/test_r7_d6.py)
+TAME_PREDATORS_AT = 100
+
+
 def herd_band(traits: dict, cfg: dict) -> str:
     h = (traits or {}).get("husbandry", 0)
     if h >= cfg["husbandry_high"]:
@@ -147,7 +152,11 @@ def _husbandry_rules(s: dict, memory, traits: dict, cfg: dict, citizens: int,
             "autobutcher (the surplus to the butcher)", 5))
 
     # --- autobutcher's targets by the slider, while it is on --------------
-    if tools.get("autobutcher") is True or any(p.rule == "herd_cull" for p in proposals):
+    # (r9, audit A7 #23) only an autobutcher the AI turned on (or whose
+    # targets it set before): one the player turned on keeps their numbers
+    ai_ab = ("autobutcher" in (getattr(memory, "tools_enabled_by_ai", None) or [])
+             or isinstance(herd.get("targets"), dict))
+    if (tools.get("autobutcher") is True and ai_ab) or any(p.rule == "herd_cull" for p in proposals):
         want = herd_targets_for(traits, cfg)
         got = _d(herd.get("targets"))
         if {k: got.get(k) for k in want} != want:
@@ -158,6 +167,12 @@ def _husbandry_rules(s: dict, memory, traits: dict, cfg: dict, citizens: int,
 
     # --- taming the caged wild animals ------------------------------------
     tameable = _int(herd.get("tameable"))
+    # (r9, audit A7 #26) caged large predators (bears, big cats) only at
+    # Husbandry's top: a half-trained one turns wild again among the dwarves
+    predators = (_int(traits.get("husbandry")) >= TAME_PREDATORS_AT
+                 and _int(herd.get("tameable_predators")) > 0)
+    if predators:
+        tameable += _int(herd.get("tameable_predators"))
     if band == "high" and tameable > 0 and not young:
         if slow or tame >= cap:
             notes.append(f"{tameable} caged wild animal(s) could be tamed, but "
@@ -173,7 +188,7 @@ def _husbandry_rules(s: dict, memory, traits: dict, cfg: dict, citizens: int,
             n = min(cfg["tame_wild_max"], tameable)
             kinds = ", ".join(str(_d(k).get("name") or "?").lower() for k in (herd.get("tameable_kinds") or [])[:3])
             proposals.append(Proposal(
-                "tame_wild", {"type": "tame_wild", "max": n},
+                "tame_wild", {"type": "tame_wild", "max": n, **({"predators": True} if predators else {})},
                 f"Husbandry {traits.get('husbandry', 0)}: {tameable} caged wild animal(s) ({kinds}): the animal "
                 f"trainers tame {n}", 6))
 
