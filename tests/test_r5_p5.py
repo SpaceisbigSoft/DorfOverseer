@@ -286,9 +286,7 @@ def _():
         rows = [w.row for w in GB.widgets(pg) if w.row is not None]
         assert rows and max(rows) <= GB.visible_rows(win) - 1, (name, max(rows))
         for w in GB.widgets(pg):
-            # (the AI page's effective-value column, l = 112 w = 12, is framed past the 120 inside: its
-            # text is short; left as it is, not this group's)
-            if w.l is not None and w.w is not None and name != "AIPage":
+            if w.l is not None and w.w is not None:      # (r5 merge) the AI page's column now fits too
                 assert w.l + w.w <= GB.inner_width(win), (name, w.view_id, w.l, w.w)
         GB.refresh(pg)                                     # every setOption names a view that is there
 

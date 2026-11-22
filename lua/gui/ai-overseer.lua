@@ -162,8 +162,8 @@ function AIPage:init()
         self.toggles[id] = toggle
         table.insert(views, toggle)
         table.insert(views, widgets.Label{
-            frame = {t = row, l = EFFECTIVE_L, w = 12},
-            text = {{text = function() return S.slider_word(a, S.effective(p:trait(id))) end,
+            frame = {t = row, l = EFFECTIVE_L, w = 8},       -- (r5) inside the 120 columns: "Very " shown as "V. "
+            text = {{text = function() return (S.slider_word(a, S.effective(p:trait(id))):gsub('^Very ', 'V. ')) end,
                      pen = COLOR_LIGHTCYAN}},
         })
         table.insert(views, widgets.Label{

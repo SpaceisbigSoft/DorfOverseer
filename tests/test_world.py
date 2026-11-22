@@ -434,9 +434,7 @@ def _():
     assert player_rules({"settings": {"make_contact": False}})["make_contact"] is False
     # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its text
     import gui_behaviour as GB
-    # (fit=False: the default's long name, "refuse (the sum asked can't be read yet)", is cut at w = 56 today)
-    GB.control("RulesPage", "tribute", kind="CycleHotkeyLabel", values=["pay", "refuse", "small"], default="small",
-               fit=False)
+    GB.control("RulesPage", "tribute", kind="CycleHotkeyLabel", values=["pay", "refuse", "small"], default="small")
     GB.control("RulesPage", "make_contact", kind="ToggleHotkeyLabel", values=[False, True], default=True)
     ok = lua.eval("function(src) local f, e = load(src, 'd', 't', {}); return f ~= nil, e end")(SRC)
     assert ok[0], ok
