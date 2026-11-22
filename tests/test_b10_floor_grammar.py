@@ -14,6 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import make_test, finish, need_lua  # noqa: E402
+from py_parts import py_parts  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 import floor_grammar  # noqa: E402
@@ -114,7 +115,9 @@ def _():
         assert re.match(r'\s+"floor_\w+": [-\d.]+,\s+# \S', ln), ln
     assert sorted(re.findall(r'"(floor_\w+)":', block)) == sorted(TABLE)
     # written nowhere else (the older floor_* keys above are the defence floor's, 0.105.54: other names)
-    before = set(re.findall(r'"(floor_\w+)":', src.split(head)[0]))
+    # (r7 d6) ...and none in the parts planner_config applies before it
+    others = "".join((ROOT / "brain" / (p + ".py")).read_text(encoding="utf-8") for p in py_parts("planner_config"))
+    before = set(re.findall(r'"(floor_\w+)":', src.split(head)[0] + others))
     assert not before & set(TABLE), before & set(TABLE)
 
 
