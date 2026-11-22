@@ -1,0 +1,454 @@
+"""planner_config_society: part of PLANNER_CONFIG (brain/planner_config.py), split out in
+r7 d6 and applied second: shoes and cups, the sliders' mature-fort numbers, mood reserves, clean-up and
+disposal, crisis levers, the defence floor, drink in a crisis, visitors and
+thieves, disease and care, nobles' rooms, homes, the citizens' taste.
+Moved verbatim: keys, values, order and comments as they were."""
+
+__all__ = ["PART"]
+
+PART = {
+    # (0.104.157) shoes for the barefoot and cups to drink from (the stress census)
+    "barefoot_share": 0.05,            # this share of the citizens barefoot (or 3): shoes made
+    "shoes_batch": 30,                 # pairs an order at most
+    "citizens_per_free_cup": 3,        # a free cup in store for every 3 citizens (10 at least)...
+    "cups_batch": 20,                  # ...20 an order at most
+    "cupless_share": 0.1,              # ...while this share drank without one lately
+    # (0.104.161, 14.1) the sliders change what a mature fort builds and agrees to
+    "petition_decline_lean": -35,      # a temple or guildhall petition the fort's leaning for it (petition_lean) is this low or lower: declined
+    "season_slider_weight": 1.0,       # (0.104.162, 14.1) the sliders' push on the scripted season choice (season.py; 0 = needs and quirks alone)...
+    "season_crisis_slider_weight": 0.0,   # ...and while the fort is in crisis (needs alone choose)
+    "growth_gap_days": 84,             # a further hall of one kind (growth_candidates) at most once a season...
+    "growth_levels_max": 6,            # ...and at most this many of a kind in the fort's life (a count that never rises can't loop)
+    "prison_justice_at": 50,           # Justice this harsh: more jail cells as the fort grows (a prison)
+    "archery_more_militarism": 50,     # Militarism this high: more archery ranges as the army grows
+    "dead_scrub_min": 1000,            # (0.104.158) dead units fix/dead-units could scrub before it runs...
+    "dead_scrub_days": 28,             # ...once a month at most
+    "herd_per_dwarf": 2.0,             # (0.104.158) tame animals the fort keeps per citizen (60 at least),
+    "herd_min": 60,                    # ...by Husbandry; past it nestboxes stop hatching every egg
+    "herd_resume_share": 0.5,          # ...and come back on under this share of it
+    "cloth_min": 15,                   # cloth kept on hand (dressings, bags, rope, clothes)...
+    "cloth_per_dwarf": 1.0,            # ...or a bolt a dwarf
+    "cloth_batch": 5,
+    "cloth_batch_max": 20, "dressings_per_extra_bolt": 4,   # (0.104.132) larger batches while wounds wait for dressings
+    "coke_when_fuel_below": 40,        # coke made from coal while fuel is under this
+    "coke_batch": 5,
+    "stone_low": 10,
+    "crisis_unhappy_pct": 40, "crisis_unhappy_clear_pct": 25,   # (0.104.137) crisis mode: enter / leave
+    "crisis_deaths": 5, "crisis_deaths_share": 0.03, "crisis_deaths_clear": 2, "crisis_deaths_clear_share": 0.01,
+    "crisis_ghosts": 5, "crisis_ghosts_clear": 2,
+    "crisis_tantrums": 10, "crisis_tantrums_clear": 4,
+    "crisis_min_days": 14,                 # ...lasting at least this long
+    "crisis_extra_actions": 5,             # ...recovery's extra action slots a cycle
+    "crisis_hold_table": True,             # (0.105.48, K5) crisis holds by brain/hold_classes.py (False: the old 14 names; tests compare main's)
+    "convict_per_cycle": 3,            # (0.104.131) solved cases convicted a cycle...
+    "near_threat_tiles": 30,
+    "depot_guard_tiles": 15,           # (0.104.140) an invader this near the depot while a caravan is in reaches
+    "break_fights_days": 3,            # (0.104.139) a citizen killed by a citizen this recently: break the fights up
+    "break_fights_cooldown_ticks": 600,   # ...at most every half day while it goes on (review: it takes
+                                          # every citizen out of every conflict, sparring and beatings too)
+    "fight_freeze_days": 7,            # (0.104.139) squads not refilled this long into a fight with a great danger
+    "convict_check_after": 30,         # (0.104.138) convictions before asking whether they bring sentences...
+    "convict_check_sentences": 3,      # ...at least this many more sentenced, else the rule rests
+    "convict_rest_days": 84,
+    "dig_raise_days": 14,               # (0.104.128) a level with nothing dug this long is dug before the rest
+    "dig_raise_again_days": 7,         # (0.104.134) ...and again a week on while still nothing is dug
+    # (0.105.31) small reserves of what strange moods ask for most, kept so a
+    # mood (about 40 days, too short to grow fibre) finds them on hand (F, 8
+    # Nov: two weavers died wanting plant cloth): made by the existing
+    # recipes, and the AI's other orders that would use them up wait at or
+    # under the reserve. 0 turns one off.
+    "reserve_plant_cloth": 3,          # plant cloth (a fibre crop, its plants processed for thread, woven)
+    # (0.105.51) silk and yarn kept apart (R3: E's reserve of "silk or yarn" was
+    # met by 3 yarn while four moods in A-F died wanting silk, three yarn)
+    "reserve_silk_cloth": 2,           # silk cloth (woven from silk thread: webs collected at a Loom)
+    "reserve_yarn_cloth": 2,           # yarn cloth (an animal shorn, the wool spun, woven)
+    "reserve_leather": 2,              # leather (a hide tanned; (0.105.51) none: a spare animal to the butcher)
+    "reserve_bones": 5,                # bones (bone crafts stop at it)
+    "reserve_rough_gems": 4,           # rough gems (gem cutting stops at it); (0.105.47, J1) 2 -> 4: I7a, F cut to 2, then four rough-gem requests failed
+    "reserve_cut_gems": 2,             # cut gems (cut from rough over its reserve; encrusting stops at it)
+    "reserve_bars": 3,                 # metal bars (metal crafts and jewellery stop at it)
+    "reserve_blocks": 5,               # stone blocks (made at the mason's)
+    "reserve_logs": 5,                 # logs (only said: felling is the wood rule's)
+    "reserve_green_glass": 3,          # (0.105.51) raw green glass (a glassmaker's mood asks 3; sand at a glass furnace)
+    "well_renew_days": 7,              # (0.105.31) a well's channel not dug this long: its job renewed (then weekly)
+    "stone_ore_ghost_min": 10,         # (0.105.19) ...or this many while ghosts wait for slabs
+    "stone_ore_min": 30,               # (0.104.124) an ore freed for the masons in a crisis only with this many boulders
+    "stone_crisis_unburied": 5,        # ...a crisis: ghosts, this many dead with no tomb, or a strained fort
+    "quarry_when_dig_below": 20,       # a quarry only while little other digging waits...
+    "quarry_dry_days": 10,             # (0.104.4) ...or, with no usable stone at all, every this many days
+    "quarry_cooldown_ticks": 2 * 1200, # ...and at most every 2 days (0.99.4: was a week; region2's 30-tile quarries were dug out in days)
+    "quarry_settle_days": 3,           # (item7) without the bridge's word on its tiles, a quarry is counted this many days on
+    "quarry_stall_days": 28,           # (item7) a quarry whose tiles stand undug this long is counted as it is
+    "quarry_norise_strikes": 2,        # (item7) quarries in a row that brought no stone the masons may use: then a pause...
+    "quarry_backoff_days": 7,          # ...of this many days (doubled each further pause, at most quarry_backoff_max_days)
+    "quarry_backoff_max_days": 28,
+    "polish_recheck_days": 14,         # (item7) "every finished level is polished": no polish this long (doubled in a row)
+    "polish_recheck_max_days": 112,
+    "quarry_min_tiles": 8,             # (item7) a quarry's size: what lifts the stone to twice stone_low, at least this
+    "picks_per_dwarves": 30,           # (0.99.4) a pick for every this many dwarves while stone is short (3 at least)...
+    "picks_max": 20,                   # (0.104.117) was 10: a fort of 300 dug with 9 miners, two levels stalled for years
+    "picks_per_backlog": 40,           # (0.104.4) a pick more for every this many tiles waiting to be dug
+    "fishery_raw_fish": 50,
+    "unstick_uniforms_cooldown_ticks": 14 * 1200,   # (0.99.7) at most every two weeks
+    "stray_gear_cooldown_ticks": 3 * 1200,   # (0.104.58) lost gear put back three days apart
+    "assign_weapons_cooldown_ticks": 3 * 1200,   # (0.104.60) weapons handed out by the AI three days apart
+    "soldier_swap_cooldown_ticks": 2 * 1200,    # (0.104.64) a starved soldier let go two days apart
+    "webs_clear_min": 2000,                      # (0.104.116) spider webs on the map: past this they are cleared (a season apart)
+    "prune_parts_min": 2000,                     # (0.104.115) butchered parts on the ground: past this, usable ones rot too
+    # (0.105.3) B (2 Nov, census 07:38): 17,471 items (5,530 webs) and 151
+    # scrubbable dead at 1-3 FPS, yet nothing was cleaned: every clean-up sat
+    # behind 30,000 items and the dead behind 1,000. Now from the census' own counts:
+    "remove_webs_slow_min": 1000,                # loose webs outside the fort: removed past this while slow...
+    "remove_webs_min": 5000,                     # ...or past this at any speed
+    "remove_webs_days": 7,                       # ...a week apart
+    "remove_webs_more_days": 2,                  # ...a batch every two days while the last call left more
+    "remove_webs_max": 2000,                     # ...at most this many a call (one call stays quick)
+    "dead_scrub_slow_min": 100,                  # dead fix/dead-units could scrub: scrubbed past this while slow...
+    "dead_scrub_slow_days": 14,                  # ...two weeks apart while slow (dead_scrub_min/_days at any speed)
+    "corpses_ground_min": 100,                   # corpses, parts and remains on the ground: past this they rot (prune) while slow
+    "prune_worn_min": 200,                       # (0.104.115) worn clothes: past this, those thrown down rot
+    # (0.105.27) forbidden items lying about (the census' items.forbidden and
+    # the disposal report; planner_industry._disposal_rules). Each action waits
+    # for a census taken after its last batch, and its own cooldown:
+    "disposal_census_days": 28,                  # no census this long and a disposal report: count again
+    "disposal_recount_days": 5,                  # ...a batch done since the last census: count again after this
+    "disposal_unforbid_min": 25,                 # useful forbidden items (ammo, the enemy's and the buried dead's) before unforbidding...
+    "disposal_unforbid_max": 300,                # ...at most this many a call
+    "disposal_unforbid_cooldown_ticks": 5 * 1200,
+    "disposal_melt_min": 10,                     # forbidden metal items before marking metal to melt...
+    "disposal_melt_max": 40,                     # ...at most this many marked a call
+    "disposal_melt_backlog": 60,                 # ...none while this many marked still wait for a smelter
+    "disposal_melt_cooldown_ticks": 7 * 1200,
+    "disposal_dump_min": 30,                     # worn clothes and the enemy's junk before marking them for the dump...
+    "disposal_dump_max": 200,                    # ...at most this many a call
+    "disposal_dump_backlog": 300,                # ...none while this many marked wait for the haulers
+    "disposal_dump_cooldown_ticks": 7 * 1200,
+    "disposal_place_dump_cooldown_ticks": 7 * 1200,   # a garbage dump asked for a week apart (refusals back off)
+    "disposal_destroy_min": 150,                 # items lying in the dump before DFHack removes them...
+    "disposal_empty_max": 500,                   # ...at most this many a call (<= DISPOSAL_ACTION_MAX)
+    "disposal_empty_cooldown_ticks": 7 * 1200,
+    "disposal_orders_cooldown_ticks": 28 * 1200,  # the refuse standing order set at most once a month
+    "disposal_unknown_note": 200,                # forbidden for no reason the game gives: past this, Needs you
+    "soldier_swap_month_min": 2,                 # (0.104.114) swaps allowed in 28 days: this many at least ...
+    "soldier_swap_month_share": 10,              # ... or one per this many soldiers
+    "soldier_swap_keen_min": 5,                  # ...while at least this many civilians badly want to train
+    "soldier_swap_month_keen": 4,                # (0.104.142) ... or one per this many keen civilians waiting
+    # (0.104.168) the keen in a crisis, the training turns held, complaints, vermin
+    "soldier_swap_month_keen_crisis": 2,         # ...in a crisis, one per this many keen (training eases stress)
+    "keen_lift_max": 20,                         # in a crisis, the soldiers wanted rise by up to this for the keen...
+    "keen_lift_days": 56,                        # ...held this long after the keen were last many (no fill-then-trim)
+    "fill_tantrum_hold_days": 1,                 # no drafting while a tantrum this recent is under way (or a berserk dwarf)
+    "train_all_hold_days": 14,                   # every squad training: kept at least this long before half rest
+    "train_half_hold_days": 7,                   # half resting: kept at least this long before all train again
+    "complaint_note_min": 5,                     # citizens unable to complain lately: said, with why
+    "vermin_note_min": 5,                        # citizens upset by hated vermin lately: cats kept, or said
+    "citizens_per_mouser": 25,                   # cats kept from the butcher: one per this many citizens...
+    "mousers_min": 4, "mousers_max": 8,          # ...within these
+    "vermin_cooldown_ticks": 7 * 1200,           # the cats looked at once a week
+    "staggered_starved_min": 3,                  # (0.104.72) this many starved soldiers: back to staggered training
+    "pair_chairs_friends_share": 0.2,            # (0.104.77) this share badly wanting friends: chairs paired in taverns
+    "pair_chairs_cooldown_ticks": 7 * 1200,
+    "recreation_max": 8,                         # (0.104.78) at most this many in the recreation burrow
+    "dairy_batch": 5,                            # (0.104.79) milkings or cheeses an order
+    "crop_per_dwarf": 2,                         # (0.104.79) autofarm's threshold a dwarf for a food crop...
+    "crop_brew_per_dwarf": 4,                    # ...and for a brewable one
+    "cheese_per_dwarf": 1,                       # ...while less cheese than this a dwarf is kept
+    "nest_box_max": 10,                          # (0.104.80) nest boxes at most (one a hen)
+    "eggs_cooldown_ticks": 7 * 1200,
+    "nest_box_order_cooldown_ticks": 7 * 1200,
+    "stairwell_cooldown_ticks": 84 * 1200,       # (0.104.82) one new stairwell a season at most
+    "stairwell_min_citizens": 30,
+    "gate_dogs_cooldown_ticks": 7 * 1200,        # (0.104.83)
+    "gate_guard_cooldown_ticks": 1200,
+    "war_animals_max": 8,                        # (0.104.81) war-trained animals (and in training) at most
+    "war_animals_cooldown_ticks": 7 * 1200,
+    "animal_trainer_cooldown_ticks": 28 * 1200,
+    "recreation_days": 28,                       # ...each at most this long
+    "recreation_friends": 4,                     # (0.104.80) and places for those badly wanting friends...
+    "recreation_friend_days": 7,                 # ...a week each...
+    "recreation_friends_share": 0.2,             # ...while this share of the citizens badly want friends
+    "unhappy_wide_share": 0.2,                   # (0.105.51) the fort's unhappy-or-worse share from which the recreation burrow and stress care reach the plain unhappy (E: 25-60%)
+    "recreation_min_citizens": 5,                # (0.105.47, I7b) was 30: B (28), D (8) and E (23) never had the burrow, the unhappiest forts
+    "recreation_cooldown_ticks": 7 * 1200,           # (0.104.80) a week: members stay up to 28 days; the burrow is refilled weekly
+    "hospital_burrow_max": 30,                   # (0.104.167) at most this many patients kept in the hospital burrow...
+    "hospital_burrow_per": 10,                   # ...this many new a call
+    "hospital_burrow_days": 28,                  # ...each at most this long (then out a week)
+    "hospital_burrow_cooldown_ticks": 1200,      # ...asked once a day (each call looks for the drink again)
+    "calm_burrow_max": 6,                        # (0.104.169) at most this many dwarves in a tantrum kept in a calm burrow...
+    "calm_burrow_days": 3,                       # ...each at most this long (then out a day), let out sooner once calm
+    "calm_burrow_cooldown_ticks": 300,           # ...asked every quarter day while a tantrum walks free
+    "calm_burrow_judge_after": 20,               # ...members seen this often (inside or out) before judging...
+    "calm_burrow_outside_share": 0.5,            # ...and seen outside this share of the time: said as a note
+    "booze_variety_min": 3,                      # (0.105.24) citizens upset by the same booze before...
+    "booze_variety_share": 0.1,                  # ...or this share of the citizens: drinks of more kinds
+    "booze_kinds_enough": 3,                     # ...unless this many kinds are in store already
+    "booze_fruit_min": 10,                       # ...fruit brewed from this many fermentable growths
+    "booze_fruit_batch": 5,
+    "booze_variety_cooldown_ticks": 7 * 1200,    # ...a week between tries (the crops take a season)
+    "calm_burrow_retire_after": 40,              # (0.105.24) seen this often (in or out) and...
+    "calm_burrow_retire_share": 0.9,             # ...outside this share: the lever retired (members let out)
+    "guard_min_adults": 15,                      # (0.105.8) every fort this big keeps a guard...
+    "guard_min_soldiers": 3,                     # ...of this many soldiers, whatever the Militarism
+    # (0.105.54) the defence floor by threat (brain/planner_defence_floor.py): soldiers enough to
+    # win a roughly even fight against the biggest threat seen or on the map, whatever the Militarism
+    "floor_fight_ratio": 1.0,                    # squad strength wanted per unit of the threat's (about even)
+    "floor_max_share": 0.33,                     # never more than this share of the adults for the floor
+    "floor_half_life_days": 168,                 # a threat gone halves every two seasons...
+    "floor_keep_share": 0.25,                    # ...down to this share of it (the fort is a known target)
+    "floor_siege_power": 40,                     # a siege on record with no strength kept: this (to x2 for many)
+    "floor_beast_power": 30,                     # a great danger seen, no strength kept: this (x what was learned)
+    "floor_learned_max": 4.0,                    # the learned factor (memory.fight_factor) counts up to this
+    "floor_soldier_power": 4.0,                  # a soldier's power when no squad's is known...
+    "floor_soldier_power_min": 1.5,              # ...and the average's bounds
+    "floor_soldier_power_max": 15.0,
+    "assign_kit_wait_ticks": 3 * 1200,           # (0.105.8) armour handed out by the AI once DF left it 3 days
+    "assign_kit_cooldown_ticks": 1200,           # ...a day apart
+    "assign_weapons_wait_ticks": 7 * 1200,       # (0.104.60) ...once DF has left the places empty a week
+    "crop_brew_threshold": 300,        # (0.99.6) autofarm's threshold for brewable crops while drink is short...
+    "crop_other_threshold": 10,        # ...and for the rest (food is a fort's smaller worry by then)
+    "crop_default_threshold": 50,      # autofarm's own default, put back once drink recovers
+    "drink_recovered_per_dwarf": 4,
+    "kitchen_ban_meals_factor": 3,     # (0.105.16) meals this many times their target: no brewables cooked while drink is under its own
+    # (0.104.169) drink as a crisis lever (Teacheroar: being drunk eased -1932
+    # stress across 149 citizens, the next relief -130): in a crisis the fort
+    # keeps more drink and brews it sooner
+    "crisis_drink_share": 1.5,             # the drink target x this while the fort is in crisis...
+    "crisis_drink_far_share": 0.75,        # ...under this share of it the next brew batch is queued early...
+    "crisis_brew_orders_max": 2,           # ...at most this many AI brew orders of a recipe at once
+    "crisis_drink_food_floor_per_dwarf": 15,   # ...and only while food a dwarf is at least this (food first)
+    "crisis_plants_keep_per_dwarf": 5,     # the crisis's extra brewing leaves this many brewable plants a dwarf
+    "crisis_stills_cap_factor": 3,         # stills up to the workshop cap x this while short in a crisis (x2 otherwise)
+    "crisis_containers_max": 60,           # empty barrels/pots wanted for the crisis's brewing, at most
+    "surface_farm_seeds": 50,          # (0.99.6) brewable surface seeds before surface plots are laid out...
+    "water_zone_max_d": 150,           # (0.105.7 review) water farther than this (survey distance) isn't zoned
+    "farm_under_wait_days": 14,        # (0.105.7 review) underground plots laid out count this long before the report shows them
+    "under_farm_tiles": 40,            # (0.105.5) underground plot tiles wanted for underground crops' seeds (at most)
+    "farm_crops_cooldown_ticks": 1200,  # (0.105.5) the plots' crops set again a day apart at most
+    "seeds_per_plot": 10,              # ...while the underground plots have fewer seeds than this each
+    "surface_farm_tiles": 60,
+    "steel_want": 60,                  # steel bars made while there are fewer than this
+    "iron_keep": 6,                    # iron bars never turned into steel (gear being made now)
+    "steel_batch": 5,
+    "order_stuck_days": 14,            # a work order that hasn't moved this long is named...
+    "order_stuck_you_days": 28,
+    "order_hold_days": 3,              # (0.104.0, was 7: the run check found 89 bag orders, 66 cancelled as stuck, in a day)
+    "loop_hold_days": 28,              # an action done too often in a year (a loop) waits this long
+    "no_effect_max": 4,                # (0.105.24) done this often, each time for the very same reason ...
+    "no_effect_hold_days": 56,         # ... (nothing it did changed what asked for it): held this long
+    "needs_meal_max_pd": 15,
+    "unload_depot_max": 50,            # (0.103.9) goods taken back out of the depot at a time
+    "unload_depot_cooldown_ticks": 2 * 1200,
+    "lavish_meals_max": 20,
+    "good_cook_min": 3,                # (0.103.14) kitchens kept to cooks this skilled at least (when the best is)
+    "good_cook_store_pd": 10,          # ...while this many meals a dwarf are stored
+    "good_cook_release_pd": 5,         # ...and opened to any cook below this many
+    "good_cooks_cooldown_ticks": 3 * 1200,            # (0.103.8) a lavish meal order: one a distracted dwarf, up to this
+    "hospital_thread_min": 10,         # thread kept for the hospital's stitches (0.83)
+    "petition_hunters_militarism": 0,  # monster hunters may stay from this Militarism (0.87)
+    "petition_mercenaries_militarism": 30,  # mercenaries from this
+    "residency_probe_days": 3,         # (0.105.9) an agreed residency petition: seen as a resident within this
+    "residency_batch": 25,             # residency petitions answered in one go
+    "hatch_levers": True,              # (0.105.12 review) off: a lever linked to the founding hatch shuts it, and the
+                                       # watcher only locked hatches. (0.105.23) on: the watcher drives a hatch on a
+                                       # lever by `lever pull --instant`, and a hatch its link shut is opened at once
+    "hatch_lever_mechanisms": 3,       # (0.105.23) free mechanisms before a gate lever is placed (1 lever, 2 link)
+    "hatch_lever_max_hatches": 2,      # (0.105.23) an entrance with more hatches (a cut) gets no levers: one each
+    "gatehouse_fortification": 80,     # (0.105.23, 14.1 step 4a) a gatehouse at the founding stair from this
+                                       # Fortification (the War-hold's 120)
+    "destroyer_gate_year": 1,          # (0.105.51) every fort's plain gatehouse (a drawbridge a titan can't break)
+                                       # from this many years in, or at the first great danger, whichever first
+    "gatehouse_wagon_retry_ticks": 3 * 1200,   # (0.105.51) the embark wagon's removal asked again after this
+    "residency_accept_by_flag": False, # (0.105.11) seen 2 Nov in B: an agreement set by the flag left the visitor a
+                                       # guest (DF's Other list, not Residents): welcoming forts leave them to you
+    "residency_cooldown_ticks": 1200,  # (review) a batch a day, not the default 2 days
+    "residency_reprobe_days": 336,     # a failed probe is tried again a year on (a DFHack update may help)
+    "heist_lockout_days": 168,         # (0.105.24) after an artifact heist (or a visitor killing a citizen) the tavern,
+                                       # temples, library and guildhalls are shut to visitors this long (0: never).
+                                       # 2-5 Nov: the thieves came as visitors (19 of 23 had asked the mayor for a
+                                       # meeting); D shut its locations at 23:06 2 Nov: 8 heists before, none after
+                                       # (0.105.24) the Rules switch heist_lockout (on by default) turns it off
+    "heist_lockout_days_welcoming": 28,  # (0.105.26) ...but this long at Outsiders visitor_shut_welcoming (100) or
+                                       # more: the Merchant city's visitors are its point, not shut half a year a heist
+    "location_stale_days": 4,          # (0.105.26) a location the AI shut that reads open within this many days of
+                                       # the shut, in a report not built since (the locations section is cached 2
+                                       # days), is the old report, not the player opening it
+    # (0.105.24) the mayor swamped by visitors: B and F (2-5 Nov) met poets, dancers and bards (asking to
+    # stay) about as often as citizens, and citizens went "unable to complain". When the mayor's meetings
+    # (under way and waiting) are mostly with visitors and enough citizens went unheard, the tavern,
+    # temples, library and guildhalls are shut to visitors a while (Rules switch shut_to_visitors)
+    "visitor_shut_unheard_min": 5,     # ...at least this many citizens unable to complain lately (the note's 5)
+    "visitor_shut_meetings_min": 3,    # ...at least this many of the mayor's meetings with visitors
+    "visitor_shut_share": 0.5,         # ...and at least this share of them (B and F: about half)
+    "visitor_shut_days": 56,           # ...shut this long (two months), then open again and looked at afresh
+    "visitor_shut_welcoming": 100,     # never at this Outsiders or more (the Merchant city's 100: visitors its point)
+    # (0.105.30 live fixes) 19 of 23 thieves (2-5 Nov) asked the mayor for a meeting first; E's (8 Nov) asked
+    # from 13:44 and struck at 13:51. A visitor not of the fort's race and not a resident seeking a meeting
+    # shuts the tavern, temples, library and guildhalls to visitors a while (the Rules switch heist_lockout)
+    "stranger_shut_days": 7,           # ...this long after the last such meeting seen
+    "stranger_shut_outsiders": 50,     # ...only below this Outsiders (the Merchant city, 100, stays open)
+    "residency_accept_outsiders": 30,  # agree from this Outsiders (welcoming); decline below -30 (closed)
+    "petition_citizen_margin": 5,      # citizenship while citizens are this far under the population target
+    "bag_sink_days": 28,               # this many bag orders in so many days with no empty bag: a sink (0.87.1)
+    "bag_sink_orders": 3,
+    "seed_bags_max": 30,
+    "hospital_traction": 1,            # traction benches a hospital keeps (0.88)
+    "traction_cooldown_ticks": 14 * 1200,
+    "traction_parts_cooldown_ticks": 3 * 1200,
+    "traction_rest_wait_days": 7,      # (0.105.24) a traction patient in an ordinary bed this long is got up
+    "traction_rest_cooldown_ticks": 3 * 1200,
+    "alert_keep_days": 1,              # alert icons cleared once this old (0.88)
+    "alert_danger_days": 7,            # deaths, ambushes, beasts... kept this long
+    "alerts_per_cycle": 50,
+    "alerts_cooldown_ticks": 7 * 1200,      # (0.105.2) a week: DF raises job_failed, sparring, agreement and guest icons again at once (933 clears a night at a day apart)
+    "dwarves_per_woodcutter": 30,      # (0.104.142) while wood is short: up to one cutter per this many dwarves...
+    "wood_short_per_cutter": 100,      # ...one more per this many logs short
+    "tree_quota_share": 0.8,           # felling stops at this share of the elves' yearly cap (0.89)
+    "location_petitions_open": 1,      # agreed temple/guildhall petitions not yet built at once (0.89)
+    "location_petition_late_days": 56, # (0.105.51) a petition waiting this long for the slot above is answered (it lapses at ~80-90)...
+    "location_petitions_open_late": 2, # ...agreed while fewer promised halls than this are unbuilt, else declined
+    "location_value_tier1": 2000,      # zone value of a temple or guildhall (DF wiki, Guildhall)
+    "location_value_tier2": 10000,     # of a temple complex or grand guildhall
+    "petition_answer_cooldown_ticks": 1200,
+    "petition_build_cooldown_ticks": 7 * 1200,
+    "location_value_cooldown_ticks": 2 * 1200,  # a statue every 2 days at most (0.90)
+    "good_meals_pd": 2,                # meals worth over 20 kept a dwarf (EatGoodMeal; 0.83)
+    "meals_hard_max_pd": 60,           # ... but no lavish meals past this many meals of any kind a dwarf
+    "craft_shops_at": 10,              # this many want to craft: more Craftsdwarf's workshops for idle crafting
+    "craft_shop_per": 8,               # ... one for every this many (0.104.53: 15 -> 8)
+    "craft_shops_max": 8,              # (0.104.53: 4 -> 8; Enxah: 31 badly wanting to craft, 4 shops)
+    "craft_shop_citizens": 15,         # (0.104.137) ...or one per this many dwarves
+    "needs_shops_cooldown_ticks": 7 * 1200,
+    "trinkets_per_cycle": 25,          # (0.104.137) or a quarter of those wanting, up to 50
+    "trinket_order_max": 60,           # (0.104.137) crafts ordered at a time: half of those wanting, 20 to this
+    "trinket_parallel": 2,             # (0.104.141) trinket orders of different materials at once
+    "trinket_parallel_max": 30,        # (0.104.141) the second one's size at most
+    "bone_crafts_min": 20,             # (0.104.141) free bones before bone crafts are ordered
+    "finery_metal_bars": 10,           # (0.104.137) jewellery in copper when this many bars spare
+    "fight_needs_at": 15,              # this many long to fight or train: more soldiers (they train)
+    "fight_soldiers_max": 20,          # ... at most this many more
+    "fight_share_max": 0.3,            # ... and never past this share of the citizens
+    "idle_train_share": 0.2,           # this share of adults idle: every squad trains, and more may join (0.83)
+    "idle_train_off_share": 0.14,      # ... until idle falls under this share
+                                       # (0.105.33 fix: were 0.4 / 0.25 on the old idle measure; 34/34 and 53/53 states, 8 Nov run)
+    "idle_avg_weight": 0.1,            # ... judged on a running average (this weight for each new reading)
+    "idle_fight_soldiers_max": 40,     # ... then at most this many more soldiers for the needs (0.104.142: was 30)
+    "idle_fight_share_max": 0.45,      # ... and at most this share of the citizens
+    "fight_min_citizens": 15,          # (0.103.9; was 30)
+    "civilians_min": 12,               # (0.105.2) never fewer civilians than this ...
+    "civilians_min_share": 0.3,        # ... or this share of the adults (the larger): soldiers are the rest at most
+    "fight_needs_share": 0.4,          # (0.103.9) ...or this share of the citizens, if fewer
+    "fight_badly_share": 0.25,         # (0.104.61) this share BADLY wanting to train or fight: the idle caps
+    "cavern_well_drink_pd": 3,         # a cavern well when drink falls below this a dwarf...
+    "cavern_well_hospital_pop": 40,    # ...or a fort this big has a hospital and no water
+    "cavern_well_min_pop": 20,
+    "water_survey_ticks": 84 * 1200,   # the water near the fort surveyed again once a season
+    "cistern_min_pop": 30,
+    "hazard_near": 20,                 # fire or a cloud this close (tiles; levels count 3) sounds the alarm
+    "flood_wet_dwarves": 2,            # this many dwarves in deep water: a flood
+    "miasma_note": 5,
+    "cistern_cooldown_ticks": 1200,
+    "excess_shops_cooldown_ticks": 1200,
+    "stuck_order_cooldown_ticks": 0,   # (cancelling the AI's own stuck orders: several a cycle)
+    "stuck_cancel_max": 5,             # ...at most this many a cycle
+    "stuck_retry_days": 28,            # an order the AI cancelled as stuck isn't placed again for this long...
+    "drink_stuck_wait_days": 5,        # (0.105.26) a brew source whose order was cancelled as stuck waits this long (none while drink is urgent)
+    "stuck_retry_max_days": 112,       # (0.104.37) ...doubled each time it sticks again, to this
+    "stuck_again_days": 90,            # ...and stuck again within this long: held longer (doubled, up to stuck_retry_max_days)
+    "ore_stock_max": 30,               # dug ore waiting for the smelter: no new vein past this
+    "trade_cooldown_ticks": 2 * 1200,
+    "trade_margin": 1.2,               # the fort gives this much more value than it takes
+    "trade_anyone_after_ticks": 1200,  # the broker not at the depot a day after a caravan got there: anyone may trade
+    "call_trader_cooldown_ticks": 300,
+    "trade_deal_cooldown_ticks": 600,  # a deal on the open trade screen: at most every half day
+    "trade_bars_iron": 30,             # bought up to this many of each...
+    "trade_leather": 10,
+    "trade_thread": 10,
+    "trade_wood": 50,
+    "trade_drink_per_dwarf": 20,
+    "soap_keep": 5,                    # soap bars kept for the hospital
+    "wood_crafts_min_logs": 30,        # (0.104.122) trinkets of wood while stone is short, with this many logs
+    "soap_keep_max": 15, "infected_per_soap": 3,   # (0.104.121) a bar for every 3 infected wounds, up to 15
+    "soap_cooldown_ticks": 2 * 1200,
+    # (0.104.168) disease and care: with this many infected the soap chain
+    # runs two steps a cycle in batches of 5; idle infected dwarves DF asks
+    # no treatment for are put to rest in free hospital beds, 3 a day (stopped
+    # when DF keeps none of 3 sent); a hospital gets a second doctor's post
+    # while more than 3 treatments wait for each dwarf who can diagnose
+    "soap_rush_infected": 20, "soap_rush_batch": 5, "soap_rush_cooldown_ticks": 2 * 1200,
+    "infected_rest_max": 3, "infected_rest_cooldown_ticks": 1200, "infected_rest_give_up": 3,
+    "infected_rest_cap": 3, "infected_rest_keep_free": 2,   # (review) sleepers at once; beds left for DF's patients
+    "doctor_post_per_diagnoser": 3, "doctor_post_cooldown_ticks": 3 * 1200,
+    "noble_rooms_cooldown_ticks": 1200,
+    # (0.105.41) a noble's room under its office's value: a step a day (a statue,
+    # smoothing, engraving, statues ordered); at most this many statues a room;
+    # statues ordered only with this many usable boulders
+    "noble_value_cooldown_ticks": 1200, "noble_room_statues_max": 6, "noble_statue_stone_min": 10,
+    # (0.104.168) homes: one bedroom per household, the stressed to rooms they like
+    "homes_cooldown_ticks": 1200,
+    "homes_dig_cooldown_ticks": 7 * 1200,
+    "homes_liked_cooldown_ticks": 7 * 1200,
+    "homes_liked_min_stressed": 5,     # unhappy or worse citizens before a move is looked for
+    "homes_liked_max": 10,             # moves at a time
+    "homes_rough_note_at": 3,          # citizens who slept rough lately before a note says why
+    # (E4) the citizens' taste (Design Guided or Architect only): a piece they like in their own room
+    "homes_furnish_cooldown_ticks": 7 * 1200,
+    "homes_furnish_max": 5,            # rooms furnished at a time
+    "uniform_cooldown_ticks": 1200,       # a squad's uniform: once a day
+    "crafts_cooldown_ticks": 14 * 1200,
+    "hauling_cooldown_ticks": 14 * 1200,
+    "ore_cooldown_ticks": 7 * 1200,    # a vein mined: at most once a week
+    "industry_cooldown_ticks": 7 * 1200,
+    "gather_cooldown_ticks": 7 * 1200, # shrubs marked for gathering: at most once a week
+    "train_min_citizens": 15,
+    "train_rotate_days": 28,           # squads the AI trains take turns, half at a time, a month each...
+    "train_rotate_below_militarism": 50,   # ...unless the fort is militant: then all train
+    "young_fort": 20,                  # under this many dwarves the fort is young: food first, small and plain
+    "found_food_per_dwarf": 15,
+    "character_food_per_dwarf": 10,    # (0.105.10, 14.1 step 3) the basics met before a slot is the character's:
+    "character_drink_per_dwarf": 10,   # ... food and drink a dwarf, beds for all, the basic workshops, a dining hall
+    "character_piety_bend": 120,       # (0.105.23, 14.1 step 4b) Piety this high: a shrine may take the slot before food and drink are met...
+    "character_piety_food_per_dwarf": 5,    # ...with this much food a dwarf...
+    "character_piety_drink_per_dwarf": 3,   # ...and drink (beds, dining hall and workshops still met; never in a crisis)
+    "established_food_per_dwarf": 40,  # a small fort with farms, this much food and the drink below is no longer young
+    "established_drink_per_dwarf": 15,
+    "gather_jobs_max": 60,             # more plant-gathering jobs than this in a fed fort: trimmed...
+    "gather_jobs_keep": 20,            # ...to this many
+    "dig_backlog_per_miner": 50,       # no new level while more than this waits to be dug, per miner
+    "water_gate_recheck_ticks": 3 * 28 * 1200,  # a water gate is looked at again each season
+    "mechanisms_cooldown_ticks": 7 * 1200,    # mechanisms ordered for a link: once a week at most
+    "link_mechanisms_retry_ticks": 3 * 1200,  # no free mechanisms: try the link again after 3 days
+    "max_gear_order": 10,
+    "gear_spare_stop": 3,          # this many unused spares: soldiers haven't picked them up; make no more
+    "gear_unused_ticks": 7 * 1200, # spares unused this long: tell the player (uniforms?)
+    "gear_weapons_anyway_ticks": 28 * 1200,   # (0.104.57) spare weapons unused this long: make new ones anyway
+    "gear_wait_ticks": 3 * 1200,   # after putting squads on training, let them pick up gear first
+    "smelt_when_bars_below": 50,   # weapon-grade bars (steel, iron, bronze, copper) in all
+    "health_wait_days": 28,        # a patient waiting this long for care is said (Needs you)
+    "squad_min_citizens": 10,
+    "trim_margin_min": 3,              # (0.102) soldiers over the wanted number kept before trimming...
+    "trim_margin_share": 0.25,         # ...or this share of it, whichever is more
+    "max_trim_per_cycle": 2,
+    "squad_trim_cooldown_ticks": 3 * 1200,
+    "bootstrap_chair_cooldown_ticks": 7 * 1200,   # (0.101.4) one chair job a week at most
+    "approve_after_days": 3,           # (0.101.2) the AI approves its own orders the manager hasn't
+    "crossing_min_value": 30,          # (0.101) the far side's worth before a bridge (crossing_value)
+    "crossing_far_share": 0.4,         # ...and against the fort's own side
+    "crossing_refine_citizens": 30,    # a wider bridge once the fort has this many dwarves
+    "crossing_refine_wealth": 20000,   # ...and this much wealth
+    "crossing_cooldown_ticks": 14 * 1200,
+    "dig_stall_days": 28,              # (0.104.110) no tile dug on a level this long: its dig jobs let go of their workers
+    "dig_stall_furnish_days": 56,      # ... and a level 90%+ dug is furnished without its last tiles
+    "unreached_dig_days": 56,          # (0.105.22) nothing dug at all in this many days (no one gets to it): given up
+    "slow_dig_days": 336,              # (0.104.12) a project under half dug in a game year is given up
+    "furniture_parallel_backlog": 4,   # (0.104.141) the stone order's pieces left per Masons' workshop before part goes to wood too
+    "furniture_parallel_min": 3,       # (0.104.141) the smallest wooden part worth ordering
+    "furniture_short_pieces": 40,      # (0.104.141) furniture waiting in open levels: Masons' workshops past the cap
+    "furnish_stalled_days": 30,        # (0.104.141) a level furnished but for buildings never finished this long: its slot freed
+    "convict_on": False,               # (0.104.147) the AI convicts solved cases (off: the guard's beatings killed patients)
+    "jail_convicts_wait": 10,          # (0.104.141) solved cases waiting: the jail grows by them (to twice the restraints wanted)
+    "shop_piece_wait_days": 168,       # (0.105.51) a workshops level waiting only for workshops' pieces (a millstone...) this long is given up
+    "statue_wait_days": 56,            # (0.104.12) a level waiting only for statues (no stone) this long is finished
+    "statue_wait_days_any": 112,         # (0.104.33) a level finished without its statues after this long, stone or not
+    "stuck_project_days": 21,          # (0.100.1) a level whose digging stopped is given up after this
+    "min_dwarves_for_farms": 3,                 # (0.100.1) was 7: one early death stopped the farms
+}
