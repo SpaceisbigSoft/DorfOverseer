@@ -3232,13 +3232,21 @@ function get_deep()
                         x1, x2 = math.min(x1, p.x), math.max(x2, p.x)
                         y1, y2 = math.min(y1, p.y), math.max(y2, p.y)
                     end
+                    -- (r5 p4) each tile read once: a tile was read again as the
+                    -- neighbour of each of its 26 neighbours (up to 27 reads)
+                    local seen_info = {}
                     local function info(x, y, z)
+                        local k = x + y * 1024 + z * 1048576
+                        local v = seen_info[k]
+                        if v ~= nil then return v or nil end
                         local tt = dfhack.maps.getTileType(x, y, z)
-                        if not tt then return nil end
+                        if not tt then seen_info[k] = false; return nil end
                         local des = dfhack.maps.getTileFlags(x, y, z)
                         local g = dfhack.maps.getWalkableGroup(xyz2pos(x, y, z))
-                        return {cave = des and (des.feature_global or des.feature_local), g = g,
-                                shape = df.tiletype_shape[df.tiletype.attrs[tt].shape]}
+                        v = {cave = des and (des.feature_global or des.feature_local), g = g,
+                             shape = df.tiletype_shape[df.tiletype.attrs[tt].shape]}
+                        seen_info[k] = v
+                        return v
                     end
                     local found = {}
                     for z = row.z_top - 1, row.z_top + 3 do
