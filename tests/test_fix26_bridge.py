@@ -128,6 +128,7 @@ def _():
 # --- 2. version marks and `modules` ------------------------------------------
 
 MARKED = BRIDGE_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-gates"] + GATES_PARTS + ["ai-military-gear", "ai-society-burrows", "ai-constructions"]
+MARKED += ["ai-society", "ai-society-animals", "ai-society-needs", "ai-society-posts"]   # (r8 s3) the hub and its parts
 
 
 @test("marks: every part carries one version mark, the same string as BRIDGE_VERSION")
@@ -312,7 +313,7 @@ def forwarder(file: str, fn: str):
 
 
 for _file, _fn, _mod in (("ai-military.lua", "gear", "ai-military-gear"),
-                         ("ai-society.lua", "burrows", "ai-society-burrows")):
+                         ("ai-society-posts.lua", "burrows", "ai-society-burrows")):
     @test(f"{_file}: {_fn}() looks {_mod} up once; again (the same table, reloaded) when its file changes")
     def _(file=_file, fn=_fn, mod=_mod):
         S = forwarder(file, fn)
@@ -329,7 +330,7 @@ for _file, _fn, _mod in (("ai-military.lua", "gear", "ai-military-gear"),
 @test("ai-military / ai-society: the forwarders still go through the kept lookup")
 def _():
     mil = (LUA_DIR / "ai-military.lua").read_text(encoding="utf-8")
-    soc = (LUA_DIR / "ai-society.lua").read_text(encoding="utf-8")
+    soc = (LUA_DIR / "ai-society-posts.lua").read_text(encoding="utf-8")   # (r8 s3) the part they moved to
     assert "_ENV[name] = function(...) return gear()[name](...) end" in mil
     assert "_ENV[name] = function(...) return burrows()[name](...) end" in soc
 

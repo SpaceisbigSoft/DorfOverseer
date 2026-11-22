@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 import harness  # noqa: E402
 from harness import test, finish  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_parts  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -320,7 +320,7 @@ def _():
 @test("L6 pasture: a caravan's or a visitor's animal, or one led by a merchant, is never pastured")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env = lua.execute("""local src = ...
+    env = lua.execute("""local src, parts = ...
       local units = {}
       local function u(id, o) local x = {id = id, flags1 = {caged = false, merchant = o.merchant}, following = o.following}
           units[id] = x; return x end
@@ -338,8 +338,10 @@ def _():
       env.reqscript = function() return {report_citizens = function(...) return env.dfhack.units.getCitizens(...) end,
                                          report_units = function() return env.df.global.world.units.active end} end
       env.require = function() return {} end
+      env.PART_SOURCES = parts   -- (r8 s3) the hub's parts, from their texts
       assert(load(src, 'ai-society', 't', env))()
-      return env""", (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))
+      return env""", (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"),
+        lua.table_from({p: (ROOT / "lua" / (p + ".lua")).read_text(encoding="utf-8") for p in split_parts("ai-society.lua")}))
     got = env.unpastured_grazers()
     assert [got[i].id for i in range(1, len(got) + 1)] == [1], [got[i].id for i in range(1, len(got) + 1)]
 

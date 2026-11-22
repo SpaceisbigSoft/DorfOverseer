@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 import planner  # noqa: E402
@@ -509,7 +509,7 @@ def _():
     rep = bridge_part_src("ai-bridge-report")
     assert "reqscript('ai-tantrums').kill_kind(k, abs_tick())" in rep
     assert "ev.conflict = kind:sub(1, 1):upper() .. kind:sub(2)" in rep and "ev.killer_x" in rep
-    soc = (LUA_DIR / "ai-society.lua").read_text(encoding="utf-8")
+    soc = split_src("ai-society.lua")   # (r8 s3) the hub and its parts
     assert "if okc and type(cat) == 'number' and cat <= 1 then return false end" in soc
 
 
