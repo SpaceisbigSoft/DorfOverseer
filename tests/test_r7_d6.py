@@ -43,9 +43,11 @@ LIMIT = 60 * 1024
 NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins__', '__cached__', '__doc__',
                  '__file__', '__loader__', '__name__', '__package__', '__spec__']
 # sha256 of repr(list(PLANNER_CONFIG.items())) and of repr(list(PLANNER_CONFIG)) at 6298b4a
-DUMP_6298B4A = "f74fd38f948961f308be1b3deb007ecb8318b59c974ff88eb06e5934cca6e6ea"
-KEYS_6298B4A = "26e50b5179569f7a1aa2a99d8369c5c5214e69e85f673da40c2155c7c5a83cb0"
-COUNT_6298B4A = 1258
+# (r9 c1) re-pinned after the garden court's two keys (garden_court_lift_ticks,
+# court_meeting_cooldown_ticks); the split itself was proven against 6298b4a in 0.105.63
+DUMP_6298B4A = "c9dd9d6bb8e13ca353a40dbc2c9d19941bc95ce9f8beec4f425339b48e1b1aae"
+KEYS_6298B4A = "8f6ada1849a8291b5d86c41b3ed11284088f7dcbd97dcf5b053fe80be48b70ed"
+COUNT_6298B4A = 1260
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 
