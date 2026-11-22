@@ -229,6 +229,7 @@ SHORT_WORDS = {
     "well_rescue": "let a dwarf stranded in the cavern under a well back up (its door, or a stair dug out)",  # (0.105.47)
     "cross_cavern": "take the main stair down through the first cavern in a walled shaft",  # (0.105.47)
     "place_garden_court": "build the garden court by the fields (next step)",  # (0.105.47)
+    "garden_court_meeting": "switch the garden court's meeting area off while danger is about, on once it has gone",  # (r9 c1)
     # (0.105.45) a great beast sealed in a cavern lured in and cut off (brain/planner_lure.py)
     "build_lure": "lay out a lure pocket behind a cavern door (cage traps, or drawbridges on levers)",
     "lure_open": "open the cavern door into the lure pocket (nobody below or near)",

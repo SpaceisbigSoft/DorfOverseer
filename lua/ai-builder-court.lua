@@ -21,7 +21,8 @@
 -- the last one's planned tiles:
 --   (search) -> clearing (the ring's trees felled) -> walls (Cw ring, a door)
 --   -> beds (farm plots on the soil quarters; the block paths, asked for)
---   -> furnish (statues, seats) -> zone (the meeting area) -> done
+--   -> furnish (statues, seats) -> secure (r9 c1) -> zone (the meeting area) -> done
+--   (or 'plain': a court that cannot be secured stays a garden, no meeting area)
 -- Every tile placed goes on the record. The state lives in the save (site
 -- data 'ai-overseer/garden_court'). The brain decides (planner_garden.py):
 -- {name, paths, statues} come in as opts; nothing here reads the sliders.
@@ -45,6 +46,26 @@ COURT_NAME_RE = "^[A-Za-z' ]+$"
 -- (built when the items come)
 COURT_WAIT_DAYS = 30
 
+-- (r9 c1) The player (21 Nov): the court is a meeting area only while no
+-- danger is about, and only once it is secured. The 'secure' stage (after
+-- furnish, before the meeting area): every tile of the ring a wall (natural or
+-- built), its one way in a door the AI locks (door_flags.forbidden, as the
+-- gates lock theirs: ai-util lock_door). Walls gone missing are placed again,
+-- a tree on the line felled. It cannot be secured (it stays a plain garden,
+-- 'plain', the why on the record and in the report):
+--   * a way into the fort inside it (its gate would shut the fort in);
+--   * a tile of the ring that takes no wall (a building, water, a stockpile);
+--   * the game refused its walls COURT_SECURE_TRIES times;
+--   * its walls placed again COURT_SECURE_TRIES times and still not closed, or
+--     waiting COURT_WAIT_DAYS for their material.
+-- An older save past the zone ('done', not secured) gets 'secure' next, its
+-- meeting area switched off until it is secured. garden_court_meeting (the
+-- brain's danger watch, planner_garden) switches the meeting area off and on
+-- (the civzone's spec_sub_flag.active) and locks the door while danger is
+-- about, never with a citizen inside the court.
+COURT_SECURE_TRIES = 3
+SECURE_WALL = {WALL = true, FORTIFICATION = true}
+
 -- (r9) days since the court entered its stage (nil: an older save, not known)
 local function stage_days(c)
     local t = tonumber(c.stage_tick)
@@ -54,7 +75,16 @@ end
 
 function court_data()
     local d = site_get(COURT_KEY)
-    return d.x and d or nil
+    if not d.x then return nil end
+    -- (r9 c1) an older save past the zone: the 'secure' step next, its
+    -- meeting area kept on the record (switched off until it is secured)
+    if d.stage == 'done' and not d.secured and not d.plain then
+        d.stage, d.stage_tick = 'secure', nil
+        for _, p in ipairs(d.tiles or {}) do
+            if tostring(p.t):sub(1, 1) == 'm' then d.zoned = true end
+        end
+    end
+    return d
 end
 
 local function save_court(d)
@@ -316,6 +346,146 @@ local function counts(c)
     return n
 end
 
+-- --- (r9 c1) the meeting area, the door, the court's people ------------------------
+-- (each one a function of its own: tests swap them)
+
+-- The court's meeting area (a civzone of type MeetingHall over its heart), or nil.
+function court_zone(c)
+    local ok, zn = pcall(function()
+        for _, z in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(c.x, c.y, c.z)) or {}) do
+            if z.type == df.civzone_type.MeetingHall then return z end
+        end
+    end)
+    return ok and zn or nil
+end
+
+-- Is a zone on (DF's "active"; off: idle dwarves don't gather there)? nil: unread.
+function zone_on(zn)
+    local ok, v = pcall(function() return zn.spec_sub_flag.active end)
+    if not ok or v == nil then return nil end
+    return v == true or v == 1
+end
+
+-- Switch a zone on or off: true when it reads so after.
+function set_zone_on(zn, on)
+    pcall(function() zn.spec_sub_flag.active = on end)
+    return zone_on(zn) == on
+end
+
+-- The court's door: 'built', 'planned' (waiting to be built), 'none' (nothing
+-- there) or 'other' (some other building in its way in).
+function court_door_state(c)
+    local ok, st = pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(c.door.x, c.door.y, c.z))
+        if not b then return 'none' end
+        if b:getType() ~= df.building_type.Door then return 'other' end
+        return b:getBuildStage() < b:getMaxBuildStage() and 'planned' or 'built'
+    end)
+    return ok and st or 'none'
+end
+
+-- Is the court's door locked? nil: no door, or unread.
+function court_door_locked(c)
+    local ok, v = pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(c.door.x, c.door.y, c.z))
+        return b and b.door_flags.forbidden
+    end)
+    if not ok or v == nil then return nil end
+    return v == true
+end
+
+-- Lock (true) or unlock (false) the court's door as the gates lock theirs.
+function court_lock_door(c, locked)
+    local ok, changed = pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(c.door.x, c.door.y, c.z))
+        if not b or b:getType() ~= df.building_type.Door then return false end
+        return reqscript('ai-util').lock_door(b, locked, 'garden court')
+    end)
+    return ok and changed or false
+end
+
+-- How many citizens stand inside the court's walls.
+function court_citizens_inside(c)
+    local n = 0
+    local ok, list = pcall(citizen_positions)
+    for _, p in ipairs(ok and list or {}) do
+        if p.z == c.z and math.abs(p.x - c.x) < c.r and math.abs(p.y - c.y) < c.r then n = n + 1 end
+    end
+    return n
+end
+
+-- A way into the fort inside the court (a way in from the surface, a stair
+-- down): why it can't be shut, or nil. ("Never sealed in": its gate locked
+-- would shut that way.)
+local function court_way_in(c)
+    local ok, anchors = pcall(surface_anchors)
+    for _, a in ipairs(ok and anchors or {}) do
+        if math.abs(a.z - c.z) <= 1 and math.abs(a.x - c.x) <= c.r and math.abs(a.y - c.y) <= c.r then
+            return 'a way into the fort is inside it (its gate shut would shut the fort in)'
+        end
+    end
+    for y = c.y - c.r + 1, c.y + c.r - 1 do
+        for x = c.x - c.r + 1, c.x + c.r - 1 do
+            local oks, sh = pcall(stair_shape, x, y, c.z)
+            if oks and sh then return 'a stair into the fort is inside it (its gate shut would shut that way)' end
+        end
+    end
+    return nil
+end
+
+-- The ring as it stands: {built, planned, missing = {tiles}, trees = {tiles},
+-- door ('built'|'planned'|'none'|'other'), door_missing, gap (why a tile takes
+-- no wall), way_in, secured}.
+function court_secure_scan(c)
+    local s = {built = 0, planned = 0, missing = {}, trees = {}}
+    for _, p in ipairs(court_ring(c.x, c.y, c.r)) do
+        if not (p.x == c.door.x and p.y == c.door.y) then
+            local t = tile_info(p.x, p.y, c.z)
+            if t and SECURE_WALL[t.shape] then
+                s.built = s.built + 1
+            elseif t and t.building then
+                if keep_wall_waits(p.x, p.y, c.z) then s.planned = s.planned + 1
+                else s.gap = s.gap or ('a building stands where its wall goes (%d, %d)'):format(p.x, p.y) end
+            elseif is_tree(t) then
+                table.insert(s.trees, p)
+            elseif keep_tile(p.x, p.y, c.z) == 'ground' then
+                table.insert(s.missing, p)
+            else
+                s.gap = s.gap or ('its wall\'s line meets %s (%d, %d)'):format(keep_tile_why(p.x, p.y, c.z), p.x, p.y)
+            end
+        end
+    end
+    s.door = court_door_state(c)
+    if s.door == 'planned' then
+        s.planned = s.planned + 1
+    elseif s.door == 'other' then
+        s.gap = s.gap or 'something other than a door stands in its way in'
+    elseif s.door == 'none' then
+        if keep_tile(c.door.x, c.door.y, c.z) == 'ground' then s.door_missing = true
+        else s.gap = s.gap or ('its way in is %s'):format(keep_tile_why(c.door.x, c.door.y, c.z)) end
+    end
+    s.way_in = court_way_in(c)
+    s.secured = not s.gap and not s.way_in and #s.missing == 0 and #s.trees == 0 and s.planned == 0
+        and s.door == 'built'
+    return s
+end
+
+-- The meeting area's and the door's state for the report.
+local function meeting_view(c, out)
+    out.secured, out.plain, out.plain_why, out.zoned = c.secured or nil, c.plain or nil, c.plain_why, c.zoned or nil
+    if c.zoned then
+        local zn = court_zone(c)
+        if zn then out.meeting_on = zone_on(zn) else out.zone_gone = true end
+    end
+    if c.secured or c.zoned or c.stage == 'secure' then
+        local ds = court_door_state(c)
+        out.door_built = ds == 'built' or nil
+        if ds == 'built' then out.locked = court_door_locked(c) end
+        out.inside = court_citizens_inside(c)
+        out.lockable = ds == 'built' and not court_way_in(c) or false
+    end
+end
+
 -- The report's view (section garden_court): nil with no court.
 -- {stage, x, y, elevation, r, name, walls_planned, walls_left, planned,
 -- trees_left, beds, statues, seats, paths, blocks_needed, done}
@@ -335,7 +505,16 @@ function garden_court_status()
     -- (r9) how long the stage has waited; past COURT_WAIT_DAYS the brain
     -- asks the next step anyway (place_garden_court goes on)
     out.stage_days = stage_days(c)
-    out.wait_over = (c.stage == 'beds' or c.stage == 'furnish') and (out.stage_days or 0) >= COURT_WAIT_DAYS or nil
+    out.wait_over = (c.stage == 'beds' or c.stage == 'furnish' or c.stage == 'secure')
+        and (out.stage_days or 0) >= COURT_WAIT_DAYS or nil
+    -- (r9 c1) secured, the meeting area and its door
+    out.done = (c.stage == 'done' or c.stage == 'plain') or nil
+    if c.stage == 'secure' then
+        local sc = court_secure_scan(c)
+        out.secure_planned, out.secure_missing = sc.planned, #sc.missing + (sc.door_missing and 1 or 0)
+        out.secure_trees, out.secure_gap = #sc.trees, sc.gap or sc.way_in
+    end
+    meeting_view(c, out)
     return out
 end
 
@@ -374,6 +553,10 @@ function place_garden_court(dry_run, opts)
     local c = court_data()
     if c and c.stage == 'done' then
         return {ok = false, rejected = true, done = true, error = 'the garden court is finished'}
+    end
+    if c and c.stage == 'plain' then      -- (r9 c1)
+        return {ok = false, rejected = true, done = true, plain = true,
+                error = 'the garden court stays a plain garden: ' .. tostring(c.plain_why)}
     end
     local function out(t)
         t.ok = t.ok ~= false
@@ -508,20 +691,132 @@ function place_garden_court(dry_run, opts)
     if c.stage == 'furnish' then
         local over = (stage_days(c) or 0) >= COURT_WAIT_DAYS      -- (r9) the rest stays planned
         if n.planned > 0 and not over then return wait('furnish', n.planned, 'statue(s) or seat(s)') end
-        local q = c.r - 1
-        local cell = {{x = c.x - q, y = c.y - q, text = ('m{name="The %s Garden Court"}(%dx%d)'):format(c.name, 2 * q + 1, 2 * q + 1)}}
-        local good = qf_try('zone', cell, c.z, 0, 0, dry_run)
-        if not good then
-            cell[1].text = ('m(%dx%d)'):format(2 * q + 1, 2 * q + 1)     -- (a name the game won't take: none)
-            good = qf_try('zone', cell, c.z, 0, 0, dry_run)
+        -- (r9 c1) secured before it is a meeting place
+        if not dry_run then c.stage = 'secure'; c.stage_tick = now_tick(); save_court(c) end
+        return out({stage = 'secure'})
+    end
+
+    -- (r9 c1) the walls closed all round, the way in a door the AI locks
+    if c.stage == 'secure' then
+        if not dry_run and not c.stage_tick then c.stage_tick = now_tick(); save_court(c) end
+        -- an older save's meeting area: off until the court is secured
+        if c.zoned and not dry_run then
+            local zn = court_zone(c)
+            if zn then set_zone_on(zn, false) end
         end
-        if not good then return out({ok = false, error = 'the game would not place the garden court\'s meeting area'}) end
-        if not dry_run then
-            c.stage = 'done'
-            record(c, cell, c.z)
-            save_court(c)
+        local sc = court_secure_scan(c)
+        local function plain(why)
+            if not dry_run then
+                c.stage, c.plain, c.plain_why, c.stage_tick = 'plain', true, why, nil
+                if court_door_state(c) == 'built' then court_lock_door(c, false) end
+                save_court(c)
+            end
+            return out({stage = 'plain', plain = true, why = why})
         end
-        return out({stage = 'done', zone = true, name = c.name})
+        if sc.way_in then return plain(sc.way_in) end
+        if sc.gap then return plain(sc.gap) end
+        if sc.secured then
+            local zoned = c.zoned
+            if not zoned then
+                local q = c.r - 1
+                local cell = {{x = c.x - q, y = c.y - q, text = ('m{name="The %s Garden Court"}(%dx%d)'):format(c.name, 2 * q + 1, 2 * q + 1)}}
+                local good = qf_try('zone', cell, c.z, 0, 0, dry_run)
+                if not good then
+                    cell[1].text = ('m(%dx%d)'):format(2 * q + 1, 2 * q + 1)     -- (a name the game won't take: none)
+                    good = qf_try('zone', cell, c.z, 0, 0, dry_run)
+                end
+                if not good then return out({ok = false, error = 'the game would not place the garden court\'s meeting area'}) end
+                if not dry_run then record(c, cell, c.z); c.zoned = true end
+            end
+            if not dry_run then
+                c.stage, c.secured, c.stage_tick = 'done', true, nil
+                save_court(c)
+            end
+            -- (an older save's area stays off: the brain's danger watch switches it on)
+            return out({stage = 'done', secured = true, zone = not zoned or nil, zone_kept = zoned or nil, name = c.name})
+        end
+        if #sc.trees > 0 then
+            if not dry_run then for _, p in ipairs(sc.trees) do fell_tree(p.x, p.y, c.z) end end
+            return wait('secure', #sc.trees, 'tree(s) to fell on its walls\' line')
+        end
+        if #sc.missing > 0 or sc.door_missing then
+            if (c.secure_tries or 0) >= COURT_SECURE_TRIES then
+                return plain(('its walls were put up %d times and still do not close it (no blocks or stone for them?)')
+                    :format(c.secure_tries))
+            end
+            local cells = {}
+            for _, p in ipairs(sc.missing) do table.insert(cells, {x = p.x, y = p.y, text = 'Cw'}) end
+            if sc.door_missing then table.insert(cells, {x = c.door.x, y = c.door.y, text = 'd'}) end
+            local placed, why = apply('build', cells, c.z, 'the garden court\'s walls', dry_run)
+            if not placed then
+                if not dry_run then
+                    c.secure_refused = (c.secure_refused or 0) + 1
+                    save_court(c)
+                    if c.secure_refused >= COURT_SECURE_TRIES then
+                        return plain(('the game refused its walls %d times (%s)'):format(c.secure_refused, tostring(why)))
+                    end
+                end
+                return out({ok = false, error = why})
+            end
+            if not dry_run then
+                c.secure_tries = (c.secure_tries or 0) + 1
+                record(c, cells, c.z)
+                save_court(c)
+            end
+            return out({stage = 'secure', walls = placed, door = sc.door_missing or nil})
+        end
+        -- walls (or the door) planned: built when the material comes, COURT_WAIT_DAYS at most
+        if (stage_days(c) or 0) >= COURT_WAIT_DAYS then
+            return plain(('%d wall or door piece(s) waited %d days unbuilt (no blocks or stone for them?)')
+                :format(sc.planned, stage_days(c)))
+        end
+        return wait('secure', sc.planned, 'wall or door piece(s)')
     end
     return out({ok = false, rejected = true, error = 'the garden court is in an unknown stage: ' .. tostring(c.stage)})
+end
+
+-- (r9 c1) The meeting area switched on or off by the brain's danger watch
+-- (planner_garden: off at once while danger is about, on again once it has
+-- been gone garden_court_lift_ticks). opts: {on, lock}. Off: the zone made
+-- inactive (idle dwarves stop gathering there); with lock (danger about) the
+-- door locked too, but never with a citizen inside the court nor with a way
+-- into the fort inside it (never sealed in). On: only a secured court; its
+-- door unlocked.
+function garden_court_meeting(dry_run, opts)
+    opts = type(opts) == 'table' and opts or {}
+    local on = opts.on == true
+    local c = court_data()
+    if not c then return {ok = false, rejected = true, error = 'there is no garden court'} end
+    if on and (not c.secured or c.plain) then
+        return {ok = false, rejected = true, error = 'the garden court is not secured: its meeting area stays off'}
+    end
+    local res = {ok = true, garden_court = true, on = on, x = c.x, y = c.y, elevation = ez(c.z),
+                 dry_run = dry_run or nil}
+    local zn = c.zoned and court_zone(c) or nil
+    if zn then
+        if not dry_run and not set_zone_on(zn, on) then
+            return {ok = false, error = ('the game would not switch the garden court\'s meeting area %s'):format(on and 'on' or 'off')}
+        end
+        res.zone = true
+    elseif c.zoned then
+        res.zone_gone = true
+    end
+    local door = court_door_state(c) == 'built'
+    local inside = court_citizens_inside(c)
+    local way_in = court_way_in(c)
+    local lock = door and not on and opts.lock == true and inside == 0 and not way_in
+    if door and not dry_run then court_lock_door(c, lock) end
+    res.locked, res.inside = lock, inside
+    if not on and opts.lock == true and not lock then
+        res.unlocked_why = not door and 'no door built' or inside > 0 and ('%d citizen(s) inside'):format(inside)
+            or way_in
+    end
+    if not zn and not door then
+        return {ok = false, rejected = true, error = 'the garden court has no meeting area or door to switch'}
+    end
+    if not dry_run then
+        c.meeting_off = (not on) or nil
+        save_court(c)
+    end
+    return res
 end

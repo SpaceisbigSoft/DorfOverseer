@@ -266,5 +266,7 @@ PART = {
     "garden_court_material": 50,          # blocks, stone or logs free for its walls (and paths)
     "garden_court_paths_grandeur": 30,    # block paths with Grandeur this high
     "garden_court_cooldown_ticks": 1200,  # a step a day at most
+    "garden_court_lift_ticks": 1200,      # (r9 c1) its meeting area on again a day after the last danger read (the gates' lift)
+    "court_meeting_cooldown_ticks": 100,  # (r9 c1) the meeting area switched at most every 100 ticks (the watcher's look)
     "garden_agri_pace_div": 150,          # statue gardens sooner by Agriculture: x2 ** (Agriculture / this) (120: x1.7)
 }

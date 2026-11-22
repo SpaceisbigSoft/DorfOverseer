@@ -264,6 +264,13 @@ ACTIONS = {
         return reqscript('ai-builder').place_garden_court(a.dry_run == true,
             {name = a.name, paths = a.paths == true, statues = n})
     end,
+    -- (r9 c1) the garden court's meeting area off while danger is about
+    -- (its door locked: lock), on again once it has gone: {on, lock, dry_run}
+    garden_court_meeting = function(a)
+        if type(a.on) ~= 'boolean' then return reject('garden_court_meeting: on is true or false') end
+        if a.lock ~= nil and type(a.lock) ~= 'boolean' then return reject('garden_court_meeting: lock is true or false') end
+        return reqscript('ai-builder').garden_court_meeting(a.dry_run == true, {on = a.on, lock = a.lock == true})
+    end,
     thirst_unforbid = function(a)
         local id = type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or nil
         if not id then return reject('thirst_unforbid needs unit_id') end
@@ -805,6 +812,7 @@ for _, name in ipairs({
     -- (0.105.47) the herd: each dry run counts (and names) and changes nothing
     'herd_breeders', 'tame_wild', 'train_hunt', 'herd_targets',
     'place_garden_court',   -- (0.105.47) its dry run finds the site (quickfort's dry run) and places nothing
+    'garden_court_meeting',   -- (r9 c1) its dry run reads the zone and the door and switches nothing
     'mission_way',   -- (0.105.47) its dry run is open_entrance's (checks the distance) and holds nothing
     'mission_pets',  -- (0.105.47, J17) its dry run names the pets and moves none
     'way_out_open', 'way_out_leave',   -- (0.105.47, J16) each dry run says what it would pull or unlock and changes nothing

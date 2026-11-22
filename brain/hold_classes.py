@@ -82,6 +82,7 @@ _DEFENCE_RULES = {
     "flasks_order", "shelter", "shelter_flee", "shelter_pick", "shelter_refresh", "shelter_squads",
     "shelter_supply", "archer_post", "caravan_guard", "wild_hunt", "cursed", "killer", "prisoners",
     "reanimation", "siege_cleanup", "flood", "animal_trainer",
+    "court_meeting",   # (r9 c1) the garden court's meeting area off while danger is about
 }
 
 _SURVIVAL_RULES = {
@@ -170,6 +171,7 @@ _DEFENCE_ACTIONS = {
     "squad_orders", "squad_routine", "squad_station", "squad_barracks", "hunt_recall", "set_uniform",
     "set_uniform_weapon", "adopt_uniform", "assign_weapons", "assign_kit", "unstick_uniforms", "free_stray_gear",
     "fire_guard", "moon_cell", "seal_cavern", "prisoner_room", "killer_cell", "archer_post", "remove_crossing",
+    "garden_court_meeting",   # (r9 c1)
 }
 
 _SURVIVAL_ACTIONS = {

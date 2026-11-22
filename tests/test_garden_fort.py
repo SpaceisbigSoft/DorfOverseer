@@ -421,7 +421,7 @@ T = LUA.table_from
 LUA.execute("df = df or {}; df.global = df.global or {}; df.global.world = df.global.world or {}")
 LUA.execute("df.global.world.buildings = {other = {TRADE_DEPOT = {}}}")
 SAVED = {k: B[k] for k in ("pasture_anchors", "surface_farm_spots", "hall_planned_at", "hall_free_items",
-                           "fell_tree", "deep_depot_mouth")}
+                           "fell_tree", "deep_depot_mouth", "court_door_state")}
 SAVED_NOW = B.now_tick
 
 
@@ -515,11 +515,18 @@ def _():
     r = B.place_garden_court(False, T({"name": "Rose", "statues": 4}))
     assert r.ok and r.stage == "furnish" and r.statues == 2 and r.seats >= 7, dict(r)
     r = B.place_garden_court(False, T({"name": "Rose"}))
-    assert r.ok and r.stage == "done" and r.zone, dict(r)
+    assert r.ok and r.stage == "secure" and not r.zone, dict(r)          # (r9 c1) secured first
+    c = W.persist["ai-overseer/garden_court"]
+    for t in c.tiles.values():                                           # (the stub builds nothing: built here)
+        if t.t == "Cw":
+            W.set(t.x, t.y, 80, T({"shape": "WALL"}))
+    B.court_door_state = LUA.eval("function() return 'built' end")
+    r = B.place_garden_court(False, T({"name": "Rose"}))
+    assert r.ok and r.stage == "done" and r.zone and r.secured, dict(r)
     zone = [p for p in W.placed.values() if p.mode == "zone"]
     assert len(zone) == 1 and zone[0].text == 'm{name="The Rose Garden Court"}(9x9)', [z.text for z in zone]
     st = B.garden_court_status()
-    assert st.done and st.blocks_needed == 0 and st.walls_left == 39, dict(st)   # (the stub builds nothing)
+    assert st.done and st.blocks_needed == 0 and st.walls_left == 0 and st.secured, dict(st)
     r = B.place_garden_court(False, T({"name": "Rose"}))
     assert not r.ok and r.done
 
@@ -544,7 +551,7 @@ def _():
         st = B.garden_court_status()
         assert st.stage_days == 31 and st.wait_over, dict(st)
         r = B.place_garden_court(False, T({"name": "Rose"}))
-        assert r.ok and r.stage == "done" and r.zone, dict(r)
+        assert r.ok and r.stage == "secure", dict(r)                    # (r9 c1) secured before the zone
     finally:
         B.now_tick = SAVED_NOW
 
