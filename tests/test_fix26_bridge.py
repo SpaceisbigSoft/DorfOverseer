@@ -35,7 +35,7 @@ BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-repo
 HUB_PARTS = re.findall(r"'([\w-]+)'", re.search(r"^HUB_PARTS = \{(.*?)\}", HUB, re.M).group(1))
 assert HUB_PARTS == ["ai-bridge-catalog", "ai-bridge-sections"], HUB_PARTS
 BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "projects-progress", "projects-finish", "projects-founding", "projects-wayin", "projects-polish", "farms", "wells", "wells-shaft", "wells-watch", "wells-place", "cistern", "cistern-status", "cistern-step", "surface", "keep", "deepdepot", "wagonroad", "dump", "rooms", "halls",
-                                              "landmarks", "court",    # (D0); (0.105.47) the garden court
+                                              "landmarks", "landmarks-place", "landmarks-stages", "court",    # (D0), (r9) its parts; (0.105.47) the garden court
                                               "floorstore", "floorpiles", "floors")]   # (layout B) the floors' record; piles; the site on a floor
 # (13e) the gates' hub and parts, as the hub lists them
 GATES_PARTS = ["ai-gates-" + p for p in re.findall(r"'([\w-]+)'", re.search(

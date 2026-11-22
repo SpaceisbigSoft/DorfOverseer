@@ -390,7 +390,7 @@ def _():
     proj = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     assert re.search(r"the game would not dig x%d y%d z%d \(%s\)'\):format\([^\n]*\n\s*\.\. \(okd and "
                      r"dig_guard_note\(st\)", proj)
-    lm = (LUA_DIR / "ai-builder-landmarks.lua").read_text(encoding="utf-8")
+    lm = __import__("lua_modules_util").builder_part_src("ai-builder-landmarks")   # (r9) the part and the files split off it
     assert re.search(r"the game would dig %d of its %d tiles'\):format\([^\n]*\n[^\n]*\n\s*\.\. \(okq and "
                      r"dig_guard_note\(dry\)", lm)
 

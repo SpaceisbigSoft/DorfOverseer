@@ -536,7 +536,7 @@ def _():
 @test("the changed Lua compiles under 5.3")
 def _():
     check = LUA.eval("function(src, name) local f, err = load(src, name, 't', {}); return f ~= nil, err end")
-    for f in ("ai-blueprints.lua", "ai-builder-landmarks.lua"):
+    for f in ("ai-blueprints.lua", "ai-builder-landmarks.lua", "ai-builder-landmarks-place.lua", "ai-builder-landmarks-stages.lua"):   # (r9) split
         ok, err = check((LUA_DIR / f).read_text(encoding="utf-8"), f)
         assert ok, (f, err)
 
