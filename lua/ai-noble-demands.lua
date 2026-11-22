@@ -38,7 +38,7 @@ QUALITY_MULT = {[0] = 1, 2, 3, 4, 5, 10}
 SMOOTHABLE = {STONE = true, MINERAL = true, LAVA_STONE = true}
 ROOMS_MAX = 40            -- noble rooms read in one report (a guard; a fort has a handful)
 
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 -- A DF name in words.
 local function readable(u, txt)

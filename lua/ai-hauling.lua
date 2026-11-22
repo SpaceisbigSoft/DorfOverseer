@@ -40,7 +40,7 @@
 
 local U = reqscript('ai-util')
 
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 HAUL_LABORS = {'HAUL_STONE', 'HAUL_WOOD', 'HAUL_BODY', 'HAUL_FOOD', 'HAUL_REFUSE', 'HAUL_ITEM',
                'HAUL_FURNITURE', 'HAUL_ANIMALS', 'HAUL_TRADE', 'HAUL_WATER'}

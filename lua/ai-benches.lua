@@ -53,7 +53,7 @@ BENCH_KINDS = {
 }
 SKILLS_MAX = 40                    -- ratings reported a kind
 
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 local function load_state()
     local d = U.site_get(BENCH_KEY, {})

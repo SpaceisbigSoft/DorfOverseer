@@ -40,7 +40,7 @@ RADIUS_MIN, RADIUS_MAX = 5, 60
 NEAR_Z = 3               -- levels up and down round a way in
 FAR_MAX = 12             -- far-out citizens listed by name at most
 
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 -- --- pure parts ---------------------------------------------------------------------
 

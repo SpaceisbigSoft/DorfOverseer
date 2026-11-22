@@ -84,7 +84,7 @@ OLD_SHA = {
     "ai-bridge-report": "462c6a16fb20ec2824533016b8332b492ae762d168752e3033a26e091bce7d19",
     "ai-bridge-actions": "f0574c449d6e15d528eb1004157dbfa2a8922c851275e96e1a76349b8c1a70e9",
 }
-SPLIT_VERSION = "0.105.61"
+SPLIT_VERSION = "0.105.62"
 
 
 def _body(text: str, later: bool, removed: list) -> str:

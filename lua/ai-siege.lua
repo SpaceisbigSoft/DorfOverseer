@@ -53,8 +53,8 @@ local ORTHO = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 -- df.siegeengine_orientation name (+y is south)
 ENGINE_ORIENTATION = {Up = 'North', Down = 'South', Left = 'West', Right = 'East'}
 
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
-local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
+local function report_units(...) return U.report_units(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 -- The modules this one leans on, through functions the tests replace.
 function gates() return reqscript('ai-gates') end

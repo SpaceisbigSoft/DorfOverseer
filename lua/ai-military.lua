@@ -14,8 +14,8 @@ local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
 -- (0.105.40 E3) inside a report, the report's one walk of the units
 -- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
-local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
+local function report_units(...) return U.report_units(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 -- (13c) the gear half: lua/ai-military-gear.lua (see the end of this file)
 -- (0.105.26) kept after the first lookup: reqscript finds the file again on
 -- every call (5-7 file checks on Windows), and the forwarders below call it

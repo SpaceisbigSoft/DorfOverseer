@@ -64,7 +64,7 @@ GROVE_TRIES = 25
 
 CENSUS = CENSUS
 
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 local function key(x, y, z) return ('%d,%d,%d'):format(x, y, z) end
 

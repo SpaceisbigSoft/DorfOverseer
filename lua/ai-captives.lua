@@ -46,7 +46,7 @@ TOWER_NEAR = 40           -- world tiles: towers this close are listed
 TOWER_ROWS = 3
 local THIEF_PROFS = {THIEF = 'thief', MASTER_THIEF = 'thief', SNATCHER = 'snatcher'}
 
-local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
+local function report_units(...) return U.report_units(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 local function report_citizens() return U.report_citizens(true) end   -- (r6) ai-util's, always the living (true)
 

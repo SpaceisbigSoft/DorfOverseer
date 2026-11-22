@@ -45,9 +45,9 @@ AI_PASTURE_NAME = 'AI pasture'
 MAX_KINDS = 16
 MAX_TAMEABLE = 12
 
-local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
+local function report_units(...) return U.report_units(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 local function yes(f, ...)
     local ok, v = pcall(f, ...)

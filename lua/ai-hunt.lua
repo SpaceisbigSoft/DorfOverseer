@@ -37,8 +37,8 @@ REASON_MAX = 80              -- characters of a recall's reason kept
 local KINDS = {'ForgottenBeast', 'Undead', 'Megabeast', 'SemiMegabeast', 'NightCreature', 'Titan', 'Demon'}
 
 -- inside a report, the report's one walk of the units (ai-util REPORT_CTX)
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
-local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
+local function report_units(...) return U.report_units(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 local function is(fn, u)
     if type(fn) ~= 'function' then return false end

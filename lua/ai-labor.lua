@@ -20,8 +20,8 @@ local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
 -- (0.105.40 E3) inside a report, the report's one walk of the units
 -- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
-local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
-local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
+local function report_citizens(...) return U.report_citizens(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
+local function report_units(...) return U.report_units(...) end   -- (r6) ai-util's, looked up each call (a reload of ai-util is picked up)
 
 MAX_MINERS = 20           -- (0.104.134: was 10) more than this get in each other's way; Teacheroar had
                           -- 15 picks, 10 miners and 260 tiles waiting on many levels
