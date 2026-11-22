@@ -318,9 +318,14 @@ def _messenger_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         return
     offices = _d(s.get("offices"))
     o = _d(_d(offices.get("offices")).get("MESSENGER"))
+    # (r10 p2) why nobody carries the fort's word, as the bridge read it (lua/ai-nobles.lua
+    # messenger_status: "no post until population N (now M)", "post exists, nobody appointed", ...)
+    why = _d(offices.get("messenger")).get("why") or _d(_d(s.get("missions")).get("messenger")).get("why")
     if not o:
+        if why:
+            notes.append(f"Make contact is on, but no messenger can be appointed yet: {why}")
         # (r2 h9) DF's civilisation gives this fort no messenger at all: said plainly
-        if _d(offices.get("messenger")).get("position") is False:
+        elif _d(offices.get("messenger")).get("position") is False:
             notes.append("Make contact is on, but this fort's civilisation has no messenger position (DF's "
                          "nobles screen shows none): no messenger can be appointed or sent")
         return

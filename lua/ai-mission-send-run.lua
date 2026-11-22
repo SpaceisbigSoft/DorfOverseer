@@ -413,7 +413,18 @@ function messenger_home()
         if not ent then return nil, 'no fort government' end
         local pos_id
         for _, p in ipairs(ent.positions.own) do if p.code == 'MESSENGER' then pos_id = p.id end end
-        if not pos_id then return nil, 'the fort has no messenger\'s post' end
+        -- (r10 p2) the post by its duty (DELIVER_MESSAGES) too, and why there is none
+        if not pos_id then
+            pcall(function()
+                local p = reqscript('ai-nobles').position_by_code(ent, 'MESSENGER')
+                pos_id = p and p.id or nil
+            end)
+        end
+        if not pos_id then
+            local okw, st = pcall(function() return reqscript('ai-nobles').messenger_status(nil, ent) end)
+            local why = okw and type(st) == 'table' and st.why
+            return nil, 'the fort has no messenger\'s post' .. (why and (': ' .. tostring(why)) or '')
+        end
         for _, a in ipairs(ent.positions.assignments) do
             if a.position_id == pos_id and a.histfig ~= -1 then
                 local hf = df.historical_figure.find(a.histfig)

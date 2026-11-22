@@ -211,7 +211,14 @@ function report()
     end
     local oks2, so = pcall(status_of, R, civ, group, fort_site, sent_ids())
     if not oks2 then R.note('status_of'); so = nil end
+    -- (r10 p2) the messenger's post: where it is, who holds it, why nobody does (lua/ai-nobles.lua)
+    local messenger
+    if type(reqscript) == 'function' then
+        local okm, m = pcall(function() return reqscript('ai-nobles').messenger_status(function(x) return short(x) end) end)
+        if okm and type(m) == 'table' then messenger = m else R.note('messenger') end
+    end
     return {
+        messenger = messenger,                                                                    -- (r10 p2)
         targets = tl,
         targets_partial = partial or nil,
         targets_inaccessible = (DROPPED_INACCESSIBLE or 0) > 0 and DROPPED_INACCESSIBLE or nil,   -- (0.105.47)

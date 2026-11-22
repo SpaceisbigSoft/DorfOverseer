@@ -111,3 +111,100 @@ Tools marked unavailable in this version include `workflow`, `zone`, `stocks`, `
 - [ ] `help autolabor` shows the three modes in 53.16-r3
 - [ ] Speed of `dfhack-run` round trips (target: under 200 ms for a state snapshot)
 - [ ] Where saves live on this PC (see setup guide)
+
+## The messenger (r10)
+
+Round 10 p2 (Phase 13b). No fort had a messenger, so the sender always stopped at "the fort has no
+messenger's post" (`lua/ai-mission-send-run.lua` `messenger_home`) and Mission details said "No
+messengers available". These notes cover what the DFHack repos show (cloned 22 Nov: df-structures,
+dfhack, scripts) and what they don't. DF's own raws are not in those repos and could not be found
+online, so the `[POSITION:MESSENGER]` tokens themselves are **not confirmed**. The probe below reads
+them in game.
+
+**What the structures show (df-structures):**
+
+- The duty: `entity_position_responsibility` has `DELIVER_MESSAGES` (`df.d_basics.xml`, the last
+  item of the enum, after `MAINTAIN_TUNNELS`). A messenger's post is found by that duty, or by the
+  code `MESSENGER`.
+- Where posts live (`df.entity.xml`, `historical_entity.positions`): `own` (`position`, the
+  entity's posts), `site` (`site_position_template`), `conquered_site`, `assignments`
+  (`position_profile`, the slots), `next_assignment_id`, plus the `possible_appointable` /
+  `possible_elected` / ... evaluation lists. A civilisation therefore keeps **templates** for its
+  sites' posts, and a site government (the fort, `plotinfo.group_id`) has its own posts in `own`.
+- A post (`entity_position`): `requires_population` (`population_requirement`), `number`
+  (`init-value 1`), `appointed_by` / `appointed_by_civ`, `responsibilities`, and flags
+  (`entity_position_flags`) including **`HAS_MET_POP_REQ`**, `HAS_BEEN_REPLACED`,
+  `HAS_RECEIVED_POSITIONS`, `ACTIVE`.
+- The raws (`entity_position_raw`, `historical_entity.entity_raw.positions`): `code`, flags
+  (`entity_position_raw_flags`: `SITE`, `ELECTED`, `DUTY_BOUND`, ...), `number`,
+  `requires_population`, `appointed_by_str`, `responsibilities`. The entity raw also has
+  `variable_positions` and `site_variable_positions` (indexed by responsibility). This is where
+  `[POSITION:MESSENGER]` with `[SITE]`, `[REQUIRES_POPULATION]` and `[APPOINTED_BY]` can be read in
+  game: the probe does that.
+- A slot (`entity_position_assignment`, bay12 `entity_position_profilest`): `id`, `histfig`
+  (holder), `histfig2` (last holder), `position_id`, `position_vector_idx`, `flags`, `squad_id`,
+  `assigned_army_controller_id`. The holder's side is `histfig_entity_link_positionst`
+  (`df.history_figure.xml`: `entity_id`, `assignment_id`, `assignment_vector_idx`, `start_year`).
+- The Nobles screen (`df.d_interface.xml` `administrators_interfacest`): rows are `noblelistst`
+  (`un`, `nem`, `ep`, `epp`, `enid`), so it lists posts of more than one entity. The candidate
+  list is `candidate` (`appointment_candidatest`: `un`, `value`), with `choosing_candidate` and
+  `candidate_noblelist_ind`. Nothing shows what DF writes on a click beyond those two records.
+- The World screen (`viewscreen_worldst`): `messenger_epp` (slots), `messenger_ent` (their
+  entities), `messenger_flag` (`civlist_messenger_flag.LOCKED_IN`),
+  `focus_site_messenger_candidate`. The messengers on offer are slots, possibly of more than one
+  entity.
+
+**What DFHack does:**
+
+- `Units::getNoblePositions` (`library/modules/Units.cpp`) walks the figure's
+  `histfig_entity_link_positionst` links to the entity's assignment and position. That is the
+  read-back `ai-nobles.write_appointment` checks.
+- `getUnitsByNobleRole(code)` looks at **both** `plotinfo.civ_id` and `plotinfo.group_id`.
+  `scripts/fix/stuck-squad.lua` calls it with `'Messenger'`, so DFHack expects a messenger as a
+  post of one of those two entities.
+- `scripts/make-monarch.lua` is the only DFHack script that writes an appointment: the same two
+  records (`assignment.histfig` and a position link). `scripts/internal/emigration/unit-link-utils.lua`
+  does the reverse for an emigrating mayor: `histfig`/`histfig2` set to -1, the position link
+  erased and replaced by a `histfig_entity_link_former_positionst`. No DFHack code creates a post (an
+  `entity_position` in `own`) or copies a civilisation's site template into a site government.
+  `Military::makeSquad` creates squads only for an assignment that already exists.
+
+**What the wiki says** (dwarffortresswiki.org, *Advanced entity position mechanics*; not code):
+posts with `[REQUIRES_POPULATION]` of 7 or less are open at embark. Above that, DF "does not
+continuously check whether positions should become available" and only evaluates them at certain
+events (deaths, Election Day, manual (re)assignment, ...). `AS_NEEDED` posts can be made by the
+player at will, and the only AS_NEEDED post made in worldgen is the site-level DELIVER_MESSAGES
+one. The *Messenger* page says messengers are appointed on the Nobles screen and sent from the
+World screen. It gives no population.
+
+**The rule the AI follows** (`lua/ai-nobles.lua` `messenger_status`, `pop_gate`):
+
+- **The post is in the fort's `own`** (by code or duty), open (no `requires_population`, or
+  `HAS_MET_POP_REQ` set, or that flag unreadable and the citizens counted at least that many):
+  appointed by the existing mechanism (r2 h9: `add_slot` adds the AS_NEEDED slot as the screen
+  does, then `write_appointment` writes the slot's holder and the figure's position link, reads it
+  back through `getNoblePositions`, and undoes both if DFHack doesn't see it). This is the same
+  path as the manager, bookkeeper, broker and chief medical dwarf. It works for any post once its
+  slot exists and its appointer (`appointed_by`, an office of the fort's own government) is held.
+  The holder is the best talker who is not a soldier, holds no other office, is not hospital or
+  location staff, a patient, wounded, a mother of a baby, a child or in a mood.
+- **The post is in `own` but not open** (needs N, `HAS_MET_POP_REQ` false): never filled. The why
+  is "no post until population N (now M)" or "post listed but not open yet".
+- **Not in `own`, only a civilisation template** (`positions.site`) **or only in the raws**: the AI
+  **does not write a post**. No code or evidence shows how DF copies a template, which ids and
+  indices it gives the post (`next_position_id`, `position_vector_idx`, the possible_* lists) or
+  what else it sets. The why: "no post until population N (now M)", or "no post yet: ... DF has
+  not given it to this fort".
+- **Only a post of the civilisation itself**: "not this fort's to fill".
+- **Nowhere**: "no post: this civilisation has no messenger position".
+
+The why is in `offices.messenger.why` and `missions.messenger.why`, and the planner turns it into
+a note (`brain/planner_world.py` `_messenger_rule`). It is also part of the sender's stop reason.
+Sending stays behind `send_messenger` (off by default).
+
+**Open, for the probe** (`lua/probes/probe-messenger.lua`, read only, one JSON object): which of
+the cases above a real fort is in. It prints the fort's posts (flags, duties, requires_population,
+number, appointers), slots and holders; the civilisation's site templates, its own messenger post
+and its raw positions (`SITE`, `REQUIRES_POPULATION`, `APPOINTED_BY`, `NUMBER`); the citizens
+counted; and `ai.why`. If a fort with enough dwarves still has only a template, the next step is
+the Nobles screen (word-found buttons, as trade does), not a data write.

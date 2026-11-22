@@ -213,6 +213,10 @@ function survey(txt)
         p = okp and p or nil
         out.messenger = {position = p ~= nil}
         if not p then return end
+        -- (r10 p2) a post found by its duty under another code: read as MESSENGER
+        if p.code ~= 'MESSENGER' and out.offices[p.code] and not out.offices.MESSENGER then
+            out.offices.MESSENGER = out.offices[p.code]
+        end
         local slots = 0
         for _, a in ipairs(ent.positions.assignments) do
             if a.position_id == p.id then slots = slots + 1 end
@@ -226,6 +230,18 @@ function survey(txt)
                                      no_slot = true}
         end
     end)
+    -- (r10 p2) where the post is and why nobody carries the fort's word (missions.messenger.why too)
+    pcall(function()
+        local st = messenger_status(txt, ent)
+        out.messenger = out.messenger or {position = false}
+        for _, k in ipairs({'post', 'code', 'why', 'requires_population', 'population', 'pop_met'}) do
+            out.messenger[k] = st[k]
+        end
+        local o = out.offices.MESSENGER
+        local gate = st.post == 'fort' and not st.held_by
+                     and pop_gate(st.requires_population, st.population, st.pop_met)
+        if o and gate then o.appointable, o.not_why = false, gate end
+    end)
     return out
 end
 
@@ -234,7 +250,71 @@ function position_by_code(ent, code)
     for idx, p in ipairs(ent.positions.own) do
         if p.code == code then return p, idx end
     end
+    -- (r10 p2) the messenger by its duty too (DELIVER_MESSAGES), whatever its code
+    if code == 'MESSENGER' then
+        for idx, p in ipairs(ent.positions.own) do
+            if delivers_messages(p) then return p, idx end
+        end
+    end
 end
+
+-- --- (r10 p2, 13b) the messenger's post ----------------------------------------
+-- What df-structures shows (docs/dfhack-notes.md "The messenger (r10)"):
+-- the duty is entity_position_responsibility DELIVER_MESSAGES; a civilisation
+-- keeps its site posts' templates in positions.site (site_position_template)
+-- and a site government its own posts in positions.own; a post has
+-- requires_population and the flag HAS_MET_POP_REQ. Nothing in DFHack copies
+-- a template into a fort's own list, and no evidence says how DF does it, so
+-- the AI never writes a post: it appoints once DF has given the fort the post
+-- (the existing slot + appointment writes), and otherwise says why not.
+
+-- the post carries messages (its duty), protected
+function delivers_messages(p)
+    local ok, on = pcall(function()
+        return p.responsibilities[df.entity_position_responsibility.DELIVER_MESSAGES]
+    end)
+    return ok and on == true
+end
+
+function is_messenger(p)
+    if p == nil then return false end
+    local okc, code = pcall(function() return p.code end)
+    return (okc and code == 'MESSENGER') or delivers_messages(p)
+end
+
+local function first_messenger(list)
+    local found
+    pcall(function()
+        for _, p in ipairs(list) do
+            if is_messenger(p) then found = p; break end
+        end
+    end)
+    return found
+end
+
+local function pop_flag(p)
+    local ok, v = pcall(function() return p.flags.HAS_MET_POP_REQ end)
+    if ok and type(v) == 'boolean' then return v end
+    return nil
+end
+
+-- Pure: why a post of the fort (or a civilisation template) isn't open yet
+-- for its population: req and pop numbers, met = the post's HAS_MET_POP_REQ
+-- (nil unread). DF's wiki: a post needing 7 or fewer is open from embark;
+-- above that it opens only when DF evaluates its posts. Returns a why or nil.
+function pop_gate(req, pop, met)
+    req = tonumber(req) or 0
+    if req <= 0 or met == true then return nil end
+    if pop and pop < req then
+        return 'no post until population ' .. req .. ' (now ' .. pop .. ')'
+    end
+    if met == false then
+        return 'post listed but not open yet: population ' .. req .. ' reached (now ' .. tostring(pop)
+               .. ') and DF has not opened it (it re-checks its posts only at some events)'
+    end
+    return nil
+end
+
 
 -- (r2 h9) a vacant slot for an AS_NEEDED position (the messenger), added as
 -- DF's nobles screen does: a new assignment with the next id, nobody in it
@@ -382,6 +462,106 @@ local function add_event(ent, hf, pos)
     end)
 end
 
+-- (r10 p2) The messenger's post read: where it is, what it needs, who holds
+-- it, and `why` nobody carries the fort's word yet (nil once it is held).
+-- post: 'fort' (the fort's own post), 'civ_site' (only its civilisation's
+-- template for its sites), 'civ' (a post of the civilisation itself), 'raw'
+-- (only in its raws, entity_raw.positions), 'none'.
+-- Read only. `pop` given by a test; else the citizens counted.
+function messenger_status(txt, ent, pop)
+    ent = ent or U.fort_entity()
+    if not ent then return {post = 'unknown', why = 'no fort government (entity) found'} end
+    if pop == nil then
+        local okp, list = pcall(report_citizens, true)
+        pop = okp and type(list) == 'table' and #list or nil
+    end
+    local out = {post = 'none', population = pop}
+    local p = position_by_code(ent, 'MESSENGER')
+    if p then
+        out.post, out.code, out.position_id = 'fort', p.code, p.id
+        pcall(function() out.requires_population = tonumber(p.requires_population) end)
+        out.pop_met = pop_flag(p)
+        pcall(function() out.number = tonumber(p.number) end)
+        local by = {}
+        pcall(function()
+            for i = 0, #p.appointed_by - 1 do
+                local ap = position_of(ent, p.appointed_by[i])
+                table.insert(by, ap and ap.code or tostring(p.appointed_by[i]))
+            end
+        end)
+        out.appointed_by = by
+        local slots, vacant = 0, 0
+        for _, a in ipairs(ent.positions.assignments) do
+            if a.position_id == p.id then
+                slots = slots + 1
+                if a.histfig == -1 then
+                    vacant = vacant + 1
+                elseif not out.held_by then
+                    local hf = df.historical_figure.find(a.histfig)
+                    out.holder_hf = a.histfig
+                    out.held_by = hf and (txt or tostring)(translate(hf.name)) or tostring(a.histfig)
+                end
+            end
+        end
+        out.slots, out.vacant = slots, vacant
+        if out.held_by then return out end
+        local gate = pop_gate(out.requires_population, pop, out.pop_met)
+        if gate then out.why, out.appointable = gate, false; return out end
+        local okc, can, nwhy = pcall(appointable, ent, p)
+        out.appointable = okc and can or false
+        if not out.appointable then
+            out.why = "post exists, but it is not the fort's to fill (" .. tostring(okc and nwhy or can) .. ')'
+            return out
+        end
+        local okk, c = pcall(function() return pick_holder(candidates('MESSENGER'), false) end)
+        if okk and c == nil then
+            out.why = 'post exists, nobody suitable to appoint (soldiers, office holders, staff, patients, '
+                      .. 'the wounded, mothers of babies and children stay home)'
+        else
+            out.why = 'post exists, nobody appointed'
+        end
+        return out
+    end
+    -- not the fort's: its civilisation's lists
+    local civ
+    pcall(function() civ = df.historical_entity.find(df.global.plotinfo.civ_id) end)
+    if not civ then out.why = "no post: the fort's civilisation could not be read"; return out end
+    local t = first_messenger(civ.positions.site)
+    if t then
+        out.post, out.code = 'civ_site', t.code
+        pcall(function() out.requires_population = tonumber(t.requires_population) end)
+        out.why = pop_gate(out.requires_population, pop, nil)
+                  or ("no post yet: the civilisation's sites have a messenger post"
+                      .. ((out.requires_population or 0) > 0 and (' (from population ' .. out.requires_population .. ')') or '')
+                      .. ' but DF has not given it to this fort (the AI does not write posts)')
+        return out
+    end
+    local c = first_messenger(civ.positions.own)
+    if c then
+        out.post, out.code = 'civ', c.code
+        out.why = "no post: the messenger is the civilisation's post, not this fort's to fill"
+        return out
+    end
+    -- the civilisation's raws ([POSITION:...] in entity_raw.positions): a SITE messenger there
+    local raw
+    pcall(function()
+        for _, r in ipairs(civ.entity_raw.positions) do
+            local duty = false
+            pcall(function() duty = r.responsibilities[df.entity_position_responsibility.DELIVER_MESSAGES] == true end)
+            if r.code == 'MESSENGER' or duty then raw = r; break end
+        end
+    end)
+    if raw then
+        out.post, out.code = 'raw', raw.code
+        pcall(function() out.requires_population = tonumber(raw.requires_population) end)
+        out.why = pop_gate(out.requires_population, pop, nil)
+                  or "no post yet: the civilisation's raws have a messenger post but DF has not given it to this fort"
+        return out
+    end
+    out.why = 'no post: this civilisation has no messenger position'
+    return out
+end
+
 -- Appoint the best-suited citizen to a vacant `code` office.
 function appoint(code, dry_run, txt)
     if not OFFICES[code] then
@@ -391,6 +571,17 @@ function appoint(code, dry_run, txt)
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
     local assignment, a_idx, pos
     local added_slot = false                    -- (r2 h9) a messenger's slot made for this appointment
+    if code == 'MESSENGER' then                 -- (r10 p2) only into a post DF has given and opened
+        local okst, st = pcall(messenger_status, txt, ent)
+        if okst and type(st) == 'table' then
+            if st.post ~= 'fort' then
+                return {ok = false, rejected = true, why = st.why,
+                        error = 'the fort has no MESSENGER office yet: ' .. tostring(st.why)}
+            end
+            local gate = (not st.held_by) and pop_gate(st.requires_population, st.population, st.pop_met)
+            if gate then return {ok = false, rejected = true, error = gate, why = gate} end
+        end
+    end
     if MILITARY_OFFICES[code] then              -- (0.104.168)
         local r = military_slot(ent, code)
         if not r.ok then return r end
@@ -398,7 +589,8 @@ function appoint(code, dry_run, txt)
     else
         for idx, a in ipairs(ent.positions.assignments) do
             local p = position_of(ent, a.position_id)
-            if p and p.code == code then
+            -- (r10 p2) the messenger's post found by its duty too
+            if p and (p.code == code or (code == 'MESSENGER' and is_messenger(p))) then
                 if a.histfig ~= -1 then
                     return {ok = false, rejected = true, error = code .. ' is already held'}
                 end
