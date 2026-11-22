@@ -18,7 +18,7 @@ BRAIN = Path(__file__).resolve().parent.parent / "brain"
 BRAIN_DIR = BRAIN
 
 PY_SPLIT = {
-    "overseer": ["overseer_words", "overseer_cycle", "overseer_world", "overseer_loop"],          # d1
+    "overseer": ("overseer_words", "overseer_cycle", "overseer_world", "overseer_loop"),          # d1 (a tuple: its test)
     "planner": ["planner_select", "planner_record", "planner_cycle"],                            # d2
     "planner_industry": ["planner_industry_disposal", "planner_industry_stone", "planner_industry_crafts"],
     "planner_building": ["planner_building_stores", "planner_building_rooms"],                  # d4
