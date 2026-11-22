@@ -1586,6 +1586,15 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r5 p2) honest numbers in the journal (brain/rests.py, crisis.py, planner_meetings.py, outcomes.idle_free_pct)
+PLANNER_CONFIG.update({
+    "r5p2_rests": True,                   # a ghost laid to rest is marked `rest` (topic "rest", a death told again): never a death or a ghost risen
+    "r5p2_crisis_journal": True,          # crisis mode entered and left: a journal line of its own (kind "crisis")
+    "r5p2_meeting_journal": True,         # meetings opened, answered, left, and DF's word the diplomats left: kind "meeting"
+    "r5p2_idle_free": True,               # the truly idle non-soldiers' share recorded (timeline, seasons.csv avg_idle_free_pct, metrics)
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall

@@ -389,13 +389,15 @@ def read_actions(forts: list[Path], since: datetime | None) -> dict:
                 continue
             with f:
                 for line in f:
-                    if '"decision"' not in line:
+                    # (r5 p2) the main loop's meeting lines are actions too (open_meeting,
+                    # answer_meeting, close_meeting: sent outside the planner)
+                    if '"decision"' not in line and '"meeting"' not in line:
                         continue
                     try:
                         e = json.loads(line)
                     except ValueError:
                         continue
-                    if not isinstance(e, dict) or e.get("kind") != "decision":
+                    if not isinstance(e, dict) or e.get("kind") not in ("decision", "meeting"):
                         continue
                     t = str(e.get("time") or "")
                     if lo and t < lo:

@@ -44,6 +44,7 @@ from pathlib import Path
 
 import customs
 from digest import _d, _l
+from rests import citizen_death, is_rest  # (r5 p2) a ghost laid to rest is no death
 from util import load_json
 
 try:                    # (D0) the design language (brain/design.py): its level signature
@@ -303,15 +304,14 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
         if e.get("kind") == "event" and before(e, date):
             ev = _d(e.get("event"))
             if ev.get("kind") == "report":
-                topic = ev.get("topic")
+                topic = "rest" if is_rest(ev) else ev.get("topic")     # (r5 p2) no ghost risen
                 # (0.105.33) a soldier naming a weapon (NAMED_ARTIFACT) is not a mood's artifact
                 if topic == "artifact_made" and (ev.get("type") == "NAMED_ARTIFACT"
                                                  or "bestowed the name" in str(ev.get("text") or "")):
                     topic = "artifact_named"
                 reports[topic] += 1
-            elif (ev.get("kind") == "death" and ev.get("own_civ") and not ev.get("animal")
-                  and not ev.get("again") and not ev.get("ghost")):
-                # (0.105.46) a ghost laid to rest is no new death
+            elif citizen_death(ev):
+                # (0.105.46) a ghost laid to rest is no new death (r5 p2: in any of its shapes)
                 when = abs_ticks(ev) if "year" in ev else (abs_ticks(e["date"]) if isinstance(e.get("date"), dict)
                                                            else None)
                 died.append((ev.get("unit_id"), str(ev.get("cause") or "unknown"), when))

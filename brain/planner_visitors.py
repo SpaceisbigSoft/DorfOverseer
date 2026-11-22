@@ -8,6 +8,7 @@ again). planner_society re-exports every name here."""
 from __future__ import annotations
 
 from digest import _d, _l
+from rests import citizen_death  # (r5 p2) a ghost laid to rest is no death
 from planner_core import *  # noqa: F401,F403
 
 __all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "residency_stance", "residency_kind", "residency_room", "residency_verdict", "note_residency", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since", "sought_artifact", "artifacts_at_risk", "note_artifact_risk", "claimed_shut"]
@@ -396,7 +397,7 @@ def note_heists(state: dict, memory, events: list) -> int:
             text = " ".join(str(e.get("text") or "").split())
             if "sneaking around" in text and "stand between me and" in text:
                 who = text.split(" was spotted")[0].replace("The ", "", 1)[:40]
-        elif (e.get("kind") == "death" and e.get("own_civ") and not e.get("animal") and not e.get("again")
+        elif (citizen_death(e)        # (r5 p2) no ghost laid to rest
                 and e.get("killer_visitor") and not e.get("killer_dead")
                 and str(e.get("mood") or "").lower() != "berserk"):
             who = str(e.get("killer") or "a visitor").split(",")[0][:40]

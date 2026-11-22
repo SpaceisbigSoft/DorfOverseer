@@ -52,6 +52,7 @@ from planner_floors import floor_action, floor_outcome, not_on_floor_words  # no
 from planner_floors import journal_hint as floor_journal_hint  # noqa: E402  (r3 g3) the hint sent, journaled
 from planner_floors import forget_sent as floor_forget_sent  # noqa: E402  (r3 V4)
 from planner_meetings import meeting_open_due, meeting_open_said, meeting_reopen_wait  # noqa: E402  (0.105.47) meetings opened unattended
+from planner_meetings import meeting_entry, meeting_report_lines  # noqa: E402  (r5 p2) meetings journaled
 from planner_threats import note_intrusions  # noqa: E402  (0.105.30 live fixes)
 from planner_holdfast import note_thief_targets  # noqa: E402  (0.105.47, R2 item 7)
 import planner_stuck  # noqa: E402  (0.105.45) the stuck sweep's soak summary
@@ -67,6 +68,7 @@ import calibrate  # noqa: E402
 import chronicle  # noqa: E402
 import defence  # noqa: E402
 import crisis
+import rests  # noqa: E402  (r5 p2) a ghost laid to rest is no death
 import learning  # noqa: E402
 import masterplan  # noqa: E402
 import leanings  # noqa: E402
@@ -384,6 +386,20 @@ def save(key: str, memory: Memory, bank: TokenBank, bridge=None, state: dict | N
         MEMORY_SAVE_LEFT[key] = (out or {}).get("save_left", 0)
         if not MEMORY_SAVE_LEFT[key] and state and isinstance(state.get("date"), dict):
             LAST_MEMORY_SAVE[key] = abs_tick(state)
+
+
+LAST_FORT: dict = {}     # (r5 p2) the fort and date of the last cycle: the main loop's meeting lines go to its journal
+
+
+def journal_meeting(action: str, r, held_s=None) -> None:
+    """(r5 p2, A3 B2) A meeting action from the main loop as a journal line of
+    its own (planner_meetings.meeting_entry); never raises."""
+    try:
+        e = meeting_entry(action, r, held_s)
+        if e is not None:
+            journal({"kind": "meeting", "fort": LAST_FORT.get("key"), "date": LAST_FORT.get("date"), **e})
+    except Exception:  # noqa: BLE001 - a log line never stops the loop
+        pass
 
 
 def journal(entry: dict) -> None:
@@ -1300,7 +1316,14 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
             })
             return
         note_perf(state, key)
+        LAST_FORT.update(key=key, date=state.get("date"))     # (r5 p2) for the main loop's meeting lines
         events = bridge.events()
+        # (r5 p2) a ghost laid to rest is no death, whatever shape DF told it in:
+        # a death told again (also after DF restarted: the memory keeps who was
+        # told dead), of a ghost, or beside "put to rest"; the announcement is
+        # topic `rest`, not a ghost risen. Every reader below gets them so.
+        events = cycle_step(memory, state, "mark_rests",
+                            lambda: rests.mark_rests(events, memory.dead_told, abs_tick(state)), default=events)
         seen: dict[str, int] = {}
         for ev in events:
             # (r1g8) a ghost laid to rest is no second death: journaled as
@@ -1344,6 +1367,10 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 journal({"kind": "thirst_death", "fort": key, "date": state["date"], **e})
             for e in recovery_journal(memory):        # (0.105.46, I4) recovery entered, left, migrants called
                 journal({"kind": "recovery", "fort": key, "date": state["date"], **e})
+            for e in crisis.crisis_journal(memory):   # (r5 p2) crisis mode entered and left
+                journal({"kind": "crisis", "fort": key, "date": state["date"], **e})
+            for e in meeting_report_lines(events):    # (r5 p2) DF's word that the diplomats left
+                journal({"kind": "meeting", "fort": key, "date": state["date"], **e})
         cycle_step(memory, state, "journals", _journals)
         cycle_step(memory, state, "note_tantrums", lambda: note_tantrums(state, memory, events))   # (0.104.31) tantrums counted for the jail
         cycle_step(memory, state, "note_tantrum_book", lambda: note_tantrum_book(state, memory, events))   # (0.105.47) tantrum/berserk/possession reports
@@ -2712,6 +2739,7 @@ def _run(args) -> int:
                 open_meeting_tried = nowt
                 try:
                     r = bridge.act({"type": "open_meeting"})
+                    journal_meeting("open_meeting", r)
                     line = meeting_open_said(r)
                     if line and line != open_meeting_said:
                         say(line)
@@ -2729,6 +2757,7 @@ def _run(args) -> int:
                 answer_tried = nowt
                 try:
                     r = bridge.act({"type": "answer_meeting"})
+                    journal_meeting("answer_meeting", r, nowt - held_since)
                     if r.get("pressed") and not r.get("ok"):
                         answer_dead = held_since
                     # (0.105.35) or a topic the AI can't answer (a barony's holder): left soon,
@@ -2744,6 +2773,8 @@ def _run(args) -> int:
                     # and it is left after MEETING_GIVEUP_S (R3, 14 Nov: a dead key
                     # was pressed every 30 s for 5 minutes in all six games)
                     answer_dead = answer_cant = held_since
+                    journal_meeting("answer_meeting", {"ok": False, "pressed": True, "error": str(e)[:200]},
+                                    nowt - held_since)
                     say(f"DF's meeting screen: {str(e)[:160]}; left in about {int(MEETING_GIVEUP_S)} s "
                         "if nobody answers it")
                 except DFHackError:
@@ -2754,6 +2785,7 @@ def _run(args) -> int:
                 meeting_tried = nowt
                 try:
                     r = bridge.act({"type": "close_meeting"})
+                    journal_meeting("close_meeting", r, nowt - held_since)
                     # (0.105.47) a meeting it couldn't answer: the light not clicked again for a while
                     # (each opening holds the game until the leave)
                     if r.get("screen") and answer_cant == held_since:

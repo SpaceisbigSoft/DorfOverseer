@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 from culture import check_style
 from digest import _d, _l, digest, game_text, normalize
+from rests import citizen_death, is_rest  # (r5 p2)
 
 MAX_ACTIONS = 3
 MAX_ORDER = 100
@@ -406,13 +407,13 @@ def detect(prev: dict | None, state: dict, events: list[dict]) -> list[str]:
     """Kinds of significant events since the last cycle (see tokens.TOPUPS)."""
     s = normalize(state)
     kinds: list[str] = []
-    topics = {e.get("topic") for e in events if e.get("kind") == "report"}
+    topics = {"rest" if is_rest(e) else e.get("topic") for e in events if e.get("kind") == "report"}   # (r5 p2)
     if any(e.get("kind") == "invasion" for e in events) or "siege" in topics:
         kinds.append("siege")
     for topic, kind in REPORT_KINDS.items():
         if topic in topics and kind not in kinds:
             kinds.append(kind)
-    if any(e.get("kind") == "death" and e.get("own_civ") and not e.get("animal") and not e.get("again") for e in events):
+    if any(citizen_death(e) for e in events):      # (r5 p2) no ghost laid to rest
         kinds.append("citizen_death")
     arrivals = [e for e in events if e.get("kind") == "arrival" and e.get("own_civ") and not e.get("hostile")]
     o = s["others_on_map"]

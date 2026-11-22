@@ -597,6 +597,16 @@ def _read_csv(path: Path) -> tuple[list[str], list[list[str]]]:
     return (rows[0], rows[1:]) if rows else ([], [])
 
 
+def _remap_rows(head: list[str], rows: list[list], new_head: list[str]) -> list[list] | None:
+    """(r5 p2) Rows written under an older column list, re-mapped by name to
+    the new one (a new column blank in them), or None when the old list has
+    a column the new one lacks (then they are dropped, as before). A new
+    column no longer wipes a fort's seasons.csv kept for ever."""
+    if not head or not rows or any(h not in new_head for h in head) or head[:1] != new_head[:1]:
+        return None
+    return [[dict(zip(head, r)).get(f, "") for f in new_head] for r in rows if r]
+
+
 def _write_csv(path: Path, head: list[str], rows: list[list]) -> None:
     tmp = path.with_suffix(".tmp")
     with tmp.open("w", encoding="utf-8", newline="") as f:
@@ -614,7 +624,7 @@ def log_day(key: str, row: dict, field_names: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     head, rows = _read_csv(path)
     if head != field_names:
-        rows = []
+        rows = _remap_rows(head, rows, field_names) or []     # (r5 p2) a new column keeps the old days
     day = row.get("day")
     rewound = [r for r in rows if r and r[0].lstrip("-").isdigit() and int(r[0]) >= day]
     kept = [r for r in rows if r and r[0].lstrip("-").isdigit() and day - TIMELINE_LOG_DAYS < int(r[0]) < day]
@@ -628,7 +638,8 @@ def log_day(key: str, row: dict, field_names: list[str]) -> None:
 
 SEASON_FIELDS = ["season", "name", "days", "deaths", "threat_days", "avg_pop", "high_pop", "avg_drink_pd",
                  "low_drink_pd", "avg_meals_pd", "low_meals_pd", "avg_unhappy_pct", "high_unhappy_pct",
-                 "avg_idle_pct", "avg_wealth"]
+                 "avg_idle_pct", "avg_wealth",
+                 "avg_idle_free_pct"]     # (r5 p2) the truly idle non-soldiers' share; avg_idle_pct is the old measure
 
 
 def log_seasons(key: str, seasons: list[dict], season_name) -> None:
@@ -643,7 +654,7 @@ def log_seasons(key: str, seasons: list[dict], season_name) -> None:
         return
     head, rows = _read_csv(path)
     if head != SEASON_FIELDS:
-        rows = []
+        rows = _remap_rows(head, rows, SEASON_FIELDS) or []     # (r5 p2) old seasons kept, the new column blank
     newest = max(x["season"] for x in mine)
     by_season = {int(r[0]): r for r in rows if r and r[0].lstrip("-").isdigit() and int(r[0]) <= newest}
     for x in mine:
@@ -651,7 +662,8 @@ def log_seasons(key: str, seasons: list[dict], season_name) -> None:
         by_season[x["season"]] = ["" if v is None else v for v in (
             x["season"], season_name(x["season"]), x.get("n"), x.get("deaths"), x.get("threat_days"),
             a.get("pop"), hi.get("pop"), a.get("drink_pd"), lo.get("drink_pd"), a.get("meals_pd"),
-            lo.get("meals_pd"), a.get("unhappy_pct"), hi.get("unhappy_pct"), a.get("idle_pct"), a.get("wealth"))]
+            lo.get("meals_pd"), a.get("unhappy_pct"), hi.get("unhappy_pct"), a.get("idle_pct"), a.get("wealth"),
+            a.get("idle_free_pct"))]
     new = [by_season[k] for k in sorted(by_season)]
-    if [[str(v) for v in r] for r in new] != rows:
+    if [[str(v) for v in r] for r in new] != rows or head != SEASON_FIELDS:
         _write_csv(path, SEASON_FIELDS, new)

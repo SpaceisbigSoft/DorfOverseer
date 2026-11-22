@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 
 from digest import _d, _l, normalize
+from outcomes import idle_free_pct  # (r5 p2)
+from rests import citizen_death, is_rest  # (r5 p2)
 
 UNHAPPY = ("miserable", "very_unhappy", "unhappy")
 HAPPY = ("happy", "ecstatic")
@@ -18,7 +20,8 @@ FIELDS = ["day", "date", "population", "adults", "idle_pct", "unhappy", "unhappy
           "needs_care", "wealth", "drink_per_dwarf", "meals_per_dwarf", "citizen_deaths",
           "arrivals", "threats_reaching", "alert_on", "projects_open", "projects_finished",
           "ai_actions", "tokens_used", "fps", "report_ms",
-          "moods", "artifacts", "insanity", "tantrums", "ghosts", "crimes"]
+          "moods", "artifacts", "insanity", "tantrums", "ghosts", "crimes",
+          "idle_free_pct"]     # (r5 p2) the truly idle non-soldiers' share (idle_pct: the old measure)
 
 # announcement topics counted each day (lua/ai-reports.lua)
 REPORT_COUNTS = {"moods": "mood", "artifacts": "artifact_made", "insanity": "insanity",
@@ -41,7 +44,8 @@ def day_row(day: int, state: dict, events: list[dict], *, ai_actions: int = 0, t
     pr = _d(s.get("projects"))
     d = _d(s.get("date"))
     unhappy = sum(stress.get(k, 0) for k in UNHAPPY)
-    topics = [e.get("topic") for e in events if e.get("kind") == "report"]
+    # (r5 p2) a ghost put to rest is no ghost risen (an older bridge filed it under `ghost`)
+    topics = [e.get("topic") for e in events if e.get("kind") == "report" and not is_rest(e)]
     counts = {field: topics.count(topic) for field, topic in REPORT_COUNTS.items()}
     return {**counts,
         "day": day,
@@ -49,6 +53,7 @@ def day_row(day: int, state: dict, events: list[dict], *, ai_actions: int = 0, t
         "population": pop,
         "adults": adults,
         "idle_pct": _pct(dw.get("idle_adults") or 0, adults),
+        "idle_free_pct": idle_free_pct(dw),
         "unhappy": unhappy,
         "unhappy_pct": _pct(unhappy, pop),
         "happy_pct": _pct(sum(stress.get(k, 0) for k in HAPPY), pop),
@@ -56,8 +61,7 @@ def day_row(day: int, state: dict, events: list[dict], *, ai_actions: int = 0, t
         "wealth": s.get("wealth") if isinstance(s.get("wealth"), (int, float)) else None,
         "drink_per_dwarf": round(st.get("drink", 0) / pop, 1) if pop else 0,
         "meals_per_dwarf": round(st.get("prepared_meals", 0) / pop, 1) if pop else 0,
-        "citizen_deaths": sum(1 for e in events if e.get("kind") == "death"
-                              and e.get("own_civ") and not e.get("animal") and not e.get("again")),
+        "citizen_deaths": sum(1 for e in events if citizen_death(e)),     # (r5 p2) no ghost laid to rest
         "arrivals": sum(1 for e in events if e.get("kind") == "arrival"
                         and e.get("own_civ") and not e.get("hostile")),
         "threats_reaching": _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves", 0),
@@ -106,6 +110,7 @@ def summarize(rows: list[dict], label: str = "", mode: str = "", fell: bool = Fa
         "unhappy_pct_max": max(r["unhappy_pct"] for r in rows),
         "happy_pct_avg": _avg(rows, "happy_pct"),
         "idle_pct_avg": _avg(rows, "idle_pct"),
+        "idle_free_pct_avg": _avg(rows, "idle_free_pct"),
         "drink_per_dwarf_end": last["drink_per_dwarf"],
         "meals_per_dwarf_end": last["meals_per_dwarf"],
         "days_with_reachable_threat": sum(1 for r in rows if r["threats_reaching"]),
@@ -127,6 +132,7 @@ COMPARE = [
     ("Wealth change %", "wealth_change_pct", "high"),
     ("Unhappy % (average)", "unhappy_pct_avg", "low"), ("Unhappy % (worst)", "unhappy_pct_max", "low"),
     ("Happy % (average)", "happy_pct_avg", "high"), ("Idle adults % (average)", "idle_pct_avg", "low"),
+    ("Truly idle non-soldiers % (average)", "idle_free_pct_avg", "low"),
     ("Drink per dwarf at end", "drink_per_dwarf_end", "high"),
     ("Meals per dwarf at end", "meals_per_dwarf_end", "high"),
     ("Days a threat could reach them", "days_with_reachable_threat", "low"),

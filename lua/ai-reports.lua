@@ -28,6 +28,10 @@ TOPICS = {
     {topic = 'tantrum', types = {'TANTRUM'}, texts = {'tantrum'}},
     {topic = 'stress', types = {'STRESS'}, texts = {'unable to cope', 'is overwhelmed'}},
     -- the dead
+    -- (r5 p2) a ghost laid to rest by a slab ("Urist, Ghostly Miner has been
+    -- put to rest.", DF's type CITIZEN_DEATH): no ghost risen and no death
+    -- (classify checks it before anything else)
+    {topic = 'rest', types = {}, texts = {'put to rest', 'laid to rest'}},
     {topic = 'ghost', types = {'GHOST'}, texts = {'ghost', 'haunt', 'has risen'}},
     -- outsiders
     {topic = 'thief', types = {'THIEF', 'SNATCHER', 'KIDNAP'}, texts = {'thief', 'snatcher', 'kidnap', 'sneaking around'}},
@@ -39,6 +43,10 @@ TOPICS = {
     {topic = 'petition', types = {'PETITION'}, texts = {'petition'}},
     {topic = 'birth', types = {'BIRTH_CITIZEN'}, texts = {}},
     {topic = 'migrants', types = {'MIGRANT'}, texts = {'migrants have arrived'}},
+    -- (r5 p2, A3 B2) diplomats and the liaison: their arrival and their leaving
+    -- unhappy ("could not complete a meeting"), for the journal's meeting lines
+    {topic = 'meeting', types = {'DIPLOMAT', 'LIAISON'},
+     texts = {'diplomat', 'liaison', 'complete a meeting', 'meeting'}},
     {topic = 'caravan', types = {'CARAVAN'}, texts = {'merchants from', 'a caravan'}},
     -- the map itself
     {topic = 'cave_in', types = {'COLLAPSE', 'CAVE_IN'}, texts = {'cave-in', 'collapse'}},
@@ -79,6 +87,8 @@ function classify(type_name, text)
     -- (0.104.38) the professions aren't a siege ("Urist has become a Siege
     -- Operator": 12 false sieges in Enxah's night)
     low = low:gsub('siege operator', 'operator'):gsub('siege engineer', 'engineer')
+    -- (r5 p2) a ghost put to rest, whatever DF's type: 'rest' (never 'ghost')
+    if low:find('put to rest', 1, true) or low:find('laid to rest', 1, true) then return 'rest' end
     local topic = match(type_name, low)
     -- (0.105.15) "X was spotted sneaking around!" is a thief or snatcher
     -- (DF files it with the ambushes), not a siege
