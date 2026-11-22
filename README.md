@@ -12,7 +12,7 @@ You steer it from an in-game window:
 
 For your own use only.
 
-**Status:** version 0.105.41, Phase 14 of the plan (`handoff.md` holds the plan, the changelog and where things stand).
+**Status:** the current version is `BRIDGE_VERSION` in `lua/ai-bridge.lua` (the report carries it as `bridge_version`); `handoff.md` holds the plan, the phase, the changelog and where things stand.
 - **Seen working in game:**
   - founding a fort from scratch, then digging and furnishing levels from a master plan;
   - labour, farms, wells, pastures, metal and smelting;

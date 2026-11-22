@@ -807,7 +807,7 @@ function act_set_standing_orders(a)
 end
 
 -- A garbage dump zone: on the surface, or (inside = true) in a dug room near
--- the entrance. The builder places it (ai-builder-surface place_dump_zone,
+-- the entrance. The builder places it (ai-builder-dump place_dump_zone, (r9)
 -- group settings'); refused while the fort has one of that kind already.
 -- place_dump_zone(inside, dry_run) is expected to return a table as
 -- place_surface does: {ok = true, kind = 'dump', x, y, z or elevation,
@@ -827,7 +827,7 @@ function act_place_dump(a)
     end
     local okb, B = pcall(reqscript, 'ai-builder')
     if not okb or type(B) ~= 'table' or type(B.place_dump_zone) ~= 'function' then
-        return {ok = false, error = 'the builder has no place_dump_zone (ai-builder-surface.lua is older than this bridge)'}
+        return {ok = false, error = 'the builder has no place_dump_zone (ai-builder-dump.lua is older than this bridge)'}
     end
     local ok, r = pcall(B.place_dump_zone, inside, a.dry_run == true)
     if not ok then return {ok = false, error = 'place_dump_zone failed: ' .. tostring(r):sub(1, 300)} end

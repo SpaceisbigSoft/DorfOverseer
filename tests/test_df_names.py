@@ -13,6 +13,8 @@ Checked, with comments and strings left out:
                        set once to such a chain (local other = df.global.world.items.other)
   df.<type>            a type of df-structures, or a function of the df table
   df.<enum>.<NAME>     a value of that enum (or bitfield), or attrs/_first_item/...
+  df.<type>.T_<f>...   (r9) the type DFHack makes for an inline enum, bitfield or
+                       compound field (no type-name), and a value of it
   dfhack.<fn>          a top-level DFHack Lua function or module
   dfhack.<module>.<fn> a function of that module (LuaApi.cpp and dfhack.lua)
 
@@ -36,6 +38,7 @@ NAMES = json.loads((ROOT / "tests" / "fixtures" / "df-names.json").read_text(enc
 TYPES, GLOBALS, API = NAMES["types"], NAMES["globals"], NAMES["dfhack"]
 NEEDS_REQUIRE = NAMES["dfhack_require"]
 DF_FUNCS = set(NAMES["df_funcs"])
+NESTED = NAMES["nested"]   # (r9) "<type>.T_<field>": the inline enums', bitfields' and compounds' types
 ENUM_MEMBERS = {"attrs", "next_item", "is_valid", "_first_item", "_last_item", "_complex",
                 "whole", "_enum", "_index_table"}
 TYPE_MEMBERS = {"find", "get_vector", "new", "sizeof", "is_instance", "delete", "assign"}
@@ -53,6 +56,12 @@ ALLOWED = {
     ("ai-herd.lua", "df.global.plotinfo.equipment.training_assignments"): "second try after plotinfo.training.training_assignments",
     ("ai-society-animals.lua", "df.global.plotinfo.equipment.training_assignments"): "second try after plotinfo.training.training_assignments",
     ("ai-noble-demands.lua", "df.global.world.engravings"): "first try; world.event.engravings (right) follows",
+    # (r9) the T_ names: an inline enum's type in DFHack before the enum got a name of its own
+    ("ai-gates-works.lua", "df.job_item_ref.T_role"): "second try after df.job_role_type",
+    ("ai-bridge-probes.lua", "df.job_item_ref.T_role"): "the probe reports both names, each in a pcall",
+    ("ai-military-gear.lua", "df.unit_inventory_item.T_mode"): "second try after df.inv_item_role_type",
+    ("ai-military.lua", "df.unit_inventory_item.T_mode.Worn"): "second try after df.inv_item_role_type.Worn",
+    ("ai-society-needs.lua", "df.unit_inventory_item.T_mode.Worn"): "first try; df.inv_item_role_type.Worn follows",
     # (0.105.51) a Lua table, not a C++ function: library/lua/dfhack.lua sets it
     # (internal.scripts = internal.scripts or {}, the Script objects by path)
     ("ai-util.lua", "dfhack.internal.scripts"): "dfhack.lua's own table of loaded scripts (module_flags_reset)",
@@ -149,9 +158,39 @@ def check_df(parts: list[str]) -> str | None:
         if p in x.get("v", []) or p in ENUM_MEMBERS or p in TYPE_MEMBERS or p.startswith("_"):
             return None
         return f"no value {p} in {head}"
-    if p in TYPE_MEMBERS or p.startswith("_") or p.startswith("T_"):
+    if p.startswith("T_"):
+        return check_nested(head, parts[1:])
+    if p in TYPE_MEMBERS or p.startswith("_"):
         return None
     return f"no member {p} of type {head}"
+
+
+def check_nested(head: str, parts: list[str]) -> str | None:
+    """(r9) df.<head>.T_<a>[.T_<b>...][.<VALUE>]: the T_ types DFHack makes for
+    an inline enum, bitfield or compound (one with no type-name of its own),
+    on the type or a parent of it; then a value of the enum or bitfield."""
+    owners, seen = [], set()
+    t = head
+    while t and t in TYPES and t not in seen:
+        seen.add(t)
+        owners.append(t)
+        t = TYPES[t].get("p", "")
+    path = next((o + "." + parts[0] for o in owners if o + "." + parts[0] in NESTED), None)
+    if path is None:
+        return f"no nested type {parts[0]} in {head}"
+    for p in parts[1:]:
+        x = NESTED[path]
+        if p.startswith("T_") and x["k"] == "struct":
+            if path + "." + p not in NESTED:
+                return f"no nested type {p} in {path}"
+            path += "." + p
+            continue
+        if x["k"] in ("enum", "bitfield"):
+            if p in x["v"] or p in ENUM_MEMBERS or p in TYPE_MEMBERS or p.startswith("_"):
+                return None
+            return f"no value {p} in {path}"
+        return None                  # a compound's member (new, sizeof, ...): not checked here
+    return None
 
 
 def check_dfhack(parts: list[str], required: set[str] = frozenset()) -> str | None:
@@ -236,6 +275,7 @@ def _():
     assert "ZONE_POND" in TYPES["buildings_other"]["f"]
     assert "findByName" in API["burrows"] and "translateName" in API["translation"]
     assert "Lever" in TYPES["trap_type"]["v"] and TYPES["unit"]["k"] in ("struct", "class")
+    assert "AtDepot" in NESTED["caravan_state.T_trade_state"]["v"]   # (r9) the T_ types are in the list
 
 
 @test("the checker finds wrong names (planted ones)")
@@ -247,6 +287,14 @@ def _():
     assert check_df(["building_type", "Hach"]) == "no value Hach in building_type"
     assert check_df(["no_such_typest"]) == "no type no_such_typest"
     assert check_df(["unit", "find"]) is None
+    # (r9) the T_ types of inline enums: checked, values and all
+    assert check_df(["caravan_state", "T_trade_state"]) is None
+    assert check_df(["caravan_state", "T_trade_state", "AtDepot"]) is None
+    assert check_df(["caravan_state", "T_trade_state", "AtDepo"]) == "no value AtDepo in caravan_state.T_trade_state"
+    assert check_df(["caravan_state", "T_trade_stat"]) == "no nested type T_trade_stat in caravan_state"
+    assert check_df(["job_item_ref", "T_role"]) == "no nested type T_role in job_item_ref"   # named: job_role_type
+    assert check_df(["historical_entity", "T_resources", "T_metal"]) is None
+    assert check_df(["historical_entity", "T_resources", "T_nope"]) == "no nested type T_nope in historical_entity.T_resources"
     assert check_dfhack(["burrows", "listUnits"]) == "no function listUnits in dfhack.burrows"
     assert check_dfhack(["burrows", "findByName"]) is None
     assert check_dfhack(["units", "isCitizen"]) is None

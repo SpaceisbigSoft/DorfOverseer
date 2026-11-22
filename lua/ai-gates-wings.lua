@@ -44,23 +44,41 @@ end
 
 local function spot_of(e) return ('%d,%d,%d'):format(e.x, e.y, e.z) end
 
+-- (r9) The record's key for this way in: its anchor's, else the first tile of
+-- its opening that has one. A rescan may anchor the entrance on another tile
+-- of the opening (as was_cut allows for the cuts); the record kept under the
+-- old anchor was then lost: no wings on the summary, and a second record
+-- started beside it when they were built again. A new record: the anchor's.
+local function record_spot(e, d)
+    local s = spot_of(e)
+    if type(d[s]) == 'table' then return s end
+    for _, k in ipairs(e.inside_list or {}) do
+        local x, y, z = unkey(k)
+        local t = ('%d,%d,%d'):format(x, y, z)
+        if type(d[t]) == 'table' then return t end
+    end
+    return s
+end
+
 -- The wing tiles recorded for this way in (nil: none).
 function wing_pieces_of(e)
-    local list = wing_records()[spot_of(e)]
+    local d = wing_records()
+    local list = d[record_spot(e, d)]
     return (type(list) == 'table' and #list > 0) and list or nil
 end
 
 local function note_wings(e, pieces)
     if #pieces == 0 then return end
     local d = wing_records()
+    local spot = record_spot(e, d)
     local list, seen = {}, {}
-    for _, k in ipairs(type(d[spot_of(e)]) == 'table' and d[spot_of(e)] or {}) do
+    for _, k in ipairs(type(d[spot]) == 'table' and d[spot] or {}) do
         if not seen[k] then seen[k] = true; table.insert(list, k) end
     end
     for _, k in ipairs(pieces) do
         if not seen[k] and #list < WINGS_MAX then seen[k] = true; table.insert(list, k) end
     end
-    d[spot_of(e)] = list
+    d[spot] = list
     U.site_put(WINGS_KEY, d)
     e.wing_pieces = list
 end
@@ -260,20 +278,23 @@ end
 -- (0.104.105) Gate parts in stock: free, and held by a job (on their way to
 -- one). A planned hatch or door is built only from one the fort has.
 GATE_PARTS = {hatch_covers = 'HATCH_COVER', doors = 'DOOR'}
+local IN_JOB_OK = {in_job = true}   -- (r9) on its way to a job: counted, as held
 function gate_parts()
     local out = {}
     for name, tname in pairs(GATE_PARTS) do
         local free, held = 0, 0
         pcall(function()
             for _, item in ipairs(df.global.world.items.other[tname]) do
-                local f = item.flags
                 -- (0.104.139) nor an artifact, an owned or carried one, or one
                 -- to melt: buildingplan won't take them (Teacheroar: an heirloom
-                -- hatch cover counted free, the hatch at x109 y38 waited 90 days)
-                if not (f.forbid or f.in_building or f.construction or f.removed or f.garbage_collect
-                        or f.trader or f.dump or f.hostile or f.artifact or f.owned or f.in_inventory
-                        or f.melt or f.on_fire) then
-                    if f.in_job then held = held + 1 else free = free + 1 end
+                -- hatch cover counted free, the hatch at x109 y38 waited 90 days).
+                -- (r9) ai-util's one list (U.item_unfree), as the mechanisms'
+                -- check: this copy missed encased, rotten, a web, a murder's
+                -- evidence and a dead dwarf's things, and its in_inventory
+                -- dropped one in a bin (DF sets it there too); a job's part
+                -- is still counted apart (held), and one marked to melt left out
+                if not U.item_unfree(item, IN_JOB_OK) and not item.flags.melt then
+                    if item.flags.in_job then held = held + 1 else free = free + 1 end
                 end
             end
         end)

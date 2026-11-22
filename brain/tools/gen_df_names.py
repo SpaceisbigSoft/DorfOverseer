@@ -13,6 +13,11 @@ LuaTools.cpp, LuaWrapper.cpp, lua/dfhack.lua) at TAG and writes one JSON list:
   globals  {name: type or ""}           (df.global.<name>)
   dfhack   {module: [functions]}         ("" holds the top level: dfhack.<fn>)
   dfhack_require {module: [functions]}   only after require('dfhack.<module>')
+  nested   {"<type>.T_<field>": {"k": kind, "v": [items]}}   (r9) the types DFHack
+           makes for an inline enum, bitfield or compound with no type-name of its
+           own (df.caravan_state.T_trade_state); a nested one inside is
+           "<type>.T_<a>.T_<b>". A member that names its type (type-name=...)
+           has none: df.job_item_ref.T_role is nil in 53.17 (job_role_type).
 
 tests/test_df_names.py checks every lua/*.lua against it, offline. Run this
 again (and commit the JSON) when the project moves to another DFHack tag.
@@ -51,22 +56,40 @@ class Gen:
     def __init__(self) -> None:
         self.types: dict[str, dict] = {}
         self.globals: dict[str, str] = {}
+        self.nested: dict[str, dict] = {}   # (r9) "<type>.T_<field>" -> {"k", "v"}
 
     def items(self, el, tag: str) -> list[str]:
         return [c.get("name") for c in el if c.tag == tag and c.get("name")]
 
-    def fields(self, el, owner: str, into: dict) -> None:
+    def fields(self, el, owner: str, into: dict, tpath: str | None = None) -> None:
         """The named members of a compound element (unnamed compounds and
-        unions are flattened into their parent, as DFHack does)."""
+        unions are flattened into their parent, as DFHack does). tpath is
+        the owner's name as Lua reaches it (df.<tpath>), for its T_ types."""
         for c in el:
             if c.tag in SKIP or not isinstance(c.tag, str):
                 continue
             name = c.get("name")
             if not name:
                 if c.tag == "compound":
-                    self.fields(c, owner, into)
+                    self.fields(c, owner, into, tpath)
                 continue
+            if tpath:
+                self.nest(c, f"{tpath}.T_{name}")
             into[name] = self.target(c, f"{owner}.{name}")
+
+    def nest(self, c, path: str) -> None:
+        """(r9) The T_ type of an inline enum, bitfield or compound (one with
+        no type-name): DFHack names it T_<field> on its owner. A container's
+        inline element type is not reached by these names and is left out."""
+        if c.get("type-name"):
+            return
+        if c.tag == "enum":
+            self.nested[path] = {"k": "enum", "v": self.items(c, "enum-item")}
+        elif c.tag == "bitfield":
+            self.nested[path] = {"k": "bitfield", "v": self.items(c, "flag-bit")}
+        elif c.tag == "compound":
+            self.nested[path] = {"k": "struct"}
+            self.fields(c, path, {}, path)
 
     def target(self, c, anon: str) -> str:
         """What a member leads to: a type name to walk on, or "" to stop."""
@@ -116,7 +139,7 @@ class Gen:
             t["v"] = self.items(el, "flag-bit")
         elif kind in ("struct", "class"):
             f: dict = {}
-            self.fields(el, name, f)
+            self.fields(el, name, f, name)
             if tag == "df-other-vectors-type":       # one vector a value of the index enum
                 f.update({v: "" for v in self.enum_items(el.get("index-enum"))})
             t["f"] = f
@@ -236,7 +259,8 @@ def main(argv: list[str]) -> int:
     data = {"tag": TAG, "source": "github.com/DFHack/df-structures and github.com/DFHack/dfhack",
             "df_funcs": df_funcs(dfh), "globals": dict(sorted(g.globals.items())),
             "dfhack": dfhack_api(dfh), "dfhack_require": dfhack_required(dfh),
-            "types": {k: g.types[k] for k in sorted(g.types)}}
+            "types": {k: g.types[k] for k in sorted(g.types)},
+            "nested": {k: g.nested[k] for k in sorted(g.nested)}}
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(data, separators=(",", ":"), sort_keys=False) + "\n", encoding="utf-8")
     print(f"{OUT}: {len(g.types)} types, {len(g.globals)} globals, "

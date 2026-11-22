@@ -86,10 +86,12 @@ NAMES_6298B4A = (
     "shop_level_action", "short", "show_changed", "slow_factor", "state_run", "style_guide", "survey_site", "sys",
     "temperament", "thirst_journal", "time", "timeline", "traceback", "update_eras", "update_quirks",
     "world_facts", "world_leave_due", "write_ledger", "write_soak",
+) + (
+    "_same_fort", "world_of",   # (r9) added since: keeper-preset.json's entries matched by world too
 )
 
 
-@test("overseer exposes exactly the names it had at 6298b4a")
+@test("overseer exposes exactly the names it had at 6298b4a (and the few added since)")
 def _():
     now = set(dir(overseer))
     assert now == set(NAMES_6298B4A), (sorted(now - set(NAMES_6298B4A)), sorted(set(NAMES_6298B4A) - now))

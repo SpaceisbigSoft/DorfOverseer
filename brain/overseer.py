@@ -462,7 +462,7 @@ def keep_state(state: dict, key: str) -> None:
         # (0.105.26) a fresh start from the same save (14.1 step 5: six forts
         # restarted from region4) finds the old run's files under the same
         # names: one from an older run (another "_run", or none) is replaced
-        run = fort_run(key)
+        run = fort_run(key, world_of(state))     # (r9) by the world too
         if path.exists() and (run is None or state_run(path) == run):
             # (0.105.47) the same run gone back to an earlier save (the
             # keeper's restore, a reload): kept seasons later than this one
@@ -807,7 +807,7 @@ def acknowledged(decisions: dict, looked: set, memory, now: int) -> list[str]:
     return out
 
 
-def preset_due(key: str, name: str, fort_preset) -> str | None:
+def preset_due(key: str, name: str, fort_preset, world: str | None = None) -> str | None:
     """(0.105.4) Why --preset NAME should be applied to this fort now, or None.
     Applied when this fort never had NAME from --preset (logs/keeper-preset.json),
     or when the fort's site data shows no preset at all (an older save, from
@@ -816,8 +816,7 @@ def preset_due(key: str, name: str, fort_preset) -> str | None:
     # (0.105.33) by the site, as fort_run: the same fort read from another
     # folder ("autosave 2#7" after a revive, "region1#7" before) had no record
     # of its own, and the preset went on again over the player's later choice
-    recs = [r for k, r in load_json(PRESET_FILE, {}).items()
-            if _site(k) == _site(key) and isinstance(r, dict)]
+    recs = [r for k, r in load_json(PRESET_FILE, {}).items() if _same_fort(k, r, key, world)]
     if not any(r.get("name") == name for r in recs):
         return "first time for this fort" if fort_preset != name else None
     if not fort_preset:
@@ -828,29 +827,53 @@ def preset_due(key: str, name: str, fort_preset) -> str | None:
 from util import site_of as _site  # noqa: E402  (r6 c2) was a copy here
 
 
-def fort_run(key: str) -> str | None:
+def world_of(state: dict) -> str | None:
+    """(r9) The report's world name (fort.world), or None when it can't say."""
+    w = _d(_d(state).get("fort")).get("world")
+    return w.strip() if isinstance(w, str) and w.strip() else None
+
+
+def _same_fort(k: str, rec, key: str, world: str | None = None) -> bool:
+    """(r9) Whether logs/keeper-preset.json's entry k (rec) is fort `key`'s:
+    the same site, and the same world when both the entry (note_preset
+    writes it now) and the caller (the report's world) name one. The site
+    alone matched another world's fort with the same site id (a new world
+    played in the same folder): its preset read as applied, its run and its
+    Design switch taken over. An older entry (no "world"; its key may be a
+    save folder's, "region1#7"), or a report without a world name, matches
+    by site as before. The world comes from the report, never from the key:
+    a key's head is a save folder's name when the report had no world."""
+    if not isinstance(rec, dict) or _site(k) != _site(key):
+        return False
+    w = rec.get("world")
+    return world is None or not isinstance(w, str) or w == world
+
+
+def fort_run(key: str, world: str | None = None) -> str | None:
     """(0.105.26) This fort's run: the "run" stamp of its site's entries in
     logs/keeper-preset.json (the newest), or None (no preset, or an entry from
     before runs were marked). Clearing the site's entries (the fresh-restart
     checklist) starts a new run when the preset is applied again."""
-    site = _site(key)
     runs = [r["run"] for k, r in load_json(PRESET_FILE, {}).items()
-            if _site(k) == site and isinstance(r, dict) and isinstance(r.get("run"), str)]
+            if _same_fort(k, r, key, world) and isinstance(r.get("run"), str)]
     return max(runs) if runs else None
 
 
-def note_preset(key: str, name: str, design: str | None = None) -> None:
+def note_preset(key: str, name: str, design: str | None = None, world: str | None = None) -> None:
     done = load_json(PRESET_FILE, {})
     now = datetime.now().isoformat(timespec="seconds")
     # (0.105.26) the run stamp is set once, when the site has no entry at all
     # (a new fort, or one cleared for a fresh start); a restart, a revive or an
     # autosave's key keeps the site's stamp; an older entry without one stays so
-    same = [r for k, r in done.items() if _site(k) == _site(key) and isinstance(r, dict)]
+    same = [r for k, r in done.items() if _same_fort(k, r, key, world)]
     runs = [r["run"] for r in same if isinstance(r.get("run"), str)]
     run = max(runs) if runs else (None if same else now)
     # (0.105.47, D1) the Design switch the keeper made for this site (design_due) is kept
     design = design or next((r["design"] for r in same if isinstance(r.get("design"), str)), None)
-    done[key] = {"name": name, "at": now, **({"run": run} if run else {}), **({"design": design} if design else {})}
+    # (r9) the world kept on the entry, when the report named it: _same_fort tells
+    # another world's fort with the same site id apart
+    done[key] = {"name": name, "at": now, **({"world": world} if world else {}), **({"run": run} if run else {}),
+                 **({"design": design} if design else {})}
     try:
         from dfhack import write_atomic
         PRESET_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -917,7 +940,7 @@ def rules_request(bridge: Bridge, autopilot: bool) -> None:
         say(f"Rules: applied, but {RULES_REQUEST} couldn't be moved aside ({e}).")
 
 
-def design_due(key: str, settings: dict) -> bool:
+def design_due(key: str, settings: dict, world: str | None = None) -> bool:
     """(0.105.47, D1) Whether the keeper's --preset should take this fort to
     Guided now: its settings read Scripts (every fort founded before the
     Design track does) and the keeper never switched this site before
@@ -926,7 +949,7 @@ def design_due(key: str, settings: dict) -> bool:
     switched again (the bridge's apply_preset does it then)."""
     if _d(settings).get("design") != "scripts":
         return False
-    recs = [r for k, r in load_json(PRESET_FILE, {}).items() if _site(k) == _site(key) and isinstance(r, dict)]
+    recs = [r for k, r in load_json(PRESET_FILE, {}).items() if _same_fort(k, r, key, world)]
     return not any(isinstance(r.get("design"), str) for r in recs)
 
 
@@ -936,7 +959,7 @@ def design_switch(bridge: Bridge, state: dict, key: str, name: str, autopilot: b
     Rules' `design` choice). Only its new levels change: what stands is never
     rebuilt (planner_design, planner_guided). A dry run changes nothing."""
     st = _d(state.get("settings"))
-    if not design_due(key, st):
+    if not design_due(key, st, world_of(state)):
         return
     try:
         r = bridge.act({"type": "set_rules", "rules": {"design": "guided"}, "dry_run": not autopilot})
@@ -949,7 +972,7 @@ def design_switch(bridge: Bridge, state: dict, key: str, name: str, autopilot: b
     if not r.get("ok"):
         say(f"Design: not switched to Guided: {r.get('error')}")
         return
-    note_preset(key, name, "guided")
+    note_preset(key, name, "guided", world_of(state))
     say("Design: this fort goes from Scripts to Guided (the keeper's --preset): its new levels follow a design "
         "language; what stands is left as it is.")
     journal({"kind": "design_switch", "fort": key, "from": "scripts", "to": "guided", "preset": name})
@@ -965,10 +988,10 @@ def apply_preset(bridge: Bridge, state: dict, key: str, autopilot: bool) -> None
     if not name or key in PRESET_DONE:
         return
     st = _d(state.get("settings"))
-    why = preset_due(key, name, st.get("preset"))
+    why = preset_due(key, name, st.get("preset"), world_of(state))
     if why is None:
         PRESET_DONE.add(key)
-        note_preset(key, name)
+        note_preset(key, name, world=world_of(state))
         say(f"Preset: {name} already applied to this fort (left as it is: later changes in the window stay).")
         design_switch(bridge, state, key, name, autopilot)
         return
@@ -996,7 +1019,7 @@ def apply_preset(bridge: Bridge, state: dict, key: str, autopilot: bool) -> None
         + (f"; rules {rule_words}" if rule_words else "") + ".")
     # (0.105.47, D1) the bridge's apply_preset took a Scripts fort to Guided: marked
     # for the site, so a later choice in the window stays (design_due)
-    note_preset(key, name, _d(r.get("settings")).get("design") if rules.get("design") else None)
+    note_preset(key, name, _d(r.get("settings")).get("design") if rules.get("design") else None, world_of(state))
     journal({"kind": "preset", "fort": key, "preset": name, "why": why, "previous": r.get("previous"),
              "traits": traits, "rules": rules})
     if isinstance(r.get("settings"), dict):
