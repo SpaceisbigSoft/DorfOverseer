@@ -7,7 +7,7 @@
 -- (r8) Cut from ai-builder-wells.lua, which had grown to 133 KB; loaded right
 -- after it and its parts before this one, in the old file's order.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-shaft'] = '0.105.68'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-shaft'] = '0.105.69'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 

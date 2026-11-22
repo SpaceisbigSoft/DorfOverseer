@@ -41,7 +41,7 @@ from planner_threats import alarm_held
 __all__ = ["MISSION_GOALS", "OFFENSIVE_GOALS", "MISSION_LEVELS", "allowed_goals", "mission_reserve",
            "sendable_squads", "mission_target", "_mission_rule", "note_missions", "mission_journal",
            "mission_line", "MISSION_WORDS", "last_of_goal", "MISSIONS_SWITCH", "SEND_SWITCH",
-           "unreachable_sites", "unavailable_sites", "note_unreachable", "SOFT_STOPS", "departure_words", "note_departures",
+           "unreachable_sites", "unavailable_sites", "note_unreachable", "SOFT_STOPS", "click_missed", "departure_words", "note_departures",
            "gate_danger", "way_out_gate", "_mission_way_rule"]
 
 # the goals in the order the AI prefers them (the contract's order)
@@ -186,6 +186,18 @@ def interrupted(last: dict) -> bool:
     return _d(last).get("reason") in INTERRUPTED
 
 
+def click_missed(last: dict) -> bool:
+    """(r12, live 22 Nov) DF didn't take the AI's click on the site on the
+    World screen (the bridge's 'click_missed'; or 0.105.68's surprise with
+    the same words): tried again the next day, not in a year."""
+    last = _d(last)
+    if last.get("reason") == "click_missed":
+        return True
+    return (last.get("reason") == "unexpected" and last.get("step") == "site"
+            and "still on world/NORMAL after the click (" in str(last.get("why") or "")
+            and "miss " not in str(last.get("why") or ""))
+
+
 # (0.105.47) a run that stopped for a reason the AI handles itself, not a
 # step nobody recorded: DF said the site is INACCESSIBLE (the site is
 # dropped: unreachable_sites) or listed no messenger (the messenger rule
@@ -200,7 +212,8 @@ def retry_ticks(last: dict, year_ticks: int) -> int:
     """How long a stopped run blocks its goal: a day when the player
     interrupted it (or (0.105.47) DF listed no messenger), else `year_ticks`
     (a step nobody recorded, a surprise)."""
-    return TICKS_PER_DAY if interrupted(last) or _d(last).get("reason") == "no_messenger" else year_ticks
+    return (TICKS_PER_DAY if interrupted(last) or click_missed(last) or _d(last).get("reason") == "no_messenger"
+            else year_ticks)
 
 
 def note_unreachable(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> None:
@@ -598,7 +611,7 @@ def _stopped_needs_you(s: dict, goal: str, cfg: dict, notes: list) -> None:
     (the same words each cycle, so listed once) saying where it stopped and
     what the AI does meanwhile, a controller left behind included."""
     last = _stopped(s, goal, cfg)
-    if not last or interrupted(last) or last.get("reason") in SOFT_STOPS:
+    if not last or interrupted(last) or click_missed(last) or last.get("reason") in SOFT_STOPS:
         return                       # interrupted by the player: a short note, tried again tomorrow
     site = game_text(last.get("site") or f"site {last.get('site_id')}", 40)
     ask_player(notes, f"missions (13b): the AI's try to {MISSION_WORDS.get(goal, goal)} at \"{site}\" stopped at the "

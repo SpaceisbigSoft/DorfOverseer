@@ -438,7 +438,7 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     if not rules["make_contact"]:
         return
     ms = _d(s.get("missions"))
-    from planner_missions import last_of_goal, interrupted, retry_ticks
+    from planner_missions import last_of_goal, interrupted, retry_ticks, click_missed
     out = _messenger_out(ms)      # (0.105.39 review 2) a leftover of a stopped run isn't the messenger out
     if out:
         c = out[0]
@@ -484,6 +484,12 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         # (0.105.47) DF listed no messenger: the messenger rule appoints one; tried again tomorrow
         if blocked:
             notes.append("the messenger's last send found no messenger on DF's list; tried again tomorrow")
+            return
+    elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and click_missed(last):
+        # (r12, live 22 Nov) DF didn't take the click on the site: tried again tomorrow
+        if blocked:
+            notes.append("the messenger's last send: DF didn't take the AI's click on the site on the World "
+                         "screen; tried again tomorrow")
             return
     elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and interrupted(last):
         # (0.105.39 review 2) the player took the game back: tried again after a day

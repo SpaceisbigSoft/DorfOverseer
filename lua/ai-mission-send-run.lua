@@ -7,7 +7,7 @@
 -- reqscript('ai-mission-send').name and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-mission-send-run is a part of ai-mission-send; run ai-mission-send') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-run'] = '0.105.68'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-run'] = '0.105.69'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, now_tick, log_path, focus_string, id_of, seen, click, first_name, contains = PART_LOCALS.U, PART_LOCALS.now_tick, PART_LOCALS.log_path, PART_LOCALS.focus_string, PART_LOCALS.id_of, PART_LOCALS.seen, PART_LOCALS.click, PART_LOCALS.first_name, PART_LOCALS.contains   -- (r9) the hub's and earlier parts' locals
 
@@ -267,6 +267,13 @@ function stop(run, result, reason)
                 end
             end)
         end
+    end
+    -- (r12) DF didn't take the click on the site (live 22 Nov): 'click_missed',
+    -- tried again the next day, up to 3 times a DF session; then a surprise
+    if run.step_name == 'site' and run.reason == 'unexpected' and tostring(run.why or ''):find('still on world/NORMAL', 1, true) then
+        SITE_MISSES = (SITE_MISSES or 0) + 1
+        if SITE_MISSES <= 3 then run.reason = 'click_missed' end
+        run.why = run.why .. ' (miss ' .. SITE_MISSES .. ' this DF session)'
     end
     local ok, err = pcall(function()
         local st = read_state(run)

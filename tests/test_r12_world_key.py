@@ -151,5 +151,53 @@ def _():
     assert r.ok and r.dry_run and not inputs(G) and len(G.queue) == 0, dict(r)
 
 
+# ---- (r12) the site's click: hovered first, clicked again, a miss retried tomorrow ----
+
+@test("site: a first click DF ignores is followed by a second; the run goes on")
+def _():
+    env, G = world("G.calibrate_all()")
+    M.LUA.execute("""local G = ...; local react = G.react; G.ignored = 0
+      G.react = function(x, y)
+        if G.screen and G.screen.view_mode == G.MODES.NORMAL and G.ignored == 0 then G.ignored = 1; return end
+        return react(x, y)
+      end""", G)
+    assert M.start(env).ok
+    G.pump()
+    last = env.status().last
+    assert last.step != "site", dict(last)           # past the site (stops later: Make contact not recorded here)
+
+
+@test("site: DF never takes the click: 'click_missed' (tried tomorrow), a surprise after 3 a session")
+def _():
+    env, G = world("G.calibrate_all()")
+    M.LUA.execute("""local G = ...; local react = G.react
+      G.react = function(x, y)
+        if G.screen and G.screen.view_mode == G.MODES.NORMAL then return end
+        return react(x, y)
+      end""", G)
+    reasons = []
+    for _ in range(4):
+        assert M.start(env).ok
+        G.pump()
+        reasons.append(env.status().last.reason)
+    assert reasons == ["click_missed"] * 3 + ["unexpected"], reasons
+
+
+@test("planner: a missed click (and 0.105.68's record of it) retries the next day, no Needs you")
+def _():
+    sys.path.insert(0, str(ROOT / "brain"))
+    import planner_missions as PM
+    from planner_core import TICKS_PER_DAY, TICKS_PER_YEAR
+    new = {"result": "stopped", "step": "site", "reason": "click_missed",
+           "why": "still on world/NORMAL after the click (40 frames) (miss 1 this DF session)"}
+    old = {"result": "stopped", "step": "site", "reason": "unexpected",
+           "why": "still on world/NORMAL after the click (40 frames)"}
+    third = dict(old, why="still on world/NORMAL after the click (40 frames) (miss 4 this DF session)")
+    assert PM.click_missed(new) and PM.click_missed(old) and not PM.click_missed(third)
+    assert PM.retry_ticks(new, TICKS_PER_YEAR) == TICKS_PER_DAY
+    assert PM.retry_ticks(old, TICKS_PER_YEAR) == TICKS_PER_DAY
+    assert PM.retry_ticks(third, TICKS_PER_YEAR) == TICKS_PER_YEAR
+
+
 if __name__ == "__main__":
     finish()

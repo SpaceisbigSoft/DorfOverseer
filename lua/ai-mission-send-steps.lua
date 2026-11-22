@@ -7,7 +7,7 @@
 -- reqscript('ai-mission-send').name and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-mission-send-steps is a part of ai-mission-send; run ai-mission-send') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.68'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.69'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local id_of, click, press = PART_LOCALS.id_of, PART_LOCALS.click, PART_LOCALS.press   -- (r9) the hub's and earlier parts' locals
 
@@ -174,6 +174,8 @@ end
 -- come, else 'bad' with why). A step not yet recorded has no act: the run
 -- stops there, every field it saw written down.
 
+SITE_HOVER_FRAMES, SITE_RECLICK_FRAMES = 4, 20   -- (r12) the hover before the site's click; a second click
+
 STEP_DEFS = {
     open = {name = 'open',
      expect = function(st) return not st.world, 'the World screen is open already' end,
@@ -207,14 +209,45 @@ STEP_DEFS = {
              else scr.focus_site = df.world_site.find(run.site_id) end
          end)
          if not okw then return false, 'unwritable', 'focus_site could not be set: ' .. tostring(err):sub(1, 120) end
+         -- (r12, live 22 Nov: the click at once left the World screen on
+         -- NORMAL) the mouse put on the map's middle first and left there a
+         -- few frames, so DF draws the hover under it (its click takes the
+         -- hovered site), then the click; once more later in check if needed
          local gps = df.global.gps
-         local ok, e = pcall(click, gps.dimx // 2, gps.dimy // 2)
-         if not ok then return false, 'click_failed', 'the click failed: ' .. tostring(e):sub(1, 160) end
+         local mx, my = gps.dimx // 2, gps.dimy // 2
+         local ox, oy = gps.mouse_x, gps.mouse_y      -- put back once the click is done
+         local okm, em = pcall(function()
+             gps.mouse_x, gps.mouse_y = mx, my
+             pcall(function()
+                 gps.precise_mouse_x = mx * gps.tile_pixel_x + gps.tile_pixel_x // 2
+                 gps.precise_mouse_y = my * gps.tile_pixel_y + gps.tile_pixel_y // 2
+             end)
+             dfhack.timeout(SITE_HOVER_FRAMES, 'frames', function()
+                 if world_screen() then pcall(click, mx, my) end
+                 gps.mouse_x, gps.mouse_y = ox, oy
+             end)
+         end)
+         if not okm then
+             local ok, e = pcall(click, mx, my)
+             if not ok then return false, 'click_failed', 'the click failed: ' .. tostring(e or em):sub(1, 160) end
+         end
+         run.site_xy = {mx, my}
          return true
      end,
      check = function(st, run)
          if not st.world then return 'bad', 'the World screen closed' end
-         if st.mode == 'NORMAL' then return 'wait', 'still on world/NORMAL after the click' end
+         if st.mode == 'NORMAL' then
+             if not run.reclicked and (run.waited or 0) >= SITE_RECLICK_FRAMES and run.site_xy then
+                 run.reclicked = true
+                 pcall(function()
+                     local scr = world_screen()
+                     local s = df.world_site.find(run.site_id)
+                     scr.region_cent_x, scr.region_cent_y = s.pos.x, s.pos.y
+                 end)
+                 pcall(click, run.site_xy[1], run.site_xy[2])
+             end
+             return 'wait', 'still on world/NORMAL after the click'
+         end
          if st.mode ~= 'NEW_MISSION' then
              return 'bad', 'the click led to world/' .. tostring(st.mode) .. ', not NEW_MISSION (recorded)'
          end
