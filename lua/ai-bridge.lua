@@ -49,7 +49,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.64'
+BRIDGE_VERSION = '0.105.65'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -553,7 +553,7 @@ local function cmd_status()
     end
     ensure_watching()
     -- (0.105.48, K2) the overseer's poll is the gate watcher's heartbeat: a slow
-    -- brain is not read as away (lua/ai-gates-watch.lua brain_away)
+    -- brain is not read as away (lua/ai-gates-watch-look.lua brain_away)
     pcall(function() reqscript('ai-gates').brain_ping() end)
     -- (fix41) evil weather coming (a cloud near the map's edge, DF's
     -- announcement, evil rain): an event, so a cycle reads it now

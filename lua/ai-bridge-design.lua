@@ -1,7 +1,7 @@
 -- ai-bridge-design: the Design track's bridge actions (D0): candidate sites
 -- for a landmark (blueprint_sites), a drawing built on one (build_blueprint),
 -- a surface landmark's next stage (landmark_step), and the report's
--- `landmarks` section. The work is ai-builder's (ai-builder-landmarks.lua);
+-- `landmarks` section. The work is ai-builder's (ai-builder-landmarks.lua and its -place, -stages parts);
 -- the format is ai-blueprints'. Here the arguments are checked, as
 -- act_start_project checks its own (int_in, the name pattern, the deity).
 --
@@ -14,7 +14,7 @@
 -- a refusal's positions are on the drawing's own grid.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-design is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-design'] = '0.105.64'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-design'] = '0.105.65'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- design.LANDMARK_KINDS (brain/design.py)
 LANDMARK_KINDS = {'descent', 'god_hall', 'ziggurat', 'chronicle_hall', 'great_hall', 'tower', 'necropolis',

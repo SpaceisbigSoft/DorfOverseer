@@ -6,7 +6,7 @@
 -- the helpers defined there and in the parts before it are in reach.
 
 if not PARTS then qerror('ai-util-flows is a part of ai-util; run ai-util') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-flows'] = '0.105.64'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-flows'] = '0.105.65'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- (0.105.46, I6) the flows, walked once a report ------------------------------------
 --

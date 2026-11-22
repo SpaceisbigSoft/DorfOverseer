@@ -49,7 +49,7 @@ function abs_tick(year, tick)
 end
 
 -- (0.105.48, K2/K3 round 2) The one rule for "the brain away", used by the
--- gate watcher (ai-gates-watch brain_away) and ai-status's away watcher: no
+-- gate watcher (ai-gates-watch-look brain_away) and ai-status's away watcher: no
 -- word from the brain for BRAIN_AWAY_TICKS game ticks (five days: a slow
 -- unattended fort reports every 2400) AND no status poll from the overseer
 -- (its 2 s heartbeat) for BRAIN_AWAY_REAL_S real seconds. A slow live brain
@@ -605,7 +605,7 @@ PARTS = {'dig', 'flows', 'doors', 'helpers'}
 -- each part marks the version it came with (the bridge's `version` lists one
 -- that differs from BRIDGE_VERSION); started afresh at each load, so a part
 -- that failed to load shows as unmarked
-PART_VERSIONS = {['ai-util'] = '0.105.64'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-util'] = '0.105.65'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')
