@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import make_test, finish, code_has  # noqa: E402
 from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from py_parts import py_family_src  # noqa: E402  (r7) planner_core's parts
 
 import planner  # noqa: E402
 from planner import Memory, plan, select, record, Proposal  # noqa: E402
@@ -281,7 +282,7 @@ def _():
 @test("no 'yourself' or 'by hand' instruction left in the core group's Needs you lines but the kept World screen ones")
 def _():
     for name in ("planner.py", "planner_core.py", "planner_building.py"):
-        src = (ROOT / "brain" / name).read_text(encoding="utf-8")
+        src = py_family_src(name[:-3]) if name == "planner_core.py" else (ROOT / "brain" / name).read_text(encoding="utf-8")
         assert "yourself" not in src, name
         assert "ask_player(" not in src or name != "planner_building.py", name
 

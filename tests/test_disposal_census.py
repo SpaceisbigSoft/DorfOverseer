@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
 from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from py_parts import py_family_src  # noqa: E402  (r7) planner_core's parts
 
 CENSUS = (ROOT / "lua" / "ai-census.lua").read_text(encoding="utf-8")
 REPORT = bridge_part_src("ai-bridge-report")
@@ -200,7 +201,7 @@ def _():
 
 @test("census.items.forbidden: reaches memory.census (the brain keeps the census' items whole)")
 def _():
-    src = (ROOT / "brain" / "planner_core.py").read_text(encoding="utf-8")
+    src = py_family_src("planner_core")
     assert re.search(r'memory\.census = \{"tick": now, "units": _d\(r\.get\("units"\)\), "items": _d\(r\.get\("items"\)\)', src)
 
 
