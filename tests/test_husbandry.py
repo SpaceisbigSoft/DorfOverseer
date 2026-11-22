@@ -263,15 +263,14 @@ def _():
 
 @test("bridge: the herd section (safe), the four actions with dry runs, the module listed; labels, defaults, config")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    k0 = src.index("    herd = function() return safe(function()")
-    assert "pcall(h.upkeep)" in src[k0:k0 + 200] and "return h.report()" in src[k0:k0 + 200]
-    actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
-    dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
-    for name in ("herd_breeders", "tame_wild", "train_hunt", "herd_targets"):
-        assert f"    {name} = function(a)" in actions and f"'{name}'" in dry, name
-    mods = src[src.index("BRIDGE_MODULES = {"):src.index("}", src.index("BRIDGE_MODULES = {"))]
-    assert "'ai-herd'" in mods
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-herd (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["herd_breeders", "tame_wild", "train_hunt", "herd_targets"]
+    BB.wired(section="herd", module="ai-herd", actions=acts, dry=acts, modules=["ai-herd"])
+    mod, log = BB.stand_in(BB.lua().table_from({"marker": "r5p5"}))
+    BB.hub({"ai-herd": mod}).SECTIONS.herd()
+    assert [c[0] for c in BB.calls(log)] == ["upkeep", "report"], BB.calls(log)      # the upkeep first
     assert SECTION_DEFAULTS["herd"] == {}
     import overseer
     for name in ("herd_breeders", "tame_wild", "train_hunt", "herd_targets"):
@@ -283,27 +282,18 @@ def _():
     soc = (LUA_DIR / "ai-society.lua").read_text(encoding="utf-8")
     j = soc.index("function pasture_report()")
     assert "GATE_DOGS_NAME" in soc[j:j + 1400] and "count = #list - dogs" in soc[j:j + 1400]
-    need_lua()
-    k = src.index("    herd_breeders = function(a)")
-    m = src.index("    end,\n}\n", k)
-    body = src[k:m + len("    end,\n")]
-    lua = LuaRuntime(unpack_returned_tuples=True)
-    lua.execute("""
-        GOT = {}
-        function reject(r) return {ok = false, rejected = true, error = r} end
-        function int_in(v, lo, hi)
-            local n = math.tointeger(v); if n and n >= lo and n <= hi then return n end
-        end
-        txt = tostring
-        function reqscript() return setmetatable({}, {__index = function(_, k)
-            return function(...) GOT[#GOT + 1] = {k, ...}; return {ok = true} end end}) end
-    """)
-    t = lua.execute("return {\n" + body + "}")
-    assert t.herd_breeders(lua.table_from({"females": 20}))["rejected"] is True
-    assert t.herd_breeders(lua.table_from({"females": 0}))["ok"] is True
-    assert t.tame_wild(lua.table_from({}))["rejected"] is True
-    assert t.herd_targets(lua.table_from({"fk": 1, "mk": 1, "fa": 3}))["rejected"] is True
-    assert t.herd_targets(lua.table_from({"fk": 1, "mk": 1, "fa": 3, "ma": 1, "dry_run": True}))["ok"] is True
+
+    def send(action, a):
+        got, out, _ = BB.forwarded(action, a, "ai-herd")
+        return got, out
+    for action, bad in (("herd_breeders", {"females": 20}), ("tame_wild", {}),
+                        ("herd_targets", {"fk": 1, "mk": 1, "fa": 3})):
+        got, out = send(action, bad)
+        assert not got and out.rejected is True, (action, bad, BB.to_py(out))
+    got, out = send("herd_breeders", {"females": 0})
+    assert got and out.ok, BB.to_py(out)
+    got, out = send("herd_targets", {"fk": 1, "mk": 1, "fa": 3, "ma": 1, "dry_run": True})
+    assert got == [("set_targets", [{"fk": 1, "mk": 1, "fa": 3, "ma": 1}, True])] and out.ok, got
 
 
 # --- 3. the brain, slider by slider ------------------------------------------------------------

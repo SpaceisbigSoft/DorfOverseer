@@ -520,8 +520,13 @@ def _():
 def _():
     rep = (LUA / "ai-bridge-report.lua").read_text(encoding="utf-8")
     assert "reqscript('ai-builder').ghost_slab_counts()" in rep and "reqscript('ai-welfare').ghost_scan()" in rep
-    br = (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "engrave_memorials(n, a.dry_run == true, a.ghosts == true)" in br
+    # (r5 p5) the action run on a stand-in ai-welfare (tests/bridge_behaviour.py), not the hub's text
+    import bridge_behaviour as BB
+    got, _, _ = BB.forwarded("engrave_memorials", {"max": 3, "ghosts": True, "dry_run": True}, "ai-welfare",
+                             "engrave_memorials")
+    assert got == [("engrave_memorials", [3, True, True])], got
+    got, _, _ = BB.forwarded("engrave_memorials", {}, "ai-welfare", "engrave_memorials")
+    assert got == [("engrave_memorials", [5, False, False])], got
 
 
 # ---- (5) the stuck sweep and the AI's own gate pieces ---------------------------------------

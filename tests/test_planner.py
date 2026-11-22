@@ -3792,11 +3792,13 @@ def _():
 
 @test("0.105.24 presets: the Merchant city turns shut_to_visitors off (visitors are its point)")
 def _():
-    src = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert code_has(src, "shut_to_visitors = false}") and code_has(src, "'shut_to_visitors'}")
-    assert code_has(src, "heist_lockout = true,") and code_has(src, "shut_to_visitors = true,")
-    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert code_has(gui, "subviews.heist_lockout:setOption") and code_has(gui, "subviews.shut_to_visitors:setOption")
+    import gui_behaviour as GB              # (r5 p5) the settings and the window run, not their text
+    S = GB.settings_module()
+    merchant = S.load_preset("Merchant city", S.load_settings())
+    assert merchant.shut_to_visitors is False and merchant.heist_lockout is True
+    assert S.load_preset("War-hold", S.load_settings()).shut_to_visitors is True
+    GB.rule_switch("heist_lockout", "RulesPage", True)
+    GB.rule_switch("shut_to_visitors", "RulesPage", True)
 
 
 @test("0.105.9 traps: the founding stair's hatch is a gate: traps behind it")

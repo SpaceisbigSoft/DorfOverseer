@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish, code_has  # noqa: E402
+from harness import test, finish, code_has, skip  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan, note_cycle  # noqa: E402
@@ -466,23 +466,23 @@ def _():
 
 @test("settings and window: hunt off | small | ai, default ai; sanitize, for_ai, RULE_CHOICES; a free row")
 def _():
-    assert "HUNT_CHOICES = {'off', 'small', 'ai'}" in SETTINGS
-    assert code_has(SETTINGS, "hunt = HUNT_CHOICES,")
-    assert code_has(SETTINGS, "hunt = 'ai',")
-    assert code_has(SETTINGS, "out.hunt = one_of(s.hunt, HUNT_CHOICES, d.hunt)")
-    assert code_has(SETTINGS, "hunt = s.hunt,")
-    assert code_has(GUI, "view_id = 'hunt'") and code_has(GUI, "p:set_field('hunt', v)")
-    mref = GUI[GUI.index("function MilitaryPage:refresh()"):]
-    assert "self.subviews.hunt:setOption(" in mref
-    mil = GUI[GUI.index("function MilitaryPage:init()"):GUI.index("function RulesPage:refresh")]
-    frames = [(int(t), int(l), int(w)) for t, l, w in
-              re.findall(r"frame = \{t = t \+ (\d+), l = (\d+), w = (\d+)\}", mil)]
-    me = (19, 64, 50)
-    assert me in frames
-    for t, l, w in frames:
-        if t == 19 and (t, l, w) != me:
-            assert l + w <= 64, (t, l, w)
-    assert 64 + 50 <= 118
+    if LuaRuntime is None:
+        skip("needs the lupa package (pip install lupa)")
+    # (r5 p5) the settings and the window run (tests/gui_behaviour.py), not their lines
+    import gui_behaviour as GB
+    S = GB.settings_module()
+    assert [S.HUNT_CHOICES[i] for i in range(1, 4)] == ["off", "small", "ai"]          # contract
+    assert [S.RULE_CHOICES.hunt[i] for i in range(1, 4)] == ["off", "small", "ai"]
+    assert S.defaults().hunt == "ai" and S.for_ai(S.defaults()).hunt == "ai"
+    for m in ("off", "small", "ai"):
+        d = S.defaults()
+        d.hunt = m
+        assert S.sanitize(d).hunt == m and S.for_ai(S.sanitize(d)).hunt == m
+    d = S.defaults()
+    d.hunt = "lots"
+    assert S.sanitize(d).hunt == "ai"
+    w = GB.control("MilitaryPage", "hunt", kind="CycleHotkeyLabel", values=["off", "small", "ai"], default="ai")
+    assert (w.row, w.l, w.w) == (16, 64, 50), w                                         # t + 19 with t = -3
     from strategist import rules_line
     assert "hunt" not in rules_line(player_rules({"settings": {}}))
     if LuaRuntime is not None:

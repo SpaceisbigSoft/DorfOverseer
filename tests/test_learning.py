@@ -531,9 +531,9 @@ def _():
     assert player_rules({"settings": {"hospital_burrow": False}})["hospital_burrow"] is False
     assert player_rules({"settings": {}})["hospital_burrow"] is True
     # the panel: a switch on the Rules page, set again on refresh (and the file still loads)
-    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert code_has(gui, "view_id = 'hospital_burrow'") and code_has(gui, "p:set_field('hospital_burrow', v)")
-    assert code_has(gui, "self.subviews.hospital_burrow:setOption(")
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its text
+    import gui_behaviour as GB
+    GB.control("RulesPage", "hospital_burrow", kind="ToggleHotkeyLabel", values=[False, True], default=True)
     # (0.104.169) the calm-down burrows' switch, the same way
     assert S.defaults().calm_burrow is True and S.for_ai(S.defaults()).calm_burrow is True
     off = S.sanitize(lua.table_from({"calm_burrow": False}))
@@ -541,10 +541,7 @@ def _():
     assert S.sanitize(lua.table_from({})).calm_burrow is True
     assert player_rules({"settings": {"calm_burrow": False}})["calm_burrow"] is False
     assert player_rules({"settings": {}})["calm_burrow"] is True
-    assert code_has(gui, "view_id = 'calm_burrow'") and code_has(gui, "p:set_field('calm_burrow', v)")
-    assert code_has(gui, "self.subviews.calm_burrow:setOption(")
-    ok = lua.eval("function(src) local f, e = load(src, 'gui', 't', {}); return f ~= nil, e end")(gui)
-    assert ok[0], ok
+    GB.control("RulesPage", "calm_burrow", kind="ToggleHotkeyLabel", values=[False, True], default=True)
 
 
 @test("your memory (0.97.1): a fort's copies and autosaves are one fort; it never inherits itself (B1)")

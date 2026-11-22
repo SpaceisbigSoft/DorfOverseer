@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import code_has, finish, have_lua, make_test, skip  # noqa: E402
+from harness import finish, have_lua, make_test, skip  # noqa: E402
 
 try:                                   # an ASCII drawing for a failure's output, when it is there
     from tools.draw_level import render as _render  # noqa: E402
@@ -34,7 +34,6 @@ if have_lua():
 
 FLOOR_NAMES = ("FLOOR_KINDS", "floor_mode", "floor_site", "floor_commit", "floor_fallback",
                "floor_release", "floor_book_piles")
-SRC = (ROOT / "lua" / "ai-builder-projects.lua").read_text(encoding="utf-8")
 
 # The stand-ins. F is their switchboard and their log:
 #   F.mode      what floor_mode answers
@@ -146,7 +145,6 @@ def _reset():
 
 
 test = make_test(before=_reset)
-plain_test = make_test()
 
 
 def need():
@@ -765,59 +763,92 @@ def _():
     assert not r.ok and r.rejected and F.calls.site == 0 and F.calls.mode == 0, dict(r)
 
 
-# --- 10. the guards in the source ----------------------------------------------------
+# --- 10. the guards, run (r5 p5: they were source-text asserts that blocked a refactor) --------------
 
-@plain_test("10. the guards are in the source: every floor call behind type(...) == 'function', the outside ones behind pcall")
+SAVED_PHASE = r"""
+local B, W, F = ...
+-- the floor parts' stand-ins that look at what is saved when they are called
+local function saved(id)
+  local d = W.persist['ai-overseer/projects']
+  for _, q in ipairs(d and d.list or {}) do if q.id == id then return q.phase end end
+end
+B.floor_release = function(p) F.calls.release = F.calls.release + 1; F.released = {id = p.id, saved = saved(p.id)}; return 1 end
+B.floor_book_piles = function(p) F.calls.book = F.calls.book + 1; F.booked = {id = p.id, saved = saved(p.id)}; return 1, 0 end
+"""
+
+
+@test("10. the guards: a floor part that is no function (a number, a table, a string) is never called; the level "
+      "is made as today, and cancel and finish still answer")
 def _():
-    start_src = SRC[SRC.index("function start_project("):SRC.index("function cells_of(")]
-    for snippet in (
-        "local floors_on = type(floor_site) == 'function' and type(floor_mode) == 'function'",
-        "and FLOOR_KINDS and FLOOR_KINDS[kind] and params.floor ~= false and params.join ~= false",
-        "and floor_mode() == 'hallway'",
-        "if floors_on and kind == 'workshops' then params.join_steps = {'free'} end",
-        "pcall(floor_site, params, stairs, reserved, data, ceil and (ceil - OFFSET) or nil)",
-        "floor_why = tostring(okf and L2 or s2):sub(1, 300)",
-        "if not site and floors_on and kind == 'workshops' then",
-        "if not site then site, why2 = choose_site(L, stairs, reserved, plan, ceil and (ceil - OFFSET) or nil) end",
-        "if not site then return {ok = false, error = why2, not_on_floor = floor_why} end",
-        "if site.floor and type(floor_commit) == 'function' then pcall(floor_commit, site, p.id)",
-        "elseif floors_on and floor_why and type(floor_fallback) == 'function' then "
-        "pcall(floor_fallback, kind, floor_why, ez(site.z), floor_marks)",
-        # (tests/test_traffic.py pins the record's own line, so the floor's links are set right under the record)
-        "links = extra_list(site.extra),",
-        "if site.links then p.links = site.links end",
-        "areas = site.areas,",
-        "floor = site.floor,",
-    ):
-        assert code_has(start_src, snippet), snippet
-    assert start_src.count("floor = site.floor_result, not_on_floor = floor_why") == 2, "the dry run's answer and the real one"
-    # no floor function is called bare anywhere in the file
-    assert code_has(SRC, "if p.floor and type(floor_release) == 'function' then pcall(floor_release, p) end")
-    assert code_has(SRC, "if p.floor and type(floor_book_piles) == 'function' then pcall(floor_book_piles, p) end")
-    for name in ("floor_site", "floor_commit", "floor_fallback", "floor_release", "floor_book_piles"):
-        bare = [ln.strip() for ln in SRC.splitlines()
-                if name + "(" in ln.split("--")[0] and "type(" + name + ")" not in ln]
-        assert bare == [], (name, bare)
-    assert SRC.count("floor_mode()") == 1 and "reqscript('ai-floor" not in SRC and 'reqscript("ai-floor' not in SRC
-    # the order: the cap, then floors_on, then the free-room join, then the stairs and the ban, then the floor
-    order = [start_src.index(s) for s in ("unfinished building projects", "local floors_on", "params.join_steps = {'free'}",
-                                          "find_stairs(STAIRS_TO_TRY)", "unreached_stairs_dropped", "pcall(floor_site",
-                                          "choose_site(L,", "if site.links then p.links = site.links end",
-                                          "save_projects(data)", "pcall(floor_commit")]
-    assert order == sorted(order), order
+    # (r5 p5) behaviour, not source text
+    need()
+    for name in ("floor_mode", "floor_site"):
+        for junk in (42, LUA.table(), "floor"):
+            _reset()
+            floors()
+            B[name] = junk
+            r = start(**BED)
+            assert r.ok and r.floor is None and F.calls.site == 0, (name, junk, dict(r))
+            assert r.not_on_floor is None and project(1).floor is None, (name, dict(r))
+    for name in ("floor_commit", "floor_fallback", "floor_release", "floor_book_piles"):
+        for answer in ("site", "refuse"):
+            _reset()
+            B.furnish_progress = LUA.eval("function() return {placed = 1, done = 1, waiting = {}} end")
+            floors(answer=answer)
+            B[name] = 42
+            r = start(kind="dining", tables=8)
+            assert r.ok, (name, answer, dict(r))
+            dig_all()
+            assert B.furnish_project(1, True).ok and B.finish_project(1).ok, (name, answer)
+            _reset()
+            floors(answer=answer)
+            B[name] = 42
+            r2 = start(**BED)
+            assert r2.ok and B.cancel_project(r2.project_id).ok, (name, answer, dict(r2))
 
 
-@plain_test("10. join_workshop_level: a floor's project is filtered out, and the steps can be named")
+@test("10. every floor part raising at once: the level is placed as today (not_on_floor says why); cancel and finish "
+      "answer ok; floor_mode is asked once a level")
 def _():
-    join_src = SRC[SRC.index("function join_workshop_level("):SRC.index("function start_project(")]
-    assert code_has(join_src, "p.kind == 'workshops' and p.parent == nil and p.floor == nil")
-    assert code_has(join_src, "for _, step in ipairs(type(params.join_steps) == 'table' and params.join_steps "
-                              "or {'free', 'extend'}) do")
-    cancel_src = SRC[SRC.index("function cancel_project("):]
-    cancel_src = cancel_src[:cancel_src.index("return {ok = true, project_id = id}")]
-    assert cancel_src.rindex("save_projects(data)") < cancel_src.index("pcall(floor_release, p)")
-    fin = SRC[SRC.index("function finish_project("):SRC.index("function engrave_project(")]
-    assert fin.rindex("save_projects(data)") < fin.index("pcall(floor_book_piles, p)") < fin.rindex("return {ok = true, project_id = id, phase = p.phase")
+    # (r5 p5) behaviour, not source text
+    need()
+    B.furnish_progress = LUA.eval("function() return {placed = 1, done = 1, waiting = {}} end")
+    floors()
+    boom = LUA.eval("function() error('the floor parts broke') end")
+    B.floor_site, B.floor_commit, B.floor_fallback, B.floor_release, B.floor_book_piles = boom, boom, boom, boom, boom
+    r = start(kind="dining", tables=8)
+    assert r.ok and r.floor is None and "the floor parts broke" in str(r.not_on_floor), dict(r)
+    assert F.calls.mode == 1, dict(F.calls)
+    dig_all()
+    assert B.furnish_project(1, True).ok and B.finish_project(1).ok
+    r2 = start(**BED)
+    assert r2.ok and F.calls.mode == 2 and B.cancel_project(r2.project_id).ok, dict(F.calls)
+    _reset()
+    floors(mode="classic")
+    assert start(**BED).ok and F.calls.mode == 1 and F.calls.site == 0, dict(F.calls)
+    _reset()
+    assert start(**BED).ok and F.calls.mode == 0, "no floor part: floor_mode is not asked"
+
+
+@test("10. floor_release and floor_book_piles run after the save (the cap, the stairs' ban and the commit's "
+      "order: tests 3 and 9; the free-room join first: test 7)")
+def _():
+    # (r5 p5) behaviour, not source text
+    need()
+    B.furnish_progress = LUA.eval("function() return {placed = 1, done = 1, waiting = {}} end")
+    floors()
+    LUA.execute(SAVED_PHASE, B, W, F)
+    r = start(kind="dining", tables=8)
+    assert r.ok and r.floor.id == 3, dict(r)
+    dig_all()
+    assert B.furnish_project(1, True).ok and B.finish_project(1).ok
+    assert F.calls.book == 1 and F.booked.saved == "done", F.booked and dict(F.booked)
+    _reset()
+    floors()
+    LUA.execute(SAVED_PHASE, B, W, F)
+    r2 = start(**BED)
+    assert r2.ok and B.cancel_project(r2.project_id).ok
+    assert F.calls.release == 1 and F.released.saved == "cancelled", F.released and dict(F.released)
 
 
 if __name__ == "__main__":

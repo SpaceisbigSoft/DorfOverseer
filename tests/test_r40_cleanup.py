@@ -636,16 +636,12 @@ ACTIONS = ("cleanup_items", "cleanup_units", "cleanup_spatter", "cleanup_dead_un
 
 @test("bridge: the four actions in ACTIONS and DRY_OK, the cleanup section, ai-cleanup in BRIDGE_MODULES, not a cached section")
 def _():
-    dry = BRIDGE[BRIDGE.index("DRY_OK = {}"):BRIDGE.index("}) do DRY_OK[name] = true end")]
-    for a in ACTIONS:
-        assert code_has(BRIDGE, f"{a} = act_{a},"), a
-        assert f"'{a}'" in dry, a
-        assert f"function act_{a}(a)" in ACTS and "dry_run" in ACTS[ACTS.index(f"function act_{a}(a)"):][:1500], a
-    assert code_has(BRIDGE, "cleanup = function() return safe(function() return reqscript('ai-cleanup').report() end) end,")
-    mods = BRIDGE[BRIDGE.index("BRIDGE_MODULES = {"):BRIDGE.index("}", BRIDGE.index("BRIDGE_MODULES = {"))]
-    assert "'ai-cleanup'" in mods
-    cache = BRIDGE[BRIDGE.index("SECTION_CACHE_DAYS = {"):BRIDGE.index("SECTION_REBUILDS =")]
-    assert "cleanup" not in cache
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-cleanup (tests/bridge_behaviour.py), not its text;
+    # the handlers' dry_run is the next test's (run, not read)
+    import bridge_behaviour as BB
+    BB.wired(section="cleanup", module="ai-cleanup", actions=ACTIONS, dry=ACTIONS, handlers=ACTIONS,
+             modules=["ai-cleanup"], uncached=True)
 
 
 @test("bridge: the handlers check their numbers and pass dry_run on")
@@ -699,39 +695,21 @@ def _():
     assert "world_cleanup=off" in rules_line(player_rules({"settings": {"world_cleanup": "off"}}))
 
 
-def _rules_rows():
-    """(row, l, w, view) of every Rules-page control with a frame, at the window's numbers
-    (9 optional levels: t = 14; the hospital 2nd, the jail 8th)."""
-    src = GUI[GUI.index("function RulesPage:init()"):GUI.index("MilitaryPage = defclass")]
-    jrow, hrow, t = 8, 2, 14
-    out = []
-    for m in re.finditer(r"view_id = '(\w+)',\s*frame = \{t = ([^,]+), l = (\d+), w = (\d+)\}", src):
-        view, expr, l, wd = m.group(1), m.group(2).strip(), int(m.group(3)), int(m.group(4))
-        for i in ((1, 2, 3) if " + i" in expr else (None,)):
-            env = {"jrow": jrow, "hrow": hrow, "t": t, "i": i if i is not None else 0}
-            out.append((eval(expr, env), l, wd, view))
-    return out
-
-
 @test("window: the World cleanup row on the Rules tab, in a free row of the right-hand column, refreshed; its widest "
       "choice fits")
 def _():
-    assert code_has(GUI, "view_id = 'world_cleanup',") and code_has(GUI, "p:set_field('world_cleanup', v)")
-    assert "self.subviews.world_cleanup:setOption(" in GUI
-    rows = _rules_rows()
-    mine = [r for r in rows if r[3] == "world_cleanup"]
-    assert len(mine) == 1, rows
-    r, l, wd, _ = mine[0]
-    for r2, l2, w2, v in rows:
-        if v != "world_cleanup" and r2 == r:
-            assert l2 + w2 <= l or l + wd <= l2, (v, r2, l2, w2, mine)
-    # the help labels in the right-hand column (calm burrow's at row 5 + jrow)
-    assert r != 5 + 8 and r != 5 + 2
-    assert l + wd <= 118
-    m = re.search(r"view_id = 'world_cleanup',.*?label = '([^']*)',\s*label_width = (\d+)", GUI, re.S)
-    names = re.search(r"WORLD_CLEANUP_NAMES = \{(.*?)\}", SETTINGS, re.S).group(1)
-    widest = max(len(x) for x in re.findall(r"'([^']*)'", names))
-    assert len(m.group(1)) <= int(m.group(2)) and int(m.group(2)) + widest <= wd, (m.groups(), widest, wd)
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its frames parsed from the text
+    need_lua()
+    import gui_behaviour as GB
+    S = GB.settings_module()
+    choices = [k for k in S.WORLD_CLEANUP_NAMES.keys()]
+    w = GB.control("RulesPage", "world_cleanup", kind="CycleHotkeyLabel", values=choices, default="safe")
+    assert w.l >= 56, w                                                      # the right-hand column
+    rules = GB.page(GB.window(), "RulesPage")
+    assert GB.refresh(rules, {"world_cleanup": "nuke"})["world_cleanup"] == "safe"
+    # not on the rows of the help labels in the right-hand column (the calm burrow's, the hospital's)
+    helps = {x.row for x in GB.widgets(rules) if x.kind == "Label" and x.l is not None and x.l >= 56}
+    assert w.row not in helps, (w.row, helps)
 
 
 @test("Lua: ai-cleanup compiles (Lua 5.3) and is a module")

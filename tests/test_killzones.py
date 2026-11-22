@@ -439,57 +439,49 @@ def _():
 
 @test("bridge: the killzones section (safe, cached a day), both actions (checked, on DRY_OK), the module listed")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "killzones = function() return safe(function() return reqscript('ai-killzone').report(txt) end) end," in src
-    actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
-    assert "build_killzone = function(a)" in actions and "reset_cage_traps = function(a)" in actions
-    dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
-    assert "'build_killzone', 'reset_cage_traps'" in dry
-    mods = src[src.index("BRIDGE_MODULES = {"):src.index("}", src.index("BRIDGE_MODULES = {"))]
-    assert "'ai-killzone'" in mods
-    assert "SECTION_CACHE_DAYS.killzones = 1" in src and "CACHE_INVALIDATES.build_killzone" in src
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-killzone (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(section="killzones", module="ai-killzone", txt=True, cache_days=1,
+             actions=["build_killzone", "reset_cage_traps"], dry=["build_killzone", "reset_cage_traps"],
+             modules=["ai-killzone"], invalidates={"build_killzone": ["killzones"]})
     assert SECTION_DEFAULTS["killzones"] == {}
     import overseer
     assert "build_killzone" in overseer.SHORT_WORDS and "reset_cage_traps" in overseer.SHORT_WORDS
-    orders = (LUA_DIR / "ai-bridge-orders.lua").read_text(encoding="utf-8")
-    assert "ORDER_RECIPES.metal_trap_blades = {job = 'MakeTrapComponent'" in orders
-    need_lua()
-    i = src.index("    build_killzone = function(a)")
-    j = src.index("    reset_cage_traps = function(a)")
-    fn = src[i:j].strip().rstrip(",").replace("build_killzone = function(a)", "return function(a)", 1)
-    lua = LuaRuntime(unpack_returned_tuples=True)
-    lua.execute("""
-        GOT = nil
-        function reject(r) return {ok = false, rejected = true, error = r} end
-        function int_in(v, lo, hi) v = math.tointeger(v); if v == nil or v < lo or v > hi then return nil end return v end
-        function reqscript() return {build_killzone = function(id, n, kind, br, dry)
-            GOT = {id = id, n = n, kind = kind, br = br, dry = dry}; return {ok = true} end} end
-    """)
-    f = lua.execute(fn)
-    assert f(lua.table_from({}))["rejected"] is True
-    assert f(lua.table_from({"entrance_id": 1, "traps": 9}))["rejected"] is True
-    assert f(lua.table_from({"entrance_id": 1, "kind": "lava"}))["rejected"] is True
-    assert f(lua.table_from({"entrance_id": 1, "drawbridge": "yes"}))["rejected"] is True
-    assert f(lua.table_from({"entrance_id": 3, "traps": 0, "kind": "mixed", "drawbridge": True, "dry_run": True}))["ok"]
-    g = lua.globals().GOT
-    assert (g.id, g.n, g.kind, g.br, g.dry) == (3, 0, "mixed", True, True)
-    f(lua.table_from({"entrance_id": 3}))
-    g = lua.globals().GOT
-    assert (g.n, g.kind, g.br, g.dry) == (4, "cage", False, False)
+    assert BB.hub().ORDER_RECIPES.metal_trap_blades.job == "MakeTrapComponent"
+
+    def send(a):
+        got, out, _ = BB.forwarded("build_killzone", a, "ai-killzone", "build_killzone")
+        return (got[0][1] if got else None), out
+    for bad in ({}, {"entrance_id": 1, "traps": 9}, {"entrance_id": 1, "kind": "lava"},
+                {"entrance_id": 1, "drawbridge": "yes"}):
+        g, out = send(bad)
+        assert g is None and out.rejected is True, (bad, BB.to_py(out))
+    g, out = send({"entrance_id": 3, "traps": 0, "kind": "mixed", "drawbridge": True, "dry_run": True})
+    assert out.ok and g == [3, 0, "mixed", True, True], g
+    g, _ = send({"entrance_id": 3})
+    assert g[1:] == [4, "cage", False, False], g
 
 
 @test("Rules: killzones on by default (settings, the Army tab's switch in a free row), off only when said")
 def _():
     from planner_core import player_rules
-    st = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert "killzones = true," in st and "'killzones'," in st and "killzones = s.killzones," in st
+    need_lua()
+    import gui_behaviour as GB
+    S = GB.settings_module()                     # (r5 p5) the settings run, not their lines
+    assert S.defaults().killzones is True and S.for_ai(S.defaults()).killzones is True
+    off = S.sanitize(GB.settings_module().defaults())
+    off.killzones = False
+    assert S.sanitize(off).killzones is False and S.for_ai(S.sanitize(off)).killzones is False
     assert player_rules({"settings": {}})["killzones"] is True
     assert player_rules({"settings": {"killzones": False}})["killzones"] is False
-    gui = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "view_id = 'killzones',\n        frame = {t = t + 18, l = 76, w = 40}," in gui
-    assert "self.subviews.killzones:setOption(s.killzones ~= false, false)" in gui
-    assert len("Kill zones at the gates:") <= 28 and 76 + 40 <= 118
     need_lua()
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its text
+    import gui_behaviour as GB
+    GB.control("MilitaryPage", "killzones", kind="ToggleHotkeyLabel", values=[False, True], default=True)
+    army = GB.page(GB.window({"killzones": False}), "MilitaryPage")
+    assert GB.find(army, "killzones").initial_option is False
+    assert GB.refresh(army, {"killzones": None})["killzones"] is True
     lua = LuaRuntime(unpack_returned_tuples=True)
     chk = lua.eval("function(src, n) local f, e = load(src, n, 't', {}); return f ~= nil, e end")
     for name in ("ai-killzone.lua", "ai-bridge.lua", "ai-overseer-settings.lua", "gui/ai-overseer.lua",

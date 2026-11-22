@@ -10,13 +10,12 @@ engine (lupa, Lua 5.3).
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import make_test, finish, code_has  # noqa: E402
+from harness import make_test, finish  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -25,9 +24,8 @@ except ImportError:
     sys.exit(0)
 
 import test_preset as TP      # the bridge and the settings with a stub DFHack  # noqa: E402
+import gui_behaviour as GB    # (r5 p5) the window built on a stub gui  # noqa: E402
 
-GUI = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-SETTINGS = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
 
 test = make_test(before=TP.reset)
 
@@ -154,52 +152,68 @@ def _():
 
 # --- the window ------------------------------------------------------------------------
 
-def page(name: str) -> str:
-    a = GUI.index(f"function {name}:init()")
-    return GUI[a:GUI.index("\nend\n", a)]
-
-
 @test("window: the AI & tokens tab's Design selector under the sliders, with its words and token note")
 def _():
-    src = page("AIPage")
-    assert code_has(src, "view_id = 'design'") and code_has(src, "p:set_field('design', v)")
-    assert "widgets.CycleHotkeyLabel{\n        view_id = 'design'" in src
-    assert code_has(src, "S.DESIGN_MODES") and code_has(src, "S.DESIGN_WORDS") and code_has(src, "S.DESIGN_TOKENS")
-    assert code_has(GUI, "self.subviews.design:setOption(s.design or S.DESIGN_DEFAULT, false)")
-    m = re.search(r"view_id = 'design',.*?label = '([^']*)',\s*label_width = (\d+)", src, re.S)
-    assert m and len(m.group(1)) <= int(m.group(2)), m and m.groups()
-    # the sliders take rows 2-5; every row-0-column control in its own row, all within the 28 shown
-    rows = [int(x) for x in re.findall(r"frame = \{t = (\d+), l = [02][,}]", src)]
-    design_row = int(re.search(r"view_id = 'design',\s*frame = \{t = (\d+)", src).group(1))
-    assert design_row == 7, design_row
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its source cut by regexes
+    win = GB.window()
+    ai = GB.page(win, "AIPage")
+    S = GB.settings_module()
+    d = GB.find(ai, "design")
+    assert d.kind == "CycleHotkeyLabel" and d.label and len(d.label) <= d.label_width, d
+    assert [v for _, v in d.options] == lua_list(S.DESIGN_MODES), d.options
+    for (name, v) in d.options:                              # each choice says what it does
+        assert S.DESIGN_WORDS[v] and (S.DESIGN_NAMES[v] in name or S.DESIGN_WORDS[v] in name), (name, v)
+    texts = " ".join(w.text or "" for w in GB.widgets(ai))
+    assert S.DESIGN_TOKENS in texts, texts[:300]
+    assert GB.change(ai, "design", "architect") == [("design", "architect")]
+    assert GB.refresh(ai, {"design": "architect"})["design"] == "architect"
+    assert GB.refresh(ai, {"design": None})["design"] == S.DESIGN_DEFAULT
+    # the sliders take rows 2-5; every row-0-column control in its own row, all within the rows shown
+    assert d.row == 7, d
+    rows = [w.row for w in GB.widgets(ai) if w.row is not None and w.l in (0, 2) and w.row > 5]
     assert len(rows) == len(set(rows)), sorted(rows)
-    assert max(rows) <= 27 and min(r for r in rows if r) > 5, sorted(rows)
+    assert max(rows) <= GB.visible_rows(win) - 1, sorted(rows)
+    sliders = {w.row for w in GB.widgets(ai) if w.kind == "Slider"}
+    assert sliders and max(sliders) < d.row - 1, sliders                # under the sliders and their scale
+    assert GB.overlaps(ai) == [], GB.overlaps(ai)
 
 
 @test("window: Landmarks on the Rules tab beside the memorials, in a free part of that row")
 def _():
-    src = page("RulesPage")
-    assert code_has(src, "view_id = 'landmark_pace'") and code_has(src, "p:set_field('landmark_pace', v)")
-    assert code_has(GUI, "self.subviews.landmark_pace:setOption(s.landmark_pace or 'season', false)")
-    mem = re.search(r"view_id = 'memorial_pace',\s*frame = \{t = (\d+), l = (\d+), w = (\d+)\}", src)
-    lm = re.search(r"view_id = 'landmark_pace',\s*frame = \{t = (\d+), l = (\d+), w = (\d+)\}", src)
-    assert mem and lm
-    assert mem.group(1) == lm.group(1)                                   # the same row
-    assert int(mem.group(2)) + int(mem.group(3)) < int(lm.group(2))      # to its right
-    assert int(lm.group(2)) + int(lm.group(3)) <= 118
-    m = re.search(r"view_id = 'landmark_pace',.*?label = '([^']*)',\s*label_width = (\d+)", src, re.S)
-    longest = max(len(x) for x in ("one a season", "one a year", "never"))
-    assert len(m.group(1)) <= int(m.group(2)) and int(m.group(2)) + longest + 4 <= int(lm.group(3))
+    # (r5 p5) behaviour, not source text
+    win = GB.window()
+    rules = GB.page(win, "RulesPage")
+    S = GB.settings_module()
+    mem, lm = GB.find(rules, "memorial_pace"), GB.find(rules, "landmark_pace")
+    assert mem.row == lm.row and mem.l + mem.w < lm.l, (mem, lm)          # the same row, to its right
+    assert lm.l + lm.w <= GB.inner_width(win) - 2
+    assert [v for _, v in lm.options] == lua_list(S.LANDMARK_PACES)
+    longest = max(len(n) for n, _ in lm.options)
+    assert len(lm.label) <= lm.label_width and lm.label_width + longest + 4 <= lm.w, (lm, longest)
+    assert GB.change(rules, "landmark_pace", "year") == [("landmark_pace", "year")]
+    assert GB.refresh(rules, {"landmark_pace": "never"})["landmark_pace"] == "never"
+    assert GB.refresh(rules, {"landmark_pace": None})["landmark_pace"] == "season"
+    assert GB.overlaps(rules) == [], GB.overlaps(rules)
 
 
 @test("window: the Culture page shows the design lines when the culture has them, and the new halls' words")
 def _():
-    src = page("CulturePage")      # init; the lines are in refresh
-    assert src
-    r = GUI[GUI.index("function CulturePage:refresh()"):]
-    assert code_has(r, "type(c.design) == 'table'") and "THE DESIGN LANGUAGE" in r
+    # (r5 p5) behaviour, not source text
+    win = GB.window({"design": "architect"})
+    S = GB.settings_module()
+    base = {"profile": {"hall": "plain", "smooth": 1, "statues": 1}, "guide": ""}
+    lines = GB.culture_lines(win, base)
+    assert not any("THE DESIGN LANGUAGE" in x for x in lines), lines
+    design = [f"line {i}" for i in range(9)]
+    lines = GB.culture_lines(win, dict(base, design=design))
+    i = next(k for k, x in enumerate(lines) if "THE DESIGN LANGUAGE" in x)
+    assert S.DESIGN_NAMES["architect"] in lines[i], lines[i]
+    assert lines[i + 1:i + 7] == ["  " + x for x in design[:6]] and "line 6" not in " ".join(lines), lines
     for h in ("octagonal", "round", "cruciform", "nave"):
-        assert re.search(rf"\b{h} = '", GUI[:GUI.index("CameraPage = defclass")]), h
+        got = GB.culture_lines(win, dict(base, profile={"hall": h, "smooth": 1, "statues": 1}))
+        halls = next(x for x in got if x.startswith("  Halls: "))
+        assert halls != "  Halls: " + h or h == "round", (h, halls)          # its words, not the bare key
+        assert "nil" not in halls, halls
 
 
 @test("bridge: set_culture keeps the design lines (6 at most, cleaned) and takes the new halls")

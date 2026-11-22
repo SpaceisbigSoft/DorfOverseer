@@ -363,10 +363,9 @@ return e
     def _():
         src = (ROOT / "lua" / "ai-threats.lua").read_text(encoding="utf-8")
         assert "part('weather'" not in src
-        br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-        assert "weather = function() return safe(function() return reqscript('ai-threats').weather_section() end) end" in br
-        pulse = br[br.index("PULSE_SECTIONS = {"):br.index("}", br.index("PULSE_SECTIONS = {"))]
-        assert "'weather'" in pulse, pulse
+        # (r5 p5) the loaded hub's own tables and a stand-in ai-threats (tests/bridge_behaviour.py), not its text
+        import bridge_behaviour as BB
+        BB.wired(section="weather", module="ai-threats", fn="weather_section", pulse=True)
         E = game("""function(G)
             table.insert(G.rw, {type = 'FallingMaterial', mat_type = 4, mat_index = 4, flags = {},
                                 region_x = 10, region_y = 20, remaining_duration = 300})

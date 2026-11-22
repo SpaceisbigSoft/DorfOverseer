@@ -388,35 +388,24 @@ def _():
 
 @test("bridge: the captives and necro sections (safe), make_pit and pit_prisoners (dry runs ok, ids checked), the module listed")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "captives = function() return safe(function() return reqscript('ai-captives').report(txt) end) end," in src
-    assert "necro = function() return safe(function() return reqscript('ai-captives').necro(txt) end) end," in src
-    actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
-    assert "make_pit = function(a)" in actions and "pit_prisoners = function(a)" in actions
-    dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
-    assert "'make_pit', 'pit_prisoners'" in dry
-    mods = src[src.index("BRIDGE_MODULES = {"):src.index("}", src.index("BRIDGE_MODULES = {"))]
-    assert "'ai-captives'" in mods
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-captives (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(section="captives", module="ai-captives", txt=True, actions=["make_pit", "pit_prisoners"],
+             dry=["make_pit", "pit_prisoners"], modules=["ai-captives"])
+    BB.wired(section="necro", module="ai-captives", fn="necro", txt=True)
     assert SECTION_DEFAULTS["captives"] == {} and SECTION_DEFAULTS["necro"] == {}
     import overseer
     assert "make_pit" in overseer.SHORT_WORDS and "pit_prisoners" in overseer.SHORT_WORDS
-    need_lua()
-    i = actions.index("    pit_prisoners = function(a)")
-    j = actions.index("    end,\n", i) + len("    end,\n")
-    fn = actions[i:j].strip().rstrip(",").replace("pit_prisoners = function(a)", "return function(a)", 1)
-    lua = LuaRuntime(unpack_returned_tuples=True)
-    lua.execute("""
-        GOT = nil
-        function reject(r) return {ok = false, rejected = true, error = r} end
-        function reqscript() return {pit_prisoners = function(o, dry) GOT = {o = o, dry = dry}; return {ok = true} end} end
-    """)
-    f = lua.execute(fn)
-    assert f(lua.table_from({}))["rejected"] is True
-    assert f(lua.table_from({"ids": lua.table_from([1.5])}))["rejected"] is True
-    assert f(lua.table_from({"ids": lua.table_from([])}))["rejected"] is True
-    assert f(lua.table_from({"ids": lua.table_from([7, 8.0]), "dry_run": True}))["ok"] is True
-    got = lua.globals().GOT
-    assert list(got.o.ids.values()) == [7, 8] and got.dry is True
+
+    def send(a):
+        got, out, _ = BB.forwarded("pit_prisoners", a, "ai-captives", "pit_prisoners")
+        return (got[0][1] if got else None), out
+    for bad in ({}, {"ids": [1.5]}, {"ids": []}):
+        g, out = send(bad)
+        assert g is None and out.rejected is True, (bad, BB.to_py(out))
+    g, out = send({"ids": [7, 8.0], "dry_run": True})
+    assert out.ok and g[0]["ids"] == [7, 8] and g[1] is True, g
 
 
 # --- 5. the brain ------------------------------------------------------------------------

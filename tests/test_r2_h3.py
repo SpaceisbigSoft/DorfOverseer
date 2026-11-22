@@ -161,9 +161,18 @@ def _():
     assert list(got.dropped_kinds.values()) == ["Bed", "Box"]
     k = calls[1]
     assert k.Bed and k.Box and k.Workshop and not k.Door
-    src = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "a.give_up == true, drop," in src and "function act_park_project(a)" in src
-    assert "park_project = act_park_project" in (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    # (r5 p5) the bridge's finish_project and park_project run on a stand-in ai-builder (tests/bridge_behaviour.py)
+    import bridge_behaviour as BB
+    got, _, _ = BB.forwarded("finish_project", {"project_id": 66, "give_up": True, "drop": ["Bed", "Box"]},
+                             "ai-builder", "finish_project")
+    assert got[0][1][:5] == [66, False, False, True, ["Bed", "Box"]], got
+    for bad in ("Bed", ["Bed 2"], [3]):
+        got, out, _ = BB.forwarded("finish_project", {"project_id": 66, "drop": bad}, "ai-builder", "finish_project")
+        assert not got and out.rejected, (bad, BB.to_py(out))
+    got, _, env = BB.forwarded("park_project", {"project_id": 66, "sig": "Bed=1", "dry_run": True}, "ai-builder",
+                               "park_project")
+    assert got == [("park_project", [66, "Bed=1", True])], got
+    assert BB.same(env.ACTIONS.park_project, env.act_park_project)
 
 
 def fort() -> dict:
@@ -266,8 +275,16 @@ def _():
     assert not r.ok and "unfinished building projects" in str(r.error), dict(r)
     r = B.start_project(ltab(lua, kind="workshops", shops=["Quern"], need="nonsense"), lua.table(), True)
     assert not r.ok and "unfinished building projects" in str(r.error), dict(r)
-    src = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "p.need = a.need" in src
+    # (r5 p5) the bridge's start_project run on a stand-in ai-builder (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    lay = BB.real_module("ai-layouts")
+    kinds = {"paper": True, "mood": True, "well": True, "drink": True, "meals": True}
+    got, _, _ = BB.forwarded("start_project", {"kind": "workshops", "shops": ["Quern"], "need": "meals"}, "ai-builder",
+                             "start_project", extra={"ai-layouts": lay}, fields={"NEED_KINDS": kinds})
+    assert got[0][1][0]["need"] == "meals", got
+    got, out, _ = BB.forwarded("start_project", {"kind": "workshops", "shops": ["Quern"], "need": "nonsense"},
+                               "ai-builder", "start_project", extra={"ai-layouts": lay}, fields={"NEED_KINDS": kinds})
+    assert not got and out.rejected, BB.to_py(out)
 
 
 @test("2 lua: the need is kept on the new level (counted in the pool); a well always takes the pool")

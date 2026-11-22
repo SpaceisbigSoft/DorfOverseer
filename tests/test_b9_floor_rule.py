@@ -10,14 +10,13 @@ lua/gui/ai-overseer.lua, and planner_core.player_rules; in a real Lua engine
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
-from harness import make_test, finish, code_has  # noqa: E402
+from harness import make_test, finish  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -26,6 +25,7 @@ except ImportError:
     sys.exit(0)
 
 import test_preset as TP      # the bridge and the settings with a stub DFHack  # noqa: E402
+import gui_behaviour as GB    # (r5 p5) the window built on a stub gui  # noqa: E402
 from planner_core import player_rules  # noqa: E402
 
 GUI = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
@@ -153,63 +153,30 @@ def _():
         assert player_rules({"settings": {"floor_layout": a.floor_layout}})["floor_layout"] == v
 
 
-def _rules_src() -> str:
-    return GUI[GUI.index("function RulesPage:init()"):GUI.index("MilitaryPage = defclass")]
-
-
-def _rules_boxes():
-    """(row, l, w or None, what) of every framed control on the Rules page, at the window's numbers
-    (9 optional levels: t = 14; the hospital 2nd, the jail 8th; the loops' i = 1..n)."""
-    src = _rules_src()
-    out = []
-    for m in re.finditer(r"frame = \{t = ([^,]+), l = (\d+)(?:, w = (\d+))?\}", src):
-        expr, l, wd = m.group(1).strip(), int(m.group(2)), m.group(3) and int(m.group(3))
-        before = src[:m.start()]
-        v = re.findall(r"view_id = ([^,\n]+),\s*$", before)
-        what = v[0] if v else "label@%d" % (before.count("\n") + 1)
-        n = 9 if "level_" in what else 3
-        for i in (range(1, n + 1) if " + i" in expr else (0,)):
-            out.append((eval(expr, {"jrow": 8, "hrow": 2, "t": 14, "i": i}), l, wd, what))
-    return out
-
-
 @test("window: the 'New levels:' cycle on the Rules tab (row 4, the right-hand column), overlapping nothing; its "
       "widest choice fits; refreshed")
 def _():
-    src = _rules_src()
-    assert "widgets.CycleHotkeyLabel{\n        view_id = 'floor_layout'," in src
-    assert code_has(src, "label = 'New levels:',")
-    assert code_has(src, "for _, m in ipairs(S.FLOOR_LAYOUT_CHOICES) do "
-                         "table.insert(out, {label = S.FLOOR_LAYOUT_NAMES[m], value = m}) end")
-    assert code_has(src, "initial_option = S.FLOOR_LAYOUT_NAMES[p.settings.floor_layout] and "
-                         "p.settings.floor_layout or 'hallway',")
-    assert code_has(src, "on_change = function(v) p:set_field('floor_layout', v) end,")
-    assert GUI.count("view_id = 'floor_layout'") == 1
-    assert code_has(GUI, "self.subviews.floor_layout:setOption(S.FLOOR_LAYOUT_NAMES[s.floor_layout] and "
-                         "s.floor_layout or 'hallway', false)")
-    refresh = GUI[GUI.index("function RulesPage:refresh()"):]
-    refresh = refresh[:refresh.index("\nend\n")]
-    assert "self.subviews.floor_layout:setOption(" in refresh
-    boxes = _rules_boxes()
-    assert len(boxes) >= 45, len(boxes)                    # the parser sees the page
-    mine = [b for b in boxes if b[3] == "'floor_layout'"]
-    assert len(mine) == 1, boxes
-    r, l, wd, _ = mine[0]
-    assert (r, l, wd) == (4, 56, 62), mine
-    assert l + wd <= 118 and 0 < r <= 27
-    heading = re.search(r"frame = \{t = 4, l = 0\}, text = \{\{text = '([^']*)'", src).group(1)
-    for r2, l2, w2, v in boxes:
-        if v == "'floor_layout'" or r2 != r:
-            continue
-        w2 = w2 if w2 is not None else len(heading)        # the one unsized label in the row: the levels' heading
-        assert "label@" not in v or (l2 == 0 and heading), (v, r2, l2)
-        assert l2 + w2 <= l or l + wd <= l2, (v, r2, l2, w2, mine)
+    # (r5 p5) the window built (tests/gui_behaviour.py), not its source cut by regexes
+    win = GB.window()
+    rules = GB.page(win, "RulesPage")
+    w = GB.find(rules, "floor_layout")
+    assert w.kind == "CycleHotkeyLabel" and w.label == "New levels:", w
+    assert (w.row, w.l, w.w) == (4, 56, 62), w
+    assert w.l + w.w <= GB.inner_width(win) - 2 and 0 < w.row <= GB.visible_rows(win) - 1, w
+    S = GB.settings_module()
+    assert [v for _, v in w.options] == lua_list(S.FLOOR_LAYOUT_CHOICES), w.options
+    assert [n for n, _ in w.options] == [S.FLOOR_LAYOUT_NAMES[k] for k in lua_list(S.FLOOR_LAYOUT_CHOICES)]
+    assert w.initial_option == "hallway"                                  # a new fort
+    assert GB.find(GB.page(GB.window({"floor_layout": "classic"}), "RulesPage"), "floor_layout").initial_option == "classic"
+    assert GB.find(GB.page(GB.window({"floor_layout": "spiral"}), "RulesPage"), "floor_layout").initial_option == "hallway"
+    assert GB.change(rules, "floor_layout", "classic") == [("floor_layout", "classic")]
+    assert GB.refresh(rules, {"floor_layout": "classic"})["floor_layout"] == "classic"
+    assert GB.refresh(rules, {"floor_layout": "bogus"})["floor_layout"] == "hallway"
+    assert GB.overlaps(rules) == [], GB.overlaps(rules)
     # the hospital burrow's switch sits at row 4 + (the hospital's place among the levels): never row 4
-    assert code_has(src, "frame = {t = 4 + hrow, l = 56, w = 62}")
-    m = re.search(r"view_id = 'floor_layout',.*?label = '([^']*)',\s*label_width = (\d+)", src, re.S)
-    S = TP.H.settings()
-    widest = max(len(S.FLOOR_LAYOUT_NAMES[k]) for k in lua_list(S.FLOOR_LAYOUT_CHOICES))
-    assert len(m.group(1)) < int(m.group(2)) and int(m.group(2)) + widest <= wd, (m.groups(), widest, wd)
+    assert GB.find(rules, "hospital_burrow").row != 4
+    widest = max(len(n) for n, _ in w.options)
+    assert len(w.label) < w.label_width and w.label_width + widest <= w.w, (w, widest)
 
 
 @test("Lua: the window and the settings still compile (Lua 5.3)")
@@ -220,16 +187,20 @@ def _():
     assert f(SETTINGS) is None, f(SETTINGS)
 
 
-@test("the source lines the other groups read (the contract's names)")
+@test("the names the other groups read (the contract's names): the choices, the default, sanitize, for_ai, the brain's rule")
 def _():
-    assert "FLOOR_LAYOUT_CHOICES = {'hallway', 'classic'}" in SETTINGS
-    assert code_has(SETTINGS, "floor_layout = FLOOR_LAYOUT_CHOICES,")
-    assert code_has(SETTINGS, "floor_layout = 'hallway',")
-    assert code_has(SETTINGS, "out.floor_layout = one_of(s.floor_layout, FLOOR_LAYOUT_CHOICES, d.floor_layout)")
-    assert code_has(SETTINGS, "floor_layout = s.floor_layout,")
-    core = (ROOT / "brain" / "planner_core.py").read_text(encoding="utf-8")
-    assert code_has(core, '"floor_layout": "classic" if st.get("floor_layout") == "classic" else "hallway", '
-                          '# (0.105.47) a training-only squad')
+    # (r5 p5) the settings module run, not its lines: the contract is the names and values, not the code
+    S = TP.H.settings()
+    assert lua_list(S.FLOOR_LAYOUT_CHOICES) == ["hallway", "classic"]            # contract
+    assert S.defaults().floor_layout == "hallway"
+    for v in ("hallway", "classic"):
+        assert S.sanitize(TP.t({"floor_layout": v})).floor_layout == v
+        assert S.for_ai(S.sanitize(TP.t({"floor_layout": v}))).floor_layout == v
+    for bad in ("spiral", 1, True, None):
+        assert S.sanitize(TP.t({"floor_layout": bad})).floor_layout == "hallway", bad
+    assert player_rules({"settings": {}})["floor_layout"] == "hallway"
+    assert player_rules({"settings": {"floor_layout": "classic"}})["floor_layout"] == "classic"
+    assert player_rules({"settings": {"floor_layout": "spiral"}})["floor_layout"] == "hallway"
     assert list(player_rules({"settings": {}}))[-1] == "training_squad"
 
 

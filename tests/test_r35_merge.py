@@ -63,16 +63,14 @@ def player_gate_rig(works):
 
 @test("open_caverns: (v35) the switch reads AI decides / Always / Never; the settings and docs say the AI decides by default")
 def _():
-    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    i = gui.index("view_id = 'open_caverns'")
-    block = gui[i:gui.index("})", i)]
-    for lab, val in (("AI decides", "ai"), ("Always", "always"), ("Never", "never")):
-        assert f"label = '{lab}', value = '{val}'" in block, block
-    st = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    j = st.index("open_caverns = 'ai'")
-    assert "the AI decides" in st[j - 400:j], st[j - 400:j]
+    # (r5 p5) the window built on a stub gui and the settings run (tests/gui_behaviour.py), not their text
+    import gui_behaviour as GB
+    w = GB.control("RulesPage", "open_caverns", kind="CycleHotkeyLabel", values=["always", "never", "ai"], default="ai")
+    assert w.options == [("AI decides", "ai"), ("Always", "always"), ("Never", "never")], w.options
+    S = GB.settings_module()
+    assert S.defaults().open_caverns == "ai" and S.for_ai(S.defaults()).open_caverns == "ai"
     ctl = (ROOT / "docs" / "controls.md").read_text(encoding="utf-8")
-    assert "\"AI decides\" (the default): the AI opens one only" in ctl and "\"Never\": never" in ctl
+    assert "\"AI decides\" (the default): the AI opens one only" in ctl and "\"Never\": never" in ctl   # contract: docs
 
 
 @test("open_caverns: the strategist's Rules line says the AI decides, not plain 'off'")

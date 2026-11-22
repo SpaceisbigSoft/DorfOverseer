@@ -605,14 +605,13 @@ def _():
 
 @test("wiring: actions, dry runs, the section (and the pulse), the module list, digest default, labels")
 def _():
-    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert re.search(r"^\s+shelter_pick = function\(a\)", hub, re.M) and re.search(r"^\s+squad_station = function\(a\)", hub, re.M)
-    dry = hub[hub.index("DRY_OK = {}"):]
-    assert "'shelter_pick', 'squad_station'" in dry[:dry.index("do DRY_OK") if "do DRY_OK" in dry else 20000]
-    assert "shelter_plan = function(ctx) return safe(function() return reqscript('ai-shelter-plan').report(txt, ctx and ctx.tier)" in hub
-    pulse = hub[hub.index("PULSE_SECTIONS = {"):]
-    assert "'shelter_plan'" in pulse[:pulse.index("}")]
-    assert "'ai-shelter-plan'" in hub[hub.index("BRIDGE_MODULES = {"):]
+    # (r5 p5) the loaded hub's tables and a stand-in ai-shelter-plan (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["shelter_pick", "squad_station"]
+    BB.wired(section="shelter_plan", module="ai-shelter-plan", txt=True, pulse=True, actions=acts, dry=acts,
+             modules=["ai-shelter-plan"])
+    args, _ = BB.section_answers("shelter_plan", "ai-shelter-plan", ctx={"tier": "pulse"})
+    assert args[1] == "pulse", args                                   # the tier passed on
     assert SECTION_DEFAULTS.get("shelter_plan") == {}
     import overseer
     assert "away from the threat" in overseer.short({"type": "shelter_pick", "levels": [160]})
@@ -624,8 +623,11 @@ def _():
     assert {"shelter_pick", "shelter_flee"} <= EMERGENCY and "shelter_flee" in NO_COOLDOWN
     for k in ("shelter_pick_margin", "shelter_flee_tiles", "shelter_choke_min_tiles", "shelter_pick_cooldown_ticks"):
         assert k in PLANNER_CONFIG, k
-    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "M.station(id, sx, sy, sz, a.dry_run == true)" in acts
+    got, out, _ = BB.forwarded("shelter_squads", {"squads": [7, 8], "station": {"x": 1, "y": 2, "z": 3}, "dry_run": True},
+                               "ai-military", "station")
+    assert [g[1] for g in got] == [[7, 1, 2, 3, True], [8, 1, 2, 3, True]] and out.ok, (got, BB.to_py(out))
+    got, out, _ = BB.forwarded("shelter_squads", {"squads": [7], "station": {"x": 1, "y": 2}}, "ai-military", "station")
+    assert not got and out.rejected, BB.to_py(out)
     mil = (LUA_DIR / "ai-military.lua").read_text(encoding="utf-8")
     assert "df.squad_order_movest:new()" in mil and "stationed = stationed" in mil
 

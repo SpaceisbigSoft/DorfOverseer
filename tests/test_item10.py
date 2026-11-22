@@ -733,26 +733,24 @@ def _():
 @test("bridge: three sections (safe), three actions on ACTIONS and DRY_OK, the modules listed, the recipes; "
       "the brain's labels, the defaults, config keys, the Rules switch")
 def _():
-    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    orders = (LUA_DIR / "ai-bridge-orders.lua").read_text(encoding="utf-8")
+    # (r5 p5) the loaded hub's tables and stand-in modules (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
     for sec, mod in (("forestry", "ai-forestry"), ("benches", "ai-benches"), ("leather_gear", "ai-leather-gear")):
-        assert f"{sec} = function() return safe(function() return reqscript('{mod}').report() end) end" in hub
-        assert f"'{mod}'" in hub
+        BB.wired(section=sec, module=mod, modules=[mod])
         assert sec in digest.SECTION_DEFAULTS
-    for a in ("cavern_logging", "keep_grove", "bench_caps"):
-        assert f"    {a} = function(a)" in hub and f"'{a}'" in hub
+    acts = ["cavern_logging", "keep_grove", "bench_caps"]
+    env = BB.wired(actions=acts, dry=acts)
+    for a in acts:
         assert a in overseer.SHORT_WORDS
     for r in ("leather_armor", "leather_cap", "leather_leggings", "leather_gloves", "leather_high_boots"):
-        assert f"    {r} = {{job = " in orders, r
+        assert env.ORDER_RECIPES[r] is not None and env.ORDER_RECIPES[r].job, r
     for k in ("cavern_logging_surface_min", "cavern_logging_batch", "grove_min_saplings", "grove_release_wood",
               "bench_training_max_level", "bench_learners_min"):
         assert k in PLANNER_CONFIG, k
     assert planner_core.player_rules({"settings": {}})["cavern_logging"] is True
     assert planner_core.player_rules({"settings": {"cavern_logging": False}})["cavern_logging"] is False
-    st = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert "cavern_logging = true," in st and "cavern_logging = s.cavern_logging," in st
-    gui = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "view_id = 'cavern_logging'" in gui
+    import gui_behaviour as GB              # (r5 p5) the settings and the window run, not their text
+    GB.rule_switch("cavern_logging", "MilitaryPage", True)
 
 
 @test("plan(): the fixture fort with the three sections runs the new rules and proposes from them")

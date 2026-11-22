@@ -514,16 +514,12 @@ NAMES = ("hunters", "food_standing", "fruit_zone", "cavern_farm")
 @test("bridge: the four actions in ACTIONS and DRY_OK, the provisions section, ai-provisions in BRIDGE_MODULES")
 def _():
     need_lua()
-    dry = BRIDGE[BRIDGE.index("DRY_OK = {}"):BRIDGE.index("}) do DRY_OK[name] = true end")]
-    for a in NAMES:
-        assert code_has(BRIDGE, f"{a} = act_{a},"), a
-        assert f"'{a}'" in dry, a
-        assert f"function act_{a}(a)" in ACTS, a
-    assert code_has(BRIDGE, "provisions = function() return safe(function() return reqscript('ai-provisions').report() end) end,")
-    mods = BRIDGE[BRIDGE.index("BRIDGE_MODULES = {"):BRIDGE.index("}", BRIDGE.index("BRIDGE_MODULES = {"))]
-    assert "'ai-provisions'" in mods
+    # (r5 p5) the loaded hub's tables and a stand-in ai-provisions (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(section="provisions", module="ai-provisions", actions=NAMES, dry=NAMES, handlers=NAMES,
+             modules=["ai-provisions"])
     src = (LUA_DIR / "ai-provisions.lua").read_text(encoding="utf-8")
-    assert "--@ module = true" in src
+    assert "--@ module = true" in src                    # contract: DFHack loads it as a module
     lua = LuaRuntime(unpack_returned_tuples=True)
     assert lua.eval("function(s) local f, e = load(s, 'c', 't', {}); return e end")(src) is None
 
@@ -570,13 +566,12 @@ def _():
 @test("settings: the hunting and cavern_farms switches (on by default) in the settings, for the AI, the Army "
       "tab, and player_rules; overseer labels")
 def _():
-    st = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert "hunting = true, cavern_farms = true," in st
-    assert "'hunting', 'cavern_farms'," in st
-    assert "hunting = s.hunting, cavern_farms = s.cavern_farms," in st
-    gui = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "{'hunting', 'Hunters (when safe):'}" in gui and "{'cavern_farms', 'Cavern-soil farms:'}" in gui
-    assert "frame = {t = t + 17, l = 2 + (i - 1) * 28, w = 26}," in gui
+    need_lua()
+    import gui_behaviour as GB              # (r5 p5) the settings and the window run, not their text
+    h = GB.rule_switch("hunting", "MilitaryPage", True)
+    c = GB.rule_switch("cavern_farms", "MilitaryPage", True)
+    assert (h.label, c.label) == ("Hunters (when safe):", "Cavern-soil farms:")
+    assert h.row == c.row and h.l + h.w <= c.l, (h, c)                 # side by side on one row
     r = planner_core.player_rules({"settings": {}})
     assert r["hunting"] is True and r["cavern_farms"] is True
     r = planner_core.player_rules({"settings": {"hunting": False, "cavern_farms": False}})

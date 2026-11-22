@@ -314,9 +314,26 @@ def _():
     B.open_projects = lambda data: one
     r = B.start_project(p(kind="workshops", shops=["Bowyers"], crossbows=True), lua.table(), True)
     assert not r.ok and "unfinished building projects" in str(r.error), dict(r)
-    src = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "p.crossbows = (a.crossbows == true and a.kind == 'workshops'" in src and "p.shops[1] == 'Bowyers'" in src
-    assert "crossbows = params.crossbows == true or nil" in (LUA_DIR / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    # (r5 p5) the bridge's start_project run on a stand-in ai-builder (tests/bridge_behaviour.py): only a lone
+    # Bowyer's level is marked
+    import bridge_behaviour as BB
+    lay = BB.real_module("ai-layouts")
+
+    def marked(**a):
+        got, _, _ = BB.forwarded("start_project", a, "ai-builder", "start_project", extra={"ai-layouts": lay})
+        return got[0][1][0].get("crossbows")
+    assert marked(kind="workshops", shops=["Bowyers"], crossbows=True) is True
+    assert marked(kind="workshops", shops=["Bowyers", "Carpenters"], crossbows=True) is None
+    assert marked(kind="workshops", shops=["Carpenters"], crossbows=True) is None
+    assert marked(kind="workshops", shops=["Bowyers"]) is None
+    # the record keeps it (the next one waits while it is open): a real level saved
+    import test_builder as TB
+    TB._reset(False)
+    r = TB.B.start_project(TB.LUA.table_from({"kind": "workshops", "shops": TB.LUA.table_from(["Bowyers"]),
+                                              "crossbows": True}), TB.LUA.table_from({"year": 255, "tick": 100}), False)
+    assert r.ok, dict(r)
+    saved = [q for q in TB.B.load_projects().list.values() if q.id == r.project_id]
+    assert saved and saved[0].crossbows is True, dict(r)
 
 
 # ---- 3. crossbows of metal, bolts of bone -------------------------------------------------------------

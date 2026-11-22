@@ -421,17 +421,16 @@ def _():
 
 @test("wiring: actions, dry runs, the welfare section, the module list, the caches, labels, digest, themes")
 def _():
-    b = (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
-    for a in ("coffins_anywhere", "engrave_memorials", "train_cook"):
-        assert re.search(r"\n    %s = function\(a\)" % a, b), a
-        assert "'%s'" % a in b[b.index("DRY_OK = {}"):b.index("}) do DRY_OK[name] = true end")], a
-        assert f"CACHE_INVALIDATES.{a} = " in b, a
-    assert "welfare = function() return safe(function() return reqscript('ai-welfare').report() end) end" in b
-    assert "'ai-welfare'" in b[b.index("BRIDGE_MODULES = {"):b.index("MARKED_MODULES")]
+    # (r5 p5) the loaded hub's tables and a stand-in ai-welfare (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["coffins_anywhere", "engrave_memorials", "train_cook"]
+    env = BB.wired(section="welfare", module="ai-welfare", actions=acts, dry=acts, modules=["ai-welfare"])
+    for a in acts:
+        assert BB.lua_list(env.CACHE_INVALIDATES[a]), a
     assert "welfare" in SECTION_DEFAULTS
     import overseer
     for a in ("coffins_anywhere", "engrave_memorials", "train_cook"):
-        assert a in overseer.ACTION_LABELS if hasattr(overseer, "ACTION_LABELS") else a in (ROOT / "brain" / "overseer.py").read_text()
+        assert a in overseer.SHORT_WORDS, a
     for r in ("burial_corner", "burial_coffins", "slabs_ahead", "slabs_ahead_blanks", "slabs_ahead_place", "train_cook"):
         assert r in AGENDA_THEMES, r
     acts = (LUA / "ai-bridge-actions.lua").read_text(encoding="utf-8")

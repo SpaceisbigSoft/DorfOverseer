@@ -335,9 +335,10 @@ return e
     @test("bridge: the new actions are in the table and refuse bad input before reaching the game")
     def _():
         src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-        for name in ("fire_guard", "prisoner_room", "moon_cell", "seal_cavern"):
-            assert code_has(src, f"    {name} = act_{name},"), name
-        assert code_has(src, "threats = function() return safe(function() return reqscript('ai-threats').survey(txt) end) end")
+        # (r5 p5) the loaded hub's own tables and a stand-in ai-threats (tests/bridge_behaviour.py), not its text
+        import bridge_behaviour as BB
+        names = ["fire_guard", "prisoner_room", "moon_cell", "seal_cavern"]
+        BB.wired(section="threats", module="ai-threats", fn="survey", txt=True, actions=names, handlers=names)
         ns = {}
         harness = BRIDGE_TEST.split("LUA = LuaRuntime")[0].split('HARNESS = r"""', 1)[1].split('"""', 1)[0]
         H = LUA.execute(harness, src, str(ROOT / "lua"))   # (13c) where the bridge's parts are

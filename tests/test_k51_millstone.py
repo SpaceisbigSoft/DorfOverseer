@@ -144,11 +144,13 @@ def _():
 
 @test("lua: quern and millstone recipes (DF's ConstructQuern / ConstructMillstone, rock); give_up wired")
 def _():
-    orders = (LUA / "ai-bridge-orders.lua").read_text(encoding="utf-8")
-    assert "stone_quern = {job = 'ConstructQuern', kind = 'stone'}" in orders
-    assert "stone_millstone = {job = 'ConstructMillstone', kind = 'stone'}" in orders
-    acts = (LUA / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "a.give_up == true" in acts
+    # (r5 p5) the loaded hub's recipes and its finish_project run on a stand-in ai-builder (tests/bridge_behaviour.py)
+    import bridge_behaviour as BB
+    env = BB.hub()
+    for r, job in (("stone_quern", "ConstructQuern"), ("stone_millstone", "ConstructMillstone")):
+        assert env.ORDER_RECIPES[r].job == job and env.ORDER_RECIPES[r].kind == "stone", r
+    got, _, _ = BB.forwarded("finish_project", {"project_id": 9, "give_up": True}, "ai-builder", "finish_project")
+    assert got[0][1][3] is True, got
     rep = (LUA / "ai-bridge-report.lua").read_text(encoding="utf-8")
     assert "each('DOOR'" in rep and "each('CABINET'" in rep and "each('CHAIR'" in rep
 

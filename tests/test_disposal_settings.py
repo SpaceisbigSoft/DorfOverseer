@@ -91,28 +91,17 @@ def _():
 
 @test("disposal keys: the Rules tab has the cycle and both switches, set and refreshed, clear of other rows")
 def _():
-    for v in ("disposal", "disposal_player_items", "keep_enemy_gear"):
-        assert code_has(GUI, f"view_id = '{v}'") and code_has(GUI, f"p:set_field('{v}', v)"), v
-        assert code_has(GUI, f"self.subviews.{v}:setOption("), v
-    assert code_has(GUI, "S.DISPOSAL_CHOICES") and code_has(GUI, "S.DISPOSAL_NAMES")
-    # the right-hand column at t+5..t+8 beside the military list (its rows end at l=52; the
-    # only wide rows there are attack_policy at t+4 and gear_weapon/prisoners from t+13)
-    import re
-    mil = GUI[GUI.index("view_id = 'attack_policy'"):GUI.index("function RulesPage:refresh")]
-    frames = re.findall(r"frame = \{t = t \+ (\d+)(?: \+ i)?, l = (\d+)(?:, w = (\d+))?\}", mil)
-    mine = [(int(t), int(l), int(w or 30)) for t, l, w in frames if int(l) >= 56]
-    others = [(int(t), int(l), int(w or 50)) for t, l, w in frames if int(l) < 56]
-    # (0.105.41) the siege switches at t+9..t+12 (frames by f[3]); "Peace offered" and its
-    # help line at t+15, t+16; cavern logging at t+17; (0.105.45) kill zones at t+18, l=76; hunting at t+19, l=64; the lure switch at t+3
-    # (the missions row beside it ends at column 74); (0.105.47) the training squad at t+13, l=64
-    # (gear_weapon beside it ends at column 62); (0.105.47, J17) the raids cycle at t+14, l=76
-    assert sorted(t for t, _, _ in mine) == [3, 5, 6, 7, 8, 13, 14, 15, 16, 17, 18, 19], mine
-    for t, l, w in others:
-        if t in (5, 6, 7, 8):                   # the list's seven run t+5..t+11 at l=2, w=50
-            assert l + w <= 56, (t, l, w)
-    ok = LuaRuntime(unpack_returned_tuples=True).eval(
-        "function(src) local f, e = load(src, 'gui', 't', {}); return f ~= nil, e end")(GUI)
-    assert ok[0], ok
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its frames parsed from the text;
+    # the controls are on the Army tab's right-hand column beside the military list, overlapping nothing
+    import gui_behaviour as GB
+    S = TP.H.settings()
+    choices = [S.DISPOSAL_CHOICES[i] for i in range(1, len(S.DISPOSAL_CHOICES) + 1)]
+    w = GB.control("MilitaryPage", "disposal", kind="CycleHotkeyLabel", values=choices, default="destroy")
+    assert w.options == [(S.DISPOSAL_NAMES[c], c) for c in choices], w.options
+    for v in ("disposal_player_items", "keep_enemy_gear"):
+        t = GB.control("MilitaryPage", v, kind="ToggleHotkeyLabel", values=[True, False], default=False)
+        assert t.l >= 56, t
+    assert w.l >= 56, w
 
 
 @test("disposal keys: the settings, the window, the builder part and the bridge compile under Lua 5.3")

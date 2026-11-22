@@ -370,10 +370,8 @@ def _():
     assert "recovery_journal(memory)" in src and '"kind": "recovery"' in src
     assert player_rules({"settings": {}})["call_migrants"] is True
     assert player_rules({"settings": {"call_migrants": False}})["call_migrants"] is False
-    sset = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert "call_migrants = true," in sset and "'call_migrants'," in sset and "call_migrants = s.call_migrants," in sset
-    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "view_id = 'call_migrants'" in gui and "self.subviews.call_migrants:setOption" in gui
+    import gui_behaviour as GB              # (r5 p5) the settings and the window run, not their text
+    GB.rule_switch("call_migrants", "RulesPage", True)
     for k in ("recovery_floor_min", "recovery_floor_peak_share", "recovery_drop_share", "recovery_drop_min",
               "recovery_leave_days", "recovery_cap_room", "recovery_migrants_wait_days",
               "recovery_migrants_cooldown_ticks", "recovery_migrants_max_calls", "recovery_stall_days"):
@@ -382,14 +380,12 @@ def _():
 
 @test("bridge: the migration section (safe), call_migrants (dry run), the module listed")
 def _():
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "migration = function() return safe(function() return reqscript('ai-recovery').report() end) end," in src
-    actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
-    assert "call_migrants = function(a)" in actions and "reqscript('ai-recovery').call_migrants" in actions
-    dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
-    assert "'call_migrants'" in dry
-    mods = src[src.index("BRIDGE_MODULES = {"):src.index("}", src.index("BRIDGE_MODULES = {"))]
-    assert "'ai-recovery'" in mods
+    # (r5 p5) the loaded hub's tables and a stand-in ai-recovery (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(section="migration", module="ai-recovery", actions=["call_migrants"], dry=["call_migrants"],
+             modules=["ai-recovery"])
+    got, out, _ = BB.forwarded("call_migrants", {"dry_run": True}, "ai-recovery", "call_migrants")
+    assert len(got) == 1 and True in got[0][1], (got, BB.to_py(out))      # the dry run passed on
 
 
 FAKE = r"""

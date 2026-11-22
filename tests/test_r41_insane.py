@@ -427,16 +427,13 @@ def _():
 
 @test("bridge: the insane section (safe, in the pulse), the insane_guard action (its dry run, ids checked), the module listed")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    assert "insane = function() return safe(function() return reqscript('ai-insane').report() end) end," in src
-    pulse = src[src.index("PULSE_SECTIONS = {"):src.index("}", src.index("PULSE_SECTIONS = {"))]
-    assert "'insane'" in pulse
-    actions = src[src.index("ACTIONS = {"):src.index("DRY_OK = {}")]
-    assert "insane_guard = function(a)" in actions and "reqscript('ai-insane').guard" in actions
-    dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
-    assert "'insane_guard'" in dry
-    mods = src[src.index("BRIDGE_MODULES = {"):src.index("}", src.index("BRIDGE_MODULES = {"))]
-    assert "'ai-insane'" in mods
+    need_lua()
+    # (r5 p5) the loaded hub's tables and a stand-in ai-insane (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    BB.wired(section="insane", module="ai-insane", pulse=True, actions=["insane_guard"], dry=["insane_guard"],
+             modules=["ai-insane"])
+    got, out, _ = BB.forwarded("insane_guard", {"unit_id": 5, "dry_run": True}, "ai-insane", "guard")
+    assert got, ("insane_guard never asked ai-insane.guard", BB.to_py(out))
     assert SECTION_DEFAULTS["insane"] == {}
     import overseer
     assert "insane_guard" in overseer.SHORT_WORDS and "insane_guard" in overseer.CAMERA_QUIET

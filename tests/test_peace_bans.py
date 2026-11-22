@@ -271,8 +271,10 @@ def _():
         assert S.sanitize(TP.t({"peace": m})).peace == m
     assert S.sanitize(TP.t({"peace": "yes"})).peace == "ai"
     assert [S.RULE_CHOICES.peace[i] for i in range(1, 4)] == ["ai", "accept", "refuse"]
-    assert "view_id = 'peace'" in GUI and "self.subviews.peace:setOption(" in GUI
-    assert "frame = {t = t + 15, l = 58, w = 50}" in GUI
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its text
+    import gui_behaviour as GB
+    w = GB.control("MilitaryPage", "peace", kind="CycleHotkeyLabel", values=["accept", "refuse", "ai"], default="ai")
+    assert w.l >= 56, w                                                      # the Army tab's right-hand column
     from planner_core import player_rules
     assert player_rules({"settings": {}})["peace"] == "ai"
     assert player_rules({"settings": {"peace": "refuse"}})["peace"] == "refuse"

@@ -348,15 +348,11 @@ else:
 
 @test("bridge: the section (safe, cached a day), the actions (dry runs, labels), the module listed, place_feeder's hook")
 def _():
-    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-    assert "pile_links = function() return safe(function() return reqscript('ai-pile-links').report() end) end" in hub
-    assert "SECTION_CACHE_DAYS.pile_links = 1" in hub
-    assert "pile_barrows = act_pile_barrows," in hub and "feeder_link = act_feeder_link," in hub
-    assert "'pile_barrows', 'feeder_link'," in hub
-    assert "'ai-pile-links'" in hub.split("BRIDGE_MODULES = {")[1].split("}")[0]
-    assert "CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store', 'pile_links'}" in hub
-    assert "function act_pile_barrows(a)" in acts and "function act_feeder_link(a)" in acts
+    # (r5 p5) the loaded hub's tables and a stand-in ai-pile-links (tests/bridge_behaviour.py), not its text
+    import bridge_behaviour as BB
+    acts = ["pile_barrows", "feeder_link"]
+    BB.wired(section="pile_links", module="ai-pile-links", actions=acts, dry=acts, handlers=acts, cache_days=1,
+             modules=["ai-pile-links"], invalidates={"feeder_pile": ["logistics", "food_store", "pile_links"]})
     rooms = (LUA_DIR / "ai-builder-rooms.lua").read_text(encoding="utf-8")
     assert "reqscript('ai-pile-links').remember_feeder(r.x, r.y, r.z, b.id, kind, f.flag)" in rooms
     import overseer

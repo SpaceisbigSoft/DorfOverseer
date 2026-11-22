@@ -400,10 +400,8 @@ def _():
     assert "not tmarks[tostring(sid)]" in m and "training = tmarks[tostring(sid)] and true or nil" in m
     r = (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
     assert "fight_need = fight_focus ~= nil or nil" in r and "content_ids" in r
-    st = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert "training_squad = true," in st and "'training_squad'," in st and "training_squad = s.training_squad" in st
-    g = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert "view_id = 'training_squad'" in g and "self.subviews.training_squad:setOption" in g
+    import gui_behaviour as GB              # (r5 p5) the settings and the window run, not their text
+    GB.rule_switch("training_squad", "MilitaryPage", True)
     import overseer
     assert "training_squad" in overseer.SHORT_WORDS
     for k in ("training_squad_welfare", "training_squad_max", "training_squad_adults_per", "never_draft_days"):

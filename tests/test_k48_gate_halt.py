@@ -125,9 +125,12 @@ def _():
     props, notes = [], []
     pw._way_out_rule(_s(), pw.PLANNER_CONFIG, props, notes, m)
     assert props and props[0].action.get("instant") is True, [p.action for p in props]
-    src = (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
-    i = src.index("way_out_open = function(a)")
-    assert "instant = a.instant == true" in src[i:i + 300]
+    # (r5 p5) the action run on a stand-in ai-way-out (tests/bridge_behaviour.py), not the hub's text
+    import bridge_behaviour as BB
+    got, _, _ = BB.forwarded("way_out_open", {"id": 4, "instant": True}, "ai-way-out", "open_way")
+    assert got == [("open_way", [4, {"dry_run": False, "instant": True}])], got
+    got, _, _ = BB.forwarded("way_out_open", {"id": 4, "dry_run": True}, "ai-way-out", "open_way")
+    assert got == [("open_way", [4, {"dry_run": True, "instant": False}])], got
 
 
 # --- the gates module on a fake game --------------------------------------------------------

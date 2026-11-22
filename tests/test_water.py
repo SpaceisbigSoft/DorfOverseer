@@ -166,8 +166,8 @@ def _():
     assert player_rules({"settings": {}})["open_caverns"] == "ai"
     assert player_rules({"settings": {"open_caverns": True}})["open_caverns"] == "always"
     assert player_rules({"settings": {"open_caverns": False}})["open_caverns"] == "ai"
-    gui = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-    assert code_has(gui, "view_id = 'open_caverns'") and code_has(gui, "subviews.open_caverns:setOption")
+    import gui_behaviour as GB              # (r5 p5) the window run, not its text
+    GB.control("RulesPage", "open_caverns", kind="CycleHotkeyLabel", values=["always", "never", "ai"], default="ai")
 
 
 if __name__ == "__main__":

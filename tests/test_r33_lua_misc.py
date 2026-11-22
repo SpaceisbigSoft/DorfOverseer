@@ -283,51 +283,61 @@ def _():
 
 @test("L8 gui: the tab bar reloads the settings before a page is shown")
 def _():
-    assert code_has(GUI, "self:reload()            -- (0.105.33 review) what the keeper saved meanwhile")
-    assert code_has(GUI, "function OverseerWindow:persist()\n    local fresh = S.load_settings()")
+    # (r5 p5) the window run: the keeper saves while it is open; a tab shows that, a change keeps it
+    import gui_behaviour as GB
+    win = GB.window({"camera": "off"}, saving=True)
+    S = GB.settings_module()
+    s = S.load_settings()
+    s.camera, s.traffic = "tour", False                       # the keeper's act_set_rules meanwhile
+    S.save_settings(s)
+    tabs = win.subviews[1]
+    rules_idx = [tabs.labels[i] for i in range(1, len(tabs.labels) + 1)].index("Rules") + 1
+    tabs.on_select(rules_idx)
+    assert win.settings.camera == "tour" and win.settings.traffic is False
+    rules = GB.page(win, "RulesPage")
+    win.set_field(win, "memorial_pace", "never")              # the player's own change, after
+    saved = S.load_settings()
+    assert saved.memorial_pace == "never" and saved.camera == "tour" and saved.traffic is False
+    # a save from a window that never reloaded writes only what it changed
+    win2 = GB.window({"camera": "off"}, saving=True)
+    s = S.load_settings()
+    s.traffic = False
+    S.save_settings(s)
+    win2.set_field(win2, "camera", "tour")
+    saved = S.load_settings()
+    assert saved.camera == "tour" and saved.traffic is False, (saved.camera, saved.traffic)
+    assert rules is not None
 
 
 # --- L8 gui 1075-1077/1113/568-694: every page row inside the window -------------------------------
 
-def page_rows(src: str, start: str, end: str, t0: int, jrow=8, hrow=2) -> list[int]:
-    part = src[src.index(start):src.index(end)]
-    rows = []
-    for m in re.finditer(r"frame = \{t = ([^,}]+)[,}]", part):
-        expr = m.group(1).strip()
-        for i in ((1, 2, 3, 7) if "i" in re.sub(r"\bt\b", "", expr).replace("jrow", "").replace("hrow", "") else (0,)):
-            try:
-                rows.append(eval(expr, {"t": t0, "i": i, "jrow": jrow, "hrow": hrow}))
-            except NameError:
-                pass
-    return rows
-
-
 @test("L8 gui: the Rules page ends at row 27 and the Army tab holds the military, junk and prisoner rows")
 def _():
-    m = re.search(r"frame = \{w = EFFECTIVE_L \+ 10, h = (\d+)\}", GUI)
-    h = int(m.group(1))
-    top, bottom = 3, 9
-    visible = h - 2 - top - bottom                      # 28 rows: 0..27
-    # the Rules page, from its lower block (t = 5 + 9 levels = 14): the camera pace last
-    rules = page_rows(GUI, "local t = 5 + #S.OPTIONAL_LEVELS", "function MilitaryPage:init()", 14)
+    # (r5 p5) the window built on a stub gui (tests/gui_behaviour.py), not its frames parsed from the text
+    import gui_behaviour as GB
+    win = GB.window()
+    visible = GB.visible_rows(win)                      # 28 rows: 0..27
+    assert visible == 28, visible
+    rules = [w.row for w in GB.widgets(GB.page(win, "RulesPage")) if w.row is not None]
     assert max(rules) <= visible - 1, (max(rules), visible)
-    assert code_has(GUI, "local t = 5 + #S.OPTIONAL_LEVELS")
-    army = page_rows(GUI, "function MilitaryPage:init()", "function RulesPage:refresh()", -3)
+    army_page = GB.page(win, "MilitaryPage")
+    army = [w.row for w in GB.widgets(army_page) if w.row is not None]
     assert min(army) == 0 and max(army) <= visible - 4, (min(army), max(army))   # the help text wraps 2-3 rows
     # the controls moved are on the Army page, and refreshed there
-    mil = GUI[GUI.index("function MilitaryPage:init()"):GUI.index("function RulesPage:refresh()")]
+    on_army = {w.view_id for w in GB.widgets(army_page)}
+    on_rules = {w.view_id for w in GB.widgets(GB.page(win, "RulesPage"))}
     for v in ("attack_policy", "disposal", "keep_enemy_gear", "squads_shelter", "gear_weapon", "prisoners"):
-        assert f"view_id = '{v}'" in mil, v
-    ref = GUI[GUI.index("function MilitaryPage:refresh()"):]
-    ref = ref[:ref.index("\nend\n")]
+        assert v in on_army and v not in on_rules, v
+    ref = GB.refresh(army_page)
     for v in ("attack_policy", "disposal", "keep_enemy_gear", "squads_shelter", "gear_weapon", "prisoners",
               "moon_cells", "seal_caverns"):
-        assert f"self.subviews.{v}:setOption" in ref, v
-    # ten tabs of #label + 4 fit the 120 columns inside on one row
-    assert code_has(GUI, "table.insert(labels, 'Army')")
-    labels = ["Temperament", "Construction", "Economy", "Society", "AI & tokens", "Rules", "Army",
-              "Needs you", "Culture", "Camera"]
-    assert sum(len(x) + 4 for x in labels) <= 120
+        assert v in ref, v
+    # ten tabs of #label + 4 fit the columns inside on one row
+    tabs = win.subviews[1]
+    labels = [tabs.labels[i] for i in range(1, len(tabs.labels) + 1)]
+    assert labels == ["Temperament", "Construction", "Economy", "Society", "AI & tokens", "Rules", "Army",
+                      "Needs you", "Culture", "Camera"], labels
+    assert sum(len(x) + 4 for x in labels) <= GB.inner_width(win)
 
 
 # --- L8 title 120-129/176-188: Enter on the highlighted line when the scroll won't hold -------------

@@ -362,8 +362,12 @@ if LuaRuntime is not None:
 
     @plain_test("bridge: cistern_step passes retire (with why) and relink to the builder")
     def _():
-        src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
-        assert "cistern_retire(a.dry_run == true" in src and "cistern_relink(a.dry_run == true)" in src
+        # (r5 p5) the action run on a stand-in ai-builder (tests/bridge_behaviour.py), not the part's text
+        import bridge_behaviour as BB
+        got, _, _ = BB.forwarded("cistern_step", {"retire": True, "why": "leaked twice", "dry_run": True}, "ai-builder")
+        assert got == [("cistern_retire", [True, "leaked twice"])], got
+        got, _, _ = BB.forwarded("cistern_step", {"relink": True}, "ai-builder")
+        assert got == [("cistern_relink", [False])], got
         for f in ("ai-builder-cistern.lua", "ai-bridge-actions.lua", "ai-waterworks.lua", "ai-bridge.lua"):
             text = (ROOT / "lua" / f).read_text(encoding="utf-8")
             assert LUA.eval("function(s, n) local f, e = load(s, n, 't', {}); return e end")(text, f) is None, f
