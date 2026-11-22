@@ -394,17 +394,19 @@ def layouts_env(lua_dir: Path):
     """ai-layouts and the bridge's parse_style of one tree, in their own Lua."""
     lua = LuaRuntime(unpack_returned_tuples=True)
     lay = (lua_dir / "ai-layouts.lua").read_text(encoding="utf-8")
+    parts = lua.table_from({f"ai-layouts-{p}": (lua_dir / f"ai-layouts-{p}.lua").read_text(encoding="utf-8")   # (r9) its part
+                            for p in re.findall(r"'([\w-]+)'", re.search(r"^PARTS = \{(.*)\}", lay, re.M).group(1))})
     src = bridge_part_src("ai-bridge-actions")
     fn = re.search(r"\nlocal function parse_style\(st\)\n.*?\nend\n", src, re.S).group(0)
     env = lua.execute("""
-        local lay_src = ...
-        LAY = setmetatable({}, {__index = _G})
+        local lay_src, parts = ...
+        LAY = setmetatable({PART_SOURCES = parts}, {__index = _G})
         assert(load(lay_src, 'ai-layouts', 't', LAY))()
         function reqscript(name) if name == 'ai-layouts' then return LAY end error('no ' .. name) end
         function int_in(v, lo, hi)
             v = math.tointeger(tonumber(v)); if v == nil or v < lo or v > hi then return nil end; return v
         end
-    """ + fn + "\nreturn {parse = parse_style, layouts = LAY}", lay)
+    """ + fn + "\nreturn {parse = parse_style, layouts = LAY}", lay, parts)
     return lua, env
 
 

@@ -293,8 +293,12 @@ def load_layouts():
         from lupa.lua53 import LuaRuntime
         lua = LuaRuntime(unpack_returned_tuples=True)
         src = LAYOUTS_LUA.read_text(encoding="utf-8")
-        env = lua.eval("function(src) local env = setmetatable({}, {__index=_G}); "
-                       "assert(load(src, 'ai-layouts', 't', env))(); return env end")(src)
+        # (r9) the module is a hub: its parts (PARTS, beside it) are handed as texts
+        listed = re.search(r"^PARTS = \{(.*)\}", src, re.M)
+        parts = {f"ai-layouts-{p}": (LAYOUTS_LUA.parent / f"ai-layouts-{p}.lua").read_text(encoding="utf-8")
+                 for p in (re.findall(r"'([\w-]+)'", listed.group(1)) if listed else [])}
+        env = lua.eval("function(src, parts) local env = setmetatable({PART_SOURCES = parts}, {__index=_G}); "
+                       "assert(load(src, 'ai-layouts', 't', env))(); return env end")(src, lua.table_from(parts))
         _LUA = (lua, env, lua.eval(_FLAT))
     return _LUA[0], _LUA[1]
 

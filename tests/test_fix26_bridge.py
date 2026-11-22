@@ -185,7 +185,7 @@ def _():
     # PARTS line and still in MARKED_MODULES (ai-bridge.lua could drop it there)
     BURROWS_STALE = ["ai-society-burrows (no version mark)"] + [f"{n} (no version mark)" for n in OTHER_SPLIT["ai-society-burrows"]] + ["ai-society-burrows (no version mark)"]
     assert stale == ["ai-bridge-probes (0.0.1)", "ai-builder-rooms (0.0.1)"] + BURROWS_STALE, stale
-    H.scripts["ai-layouts"] = t({"KINDS": [], "STOCKPILES": {}, "WORKSHOPS": {}})
+    H.scripts["ai-layouts"].KINDS, H.scripts["ai-layouts"].STOCKPILES, H.scripts["ai-layouts"].WORKSHOPS = t([]), t({}), t({})   # (r9) its marks kept
     v = H.rerun(M, "version")                 # the probes part ran again with the command: marked
     assert v.ok and v.bridge_version == VERSION, dict(v)
     assert lua_list(v.stale_parts) == ["ai-builder-rooms (0.0.1)"] + BURROWS_STALE, \

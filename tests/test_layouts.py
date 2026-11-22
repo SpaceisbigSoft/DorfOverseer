@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
-from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import bridge_part_src, module_src  # noqa: E402  (r6) the bridge parts split
 
 try:
     import lupa  # noqa: F401
@@ -23,7 +23,7 @@ except ImportError:
 
 def load():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    src = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")
+    src = module_src("ai-layouts.lua")
     env = lua.eval("function(src) local env = setmetatable({}, {__index=_G}); "
                    "assert(load(src, 'ai-layouts', 't', env))(); return env end")(src)
     return lua, env

@@ -33,7 +33,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import make_test, finish  # noqa: E402
-from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import bridge_part_src, module_src  # noqa: E402  (r6) the bridge parts split
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -90,7 +90,7 @@ def guided_memory(s) -> Memory:
 
 def parse_style_env():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    lay = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")
+    lay = module_src("ai-layouts.lua")
     src = bridge_part_src("ai-bridge-actions")
     fn = re.search(r"\nlocal function parse_style\(st\)\n.*?\nend\n", src, re.S).group(0)
     env = lua.execute("""
