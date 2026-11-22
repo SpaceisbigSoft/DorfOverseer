@@ -1595,6 +1595,20 @@ PLANNER_CONFIG.update({
 })
 
 
+# (r5 p3) repeated refusals backed off (brain/planner_refusal_streak.py): the
+# same rule and action refused for the same reason this many times in a row
+# waits 1 game day, then 2, 4 ... up to the max; reset by an acceptance, another
+# reason, or a change in what the refusal depends on (a new level, a new well)
+PLANNER_CONFIG.update({
+    "r5p3_refusal_backoff": True,         # the switch (False: only the general back-off of planner_core)
+    "r5p3_refusal_streak": 3,             # refusals in a row for the same reason before the wait begins
+    "r5p3_refusal_first_days": 1,         # the first wait, game days (doubles each refusal after)
+    "r5p3_refusal_wait_max_days": 28,     # ...never more than this
+    "r5p3_refusal_forget_days": 336,      # a streak is kept this long after its last refusal (the general one: 60)
+    "r5p3_refusal_keep": 60,              # streaks kept at most (the oldest go first)
+})
+
+
 # (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, brain/planner_floor_notes.py; lua/ai-floorplan.lua)
 PLANNER_CONFIG.update({
     "floor_gap": 1,                       # rock between two rooms on a hall
