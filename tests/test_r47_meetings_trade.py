@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, code_has  # noqa: E402
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -705,7 +705,7 @@ def _():
     assert '"open_meeting": "open the meeting waiting behind DF\'s diplomacy light"' in src
     assert "meeting_open_due(st, args.autopilot, meeting_unattended(args)" in src
     assert 'bridge.act({"type": "open_meeting"})' in src
-    tr = (LUA_DIR / "ai-trade.lua").read_text(encoding="utf-8")
+    tr = split_src("ai-trade.lua")   # (r9 t6) the hub and its parts
     assert code_has(tr, "reqscript('ai-screen-buttons').get(BUTTONS_KEY)")
     dip = (LUA_DIR / "ai-diplomacy.lua").read_text(encoding="utf-8")
     assert code_has(dip, "reqscript('ai-screen-buttons').get(BUTTONS_KEY)")

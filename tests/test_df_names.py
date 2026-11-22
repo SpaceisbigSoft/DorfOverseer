@@ -68,6 +68,7 @@ ALLOWED = {
     # (r8 s9) seen since ai-threats.lua was split: a table key `other = 0` further down the one file (now in
     # ai-threats-survey.lua) kept this check from following the alias `local other = df.global...`
     ("ai-threats.lua", "df.global.world.buildings.other.ZONE_PIT_POND"): "second try after other.ZONE_POND",
+    ("ai-homes-furnish.lua", "dfhack.buildings.constructBuilding"): "(r9 t6) its hub ai-homes.lua requires dfhack.buildings before loading it",
 }
 
 # (file, name): wrong in 53.17, found by this check in 0.105.48 and reported,

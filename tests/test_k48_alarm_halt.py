@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 import planner_core as PC  # noqa: E402
 from planner_core import Memory, Proposal, TICKS_PER_DAY  # noqa: E402
@@ -311,7 +311,7 @@ if LuaRuntime:
             i = src.index(marker)
             body = src[i:src.index("\nend\n", i)]
             assert "ai_halted()" in body or "is_halted()" in body, f
-        tr = (LUA_DIR / "ai-trade.lua").read_text(encoding="utf-8")
+        tr = split_src("ai-trade.lua")   # (r9 t6) the hub and its parts
         i = tr.index("dfhack.timeout(3, 'frames', function()")
         j = tr.index("local okc, err = pcall(click, x, y)", i)
         assert "is_halted()" in tr[i:j]
