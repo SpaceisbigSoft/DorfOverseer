@@ -539,7 +539,8 @@ def _():
     assert far_args(dict(PLANNER_CONFIG, water_job_max=0)) == {"job_max": 0}
     assert not far_on(dict(PLANNER_CONFIG, water_far_reach=0)) and not far_on(dict(PLANNER_CONFIG, water_job_max=0))
     # the bridge's defaults are the brain's
-    src = (ROOT / "lua" / "ai-waterworks.lua").read_text(encoding="utf-8")
+    from lua_modules_util import split_src
+    src = split_src("ai-waterworks.lua")   # (r8) the hub and its parts
     assert "FAR_REACH = nil" in src and f"FAR_JOB_MAX = {PLANNER_CONFIG['water_job_max']}" in src
     assert f"DIG_SEGMENT = {PLANNER_CONFIG['water_dig_segment']}" in src and PLANNER_CONFIG["water_far_reach"] == -1
 

@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import make_test, finish  # noqa: E402
+from lua_modules_util import module_src  # noqa: E402  (r8) ai-waterworks: a hub and its parts
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -172,7 +173,7 @@ def _():
       end
       assert(load(src, 'ai-waterworks', 't', env))()
       return env
-    """, (LUA_DIR / "ai-waterworks.lua").read_text(encoding="utf-8"))
+    """, module_src("ai-waterworks.lua"))   # (r8) the hub and its parts
     assert env.cancel_pulls(77) == 2 and env.GOT[1] == 77
 
 

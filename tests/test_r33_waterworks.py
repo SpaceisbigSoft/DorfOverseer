@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402  (r8) ai-waterworks: a hub and its parts
 sys.path.insert(0, str(ROOT / "brain"))
 
 try:
@@ -23,7 +24,8 @@ except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
 
-SRC = (ROOT / "lua" / "ai-waterworks.lua").read_text(encoding="utf-8")
+SRC = module_src("ai-waterworks.lua")
+SRC_TEXT = split_src("ai-waterworks.lua")   # (r8) the family's text, for the tests that read it
 WATER_SRC = (ROOT / "lua" / "ai-water.lua").read_text(encoding="utf-8")
 # the fake map of tests/test_waterworks.py (one copy)
 FAKE = re.search(r'FAKE = r"""(.*?)"""', (ROOT / "tests" / "test_waterworks.py").read_text(encoding="utf-8"),
@@ -130,7 +132,7 @@ def cheb(a, b):
 
 @test("waterworks (L5 45/775): no shape test for 'OPEN_SPACE' (tile_info gives EMPTY); a channel dug to EMPTY counts")
 def _():
-    code = "\n".join(line.split("--")[0] for line in SRC.splitlines())
+    code = "\n".join(line.split("--")[0] for line in SRC_TEXT.splitlines())
     assert "OPEN_SPACE" not in code
     env, W = magma_world()
     step(env, "magma", shop="MagmaForge")

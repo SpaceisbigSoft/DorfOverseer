@@ -280,7 +280,7 @@ WW_FAKE = lua_const("test_waterworks.py", "FAKE")
 
 def moat_world(guard_why):
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env = lua.execute(WW_FAKE, (LUA_DIR / "ai-waterworks.lua").read_text(encoding="utf-8"))
+    env = lua.execute(WW_FAKE, module_src("ai-waterworks.lua"))
     W = env.W
     tl = lua.table_from
     for x in range(40, 61):
