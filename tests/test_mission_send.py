@@ -456,7 +456,7 @@ def _():
         ("{missions = 'explore', send_missions = true}", "raid", "raid is not allowed"),
         ("{missions = 'explore', send_missions = true}", "conquer", "not allowed"),
         ("{missions = 'nonsense', send_missions = true}", "rescue", "not known"),
-        ("{send_missions = true}", "tribute", "is rescue: tribute"),        # the default choice: rescue
+        ("{missions = 'rescue', send_missions = true}", "tribute", "is rescue: tribute"),  # (r10) rescue by choice
         ("{make_contact = false, send_messenger = true}", "make_contact", "Make contact"),
         ("{missions = 'all', send_missions = true}", "make_contact", "Send the messenger"),
     ]
@@ -467,7 +467,8 @@ def _():
         assert len(G.queue) == 0
     for settings, goal in [("{send_missions = true}", "rescue"), ("{send_missions = true}", "recover_artifact"),
                            ("{missions = 'explore', send_missions = true}", "explore"),
-                           ("{missions = 'all', send_missions = true}", "pillage")]:
+                           ("{missions = 'all', send_missions = true}", "pillage"),
+                           ("{send_missions = true}", "tribute")]:   # (r10 p3) the default choice: all
         env, G = calibrated(f"G.settings = {settings}")
         assert go(env, goal, dry_run=True).ok, (settings, goal)
     # the Rules unreadable: refused
@@ -692,7 +693,7 @@ def _():
     for rules, goal, why in (({"missions": "all", "send_missions": False}, "raid", "Send missions"),
                              ({"missions": "explore", "send_missions": True}, "raid", "not allowed"),
                              ({"missions": "off", "send_missions": True}, "rescue", "not allowed"),
-                             ({"send_missions": True}, "explore", "not allowed"),
+                             ({"missions": "rescue", "send_missions": True}, "explore", "not allowed"),  # (r10) rescue by choice
                              ({"missions": "all", "send_missions": True}, "make_contact", "Send the messenger"),
                              ({"make_contact": False, "send_messenger": True}, "make_contact", "Make contact")):
         tbm.H.rules = T(rules)
