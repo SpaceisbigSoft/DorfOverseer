@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import split_parts, _lua_string  # noqa: E402  (r8) ai-military a hub and parts
 from snapshots import snapshot  # noqa: E402
 
 try:
@@ -620,7 +621,12 @@ def _():
 
 def military_srcs(version: str) -> dict:
     get = old if version == "old" else new
-    return {"ai-military": get("ai-military.lua"), "ai-military-gear": get("ai-military-gear.lua"),
+    mil = get("ai-military.lua")
+    if version != "old":
+        # (r8) ai-military is a hub: loaded from text it takes its parts' texts from PART_SOURCES
+        mil = "PART_SOURCES = {" + ", ".join(f"[{_lua_string(n)}] = {_lua_string(new(n + '.lua'))}"
+                                             for n in split_parts("ai-military.lua")) + "}; " + mil
+    return {"ai-military": mil, "ai-military-gear": get("ai-military-gear.lua"),
             "ai-util": get("ai-util.lua")}
 
 

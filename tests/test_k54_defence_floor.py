@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan, note_cycle  # noqa: E402
@@ -225,7 +225,7 @@ return env
 
 @test("bridge: last_hands counts the farmers and brewers outside the squads; fill keeps the last")
 def _():
-    src = (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8")
+    src = split_src("ai-military.lua")   # (r8) the hub and its parts
     assert "pcall(last_hands)" in src and "kept as the last farmer or brewer" in src
     need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)

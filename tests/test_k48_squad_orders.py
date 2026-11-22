@@ -137,8 +137,8 @@ def _():
 
 @test("station: the military report shows the stationed squad as the AI's (sheltering, stationed)")
 def _():
-    src = (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8")
-    body = src[src.index("function station(squad_id"):src.index("-- --- the gear")]
+    src = (ROOT / "lua" / "ai-military-duty.lua").read_text(encoding="utf-8")   # (r8) the part station() is in
+    body = src[src.index("function station(squad_id"):]                        # (its last function)
     assert "title" not in body.split("local made")[1].split("sq.orders:insert")[0], "a title on the move order"
     sof = src[src.index("function station_of(o, squad_id)"):src.index("function station(squad_id")]
     assert "o.title" not in sof

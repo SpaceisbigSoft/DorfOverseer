@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from lua_modules_util import with_util  # noqa: E402
+from lua_modules_util import with_util, split_src  # noqa: E402
 from snapshots import snapshot  # noqa: E402
 from harness import test, finish  # noqa: E402
 
@@ -84,7 +84,7 @@ def _():
     lua, n, env, eq, sq7, sq8 = TM.army()
     assert env.ranged_template_name("Ranged, leather") and env.ranged_template_name("Archers")
     assert env.ranged_template_name("Crossbow") and not env.ranged_template_name("Melee, metal")
-    src = (LUA_DIR / "ai-military.lua").read_text(encoding="utf-8")
+    src = split_src("ai-military.lua")   # (r8) the hub and its parts
     assert code_has(src, "if ranged and not ranged_template_name(uf.name) then")
 
 

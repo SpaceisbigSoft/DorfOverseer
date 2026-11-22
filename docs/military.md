@@ -2,7 +2,7 @@
 
 The AI runs the fort's squads, and makes them too. When it wants soldiers
 and no squad has room, it makes a new squad with a captain's post (`make_squad`
-in `lua/ai-military.lua`). Every fort of 15+ adults keeps at least 3 soldiers,
+in `lua/ai-military-draft.lua`, a part of `lua/ai-military.lua`). Every fort of 15+ adults keeps at least 3 soldiers,
 whatever the Militarism slider says. From then on the AI:
 
 - **Fills them.** The share of citizens the fort wants as soldiers follows

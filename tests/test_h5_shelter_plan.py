@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan as full_plan  # noqa: E402
@@ -628,7 +628,7 @@ def _():
     assert [g[1] for g in got] == [[7, 1, 2, 3, True], [8, 1, 2, 3, True]] and out.ok, (got, BB.to_py(out))
     got, out, _ = BB.forwarded("shelter_squads", {"squads": [7], "station": {"x": 1, "y": 2}}, "ai-military", "station")
     assert not got and out.rejected, BB.to_py(out)
-    mil = (LUA_DIR / "ai-military.lua").read_text(encoding="utf-8")
+    mil = split_src("ai-military.lua")   # (r8) the hub and its parts
     assert "df.squad_order_movest:new()" in mil and "stationed = stationed" in mil
 
 
