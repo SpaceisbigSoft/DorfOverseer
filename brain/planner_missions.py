@@ -753,6 +753,9 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
             if interrupted(_stopped(s, g, cfg)):
                 notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: the last try was interrupted by the "
                              "player; tried again tomorrow")
+            elif click_missed(_stopped(s, g, cfg)):        # (r12 v6)
+                notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: DF didn't take the AI's click on the "
+                             "site on the World screen; tried again tomorrow")
             else:
                 notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: the last try stopped at a "
                              "World-screen step nobody has recorded; tried again in a year")

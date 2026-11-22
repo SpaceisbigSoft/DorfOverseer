@@ -394,6 +394,10 @@ local function tick(run)
         run.why = busy
         -- the tick right after the AI's own click: the click did it (unexpected)
         if run.acted and run.waited == 0 then return stop(run, 'stopped', 'unexpected') end
+        -- (r12 v6) or the tick right after the site's delayed click (hover_click)
+        if run.clicked_waited ~= nil and run.waited <= run.clicked_waited + POLL_FRAMES then
+            return stop(run, 'stopped', 'unexpected')
+        end
         return stop(run, 'stopped', 'player_busy')
     end
     if run.acted then

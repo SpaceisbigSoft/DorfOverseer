@@ -176,6 +176,36 @@ end
 
 SITE_HOVER_FRAMES, SITE_RECLICK_FRAMES = 4, 20   -- (r12) the hover before the site's click; a second click
 
+-- (r12 v6) the site's click: the mouse on (x, y) for SITE_HOVER_FRAMES, then
+-- the click, only while this run is still on its site step with the World
+-- screen on top (never on a window the player opened meanwhile, never after
+-- the run stopped); the mouse put back (both readings) whatever happened.
+-- False when the frame timer can't be set (the caller clicks at once).
+function hover_click(run, x, y)
+    local gps = df.global.gps
+    local ox, oy = gps.mouse_x, gps.mouse_y
+    local opx, opy
+    pcall(function() opx, opy = gps.precise_mouse_x, gps.precise_mouse_y end)
+    local ok = pcall(function()
+        gps.mouse_x, gps.mouse_y = x, y
+        pcall(function()
+            gps.precise_mouse_x = x * gps.tile_pixel_x + gps.tile_pixel_x // 2
+            gps.precise_mouse_y = y * gps.tile_pixel_y + gps.tile_pixel_y // 2
+        end)
+        dfhack.timeout(SITE_HOVER_FRAMES, 'frames', function()
+            local okt, top = pcall(world_on_top)
+            if RUN == run and not run.stopping and run.step_name == 'site' and okt and top then
+                run.clicked_waited = run.waited or 0       -- the AI's own click (tick: not the player's)
+                pcall(click, x, y)
+            end
+            gps.mouse_x, gps.mouse_y = ox, oy
+            if opx ~= nil then pcall(function() gps.precise_mouse_x, gps.precise_mouse_y = opx, opy end) end
+        end)
+    end)
+    if not ok then gps.mouse_x, gps.mouse_y = ox, oy end
+    return ok
+end
+
 STEP_DEFS = {
     open = {name = 'open',
      expect = function(st) return not st.world, 'the World screen is open already' end,
@@ -212,24 +242,12 @@ STEP_DEFS = {
          -- (r12, live 22 Nov: the click at once left the World screen on
          -- NORMAL) the mouse put on the map's middle first and left there a
          -- few frames, so DF draws the hover under it (its click takes the
-         -- hovered site), then the click; once more later in check if needed
+         -- hovered site), then the click (hover_click); once more later in check
          local gps = df.global.gps
          local mx, my = gps.dimx // 2, gps.dimy // 2
-         local ox, oy = gps.mouse_x, gps.mouse_y      -- put back once the click is done
-         local okm, em = pcall(function()
-             gps.mouse_x, gps.mouse_y = mx, my
-             pcall(function()
-                 gps.precise_mouse_x = mx * gps.tile_pixel_x + gps.tile_pixel_x // 2
-                 gps.precise_mouse_y = my * gps.tile_pixel_y + gps.tile_pixel_y // 2
-             end)
-             dfhack.timeout(SITE_HOVER_FRAMES, 'frames', function()
-                 if world_screen() then pcall(click, mx, my) end
-                 gps.mouse_x, gps.mouse_y = ox, oy
-             end)
-         end)
-         if not okm then
+         if not hover_click(run, mx, my) then
              local ok, e = pcall(click, mx, my)
-             if not ok then return false, 'click_failed', 'the click failed: ' .. tostring(e or em):sub(1, 160) end
+             if not ok then return false, 'click_failed', 'the click failed: ' .. tostring(e):sub(1, 160) end
          end
          run.site_xy = {mx, my}
          return true
@@ -243,8 +261,10 @@ STEP_DEFS = {
                      local scr = world_screen()
                      local s = df.world_site.find(run.site_id)
                      scr.region_cent_x, scr.region_cent_y = s.pos.x, s.pos.y
+                     if type(scr.focus_site) == 'number' then scr.focus_site = run.site_id
+                     else scr.focus_site = s end
                  end)
-                 pcall(click, run.site_xy[1], run.site_xy[2])
+                 hover_click(run, run.site_xy[1], run.site_xy[2])     -- (r12 v6) hovered too
              end
              return 'wait', 'still on world/NORMAL after the click'
          end

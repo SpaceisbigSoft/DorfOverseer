@@ -199,5 +199,25 @@ def _():
     assert PM.retry_ticks(third, TICKS_PER_YEAR) == TICKS_PER_YEAR
 
 
+@test("site: the delayed click never lands after the run stopped (a window of the player's); the mouse put back")
+def _():
+    env, G = world("G.calibrate_all()")
+    assert M.start(env).ok
+    for _ in range(40):                          # to the site step's act (the hover set, the click queued)
+        if env.RUN is None or env.RUN.step_name == "site" and env.RUN.acted:
+            break
+        G.pump(1)
+    run = env.RUN
+    assert run is not None and run.step_name == "site" and run.acted, run
+    before = len(M.lst(G.clicks))
+    G.stuck, G.overlay = True, "dwarfmode/Stocks"     # the player's window over a World screen that won't shut
+    env.stop(run, "stopped", "player_busy")
+    G.pump()
+    mids = [tuple(M.lst(c)) for c in M.lst(G.clicks)[before:]]
+    assert (50, 20) not in mids, mids
+    gps = getattr(env.df, "global").gps
+    assert (gps.mouse_x, gps.mouse_y) == (7, 9), (gps.mouse_x, gps.mouse_y)
+
+
 if __name__ == "__main__":
     finish()
