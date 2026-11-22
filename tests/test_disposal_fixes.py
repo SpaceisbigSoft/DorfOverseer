@@ -55,7 +55,8 @@ DISPOSAL = (LUA_DIR / "ai-disposal.lua").read_text(encoding="utf-8")
 CENSUS = (LUA_DIR / "ai-census.lua").read_text(encoding="utf-8")
 ACTS = bridge_part_src("ai-bridge-actions")
 GUI = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-CISTERN = (LUA_DIR / "ai-builder-cistern.lua").read_text(encoding="utf-8")
+from cistern_src import cistern_src  # noqa: E402  (r8 s8) the cistern is three files now
+CISTERN = cistern_src()
 
 mk, opts, skipped = A.mk, A.opts, A.skipped
 
@@ -481,7 +482,8 @@ def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
     chk = lua.eval("function(src, n) local f, e = load(src, n, 't', {}); return f ~= nil, e end")
     for name in ("ai-util.lua", "ai-disposal.lua", "ai-census.lua", "ai-bridge-actions.lua",
-                 "ai-builder-surface.lua", "ai-builder-cistern.lua", "gui/ai-overseer.lua"):
+                 "ai-builder-surface.lua", "ai-builder-cistern.lua", "ai-builder-cistern-status.lua",
+                 "ai-builder-cistern-step.lua", "gui/ai-overseer.lua"):
         ok = chk((LUA_DIR / name).read_text(encoding="utf-8"), name)
         assert ok[0], (name, ok)
 
