@@ -125,7 +125,7 @@ def _():
     assert "\n--@module = true\n" in burrows and "local S = reqscript('ai-society')" in burrows
     assert "SOCIETY_PART_LOCALS" not in burrows
     # every ai-society-*.lua beside the hub is a part or the companion
-    found = sorted(p.stem for p in LUA_DIR.glob("ai-society-*.lua"))
+    found = sorted(p.stem for p in LUA_DIR.glob("ai-society-*.lua") if not p.stem.startswith("ai-society-burrows-"))   # (r9) its own parts
     assert found == sorted(PARTS + ["ai-society-burrows"]), found
     # the hub is still the module; it loads the parts last (nothing follows the loader)
     assert "\n--@module = true\n" in HUB and HUB.endswith(LOADER)

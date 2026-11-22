@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 from planner import Memory, PLANNER_CONFIG, abs_tick, plan, TICKS_PER_DAY  # noqa: E402
 from planner_core import Proposal, note_refusal, _record_any_outcome  # noqa: E402
@@ -84,7 +84,7 @@ def _():
     w.day(0.1)
     s = env.hospital_burrow_status()
     assert s.members == 2 and w.ntiles() == n, (dict(s), n, w.ntiles())
-    src = (ROOT / "lua" / "ai-society-burrows.lua").read_text(encoding="utf-8")
+    src = split_src("ai-society-burrows.lua")   # (r9) the hub and its parts
     body = src[src.index("local function hb_src_store"):src.index("local function hospital_sources_cached")]
     assert "if not (src.drink or src.well) then HB_SRC = nil" in body
 

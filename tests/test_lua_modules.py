@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from lua_modules_util import UTIL_SRC, module_src  # (13c lua-modules)
+from lua_modules_util import UTIL_SRC, module_src, split_src, split_parts  # (13c lua-modules); (r9) a split half read with its parts
 RESULTS = []
 
 try:
@@ -112,7 +112,7 @@ return env
 
 
 def gear_names(fname):
-    src = (ROOT / "lua" / fname).read_text(encoding="utf-8")
+    src = split_src(fname)   # (r9) a split hub with its parts
     return re.findall(r"^function (\w+)\(", src, re.M)
 
 
@@ -153,9 +153,10 @@ def _():
         return set(re.findall(r"(?<![\w.:])([A-Za-z_]\w*)(?!\s*=[^=])", c))   # (not a table key)
 
     for main, half in (("ai-military.lua", "ai-military-gear.lua"), ("ai-society.lua", "ai-society-burrows.lua")):
-        m = (ROOT / "lua" / main).read_text(encoding="utf-8")
-        h = (ROOT / "lua" / half).read_text(encoding="utf-8")
-        bare = (used(h) & defs(m)) - defs(h) - {"held"}          # (held: a local of gear_report's)
+        m = split_src(main)   # (r9) each with its parts (each file's text read on its own for its uses)
+        h = split_src(half)
+        hs = [(ROOT / "lua" / f).read_text(encoding="utf-8") for f in [half] + [p + ".lua" for p in split_parts(half)]]
+        bare = (set().union(*map(used, hs)) & defs(m)) - defs(h) - {"held"}          # (held: a local of gear_report's)
         assert not bare, (half, sorted(bare))
 
 
