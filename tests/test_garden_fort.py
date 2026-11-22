@@ -350,6 +350,21 @@ def _():
         assert not props
 
 
+@test("court (r9): a stage waiting for chairs or statues holds the court COURT_WAIT_DAYS at most")
+def _():
+    m = Memory()
+    with Patched(G, young_fort=lambda *a: False):
+        props, notes = [], []
+        G._garden_court_rule(court_state(garden_court={"stage": "furnish", "planned": 3, "stage_days": 5}),
+                             CFG, 40, GARDEN, props, notes, m, {})
+        assert not props and any("3 piece(s)" in n for n in notes), notes
+        for st in ({"stage": "furnish", "planned": 3, "stage_days": 31, "wait_over": True},
+                   {"stage": "beds", "planned": 2}):                       # (an older save: no start known)
+            props = []
+            G._garden_court_rule(court_state(garden_court=st), CFG, 40, GARDEN, props, [], m, {})
+            assert len(props) == 1 and props[0].action["type"] == "place_garden_court", (st, props)
+
+
 @test("court: the design track's garden_court landmark goes to the court (not dropped), and is not wished again")
 def _():
     m = Memory()
@@ -407,6 +422,7 @@ LUA.execute("df = df or {}; df.global = df.global or {}; df.global.world = df.gl
 LUA.execute("df.global.world.buildings = {other = {TRADE_DEPOT = {}}}")
 SAVED = {k: B[k] for k in ("pasture_anchors", "surface_farm_spots", "hall_planned_at", "hall_free_items",
                            "fell_tree", "deep_depot_mouth")}
+SAVED_NOW = B.now_tick
 
 
 def lua_reset():
@@ -506,6 +522,31 @@ def _():
     assert st.done and st.blocks_needed == 0 and st.walls_left == 39, dict(st)   # (the stub builds nothing)
     r = B.place_garden_court(False, T({"name": "Rose"}))
     assert not r.ok and r.done
+
+
+@lua_test("builder (r9): a seat that never comes: the furnish stage waits COURT_WAIT_DAYS, then the zone goes in")
+def _():
+    LUA.execute("W_NOW = 1000000")
+    B.now_tick = LUA.eval("function() return W_NOW end")
+    try:
+        for _ in range(3):
+            r = B.place_garden_court(False, T({"name": "Rose", "statues": 0}))
+        assert r.ok and r.stage == "furnish" and r.seats >= 1, dict(r)
+        c = W.persist["ai-overseer/garden_court"]
+        assert c.stage_tick == 1000000
+        seat = next(t for t in c.tiles.values() if t.t == "c")
+        B.hall_planned_at = LUA.eval("function(x, y, z) return x == %d and y == %d end" % (seat.x, seat.y))
+        r = B.place_garden_court(False, T({"name": "Rose"}))
+        assert not r.ok and r.waiting and r.stage == "furnish", dict(r)
+        st = B.garden_court_status()
+        assert st.planned == 1 and st.stage_days == 0 and not st.wait_over, dict(st)
+        LUA.execute("W_NOW = W_NOW + 31 * 1200")
+        st = B.garden_court_status()
+        assert st.stage_days == 31 and st.wait_over, dict(st)
+        r = B.place_garden_court(False, T({"name": "Rose"}))
+        assert r.ok and r.stage == "done" and r.zone, dict(r)
+    finally:
+        B.now_tick = SAVED_NOW
 
 
 @lua_test("builder: no beds on rock, trees inside kept, the ring's trees felled first; the hall keeps clear of it")

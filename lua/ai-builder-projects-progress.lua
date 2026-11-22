@@ -265,11 +265,31 @@ function own_areas(p)
              end}}
 end
 
+-- (r9, audit A3 17) the buildings on level z. Inside a report (ai-util
+-- REPORT_CTX) the fort's buildings are walked once and kept by level, so the
+-- levels being furnished (War-hold: four) no longer walk them each; outside
+-- one, a walk as before.
+local function buildings_on(z)
+    local okc, ctx = pcall(function() return util_module().REPORT_CTX end)
+    if not (okc and type(ctx) == 'table') then return df.global.world.buildings.all, false end
+    local by_z = ctx.buildings_by_z
+    if not by_z then
+        by_z = {}
+        for _, b in ipairs(df.global.world.buildings.all) do
+            local l = by_z[b.z]
+            if not l then l = {}; by_z[b.z] = l end
+            l[#l + 1] = b
+        end
+        ctx.buildings_by_z = by_z
+    end
+    return by_z[z] or {}, true
+end
+
 function furnish_progress(p)
     local placed, done, waiting, shops = 0, 0, {}, nil
     local a = p.area
     local mine = own_tile_test(p)       -- (layout B)
-    for _, b in ipairs(df.global.world.buildings.all) do
+    for _, b in ipairs((buildings_on(a.z))) do
         if b.z == a.z and b.x1 >= a.x1 and b.x2 <= a.x2 and b.y1 >= a.y1 and b.y2 <= a.y2
                 and (not mine or mine(b)) then
             local t = b:getType()

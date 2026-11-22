@@ -39,6 +39,18 @@ COURT_SOIL_BONUS = 10            -- soil inside counts up to this many tiles nea
 COURT_MAX_TREES_INSIDE = 12       -- standing trees kept inside (more: a wood, not a court)
 COURT_SOIL = {SOIL = true, GRASS_LIGHT = true, GRASS_DARK = true, GRASS_DRY = true, GRASS_DEAD = true}
 COURT_NAME_RE = "^[A-Za-z' ]+$"
+-- (r9, audit A3 12) days the beds and furnish stages wait for their pieces:
+-- a chair, a statue or a path's blocks that never come no longer hold the
+-- court for ever; past this the court goes on and the pieces stay planned
+-- (built when the items come)
+COURT_WAIT_DAYS = 30
+
+-- (r9) days since the court entered its stage (nil: an older save, not known)
+local function stage_days(c)
+    local t = tonumber(c.stage_tick)
+    if not t then return nil end
+    return math.max(0, (now_tick() - t) // 1200)
+end
 
 function court_data()
     local d = site_get(COURT_KEY)
@@ -320,6 +332,10 @@ function garden_court_status()
     if c.stage == 'clearing' then need = #court_ring(c.x, c.y, c.r) - 1 end
     if (c.stage == 'clearing' or c.stage == 'walls') and c.paths then need = need + 4 * (c.r - 1) end
     out.blocks_needed = need
+    -- (r9) how long the stage has waited; past COURT_WAIT_DAYS the brain
+    -- asks the next step anyway (place_garden_court goes on)
+    out.stage_days = stage_days(c)
+    out.wait_over = (c.stage == 'beds' or c.stage == 'furnish') and (out.stage_days or 0) >= COURT_WAIT_DAYS or nil
     return out
 end
 
@@ -368,6 +384,10 @@ function place_garden_court(dry_run, opts)
         return t
     end
     local function wait(stage, n, what)
+        -- (r9) an older save's stage gets its start now, so its wait ends too
+        if not dry_run and (stage == 'beds' or stage == 'furnish') and not c.stage_tick then
+            c.stage_tick = now_tick(); save_court(c)
+        end
         return out({ok = false, rejected = true, waiting = true, stage = stage, left = n,
                     error = ('the garden court: %d %s still to build'):format(n, what)})
     end
@@ -446,12 +466,13 @@ function place_garden_court(dry_run, opts)
             local placed = apply('build', cells, c.z, 'the garden court\'s paths', dry_run)
             if placed then paths = placed; if not dry_run then record(c, cells, c.z) end end
         end
-        if not dry_run then c.stage = 'beds'; save_court(c) end
+        if not dry_run then c.stage = 'beds'; c.stage_tick = now_tick(); save_court(c) end
         return out({stage = 'beds', beds = beds, paths = paths})
     end
 
     if c.stage == 'beds' then
-        if n.planned > 0 then return wait('beds', n.planned, 'bed(s) or path tile(s)') end
+        local over = (stage_days(c) or 0) >= COURT_WAIT_DAYS      -- (r9) the rest stays planned
+        if n.planned > 0 and not over then return wait('beds', n.planned, 'bed(s) or path tile(s)') end
         local cells = {}
         local statues = math.min(#L.statues, math.max(0, math.tointeger(opts.statues) or 0), hall_free_items('STATUE'))
         for i, p in ipairs(L.statues) do
@@ -475,6 +496,7 @@ function place_garden_court(dry_run, opts)
         end
         if not dry_run then
             c.stage = 'furnish'
+            c.stage_tick = now_tick()      -- (r9)
             record(c, cells, c.z)
             save_court(c)
         end
@@ -484,7 +506,8 @@ function place_garden_court(dry_run, opts)
     end
 
     if c.stage == 'furnish' then
-        if n.planned > 0 then return wait('furnish', n.planned, 'statue(s) or seat(s)') end
+        local over = (stage_days(c) or 0) >= COURT_WAIT_DAYS      -- (r9) the rest stays planned
+        if n.planned > 0 and not over then return wait('furnish', n.planned, 'statue(s) or seat(s)') end
         local q = c.r - 1
         local cell = {{x = c.x - q, y = c.y - q, text = ('m{name="The %s Garden Court"}(%dx%d)'):format(c.name, 2 * q + 1, 2 * q + 1)}}
         local good = qf_try('zone', cell, c.z, 0, 0, dry_run)

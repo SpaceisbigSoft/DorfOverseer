@@ -569,10 +569,16 @@ local function keep_roof(k, dry_run)
         return {ok = true, stage = 'done', x = k.x, y = k.y, dry_run = dry_run or nil}
     end
     local n, why = keep_apply(cells, k.z + 1, 'the keep\'s roof', dry_run)
-    if not n and stair_cell then                -- (a stair down the game won't take: a floor there)
-        stair_cell.text = 'Cf'
-        n, why = keep_apply(cells, k.z + 1, 'the keep\'s roof', dry_run)
+    if not n and stair_cell then
+        -- (r9, audit A3 13) a stair down the game won't take: that tile left
+        -- open, not floored (a floor over the roof stair, laid from the roof,
+        -- shut its builder up there with no way down)
+        for i, c in ipairs(cells) do
+            if c == stair_cell then table.remove(cells, i) break end
+        end
         stair_cell = nil
+        n, why = 0, nil
+        if #cells > 0 then n, why = keep_apply(cells, k.z + 1, 'the keep\'s roof', dry_run) end
     end
     if not n then return {ok = false, error = why} end
     if not dry_run then k.stage = 'roof'; save_keep(k) end

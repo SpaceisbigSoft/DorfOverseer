@@ -391,6 +391,52 @@ def _():
     assert len(walls) == 31
 
 
+@test("hall (r9): the game refuses the stair down on the roof: that tile left open, never a floor over the stair")
+def _():
+    field(40, 40, 80, 80)
+    real = B.qf_try
+    B.qf_try = LUA.eval("""function(real) return function(mode, cells, ...)
+        for _, c in ipairs(cells) do if c.text == 'Cd' then return false, 'dry', nil end end
+        return real(mode, cells, ...) end end""")(real)
+    try:
+        o = opts(floor=True)
+        assert B.place_hall("field_hall", False, o).stage == "walls"
+        build_all(80, ("Cw",), SHAPE.get)
+        assert B.place_hall("field_hall", False, o).stage == "floor"
+        st = placed("build", "Cu")[0]
+        build_all(80, ("Cf", "Cu"), SHAPE.get)
+        W.placed = T([])
+        r = B.place_hall("field_hall", False, o)
+        assert r.ok and r.stage == "roof" and not r.stair, dict(r)
+        roof = placed("build")
+        assert len(roof) == 34 and not [c for c in roof if (c.x, c.y) == (st.x, st.y)], len(roof)
+    finally:
+        B.qf_try = real
+
+
+@test("keep (r9): the game refuses the stair down on the roof: that tile left open, never a floor over the stair")
+def _():
+    field(40, 40, 80, 80)
+    B.fell_tree = lambda x, y, z: True
+    real = B.qf_try
+    B.qf_try = LUA.eval("""function(real) return function(mode, cells, ...)
+        for _, c in ipairs(cells) do if c.text == 'Cd' then return false, 'dry', nil end end
+        return real(mode, cells, ...) end end""")(real)
+    try:
+        assert B.place_keep(False).stage == "walls"
+        build_all(80, ("Cw",), SHAPE.get)
+        assert B.place_keep(False).stage == "stair"
+        cu = placed("build", "Cu")[0]
+        build_all(80, ("Cu",), SHAPE.get)
+        W.placed = T([])
+        rf = B.place_keep(False)
+        assert rf.ok and rf.stage == "roof" and not rf.stair, dict(rf)
+        roof = placed("build")
+        assert len(roof) == 48 and not [c for c in roof if (c.x, c.y) == (cu.x, cu.y)], len(roof)
+    finally:
+        B.qf_try = real
+
+
 @test("keep (0.105.30): F and C's way in: the stair's inside tile under the hatch; the ring looked for on the open ground above")
 def _():
     # the gates give the way in as the stair one level under the ground (z80);

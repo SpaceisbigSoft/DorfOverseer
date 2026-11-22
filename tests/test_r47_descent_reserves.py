@@ -224,6 +224,24 @@ else:
         w.patch(51, 50, 79, T(lua, {"building": True}))                  # someone's building, not ours
         p, why = plan_of(lua, env, w)
         assert p is None and "built" in why, why
+        # (r9, A3 10) with ours (the report's re-reading): a construction being
+        # built counts as the crossing's own, any other building refuses
+        lua, env, w = world()
+        w.patch(51, 50, 79, T(lua, {"building": True, "construction": True}))
+        r = env.plan_crossing(w.read, w.forbid_fn, 50, 50, 90, w.layer, T(lua, {"bottom_shape": "STAIR_UP", "ours": True}))
+        assert not isinstance(r, tuple) or r[0] is not None, r
+        w.patch(51, 50, 79, T(lua, {"building": True, "construction": False}))   # a trap, a seal's door
+        r = env.plan_crossing(w.read, w.forbid_fn, 50, 50, 90, w.layer, T(lua, {"bottom_shape": "STAIR_UP", "ours": True}))
+        assert isinstance(r, tuple) and r[0] is None and "built" in r[1], r
+        lua.execute('''local env = ...
+          env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
+          env.df.building_type = {Construction = 5, Trap = 6}
+          env.dfhack.buildings = {findAtTile = function(p)
+              if p.x == 1 then return {getType = function() return 5 end} end
+              if p.x == 2 then return {getType = function() return 6 end} end
+          end}''', env)
+        assert env.construction_at(1, 0, 0) is True and env.construction_at(2, 0, 0) is False
+        assert env.construction_at(3, 0, 0) is None
 
     @test("steps: the rock above but its last level, then each cavern level with the level over it, then the rock below")
     def _():

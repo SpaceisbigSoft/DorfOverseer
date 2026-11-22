@@ -495,7 +495,10 @@ function fort_anchor_starts()
     pcall(function()
         for _, zn in ipairs(df.global.world.buildings.other.ZONE_MEETING_HALL) do
             local okp, x, y, z = pcall(function() return zn.centerx, zn.centery, zn.z end)
-            if okp and x then table.insert(out, {x = x, y = y, z = z}) end
+            -- (r9, audit A3 9) a meeting area under the sky (the garden
+            -- court's) is outside the gates: no start of the inside
+            local okd, des = pcall(function() return okp and x and dfhack.maps.getTileFlags(x, y, z) end)
+            if okp and x and not (okd and des and des.outside) then table.insert(out, {x = x, y = y, z = z}) end
         end
     end)
     return out

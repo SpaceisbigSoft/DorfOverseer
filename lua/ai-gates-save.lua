@@ -211,6 +211,10 @@ function fort_interior()
     local okz, zones = pcall(function() return df.global.world.buildings.other.ZONE_MEETING_HALL end)
     for _, zn in ipairs(okz and zones or {}) do
         local okp, x, y, z = pcall(function() return zn.centerx, zn.centery, zn.z end)
+        -- (r9, audit A3 9) a meeting area under the sky (the garden court's)
+        -- is outside the gates: never the fort's interior
+        local okd, des = pcall(function() return okp and x and dfhack.maps.getTileFlags(x, y, z) end)
+        if okd and des and des.outside then okp = false end
         if okp and x then
             local g = wgroup(x, y, z)
             if g ~= 0 then return {what = 'meeting hall', x = x, y = y, z = z, group = g} end

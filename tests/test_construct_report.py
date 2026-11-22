@@ -73,6 +73,7 @@ function W.reset()
   for key in pairs(W.scripts) do W.scripts[key] = nil end
   W.reads, W.tick = 0, 1000
   env.SURVEY_CACHE = nil
+  env.SURVEY_RESUME, env.SURVEY_FULL = nil, nil   -- (r9) a walk cut short in one test is not the next one's
   env.SURVEY_SECONDS = 0.25
   df.global.world.event = W.event
   df.global.world.constructions = nil
@@ -297,6 +298,10 @@ def _():
     assert M.SECTIONS.constructions().total == 9
     H.scripts["ai-constructions"] = BL.eval("{survey = function() error('bad tile') end}")
     assert "bad tile" in M.SECTIONS.constructions().error
+    # (r9) a walk not through yet: sent, but not kept for the section's days
+    H.scripts["ai-constructions"] = BL.eval("{survey = function() return {total = 9, partial = true} end}")
+    r = M.SECTIONS.constructions()
+    assert isinstance(r, tuple) and r[0].total == 9 and r[1] is True, r
 
 
 @test("bridge: place_hall checks its kind and passes the dry run; a builder without it refuses")

@@ -121,7 +121,11 @@ def _waiting(st: dict) -> str | None:
         return f"the garden court: the woodcutters fell {st['trees_left']} tree(s) on its walls' line"
     if stage == "walls" and int(st.get("walls_planned") or 0) > 0:
         return f"the garden court: {st['walls_planned']} wall tile(s) still to build"
-    if stage in ("beds", "furnish") and int(st.get("planned") or 0) > 0:
+    # (r9, audit A3 12) a chair or a statue that never comes holds the court
+    # COURT_WAIT_DAYS at most: past it (wait_over), or with no start known (an
+    # older save: the call records it), the next step is asked anyway
+    if (stage in ("beds", "furnish") and int(st.get("planned") or 0) > 0
+            and st.get("stage_days") is not None and not st.get("wait_over")):
         return f"the garden court: {st['planned']} piece(s) still to build ({stage})"
     return None
 

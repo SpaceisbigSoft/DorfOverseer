@@ -327,25 +327,31 @@ def _():
 CW = LUA.execute(FAKE_CONS, (ROOT / "lua" / "ai-constructions.lua").read_text(encoding="utf-8"))
 
 
-@test("constructions: a walk cut short resumes where it stopped next time, round to the start")
+@test("constructions: a walk cut short resumes where it stopped next time; (r9) its counts carried on to the round's totals")
 def _():
     CW.reset()
     CW.env.SURVEY_RESUME = None
+    CW.env.SURVEY_FULL = None
     for i in range(600):
         CW.con(i % 100, i // 100, 60, 1, 1, True)
     CW.env.SURVEY_SECONDS = -1                     # cut at the first check (every 256th record)
     a = CW.env.survey(True)
     assert a.partial and a.total == 255 and a.resumed_at is None, (a.partial, a.total)
     b = CW.env.survey(True)
-    assert b.partial and b.resumed_at == 255 and b.total == 255, (b.resumed_at, b.total)
-    c = CW.env.survey(True)
-    assert c.partial and c.resumed_at == 510 and c.total == 255, (c.resumed_at, c.total)   # 90, then 165 from 1
-    assert CW.env.SURVEY_RESUME.at == 165, CW.env.SURVEY_RESUME.at
+    assert b.partial and b.resumed_at == 255 and b.total == 510, (b.resumed_at, b.total)   # (r9) 255 + 255
+    assert CW.env.SURVEY_RESUME.at == 510, CW.env.SURVEY_RESUME.at
+    assert CW.env.SURVEY_CACHE is None or CW.env.SURVEY_CACHE.result.total != 510   # (r9) a part is kept no day
+    c = CW.env.survey()                            # (not fresh: the walk goes on all the same)
+    assert not c.partial and c.resumed_at == 510 and c.total == 600 and CW.env.SURVEY_RESUME is None, \
+        (c.partial, c.resumed_at, c.total)
+    assert c.surface.total + c.underground.total == 600
     CW.env.SURVEY_SECONDS = 100
-    d = CW.env.survey(True)
-    assert not d.partial and d.total == 600 and CW.env.SURVEY_RESUME is None, (d.partial, d.total)
     e = CW.env.survey(True)
     assert e.total == 600 and e.resumed_at is None
+    # (r9) the next round cut short: the last full round's totals stand in meanwhile
+    CW.env.SURVEY_SECONDS = -1
+    f = CW.env.survey(True)
+    assert f.refreshing and not f.partial and f.total == 600, (f.refreshing, f.total)
     CW.env.SURVEY_SECONDS = 0.25
 
 
