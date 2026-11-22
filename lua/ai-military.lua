@@ -684,7 +684,7 @@ MILITARY_PART_LOCALS = {U = U, report_citizens = report_citizens, COMBAT_SKILLS 
 PARTS = {'draft', 'uniforms', 'duty'}
 -- each part marks the version it came with (started afresh at each load, so a
 -- part that failed to load shows as unmarked)
-PART_VERSIONS = {['ai-military'] = '0.105.63'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-military'] = '0.105.64'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')
