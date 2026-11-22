@@ -139,7 +139,7 @@ def _():
 
 # --- 2. version marks and `modules` ------------------------------------------
 
-MARKED = BRIDGE_PARTS + HUB_PARTS + OTHER_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-gates"] + GATES_PARTS + ["ai-military-gear", "ai-society-burrows", "ai-constructions"]
+MARKED = BRIDGE_PARTS + HUB_PARTS + OTHER_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-gates"] + GATES_PARTS + ["ai-military-gear", "ai-society-burrows", "ai-constructions", "ai-nobles-swap"]   # (r11 n1 fixes)
 
 
 @test("marks: every part carries one version mark, the same string as BRIDGE_VERSION")
@@ -173,6 +173,7 @@ def _():
     H.scripts["ai-military-gear"] = t({"PART_VERSIONS": {"ai-military-gear": VERSION}})
     H.scripts["ai-society-burrows"] = t({"PART_VERSIONS": {"ai-society-burrows": VERSION}})
     H.scripts["ai-constructions"] = t({"PART_VERSIONS": {"ai-constructions": VERSION}})   # (0.105.30)
+    H.scripts["ai-nobles-swap"] = t({"PART_VERSIONS": {"ai-nobles-swap": VERSION}})   # (r11 n1 fixes)
     for mod, parts in OTHER_SPLIT.items():                                                 # (r8)
         H.scripts[mod] = t({"PARTS": [p[len(mod) + 1:] for p in parts],
                             "PART_VERSIONS": {n: VERSION for n in [mod] + parts}})

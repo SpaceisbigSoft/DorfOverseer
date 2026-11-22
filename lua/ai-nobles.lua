@@ -187,11 +187,27 @@ function holder_away(hf, messenger)
     local oki, inactive = pcall(function() return u.flags1.inactive end)
     local okl, left = pcall(function() return u.flags1.left end)
     if (oki and inactive) or (okl and left) then return 'off the map' end
+    -- (r11 n1 fixes) sent and walking to the map's edge: the unit is on its army's controller already
+    local okc, ctl = pcall(function() return u.enemy.army_controller_id end)
+    if okc and type(ctl) == 'number' and ctl >= 0 then return 'on its way off the map (a mission)' end
     if messenger then
         local okr, run = pcall(function() return reqscript('ai-mission-send').RUN end)
         if okr and run then return 'a mission is being sent (' .. tostring(run.goal or '?') .. ')' end
     end
     return nil
+end
+
+-- (r11 n1 fixes) the offices a dwarf holds in this fort's government only
+-- (getNoblePositions lists every entity's: a civilisation's or a religion's post too)
+function fort_offices(u, ent)
+    local n = 0
+    pcall(function()
+        for _, p in ipairs(dfhack.units.getNoblePositions(u) or {}) do
+            local okE, eid = pcall(function() return p.entity.id end)
+            if not okE or eid == nil or eid == ent.id then n = n + 1 end
+        end
+    end)
+    return n
 end
 
 local function holds(u, code)
@@ -502,6 +518,17 @@ end
 
 -- (r11 n1) for lua/ai-nobles-swap.lua
 function office_candidates(code) return candidates(code) end
+-- (r11 n1 fixes) the best free citizen for `code`, as a swap takes one: no
+-- office, not the holder, not miserable, no soldier (a squad stays with them)
+function free_pick(code, holder_id)
+    local free = {}
+    for _, c in ipairs(candidates(code)) do
+        if (c.offices or 0) == 0 and c.id ~= holder_id and not c.miserable and not c.soldier then
+            table.insert(free, c)
+        end
+    end
+    return pick_holder(free, false)
+end
 function holds_office(u, code) return holds(u, code) end
 function translate_name(n, english) return translate(n, english) end
 
@@ -597,11 +624,10 @@ function messenger_status(txt, ent, pop)
                 local u = hf and df.unit.find(hf.unit_id)
                 out.holder_unit = u and u.id or nil
                 out.away = holder_away(hf, true)
-                local codes = u and codes_held(u) or {}
-                if #codes > 1 then
+                if u and fort_offices(u, ent) > 1 then
                     out.interim = true
-                    local c = pick_holder(candidates('MESSENGER'), false)
-                    if c and c.id ~= out.holder_unit and (c.offices or 0) == 0 then
+                    local c = free_pick('MESSENGER', out.holder_unit)   -- (r11 n1 fixes) as replace() picks
+                    if c then
                         local cu = df.unit.find(c.id)
                         out.free_unit = c.id
                         out.free_name = cu and (txt or tostring)(dfhack.units.getReadableName(cu)) or nil
@@ -843,12 +869,18 @@ function military_slot(ent, code)
     return {ok = true, assignment = best.a, idx = best.idx, pos = best.p}
 end
 
--- Undo an appointment written here.
-function undo_appointment(assignment, hf)
+-- Undo an appointment written here. (r11 n1 fixes) Only the link to this
+-- entity (`ent`, the fort's government when not given): assignment ids are
+-- per entity, a civilisation's post may carry the same id (DFHack's
+-- unit-link-utils checks the entity too).
+function undo_appointment(assignment, hf, ent)
+    ent = ent or U.fort_entity()
+    local eid = ent and ent.id
     assignment.histfig = -1
     for i = #hf.entity_links - 1, 0, -1 do
         local l = hf.entity_links[i]
-        if df.histfig_entity_link_positionst:is_instance(l) and l.assignment_id == assignment.id then
+        if df.histfig_entity_link_positionst:is_instance(l) and l.assignment_id == assignment.id
+                and (eid == nil or l.entity_id == eid) then
             hf.entity_links:erase(i)
             pcall(function() l:delete() end)
         end
@@ -865,7 +897,7 @@ function write_appointment(ent, assignment, a_idx, pos, u)
                                  link_strength = 100, assignment_id = assignment.id,
                                  assignment_vector_idx = a_idx, start_year = df.global.cur_year})
     if not holds(u, pos.code) then
-        undo_appointment(assignment, hf)
+        undo_appointment(assignment, hf, ent)
         return false
     end
     pcall(function() assignment.histfig2 = hf.id end)   -- DF's "last holder"

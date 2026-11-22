@@ -322,3 +322,10 @@ kept high (twice the skill score and 10 more) and one swap a season per office, 
 rooms, demands and work in hand go with it. A tiny fort's interim messenger is simply a second
 position link on an office holder (DF lets one figure hold several posts, as the expedition leader
 and a broker often are at embark).
+
+**(r11 n1 fixes).** The position link is matched by entity too (`l.entity_id == ent.id`, as
+unit-link-utils does): assignment ids are per entity, so a civilisation's or religion's post with the
+same id is left alone (`undo_appointment` too). DFHack's `getNoblePositions` (Units.cpp) does not
+check the slot's holder, only the link, the entity, the assignment by id and the post. A failed or
+raising write re-inserts the very link objects at their old indexes. The captain of the guard's
+post leads the fortress guard squad (`assignment.squad_id`), so it and the sheriff are not swapped.

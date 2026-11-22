@@ -250,7 +250,7 @@ BRIDGE_MODULES = {
     'ai-nobles-swap',   -- (r11 n1) the interim messenger swapped out, a vastly better office holder
 }
 -- the split-off modules that carry a version mark of their own
-MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions'}
+MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions', 'ai-nobles-swap'}   -- (r11 n1 fixes)
 
 -- (13e) The modules split into a hub and parts beside it, each listing its
 -- parts in PARTS and marking them in PART_VERSIONS

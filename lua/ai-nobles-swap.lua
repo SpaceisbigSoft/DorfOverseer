@@ -1,9 +1,10 @@
 -- (r11 n1, the player 22 Nov 01:43) A held civilian office given to a better
 -- holder: the interim messenger (an office holder doubling as messenger in a
 -- tiny fort, lua/ai-nobles.lua pick_interim) replaced as soon as a suitable
--- free citizen exists, and any civilian office the AI fills (manager,
--- bookkeeper, broker, chief medical dwarf, sheriff, captain of the guard,
--- messenger) given to a free citizen vastly better at its skills.
+-- free citizen exists, and a civilian office the AI fills (manager,
+-- bookkeeper, broker, chief medical dwarf, messenger; not the sheriff or the
+-- captain of the guard, whose posts lead a squad) given to a free citizen
+-- vastly better at its skills.
 --
 -- The planner decides when (brain/planner_office_swap.py: the margin, the
 -- cooldowns, threats); this re-checks everything against the game and swaps
@@ -20,9 +21,14 @@
 
 local N = reqscript('ai-nobles')
 
--- the civilian offices the AI may give to a better holder
-SWAP_OFFICES = {'MANAGER', 'BOOKKEEPER', 'BROKER', 'CHIEF_MEDICAL_DWARF', 'SHERIFF', 'CAPTAIN_OF_THE_GUARD',
-                'MESSENGER'}
+PART_VERSIONS = {['ai-nobles-swap'] = '0.105.66'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
+
+-- the civilian offices the AI may give to a better holder. (r11 n1 fixes)
+-- Not the sheriff nor the captain of the guard: their posts lead the fortress
+-- guard (DF's raws give the captain [SQUAD:10:...]; the slot's squad_id), and
+-- moving the office would leave the squad with the old holder. Any other
+-- slot that leads a squad, or a soldier holder or candidate, is never swapped.
+SWAP_OFFICES = {'MANAGER', 'BOOKKEEPER', 'BROKER', 'CHIEF_MEDICAL_DWARF', 'MESSENGER'}
 -- the margin when the planner gives none (brain/planner_config_rounds.py n1_swap_*)
 MARGIN_ADD, MARGIN_FACTOR = 10, 2.0
 
@@ -97,13 +103,18 @@ local function held_slot(ent, code)
     end
 end
 
--- the best free citizen for `code` (no office, not the holder, not miserable)
+-- the best free citizen for `code` (lua/ai-nobles.lua free_pick: no office,
+-- not the holder, not miserable, no soldier; messenger_status picks the same)
 local function best_free(code, holder_id)
-    local free = {}
-    for _, c in ipairs(N.office_candidates(code)) do
-        if (c.offices or 0) == 0 and c.id ~= holder_id and not c.miserable then table.insert(free, c) end
-    end
-    return N.pick_holder(free, false)
+    return N.free_pick(code, holder_id)
+end
+
+-- why the slot may never be swapped (it leads a squad, a soldier holds it), or nil
+local function squad_bound(a, u)
+    if (tonumber(a.squad_id) or -1) ~= -1 then return 'leads a squad' end
+    local oks, sq = pcall(function() return u and u.military.squad_id end)
+    if oks and type(sq) == 'number' and sq >= 0 then return 'held by a soldier' end
+    return nil
 end
 
 -- Each held civilian office, read only: {code = {holder, holder_unit,
@@ -120,11 +131,12 @@ function swap_survey(ent, txt)
             local o = {holder = hf and (txt or tostring)(N.translate_name(hf.name)) or tostring(a.histfig)}
             local can, why = N.appointable(ent, p)
             if not can then o.fixed = why or true end
+            o.fixed = o.fixed or squad_bound(a, u)
             if u then
                 o.holder_unit = u.id
                 o.holder = name_of(u, txt) or o.holder
                 o.holder_score = N.skill_score(N.office_skills(u, code))
-                o.holder_offices = #(dfhack.units.getNoblePositions(u) or {})
+                o.holder_offices = N.fort_offices(u, ent)
                 o.busy = holder_busy(u, hf, code)
             else
                 o.busy = 'not on the map'
@@ -140,39 +152,51 @@ function swap_survey(ent, txt)
     return out
 end
 
--- take the holder off the slot (what DFHack's own code does first); returns
--- what put_back needs
-local function take_off(a, hf)
+-- take the holder off the slot (what DFHack's own code does first): the
+-- slot's holder cleared, the figure's position link to this entity for it
+-- taken out (kept, with its index, for put_back). (r11 n1 fixes) Only this
+-- entity's link: assignment ids are per entity.
+local function take_off(ent, a, hf)
     local saved = {histfig = a.histfig, links = {}}
     pcall(function() saved.histfig2 = a.histfig2 end)
     a.histfig = -1
     for i = #hf.entity_links - 1, 0, -1 do
         local l = hf.entity_links[i]
-        if df.histfig_entity_link_positionst:is_instance(l) and l.assignment_id == a.id then
-            local keep = {entity_id = l.entity_id, link_strength = l.link_strength, assignment_id = l.assignment_id,
-                          start_year = l.start_year}
-            pcall(function() keep.assignment_vector_idx = l.assignment_vector_idx end)
-            table.insert(saved.links, keep)
+        if df.histfig_entity_link_positionst:is_instance(l) and l.assignment_id == a.id and l.entity_id == ent.id then
+            table.insert(saved.links, 1, {link = l, idx = i, start_year = l.start_year})
             hf.entity_links:erase(i)
-            pcall(function() l:delete() end)
         end
     end
     return saved
 end
 
+-- the old holder back as they were: the very link objects, at their places
 local function put_back(a, hf, saved)
     a.histfig = saved.histfig
     if saved.histfig2 ~= nil then pcall(function() a.histfig2 = saved.histfig2 end) end
     for _, k in ipairs(saved.links) do
-        hf.entity_links:insert('#', {new = df.histfig_entity_link_positionst, entity_id = k.entity_id,
-                                     link_strength = k.link_strength, assignment_id = k.assignment_id,
-                                     assignment_vector_idx = k.assignment_vector_idx, start_year = k.start_year})
+        hf.entity_links:insert(math.min(k.idx, #hf.entity_links), k.link)
     end
 end
 
--- after the swap stands: the old holder's former-position link and the event
+-- the new holder's link to this entity for the slot taken out (a write that raised)
+local function drop_new(ent, a, hf)
+    if not hf then return end
+    for i = #hf.entity_links - 1, 0, -1 do
+        local l = hf.entity_links[i]
+        if df.histfig_entity_link_positionst:is_instance(l) and l.assignment_id == a.id and l.entity_id == ent.id then
+            hf.entity_links:erase(i)
+            pcall(function() l:delete() end)
+        end
+    end
+end
+
+-- after the swap stands: the old links freed, the old holder's former-position
+-- link and the event (none when no live link existed, as DFHack does)
 local function note_former(ent, hf, a, p, saved)
-    local start = saved.links[1] and saved.links[1].start_year or df.global.cur_year
+    if #saved.links == 0 then return end
+    local start = saved.links[1].start_year or df.global.cur_year
+    for _, k in ipairs(saved.links) do pcall(function() k.link:delete() end) end
     pcall(function()
         hf.entity_links:insert('#', {new = df.histfig_entity_link_former_positionst, assignment_id = a.id,
                                      entity_id = ent.id, start_year = start, end_year = df.global.cur_year,
@@ -212,10 +236,11 @@ function replace(code, dry_run, txt, opts)
     local hf = df.historical_figure.find(a.histfig)
     local old = hf and df.unit.find(hf.unit_id)
     if not old then return no('the holder is not on the map') end
+    local bound = squad_bound(a, old)
+    if bound then return no('the ' .. code:lower():gsub('_', ' ') .. "'s post " .. bound .. ': never swapped') end
     local busy = holder_busy(old, hf, code)
     if busy then return no('the holder is ' .. busy .. ': not now', {busy = busy}) end
-    local held_codes = dfhack.units.getNoblePositions(old) or {}
-    if opts.interim_out and (code ~= 'MESSENGER' or #held_codes < 2) then
+    if opts.interim_out and (code ~= 'MESSENGER' or N.fort_offices(old, ent) < 2) then
         return no('the messenger holds no other office: not an interim')
     end
     local c = best_free(code, old.id)
@@ -232,13 +257,24 @@ function replace(code, dry_run, txt, opts)
                  interim_out = opts.interim_out and true or nil, dry_run = dry_run or nil}
     if dry_run then return out end
     -- all or nothing: the old holder off, the new one on, else the old one back
-    local saved = take_off(a, hf)
+    local saved = take_off(ent, a, hf)
     if N.holds_office(old, p.code) then
         put_back(a, hf, saved)
         return {ok = false, office = code, error = 'DFHack still saw ' .. tostring(out.replaced)
                 .. ' in the office after taking them off: left as it was'}
     end
-    if not N.write_appointment(ent, a, a_idx, p, new) then
+    -- (r11 n1 fixes) an error inside the write: the new link out, the old holder back
+    local okw, wrote = pcall(N.write_appointment, ent, a, a_idx, p, new)
+    if not okw then
+        a.histfig = -1
+        pcall(drop_new, ent, a, df.historical_figure.find(new.hist_figure_id))
+        put_back(a, hf, saved)
+        pcall(N.sync_held, ent, true)
+        return {ok = false, office = code, restored = N.holds_office(old, p.code),
+                error = 'the appointment failed (' .. tostring(wrote):sub(1, 120) .. '), so ' .. tostring(out.replaced)
+                        .. ' was put back'}
+    end
+    if not wrote then
         put_back(a, hf, saved)
         pcall(N.sync_held, ent, true)
         return {ok = false, office = code, restored = N.holds_office(old, p.code),

@@ -13,7 +13,8 @@ The interim messenger itself is appointed by the messenger rule
     while the messenger is away (an army's roll, off the map, a Make contact
     run being sent, a Diplomacy mission out);
   * a civilian office's holder (manager, bookkeeper, broker, chief medical
-    dwarf, sheriff, captain of the guard, messenger) for a free citizen
+    dwarf, messenger; (r11 n1 fixes) not the sheriff or the captain of the
+    guard, whose posts lead the fortress guard squad) for a free citizen
     vastly better at the office's skills: the candidate's skill score (the
     first skill counts double, lua/ai-nobles.lua skill_score) at least
     max(holder + n1_swap_margin_add, holder x n1_swap_margin_factor). Never a
@@ -24,18 +25,24 @@ Both: no threat that can reach the dwarves, no siege, no crisis; one swap a
 day fort-wide (n1_swap_gap_days) and one a season per office
 (office_swap_cooldown_ticks, by cooldown_key's office_swap:<CODE>). The
 bridge re-checks everything and swaps all-or-nothing (lua/ai-nobles-swap.lua).
+
+(r11 n1 fixes) A swap the bridge refused waits its back-off for that office
+only (refusal_key adds the office); a refused or waiting interim swap-out
+lets the better-holder swaps through; no messenger swap while the missions
+report can't be read; a waiting swap's note is said once a day or when its
+reason changes (memory.world_seen["swap_said"]).
 """
 
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import Proposal, TICKS_PER_DAY, abs_tick, player_rules
+from planner_core import Proposal, TICKS_PER_DAY, _refused_wait, abs_tick, player_rules
 from planner_traffic import _danger_near
 
 __all__ = ["_office_swap_rule", "swap_needed", "SWAP_ORDER", "OFFICE_WORDS"]
 
 # the most needed office first: one swap a day goes where it matters most
-SWAP_ORDER = ("MANAGER", "CHIEF_MEDICAL_DWARF", "BROKER", "BOOKKEEPER", "SHERIFF", "CAPTAIN_OF_THE_GUARD", "MESSENGER")
+SWAP_ORDER = ("MANAGER", "CHIEF_MEDICAL_DWARF", "BROKER", "BOOKKEEPER", "MESSENGER")
 OFFICE_WORDS = {"MANAGER": "manager", "BOOKKEEPER": "bookkeeper", "BROKER": "broker",
                 "CHIEF_MEDICAL_DWARF": "chief medical dwarf", "SHERIFF": "sheriff",
                 "CAPTAIN_OF_THE_GUARD": "captain of the guard", "MESSENGER": "messenger"}
@@ -60,13 +67,41 @@ def _messenger_busy(s: dict, ms: dict) -> str | None:
     Diplomacy mission out (planner_world._messenger_out)."""
     if ms.get("away"):
         return str(ms["away"])
-    missions = _d(s.get("missions"))
+    raw = s.get("missions")
+    if "missions" in _d(s.get("_errors")) or not isinstance(raw, dict) or "error" in raw:
+        return "the missions report could not be read"
+    missions = _d(raw)
     if _d(_d(missions.get("send")).get("running")):
         return "a mission is being sent"
     from planner_world import _messenger_out
     if _messenger_out(missions):
         return "a Diplomacy mission is out"
     return None
+
+
+def _say(memory, notes: list, key: str, why: str, text: str, now) -> None:
+    """A waiting swap's note: once a day, or when its reason changes."""
+    if memory is None or not isinstance(now, int):
+        notes.append(text)
+        return
+    ws = getattr(memory, "world_seen", None)
+    if not isinstance(ws, dict):
+        memory.world_seen = ws = {}
+    said = ws.setdefault("swap_said", {})
+    last = _d(said.get(key))
+    if last.get("why") == why and isinstance(last.get("tick"), int) and 0 <= now - last["tick"] < TICKS_PER_DAY:
+        return
+    said[key] = {"why": why, "tick": now}
+    for k in [k for k, v in said.items() if not isinstance(_d(v).get("tick"), int) or now - v["tick"] > 28 * TICKS_PER_DAY]:
+        del said[k]
+    notes.append(text)
+
+
+def _refused(memory, p, s, now) -> bool:
+    """The bridge refused this very swap lately: its back-off still runs."""
+    if memory is None or not isinstance(now, int):
+        return False
+    return _refused_wait(memory, p, now, s.get("bridge_version")) is not None
 
 
 def _office_swap_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
@@ -94,15 +129,16 @@ def _office_swap_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=N
     # the interim messenger out: any suitable free citizen will do
     if ms.get("interim") and ms.get("free_unit") is not None:
         busy = _messenger_busy(s, ms)
+        p = Proposal("office_swap", {"type": "appoint", "office": "MESSENGER", "replace": True, "interim_out": True},
+                     f"{ms.get('held_by') or 'an office holder'} doubles as messenger for now (they "
+                     f"hold another office); {ms.get('free_name') or 'a free dwarf'} is free and "
+                     "suitable: they take the messenger's post", 4)
         if busy:
-            notes.append(f"{ms.get('held_by') or 'the interim messenger'} doubles as messenger; "
-                         f"{ms.get('free_name') or 'a free dwarf'} could take over, once the messenger is back ({busy})")
-        else:
-            proposals.append(Proposal("office_swap", {"type": "appoint", "office": "MESSENGER", "replace": True,
-                                                      "interim_out": True},
-                                      f"{ms.get('held_by') or 'an office holder'} doubles as messenger for now (they "
-                                      f"hold another office); {ms.get('free_name') or 'a free dwarf'} is free and "
-                                      "suitable: they take the messenger's post", 4))
+            _say(memory, notes, "interim_out", busy,
+                 f"{ms.get('held_by') or 'the interim messenger'} doubles as messenger; "
+                 f"{ms.get('free_name') or 'a free dwarf'} could take over, once the messenger is back ({busy})", now)
+        elif not _refused(memory, p, s, now):   # refused lately: the other swaps go on meanwhile
+            proposals.append(p)
             return
     swap = _d(offices.get("swap"))
     for code in SWAP_ORDER:
@@ -116,12 +152,16 @@ def _office_swap_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=N
         busy = o.get("busy") or (_messenger_busy(s, ms) if code == "MESSENGER" else None)
         word = OFFICE_WORDS.get(code, code.lower())
         if busy:
-            notes.append(f"{o.get('cand')} would make a far better {word} than {o.get('holder')} "
-                         f"(skill {hs} -> {cs}); not now: {busy}")
+            _say(memory, notes, f"better:{code}", str(busy),
+                 f"{o.get('cand')} would make a far better {word} than {o.get('holder')} "
+                 f"(skill {hs} -> {cs}); not now: {busy}", now)
             continue
-        proposals.append(Proposal("office_swap", {"type": "appoint", "office": code, "replace": True,
-                                                  "margin_add": int(cfg["n1_swap_margin_add"]),
-                                                  "margin_factor": float(cfg["n1_swap_margin_factor"])},
-                                  f"{o.get('cand')} is far better suited as {word} than {o.get('holder')} "
-                                  f"(skill {hs} -> {cs}, {need} needed): {o.get('cand')} takes the post", 5))
+        p = Proposal("office_swap", {"type": "appoint", "office": code, "replace": True,
+                                     "margin_add": int(cfg["n1_swap_margin_add"]),
+                                     "margin_factor": float(cfg["n1_swap_margin_factor"])},
+                     f"{o.get('cand')} is far better suited as {word} than {o.get('holder')} "
+                     f"(skill {hs} -> {cs}, {need} needed): {o.get('cand')} takes the post", 5)
+        if _refused(memory, p, s, now):
+            continue
+        proposals.append(p)
         return

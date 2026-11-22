@@ -54,7 +54,13 @@ local function ivec(t)
   return setmetatable(v, {__len = function(self) return self.n end,
     __index = {insert = function(self, pos, x)
                  if type(x) == 'table' and type(x.new) == 'table' and x.new.former then x.former = true end
-                 self[self.n] = x; self.n = self.n + 1 end,
+                 if type(pos) == 'number' and pos < self.n then      -- (r11 n1 fixes) at an index, as DF vectors
+                   for k = self.n, pos + 1, -1 do self[k] = self[k - 1] end
+                   self[pos] = x
+                 else
+                   self[self.n] = x
+                 end
+                 self.n = self.n + 1 end,
                erase = function(self, i) for k = i, self.n - 2 do self[k] = self[k + 1] end; self[self.n - 1] = nil; self.n = self.n - 1 end}})
 end
 local function ipairs0(v)
@@ -81,7 +87,7 @@ for _, c in ipairs({'EXPEDITION_LEADER', 'MANAGER', 'BOOKKEEPER', 'BROKER', 'CHI
                     'MESSENGER', 'MILITIA_COMMANDER'}) do table.insert(own, P[c]) end
 local FORT = {id = 50, positions = {own = ivec(own), site = ivec({}), assignments = ivec({}), next_assignment_id = 0},
               assignments_by_type = ivec({})}
-local CIV = {id = 40, positions = {own = ivec({}), site = ivec({})}, entity_raw = {positions = ivec({})}}
+local CIV = {id = 40, positions = {own = ivec({}), site = ivec({}), assignments = ivec({})}, entity_raw = {positions = ivec({})}}
 local HFS, UNITS, CITS = {}, {}, {}
 local SKN = {'ORGANIZATION', 'RECORD_KEEPING', 'APPRAISAL', 'NEGOTIATION', 'PERSUASION', 'JUDGING_INTENT', 'DIAGNOSE',
              'OBSERVATION', 'MELEE_COMBAT', 'DISCIPLINE', 'LEADERSHIP', 'MILITARY_TACTICS', 'CONVERSATION'}
@@ -130,10 +136,17 @@ local function position_of(id) for _, p in ipairs0(FORT.positions.own) do if p.i
 env.dfhack = {units = {getNoblePositions = function(u)
                   local hf = HFS[u.hist_figure_id]; local out = {}
                   if W.BLIND[hf.id] then return out end
+                  -- (r11 n1 fixes) as DFHack's Units.cpp: each position link's entity, its
+                  -- assignment by id and the post; the slot's holder is not checked
                   for _, l in ipairs0(hf.entity_links) do
-                    for _, a in ipairs0(FORT.positions.assignments) do
-                      if not l.former and a.id == l.assignment_id and a.histfig == hf.id then
-                        table.insert(out, {position = position_of(a.position_id)})
+                    local ent = env.df.historical_entity.find(l.entity_id)
+                    if not l.former and ent then
+                      for _, a in ipairs0(ent.positions.assignments) do
+                        if a.id == l.assignment_id then
+                          for _, p in ipairs0(ent.positions.own) do
+                            if p.id == a.position_id then table.insert(out, {position = p, entity = ent, assignment = a}) end
+                          end
+                        end
                       end
                     end
                   end
@@ -408,6 +421,7 @@ def state(messenger=None, offices=None, swap=None, tick=10 * DAY, **kw):
          "dwarves": {"total": 7}, "stocks": {"drink": 2000, "prepared_meals": 2000},
          "buildings": {"other": {"FarmPlot": 4}},
          "offices": {"offices": offices or {}, "messenger": messenger or {}, "swap": swap or {}},
+         "missions": {"controllers": [], "send": {}},
          "date": {"year": 256, "tick": tick}}
     s.update(kw)
     return s
@@ -514,6 +528,167 @@ def _():
     props = []
     OS._office_swap_rule(swap_state(4, 16, tick=200 * DAY), CFG, props, [], m)
     assert not props
+
+
+# ---- (r11 n1 fixes) the verifier's findings ----------------------------------------------------------
+
+def links_of(env, hf):
+    L = env.W.HFS[hf].entity_links
+    return [(L[i].entity_id, L[i].assignment_id, bool(L[i].former), L[i].tag) for i in range(L.n)]
+
+
+@test("M1: a holder's post in another entity with the same assignment id survives the swap and a failed write")
+def _():
+    for blind in (False, True):
+        env = manager_world(15)
+        _run(env, "W.HFS[902].entity_links:insert('#', {assignment_id = 1, entity_id = 40, start_year = 200,"
+                  " link_strength = 100, tag = 'civ'})")
+        if blind:
+            _run(env, "W.BLIND[908] = true")
+        r = replace_manager(env)
+        assert r.ok is (not blind), dict(r)
+        assert any(e == 40 and t == "civ" for e, a, f, t in links_of(env, 902)), (blind, links_of(env, 902))
+    # undo_appointment (the plain appoint's undo) by entity too
+    env = world()
+    _run(env, "W.HFS[908] = nil; W.unit(18, 2); W.HFS[908].entity_links:insert('#', {assignment_id = 1, entity_id = 40, tag = 'civ'});"
+              " local a = W.FORT.positions.assignments[1]; W.HFS[908].entity_links:insert('#', {assignment_id = 1, entity_id = 50});"
+              " undo_appointment(a, W.HFS[908])")
+    assert links_of(env, 908) == [(40, 1, False, "civ")], links_of(env, 908)
+
+
+@test("M2: the captain of the guard (its slot leads a squad) and the sheriff are never swapped; no soldier candidate")
+def _():
+    env = world("""
+W.P.CAPTAIN_OF_THE_GUARD = W.pos{id = 9, code = 'CAPTAIN_OF_THE_GUARD', appointed_by = W.ivec({1})}
+W.FORT.positions.own:insert('#', W.P.CAPTAIN_OF_THE_GUARD)
+W.unit(19, 1, {squad = 7})
+local a = W.hold(19, 9); a.squad_id = 7
+W.unit(18, 0, {sk = {JUDGING_INTENT = 18, MELEE_COMBAT = 15, LEADERSHIP = 15, DISCIPLINE = 15}})
+""")
+    sw = env.survey(None).swap
+    assert sw.CAPTAIN_OF_THE_GUARD is None and sw.SHERIFF is None, (sw.CAPTAIN_OF_THE_GUARD, sw.SHERIFF)
+    before = snapshot(env)
+    for code in ("CAPTAIN_OF_THE_GUARD", "SHERIFF"):
+        r = env.appoint(code, False, None, _table(env, {"replace": True}))
+        assert r.ok is False and r.rejected, (code, dict(r))
+    assert snapshot(env) == before
+    # a manager's slot that leads a squad: fixed, refused
+    env = manager_world(15)
+    _run(env, "W.FORT.positions.assignments[1].squad_id = 3")
+    assert env.survey(None).swap.MANAGER.fixed == "leads a squad"
+    r = replace_manager(env)
+    assert r.ok is False and "leads a squad" in r.error, dict(r)
+    # a soldier is never the newcomer
+    env = manager_world(15)
+    _run(env, "W.UNITS[18].military.squad_id = 4")
+    assert env.survey(None).swap.MANAGER.cand_unit is None
+    assert OS.SWAP_ORDER == ("MANAGER", "CHIEF_MEDICAL_DWARF", "BROKER", "BOOKKEEPER", "MESSENGER")
+
+
+@test("M3: a miserable free dwarf is not offered as the interim's successor (messenger_status picks as replace does)")
+def _():
+    env = world("dfhack.units.getStressCategory = function(u) if u.id == 18 then return 0 end return 4 end")
+    assert appoint_interim(env).ok
+    env.W.unit(18, 6)
+    st = env.messenger_status(None)
+    assert st.interim is True and st.free_unit is None, dict(st)
+
+
+@test("M3: a refused swap backs off only its own office; a refused interim swap-out lets a better holder through")
+def _():
+    from planner_core_refusals import refusal_key
+    pm = Proposal("office_swap", {"type": "appoint", "office": "MANAGER", "replace": True}, "", 5)
+    pb = Proposal("office_swap", {"type": "appoint", "office": "BROKER", "replace": True}, "", 5)
+    pi = Proposal("office_swap", {"type": "appoint", "office": "MESSENGER", "replace": True, "interim_out": True}, "", 4)
+    assert len({refusal_key(pm), refusal_key(pb), refusal_key(pi)}) == 3
+    s = state(INTERIM, HELD, swap={"MANAGER": {"holder": "Urist", "holder_unit": 12, "holder_score": 4,
+                                               "cand": "Kib", "cand_unit": 19, "cand_score": 16}})
+    m = Memory()
+    m.refusals = {refusal_key(pi): {"until": abs_tick(s) + 3 * DAY, "n": 1}}
+    props = []
+    OS._office_swap_rule(s, CFG, props, [], m)
+    assert len(props) == 1 and props[0].action["office"] == "MANAGER" and not props[0].action.get("interim_out"), props
+
+
+@test("L1: an error inside the new write: the old holder is put back, nobody left half-appointed")
+def _():
+    env = manager_world(15)
+    _run(env, """
+local hf = W.HFS[908]
+local real = hf.entity_links.insert
+setmetatable(hf.entity_links, {__len = function(self) return self.n end,
+  __index = {insert = function(self, pos, x) error('simulated: field not found') end,
+             erase = getmetatable(hf.entity_links).__index.erase}})""")
+    before = snapshot(env)
+    r = replace_manager(env)
+    assert r.ok is False and r.restored is True and "put back" in r.error, dict(r)
+    assert holders(env)["MANAGER"] == [12] and snapshot(env) == before
+
+
+@test("L2: a messenger walking to the map's edge (on an army controller) is away; no messenger swap with the missions report unread")
+def _():
+    env = with_interim()
+    env.W.unit(18, 2)
+    _run(env, "W.UNITS[13].enemy = {army_controller_id = 5}")
+    st = env.messenger_status(None)
+    assert st.away and "off the map" in st.away, dict(st)
+    r = env.appoint("MESSENGER", False, None, _table(env, {"replace": True, "interim_out": True}))
+    assert r.ok is False and r.busy, dict(r)
+    for extra in ({"_errors": {"missions": "timeout"}}, {"missions": {"error": "x"}}):
+        s = state(INTERIM, HELD, **extra)
+        if "missions" not in extra:
+            s.pop("missions")
+        props = []
+        OS._office_swap_rule(s, CFG, props, [], Memory())
+        assert not props, (extra, props)
+
+
+@test("L3: a failed write puts back the very link objects, in their places")
+def _():
+    env = with_interim()
+    env.W.unit(18, 2)
+    _run(env, "local L = W.HFS[903].entity_links; for i = 0, L.n - 1 do L[i].tag = 'orig' .. i end")
+    before = links_of(env, 903)
+    _run(env, "W.BLIND[908] = true")
+    r = env.appoint("MESSENGER", False, None, _table(env, {"replace": True, "interim_out": True}))
+    assert r.ok is False and r.restored is True, dict(r)
+    assert links_of(env, 903) == before, (links_of(env, 903), before)
+
+
+@test("L5: interim counts the fort's offices only; a swap with no live link adds no former link; the module is version-marked")
+def _():
+    env = world()
+    _run(env, "W.CIV.positions.own:insert('#', W.pos{id = 70, code = 'GENERAL'});"
+              " W.CIV.positions.assignments:insert('#', {id = 0, position_id = 70, histfig = 908});"
+              " W.unit(18, 9); W.HFS[908].entity_links:insert('#', {assignment_id = 0, entity_id = 40});"
+              " local a = W.hold(18, 7)")
+    st = env.messenger_status(None)
+    assert st.held_by == "Dwarf18" and not st.interim, dict(st)
+    # the manager's slot names a figure with no link: swapped, but no former link and no remove event
+    env = manager_world(15)
+    _run(env, "local L = W.HFS[902].entity_links; while L.n > 0 do L:erase(0) end")
+    ev = env.df["global"].hist_event_next_id
+    r = replace_manager(env)
+    assert r.ok is True and env.W.HFS[902].entity_links.n == 0, dict(r)
+    assert env.df["global"].hist_event_next_id == ev + 1          # the new holder's add event only
+    src = (ROOT / "lua" / "ai-nobles-swap.lua").read_text(encoding="utf-8")
+    assert "PART_VERSIONS = {['ai-nobles-swap'] = '" in src
+    hub = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    assert "'ai-nobles-swap'" in hub.split("MARKED_MODULES = ")[1].split("\n")[0]
+
+
+@test("L5: a waiting swap's note is said once a day, again when its reason changes")
+def _():
+    m = Memory()
+    s = state(dict(INTERIM, away="off the map"), HELD)
+    seen = []
+    for tick, away in ((10 * DAY, "off the map"), (10 * DAY + 100, "off the map"), (10 * DAY + 200, "with an army"),
+                       (11 * DAY + 300, "with an army")):
+        s = state(dict(INTERIM, away=away), HELD, tick=tick)
+        notes = []
+        OS._office_swap_rule(s, CFG, [], notes, m)
+        seen.append(len(notes))
+    assert seen == [1, 0, 1, 1], seen
 
 
 # ---- the sources ------------------------------------------------------------------------------------
