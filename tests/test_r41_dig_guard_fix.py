@@ -500,7 +500,7 @@ def _():
     for f in glob.glob(str(LUA_DIR / "*.lua")):
         assert "type(dfhack.onStateChange)" not in Path(f).read_text(encoding="utf-8"), f
     keys = []
-    for name in ("ai-util.lua", "ai-hauling.lua", "ai-bridge-orders.lua"):
+    for name in ("ai-util-dig.lua", "ai-hauling.lua", "ai-bridge-orders.lua"):   # (r9) ai-util's dig guard part
         src = (LUA_DIR / name).read_text(encoding="utf-8")
         assert "if dfhack and dfhack.onStateChange then" in src, name
         keys += re.findall(r"dfhack\.onStateChange\['([^']+)'\]", src)

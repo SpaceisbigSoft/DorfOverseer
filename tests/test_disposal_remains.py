@@ -43,7 +43,7 @@ mk, opts, skipped = A.mk, A.opts, A.skipped
 # (importing that file would run its tests again here)
 _FIXES = (ROOT / "tests" / "test_disposal_fixes.py").read_text(encoding="utf-8")
 UTIL_FAKE = re.search(r'^UTIL_FAKE = r"""(.*?)"""', _FIXES, re.S | re.M).group(1)
-UTIL = (ROOT / "lua" / "ai-util.lua").read_text(encoding="utf-8")
+UTIL = C.UTIL   # (r9) ai-util with its parts (UTIL_SRC)
 
 # The census' fake fort, with REMAINS: 400 of vermin (race 3) in the caverns
 # (x >= 70), one of vermin inside, one of the fort's race (1) inside.

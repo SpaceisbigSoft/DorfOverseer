@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
+from lua_modules_util import bridge_hub_src, UTIL_SRC, split_src  # noqa: E402  (r8) the hub's text with its catalog and sections; (r9) ai-util
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 from planner_core import Proposal  # noqa: E402
 import planner_farms as PF  # noqa: E402
@@ -43,7 +43,7 @@ import hold_classes as HC  # noqa: E402
 
 CFG = PLANNER_CONFIG
 LUA = ROOT / "lua"
-UTIL = (LUA / "ai-util.lua").read_text(encoding="utf-8")
+UTIL = UTIL_SRC   # (r9) ai-util with its parts
 SYND = (LUA / "ai-syndromes.lua").read_text(encoding="utf-8")
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
 
@@ -137,7 +137,7 @@ def _():
 @test("1. the miasma clearing and the dump ask fort_remains: a tame animal's body is now theirs to move")
 def _():
     assert "if U.fort_remains(it, e.kind, ctx) then return 'own_dead' end" in SYND
-    assert "and corpse_was_pet(it)" in UTIL
+    assert "and corpse_was_pet(it)" in split_src("ai-util.lua")
 
 
 # ---- 2. the seed reserve ------------------------------------------------------------

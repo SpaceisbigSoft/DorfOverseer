@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 from harness import test, finish, code_has  # noqa: E402
-from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src, split_src  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -461,7 +461,7 @@ def _():
 
 @test("ai-util: danger_spots / near_danger live there; ai-military-gear forwards to them")
 def _():
-    util = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
+    util = split_src("ai-util.lua")   # (r9) ai-util with its parts
     gear = (LUA_DIR / "ai-military-gear.lua").read_text(encoding="utf-8")
     assert re.search(r"^function danger_spots\(", util, re.M) and re.search(r"^function near_danger\(", util, re.M)
     assert code_has(gear, "local function danger_spots() return U.danger_spots() end")

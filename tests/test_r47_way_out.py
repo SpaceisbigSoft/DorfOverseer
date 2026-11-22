@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
-from lua_modules_util import module_src, split_src  # noqa: E402
+from lua_modules_util import module_src, split_src, UTIL_SRC  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -57,7 +57,7 @@ WRITE = re.compile(r"(door_flags(\.\w+|\[[^\]]+\])|gate_flags\.\w+)\s*=(?!=)")
 def _():
     bad = []
     for p in sorted(LUA.rglob("*.lua")):
-        if p.name == "ai-util.lua":
+        if p.name == "ai-util.lua" or p.name.startswith("ai-util-"):   # (r9) its parts
             continue
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             code = line.split("--", 1)[0]
@@ -84,7 +84,7 @@ return env
       "changed: no repath; a building that can't be read: ok false")
 def _():
     L = LuaRuntime(unpack_returned_tuples=True)
-    U = L.execute(UTIL_ENV, (LUA / "ai-util.lua").read_text(encoding="utf-8"))
+    U = L.execute(UTIL_ENV, UTIL_SRC)
     b = L.eval("{door_flags = {forbidden = true, closed = true}}")
     changed, ok = U.lock_door(b, False, "t")
     assert changed is True and ok is True and b.door_flags.forbidden is False

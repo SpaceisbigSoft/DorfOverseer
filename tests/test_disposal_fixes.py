@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, make_test, finish, code_has  # noqa: E402
-from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import bridge_part_src, UTIL_SRC, split_src  # noqa: E402  (r6) the bridge parts split; (r9) ai-util
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -50,7 +50,8 @@ from planner_core import player_rules  # noqa: E402
 from planner_industry import _slow_game_rules, disposal_places_dump  # noqa: E402
 
 LUA_DIR = ROOT / "lua"
-UTIL = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
+UTIL = UTIL_SRC   # (r9) ai-util with its parts
+UTIL_TEXT = split_src("ai-util.lua")
 DISPOSAL = (LUA_DIR / "ai-disposal.lua").read_text(encoding="utf-8")
 CENSUS = (LUA_DIR / "ai-census.lua").read_text(encoding="utf-8")
 ACTS = bridge_part_src("ai-bridge-actions")
@@ -237,8 +238,8 @@ def _():
 
 @test("4. the census and ai-disposal both classify through ai-util forbidden_reason (no copies left)")
 def _():
-    assert re.search(r"^function forbidden_reason\(it, ctx, kind, x, y, z\)", UTIL, re.M)
-    assert re.search(r"^function cistern_tiles\(\)", UTIL, re.M)
+    assert re.search(r"^function forbidden_reason\(it, ctx, kind, x, y, z\)", UTIL_TEXT, re.M)
+    assert re.search(r"^function cistern_tiles\(\)", UTIL_TEXT, re.M)
     assert "U.forbidden_reason(it, ctx, kind, x, y, z)" in DISPOSAL
     assert "ctx.U.forbidden_reason, it, ctx, t, x, y, z" in CENSUS
     for src, name in ((CENSUS, "census"), (DISPOSAL, "disposal")):

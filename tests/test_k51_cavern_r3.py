@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, UTIL_SRC  # noqa: E402
 from harness import test, finish, skip  # noqa: E402
 
 import planner  # noqa: E402,F401
@@ -317,7 +317,7 @@ def _():
     if LuaRuntime is None:
         skip("needs the lupa package (pip install lupa)")
     lua = LuaRuntime(unpack_returned_tuples=True)
-    src = (ROOT / "lua" / "ai-util.lua").read_text(encoding="utf-8")
+    src = UTIL_SRC   # (r9) ai-util with its parts
     E = lua.execute(UTIL_GAME, src)
     t = lua.table_from
     sc = t({"flags_mtime": 1731620000, "_flags": t({})})

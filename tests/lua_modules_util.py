@@ -17,7 +17,6 @@ from __future__ import annotations
 from pathlib import Path
 
 LUA_DIR = Path(__file__).resolve().parent.parent / "lua"
-UTIL_SRC = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
 
 
 def _lua_string(s: str) -> str:
@@ -42,7 +41,7 @@ COMPANIONS = {"ai-military.lua": ["ai-military-gear"], "ai-society.lua": ["ai-so
 # (13e) a module split into a hub and parts (lua/ai-gates.lua): the hub loads
 # its parts (PARTS) from the files beside it; loaded from text in a test, it
 # takes their texts from PART_SOURCES, which the prelude sets
-SPLIT = ("ai-gates.lua", "ai-society.lua", "ai-military.lua", "ai-threats.lua", "ai-waterworks.lua")
+SPLIT = ("ai-gates.lua", "ai-society.lua", "ai-military.lua", "ai-threats.lua", "ai-waterworks.lua", "ai-util.lua")
 
 
 def split_parts(name: str) -> list[str]:
@@ -52,6 +51,20 @@ def split_parts(name: str) -> list[str]:
     listed = re.search(r"^PARTS = (\{[^}]*\})", hub, re.M)
     stem = name[:-4]
     return [f"{stem}-{p}" for p in re.findall(r"'([\w-]+)'", listed.group(1))] if listed else []
+
+
+def util_src() -> str:
+    """(r9) lua/ai-util.lua, a hub and parts now (ai-util-dig, ...), as one text
+    that loads whole from text: `local PART_SOURCES = {...}` (the parts' texts)
+    put before its first line (its line numbers stay), so wherever a test loads
+    it (the prelude, its own env) the hub takes its parts from these texts."""
+    hub = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
+    return "local PART_SOURCES = {" + ", ".join(
+        f"[{_lua_string(p)}] = {_lua_string((LUA_DIR / (p + '.lua')).read_text(encoding='utf-8'))}"
+        for p in split_parts("ai-util.lua")) + "}; " + hub
+
+
+UTIL_SRC = util_src()
 
 
 # (r6) the bridge parts split into themed files: the first file's name ->
