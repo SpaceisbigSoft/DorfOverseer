@@ -1731,8 +1731,17 @@ WEATHER_KEEP_KEY = 'ai-overseer/weather-keep-in'
 local function wk_state()
     local d = U.site_get(WEATHER_KEEP_KEY, {members = {}})
     if type(d) ~= 'table' or type(d.members) ~= 'table' then d = {members = {}} end
+    if type(d.out) ~= 'table' then d.out = {} end
     return d
 end
+
+-- (r9, A7 2) the keep-in's own guard at every report (weather_keep_in_status),
+-- as the other AI burrows have: a member thirsty or hungry let out (and not
+-- taken back for WK_OUT_TICKS), and everyone let out when no keep-in call came
+-- for WK_STALE_TICKS (the brain sends one every 100 ticks while the weather
+-- lasts; a brain that lost its memory of the spell never let them out)
+WK_STALE_TICKS = 1200
+WK_OUT_TICKS = 1200
 
 local function wk_soldier(u)
     local ok, sq = pcall(function() return u.military.squad_id end)
@@ -1761,7 +1770,7 @@ function weather_keep_in(on, dry_run, txt)
             if u and b and not dry_run then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
             n = n + 1
         end
-        if not dry_run then U.site_put(WEATHER_KEEP_KEY, {members = {}}) end
+        if not dry_run then U.site_put(WEATHER_KEEP_KEY, {members = {}, out = {}}) end
         return {ok = true, on = false, released = n, dry_run = dry_run or nil}
     end
     if not b then
@@ -1797,13 +1806,19 @@ function weather_keep_in(on, dry_run, txt)
         end
         if d.spell == nil then pcall(function() d.spell = U.abs_tick() end) end
         d.spell = d.spell or 0
+        pcall(function() d.last = U.abs_tick() end)      -- (r9) the stale guard's clock
     end
+    local now_t = tonumber(d.last)
     local added, skipped, gone = 0, 0, 0
     local live = {}
     for _, u in ipairs(report_citizens(true)) do
         local id = tostring(u.id)
         live[id] = true
-        if not d.members[id] then
+        local out_t = tonumber(d.out[id])
+        if out_t and now_t and now_t >= out_t and now_t - out_t < WK_OUT_TICKS and not d.members[id] then
+            skipped = skipped + 1            -- (r9) let out thirsty or hungry lately: not taken back yet
+        elseif not d.members[id] then
+            if out_t then d.out[id] = nil end
             local mine, other = wk_burrows(u, b.id)
             if mine or other or wk_soldier(u) then
                 skipped = skipped + 1        -- the player's own member, another burrow's, a soldier
@@ -1832,10 +1847,42 @@ function weather_keep_in(on, dry_run, txt)
             drink_short = sh and sh.drink_short}
 end
 
-function weather_keep_in_status()
+-- The keep-in's members for the report, and (r9) its guard: each member
+-- thirsty or hungry let out; everyone let out when no keep-in call came for
+-- WK_STALE_TICKS (or the shelter burrow is gone). Never raises.
+function weather_keep_in_status(txt)
+    local d = wk_state()
     local n = 0
-    for _ in pairs(wk_state().members) do n = n + 1 end
-    return {members = n}
+    for _ in pairs(d.members) do n = n + 1 end
+    if n == 0 then return {members = 0} end
+    local okn, now = pcall(hb_now)
+    if not okn or type(now) ~= 'number' then return {members = n} end
+    local b = S.find_burrow(S.SHELTER_NAME)
+    local last = tonumber(d.last) or tonumber(d.spell)
+    if not last then
+        d.last = now                -- a save from before the guard: counted from now
+        U.site_put(WEATHER_KEEP_KEY, d)
+        return {members = n}
+    end
+    if not b or now < last or now - last >= WK_STALE_TICKS then
+        local ok, r = pcall(weather_keep_in, false, false)
+        return {members = 0, released_stale = ok and r and r.released or n,
+                why = not b and 'the AI shelter burrow is gone' or 'no keep-in call for a day'}
+    end
+    local released = {}
+    for id in pairs(d.members) do
+        local u = df.unit.find(tonumber(id) or -1)
+        if u and rec_dry(u) then
+            pcall(dfhack.burrows.setAssignedUnit, b, u, false)
+            d.members[id] = nil
+            d.out[id] = now
+            n = n - 1
+            local okt, nm = pcall(function() return (txt or tostring)(dfhack.units.getReadableName(u)) end)
+            table.insert(released, okt and nm or id)
+        end
+    end
+    if #released > 0 then U.site_put(WEATHER_KEEP_KEY, d) end
+    return {members = n, released_now = #released > 0 and released or nil}
 end
 
 -- --- (0.105.48, K3) the AI's burrows emptied: the AI halted or away ----------

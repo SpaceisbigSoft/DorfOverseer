@@ -904,8 +904,18 @@ function shelter_for_keep_in(force)
                     drink_short = last.drink_short or nil, redrawn = false}
         end
     end
-    dfhack.burrows.clearTiles(b)
-    local n, info = fill_shelter(b, picked_levels())
+    -- (r9) the tiles before, put back when the redraw finds none or fails
+    -- (the shelter is the alarm's burrow too)
+    local snap = shelter_snapshot(b)
+    local okd, n, info = pcall(function()
+        dfhack.burrows.clearTiles(b)
+        return fill_shelter(b, picked_levels())
+    end)
+    if not okd or (tonumber(n) or 0) == 0 then
+        shelter_restore(b, snap)
+        if not okd then error(n, 0) end
+        return {tiles = 0, redrawn = false}
+    end
     local okc, cut_tiles = pcall(cover_cut_off, b)            -- (0.105.52)
     if okc and tonumber(cut_tiles) then n = (n or 0) + cut_tiles end
     shelter_drawn(n, info)
@@ -1017,6 +1027,49 @@ function shelter_water_short(info)
     return shelter_water_cover(info) < civs
 end
 
+-- (r9) The shelter's tiles as they are (each block and tile), to be put back
+-- when a redraw finds no tiles or fails part-way: the redraw cleared the
+-- alarm's own burrow first, and a fill of 0 (no citizen's level found) or a
+-- throw mid-fill left the alarm sending the fort to an empty or half-drawn
+-- burrow. nil when the burrow can't be read (nothing put back then).
+function shelter_snapshot(b)
+    local out = {}
+    local ok = pcall(function()
+        for _, blk in ipairs(dfhack.burrows.listBlocks(b)) do
+            for y = 0, 15 do
+                for x = 0, 15 do
+                    if dfhack.burrows.isAssignedBlockTile(b, blk, x, y) then out[#out + 1] = {blk, x, y} end
+                end
+            end
+        end
+    end)
+    return ok and out or nil
+end
+
+function shelter_restore(b, snap)
+    if type(snap) ~= 'table' then return 0 end
+    pcall(dfhack.burrows.clearTiles, b)
+    local n = 0
+    for _, t in ipairs(snap) do
+        if pcall(dfhack.burrows.setAssignedBlockTile, b, t[1], t[2], t[3], true) then n = n + 1 end
+    end
+    return n
+end
+
+-- (r9) The civilian alert's burrow is the AI shelter and covers nothing: the
+-- alarm is not sounded into it (ai-bridge-actions act_civ_alert).
+function shelter_empty()
+    local b = find_burrow(SHELTER_NAME)
+    if not b then return false end
+    local mine = false
+    pcall(function()
+        for _, id in ipairs(civ_alert().burrows) do if id == b.id then mine = true end end
+    end)
+    if not mine then return false end
+    local ok, n = pcall(function() return #dfhack.burrows.listBlocks(b) end)
+    return ok and n == 0
+end
+
 function refresh_shelter()
     local b = find_burrow(SHELTER_NAME)
     if not b then return nil end
@@ -1027,6 +1080,30 @@ function refresh_shelter()
     if not mine then return nil end
     local before = 0
     pcall(function() before = dfhack.burrows.listBlocks and #dfhack.burrows.listBlocks(b) or 0 end)
+    local snap = shelter_snapshot(b)
+    local okd, n, info, widened = pcall(refresh_fill, b)
+    if not okd or (tonumber(n) or 0) == 0 then
+        -- (r9) the old shelter put back, the redraw said (not recorded as a
+        -- fill: the next alarm draws it again)
+        local back = shelter_restore(b, snap)
+        return {ok = false, refreshed = false, tiles = back, kept_old = back > 0 or nil, blocks_before = before,
+                error = okd and 'the redraw found no inside tiles to shelter in'
+                    or 'the redraw failed: ' .. tostring(n):sub(1, 120)}
+    end
+    local okc, cut_tiles, cut_people = pcall(cover_cut_off, b)
+    if okc and (cut_people or 0) > 0 then n = n + (cut_tiles or 0) end
+    shelter_drawn(n, info)
+    local r = shelter_result({refreshed = true, tiles = n, blocks_before = before}, info)
+    if widened then r.widened_for_drink = true end
+    if okc and (cut_people or 0) > 0 then r.cut_off_covered = cut_people; r.cut_off_tiles = cut_tiles end
+    -- still none (drink near an open entrance only, or none in the fort):
+    -- the planner's thirst rule lowers the AI's alarm rather than hold them dry
+    if (tonumber(info.drink_units) or 0) <= 0 and (tonumber(info.well_tiles) or 0) <= 0 then r.dry = true end
+    return r
+end
+
+-- refresh_shelter's drawing: n, info, widened (may raise)
+function refresh_fill(b)
     dfhack.burrows.clearTiles(b)
     local only = picked_levels()
     local n, info = fill_shelter(b, only)        -- (0.105.45) the pick away from the threat
@@ -1050,16 +1127,7 @@ function refresh_shelter()
             n, info = fill_shelter(b, only)
         end
     end
-    local okc, cut_tiles, cut_people = pcall(cover_cut_off, b)
-    if okc and (cut_people or 0) > 0 then n = n + (cut_tiles or 0) end
-    shelter_drawn(n, info)
-    local r = shelter_result({refreshed = true, tiles = n, blocks_before = before}, info)
-    if widened then r.widened_for_drink = true end
-    if okc and (cut_people or 0) > 0 then r.cut_off_covered = cut_people; r.cut_off_tiles = cut_tiles end
-    -- still none (drink near an open entrance only, or none in the fort):
-    -- the planner's thirst rule lowers the AI's alarm rather than hold them dry
-    if (tonumber(info.drink_units) or 0) <= 0 and (tonumber(info.well_tiles) or 0) <= 0 then r.dry = true end
-    return r
+    return n, type(info) == 'table' and info or {}, widened
 end
 
 -- (r8) this file's locals the later parts use, handed on (each takes them

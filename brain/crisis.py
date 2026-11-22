@@ -51,6 +51,15 @@ _OLD_EXPANSION = {"polish", "stairwell", "grandeur", "location_value", "glass", 
                   "encrust", "squad_make", "war_animals", "instruments",
                   "instrument_orders", "industry", "idle"}
 
+# (r9, A7 16) a held crisis in a big fort: the one-tantrum hold only in a fort
+# of TANTRUM_QUIET_MAX_POP or fewer, and the 4-week tantrums under this share
+# of the fort (at least crisis_tantrums_clear, at most crisis_tantrums) to let
+# go. Constants, not PLANNER_CONFIG keys (tests/test_r7_d6.py freezes that
+# dict); a config key of the same name still wins.
+TANTRUM_QUIET_MAX_POP = 50
+TANTRUMS_CLEAR_SHARE = 0.05
+
+
 def deaths_recent(s: dict, memory, days: int = 28) -> int:
     now = abs_tick(s)
     return sum(1 for t in (getattr(memory, "deaths_seen", None) or [])
@@ -105,7 +114,14 @@ def crisis_reasons(s: dict, memory, cfg: dict, held: bool) -> list:
     if ghosts >= cfg["crisis_ghosts" + k]:
         out.append(f"{ghosts} ghosts")
     tan = tantrums_recent(s, memory)
-    if tan >= cfg["crisis_tantrums" + k]:
+    # (r9) held, the tantrums' clear level grows with the fort (a fort of
+    # 80-100 with a tenth unhappy rarely went 4 weeks under 4 tantrums, so
+    # crisis mode lasted for good), never past the level that starts it
+    tan_level = cfg["crisis_tantrums" + k]
+    if held:
+        tan_level = min(cfg["crisis_tantrums"],
+                        max(tan_level, round(pop * cfg.get("crisis_tantrums_clear_share", TANTRUMS_CLEAR_SHARE))))
+    if tan >= tan_level:
         out.append(f"{tan} tantrums in 4 weeks")
     # (0.105.47, R2 item 3, I7c) small forts: E (23-45 dwarves) never reached
     # 10 tantrums in 28 days (its 44 came from 4-5 dwarves, one or two at a
@@ -121,7 +137,11 @@ def crisis_reasons(s: dict, memory, cfg: dict, held: bool) -> list:
     if len(reps) >= cfg["crisis_repeat_dwarves"]:
         out.append(f"{len(reps)} dwarves threw {cfg['crisis_repeat_tantrums']}+ tantrums each in 4 weeks "
                    f"({', '.join(reps[:3])})")
-    elif held and out == [] and tantrum_seen(s, memory, cfg["crisis_tantrum_quiet_days"]):
+    elif (held and out == [] and pop <= cfg.get("crisis_tantrum_quiet_max_pop", TANTRUM_QUIET_MAX_POP)
+          and tantrum_seen(s, memory, cfg["crisis_tantrum_quiet_days"])):
+        # (r9) the one-tantrum hold is the small fort's (E: its 44 tantrums
+        # from 4-5 dwarves); a big fort with a few unhappy dwarves always has
+        # one in 14 days, and crisis mode never ended
         out.append(f"a tantrum in the last {cfg['crisis_tantrum_quiet_days']} days")
     return out
 

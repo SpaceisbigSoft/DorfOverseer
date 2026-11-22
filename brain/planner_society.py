@@ -836,8 +836,11 @@ def _shelter_supply_rule(s: dict, memory, proposals: list, notes: list) -> None:
     # day: a citizen cut off from it since (a gate shut, a stair lost) gets a
     # patch where they stand (cover_cut_off), not a whole-map path search every
     # few ticks (R3 15 Nov: B at 2 FPS)
+    # (r9) and with no fill on record (memory lost, an alarm sounded before
+    # this brain): drawn again now, not never
     if (not short and s.get("civ_alert") is True and s.get("civ_alert_shelter") == "ai"
-            and isinstance(sup.get("tick"), int) and abs_tick(s) - sup["tick"] >= TICKS_PER_DAY // 4):
+            and isinstance(abs_tick(s), int)
+            and (not isinstance(sup.get("tick"), int) or abs_tick(s) - sup["tick"] >= TICKS_PER_DAY // 4)):
         proposals.append(Proposal("shelter_supply", {"type": "refresh_shelter"},
                                   "the alarm is up: the shelter drawn again, so a citizen cut off from it since "
                                   "shelters where they stand", 2))

@@ -106,6 +106,14 @@ function act_civ_alert(a)
         -- (0.105.8) the AI's shelter over the fort as it is now, first
         -- (item4) not drawn again when drawn within the last day (a.refresh: always)
         local okr, rr = pcall(function() return reqscript('ai-society').refresh_shelter_due(a.refresh == true) end)
+        -- (r9) never sounded into an AI shelter that covers nothing (a redraw
+        -- that found no tiles and had none to put back, or one that failed):
+        -- every civilian would be sent to an empty burrow
+        local oke, empty = pcall(function() return reqscript('ai-society').shelter_empty() end)
+        if oke and empty then
+            return {ok = false, rejected = true, error = 'the AI shelter covers no tiles: the alarm not sounded',
+                    shelter = okr and rr or nil, shelter_error = (not okr) and tostring(rr):sub(1, 120) or nil}
+        end
         civ.sound_alarm()
         -- (0.105.48, K3) the alarm the AI's: booked with the fort, so the game
         -- itself lowers it when the AI is halted or away (ai-status's watcher)
@@ -654,6 +662,15 @@ function act_convict(a)
         only = whole_number(a.unit_id)
         if not only then return reject('convict: unit_id is a unit id') end
     end
+    -- (r9) disorderly: only disorderly-behaviour cases (the tantrum's own);
+    -- the last resort took the culprit's first solved case of any kind (a
+    -- production-order violation's sentence can be a beating or the hammer)
+    local disorderly = a.disorderly == true
+    local function kind_ok(c)
+        if not disorderly then return true end
+        local ok, k = pcall(function() return df.crime_type[c.mode] end)
+        return ok and k == 'DisorderlyBehavior'
+    end
     local site = df.global.plotinfo.site_id
     local list = df.global.world.crimes.all
     local busy = convict_busy(list)
@@ -661,14 +678,16 @@ function act_convict(a)
     for i = 0, #list - 1 do
         if #picked >= max then break end
         local c = list[i]
-        if convictable(c, site) and not busy[c.criminal] and (only == nil or c.criminal == only) then
+        if convictable(c, site) and not busy[c.criminal] and (only == nil or c.criminal == only)
+                and kind_ok(c) then
             table.insert(picked, c)
             busy[c.criminal] = true
         end
     end
     if #picked == 0 then
-        return {ok = false, rejected = true, error = only and 'no solved case of that culprit waits for a trial'
-                                                        or 'no solved case waits for a trial'}
+        return {ok = false, rejected = true, error = (only and 'no solved case of that culprit waits for a trial'
+                                                         or 'no solved case waits for a trial')
+                                                        .. (disorderly and ' (disorderly behaviour only)' or '')}
     end
     local out = {ok = true, convicted = {}}
     for _, cr in ipairs(picked) do
