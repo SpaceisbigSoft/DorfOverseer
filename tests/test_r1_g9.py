@@ -448,8 +448,8 @@ def _():
     import re
     for name in ("ai-water", "ai-cleanup", "ai-captives", "ai-threats", "ai-threat-facts", "ai-paper",
                  "ai-bridge-orders", "ai-bridge-report", "ai-mission-send", "ai-bridge"):
-        from lua_modules_util import bridge_part_src   # (r6) a split bridge part: its files together
-        src = bridge_part_src(name)
+        from lua_modules_util import bridge_part_src, split_src, SPLIT   # (r6) a split bridge part: its files together
+        src = split_src(name + ".lua") if name + ".lua" in SPLIT else bridge_part_src(name)   # (r9) a split hub: its parts too
         uses = [m.start() for m in re.finditer(r"cur_savegame\.save_dir", src)]
         for at in uses:
             before = src[max(0, at - 700):at]
