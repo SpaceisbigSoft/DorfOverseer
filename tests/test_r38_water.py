@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 sys.path.insert(0, str(ROOT / "brain"))
 
 try:
@@ -1142,7 +1143,7 @@ def _():
     rep = env.report_copy()
     assert rep.river_blocks is None and rep.river_seen and rep.waters is not None
     assert env.SAVED["ai-overseer/water"].river_blocks is not None
-    bsrc = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    bsrc = bridge_hub_src()
     assert "reqscript('ai-water').report_copy()" in bsrc
     # a save from before river_blocks: any ice after a river seen is a frozen river, as then
     env.SAVED["ai-overseer/water"].river_blocks = None

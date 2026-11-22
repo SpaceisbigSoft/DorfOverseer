@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 sys.path.insert(0, str(ROOT / "brain"))
 
 from backends import Reply  # noqa: E402
@@ -28,7 +29,7 @@ from tokens import TokenBank  # noqa: E402
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
 REAL = json.loads((ROOT / "tests" / "fixtures" / "real" / "enxah-0.104.52-y73-winter.json").read_text(encoding="utf-8"))
-HUB = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+HUB = bridge_hub_src()
 LAYOUTS = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")
 KINDS = re.findall(r"'(\w+)'", re.search(r"\nKINDS = \{(.*?)\}", LAYOUTS, re.S).group(1))
 RECIPES, TOOLS = {"brew_drink", "stone_blocks"}, {"autochop"}

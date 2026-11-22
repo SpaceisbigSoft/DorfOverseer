@@ -16,6 +16,7 @@ import re
 import sys
 
 from harness import ROOT, finish, test
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 try:
@@ -25,7 +26,7 @@ except ImportError:
     sys.exit(0)
 
 LUA_DIR = ROOT / "lua"
-HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+HUB = bridge_hub_src()
 # the stub DFHack of tests/test_hygiene_bridge.py, read from it (not copied)
 _hyg = (ROOT / "tests" / "test_hygiene_bridge.py").read_text(encoding="utf-8")
 HARNESS = re.search(r'HARNESS = r"""(.*?)"""', _hyg, re.S).group(1)

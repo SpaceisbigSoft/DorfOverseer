@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, code_has  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
@@ -319,7 +320,7 @@ def _():
     assert not O.world_leave_due({"in_fort": True}, 0.0, float("-inf"), T, True, True, False, None, False)
     src = py_family_src("overseer")
     assert 'bridge.act({"type": "close_world"})' in src and '"close_world": "leave DF\'s World screen"' in src
-    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    hub = bridge_hub_src()
     assert code_has(hub, "close_world = function(a)") and code_has(hub, "BATCH_NEVER.close_world = true")
     assert code_has(hub, "'close_world',") and code_has(hub, "world_open = (function()")
     import bridge

@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from snapshots import snapshot  # noqa: E402
 
 try:
@@ -582,7 +583,7 @@ def _():
 
 @test("the action is known everywhere: the bridge's handler, dry-run list, cache and label")
 def _():
-    bridge = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    bridge = bridge_hub_src()
     acts = bridge_part_src("ai-bridge-actions")
     assert "furnish_liked = act_furnish_liked" in bridge and "'house_dwarves', 'furnish_liked'" in bridge
     assert "citizens_taste = function()" in bridge and "citizens_taste = 3" in bridge

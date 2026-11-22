@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import make_test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 import fields  # noqa: E402
@@ -371,7 +372,7 @@ def _():
 
 @test("wiring: the action, its dry run, label, co-pilot ask, the section and its default, the holds")
 def _():
-    hub = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    hub = bridge_hub_src()
     assert re.search(r"^\s+place_garden_court = function\(a\)", hub, re.M)
     assert "'place_garden_court'," in hub.split("DRY_OK = {}")[1].split("}) do DRY_OK")[0]
     assert re.search(r"^\s+garden_court = function\(\) return safe\(", hub, re.M)
@@ -565,7 +566,7 @@ def _():
 
 @lua_test("bridge: place_garden_court checks its arguments before the builder is called")
 def _():
-    hub = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    hub = bridge_hub_src()
     body = re.search(r"place_garden_court = function\(a\)\n(.*?)\n    end,", hub, re.S).group(1)
     env = LUA.eval("function(body) local calls = {}\n"
                    "local env = setmetatable({reject = function(w) return {ok = false, rejected = true, error = w} end,"

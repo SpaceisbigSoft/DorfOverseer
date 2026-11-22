@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, code_has, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 from planner import Memory, plan, PLANNER_CONFIG  # noqa: E402
@@ -145,7 +146,7 @@ def _():
 @test("bridge: mark_fire_breathers marks the others_on_map threats (fire_breather, fire_how), nothing on "
       "the others; the section wired through safe(); ai-bridge-report untouched")
 def _():
-    bridge = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    bridge = bridge_hub_src()
     assert code_has(bridge, "pcall(function() return reqscript('ai-threats').mark_fire_breathers(o) end)")
     assert code_has(bridge, "others_on_map = function() return safe(function() local o = get_others_on_map()")
     assert "fire_breath" not in bridge_part_src("ai-bridge-report")

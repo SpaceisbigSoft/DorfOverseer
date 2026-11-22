@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 from planner_core import Proposal  # noqa: E402
 import planner_farms as PF  # noqa: E402
@@ -249,7 +250,7 @@ def _():
 def _():
     farms = (LUA / "ai-builder-farms.lua").read_text(encoding="utf-8")
     assert "out.seed_bans = okb and held or nil" in farms and "'ai-overseer/kitchen-seeds'" in farms
-    bridge = (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
+    bridge = bridge_hub_src()
     assert "seed_reserve = act_seed_reserve" in bridge and "'seed_reserve'" in bridge
 
 

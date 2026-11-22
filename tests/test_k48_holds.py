@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 from planner_core import EMERGENCY, STEER_PROTECTED, LIMIT_EXEMPT, Proposal  # noqa: E402
 import crisis  # noqa: E402
@@ -86,7 +87,7 @@ def planner_rules() -> set:
 
 
 def bridge_actions() -> set:
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     i = src.index("ACTIONS = {")
     body = src[i:src.index("\n}\n", i)]
     return set(re.findall(r"(?m)^    ([a-z_0-9]+)\s*=", body)) | set(re.findall(r",\s*([a-z_0-9]+)\s*=\s*act_", body))

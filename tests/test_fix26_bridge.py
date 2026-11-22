@@ -31,12 +31,23 @@ HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-report-fort", "ai-bridge-report-world",
     "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-civic",
     "ai-bridge-probes", "ai-bridge-design"]   # (D0); (r6) report and actions split by theme
+# (r8) the hub's own two files (ACTIONS...; SECTIONS and the cache), run where their lines stood in it
+HUB_PARTS = re.findall(r"'([\w-]+)'", re.search(r"^HUB_PARTS = \{(.*?)\}", HUB, re.M).group(1))
+assert HUB_PARTS == ["ai-bridge-catalog", "ai-bridge-sections"], HUB_PARTS
 BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "farms", "wells", "cistern", "surface", "rooms", "halls",
                                               "landmarks", "court",    # (D0); (0.105.47) the garden court
                                               "floorstore", "floorpiles", "floors")]   # (layout B) the floors' record; piles; the site on a floor
 # (13e) the gates' hub and parts, as the hub lists them
 GATES_PARTS = ["ai-gates-" + p for p in re.findall(r"'([\w-]+)'", re.search(
     r"^PARTS = \{([^}]*)\}", (LUA_DIR / "ai-gates.lua").read_text(encoding="utf-8"), re.M).group(1))]
+# (r8) every other module split into a hub and parts (a PARTS line in its file): the
+# bridge finds them from the files (split_modules), so does this test
+OTHER_SPLIT = {}
+for _p in sorted(LUA_DIR.glob("*.lua")):
+    _m = re.search(r"^PARTS = \{([^}]*)\}", _p.read_text(encoding="utf-8"), re.M)
+    if _m and _p.stem not in ("ai-builder", "ai-gates"):
+        OTHER_SPLIT[_p.stem] = [f"{_p.stem}-{x}" for x in re.findall(r"'([\w-]+)'", _m.group(1))]
+OTHER_PARTS = [n for _mod, _parts in OTHER_SPLIT.items() for n in [_mod] + _parts]
 VERSION = re.search(r"^BRIDGE_VERSION = '([^']+)'", HUB, re.M).group(1)
 
 # the stub DFHack of tests/test_hygiene_bridge.py, read from it (not copied)
@@ -113,7 +124,7 @@ def _():
     assert dict(H.compiled) == {"ai-bridge-orders": 1}, dict(H.compiled)
     H.rerun(M)
     assert dict(H.compiled) == {"ai-bridge-orders": 1}, dict(H.compiled)
-    assert len(lua_list(LUA.eval("function(M) local o = {} for k in pairs(M.PART_CHUNKS) do o[#o+1] = k end return o end")(M))) == len(BRIDGE_PARTS)
+    assert len(lua_list(LUA.eval("function(M) local o = {} for k in pairs(M.PART_CHUNKS) do o[#o+1] = k end return o end")(M))) == len(BRIDGE_PARTS) + len(HUB_PARTS)
 
 
 @test("hub: without file times (an old DFHack) the parts are compiled each time, as before")
@@ -122,12 +133,12 @@ def _():
     H.count_compiles(M)
     M.dfhack = LUA.eval("function(d) return setmetatable({filesystem = {}}, {__index = d}) end")(H.dfhack)
     H.rerun(M)
-    assert dict(H.compiled) == {n: 1 for n in BRIDGE_PARTS}, dict(H.compiled)
+    assert dict(H.compiled) == {n: 1 for n in BRIDGE_PARTS + HUB_PARTS}, dict(H.compiled)
 
 
 # --- 2. version marks and `modules` ------------------------------------------
 
-MARKED = BRIDGE_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-gates"] + GATES_PARTS + ["ai-military-gear", "ai-society-burrows", "ai-constructions"]
+MARKED = BRIDGE_PARTS + HUB_PARTS + OTHER_PARTS + ["ai-builder"] + BUILDER_PARTS + ["ai-gates"] + GATES_PARTS + ["ai-military-gear", "ai-society-burrows", "ai-constructions"]
 
 
 @test("marks: every part carries one version mark, the same string as BRIDGE_VERSION")
@@ -161,6 +172,9 @@ def _():
     H.scripts["ai-military-gear"] = t({"PART_VERSIONS": {"ai-military-gear": VERSION}})
     H.scripts["ai-society-burrows"] = t({"PART_VERSIONS": {"ai-society-burrows": VERSION}})
     H.scripts["ai-constructions"] = t({"PART_VERSIONS": {"ai-constructions": VERSION}})   # (0.105.30)
+    for mod, parts in OTHER_SPLIT.items():                                                 # (r8)
+        H.scripts[mod] = t({"PARTS": [p[len(mod) + 1:] for p in parts],
+                            "PART_VERSIONS": {n: VERSION for n in [mod] + parts}})
     assert lua_list(M.stale_parts()) == []
     H.scripts["ai-builder"].PART_VERSIONS["ai-builder-rooms"] = "0.0.1"
     H.scripts["ai-society-burrows"].PART_VERSIONS = None
@@ -197,9 +211,13 @@ def _():
                                  "PART_VERSIONS": {n: VERSION for n in ["ai-builder"] + BUILDER_PARTS}})
     H.scripts["ai-gates"] = t({"PARTS": [p[len("ai-gates-"):] for p in GATES_PARTS],     # (13e)
                                "PART_VERSIONS": {n: VERSION for n in ["ai-gates"] + GATES_PARTS}})
+    for mod, parts in OTHER_SPLIT.items():                                                 # (r8)
+        H.scripts[mod] = t({"PARTS": [p[len(mod) + 1:] for p in parts],
+                            "PART_VERSIONS": {n: VERSION for n in [mod] + parts}})
     r = H.rerun(M, "modules")
     assert r.ok and r.failed is None and r.stale_parts is None, dict(r)
-    assert r.parts == len(BRIDGE_PARTS) + len(BUILDER_PARTS) + len(GATES_PARTS) and r.modules == len(lua_list(M.BRIDGE_MODULES)), dict(r)
+    assert r.parts == (len(BRIDGE_PARTS) + len(HUB_PARTS) + len(BUILDER_PARTS) + len(GATES_PARTS)
+                       + sum(len(p) for p in OTHER_SPLIT.values())) and r.modules == len(lua_list(M.BRIDGE_MODULES)), dict(r)
     H.scripts["ai-society"] = None                    # the harness's reqscript errors for it
     H.scripts["ai-builder"].PARTS = LUA.table_from(["sites", "nosuch"])
     r = H.rerun(M, "modules")

@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 import test_i2_thirst as I2  # noqa: E402  (its fake fort)
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -285,7 +286,7 @@ def _():
 
 @test("bridge: thirst_way, thirst_patient, thirst_probe wired with a dry run; words and the survival class")
 def _():
-    b = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    b = bridge_hub_src()
     for name, fn in (("thirst_way", "open_way"), ("thirst_patient", "patient_help"), ("thirst_probe", "probe")):
         assert re.search(name + r" = function\(a\)[\s\S]{0,500}reqscript\('ai-thirst'\)\." + fn + r"\(", b), name
     dry = b[b.index("DRY_OK = {}"):b.index("}) do DRY_OK[name] = true end")]

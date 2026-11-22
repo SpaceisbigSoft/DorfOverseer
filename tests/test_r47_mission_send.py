@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 
 try:
@@ -806,7 +807,7 @@ def _():
 @test("the bridge: mission_way in the action table (dry run allowed), its label; ai-mission-way a bridge module; "
       "the settings comment and the watch list updated")
 def _():
-    br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    br = bridge_hub_src()
     assert "mission_way = function(a)" in br and "'mission_way'," in br and "'ai-mission-way'," in br
     import overseer
     assert "mission_way" in overseer.SHORT_WORDS

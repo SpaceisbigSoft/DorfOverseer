@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 from planner_core import Proposal  # noqa: E402
@@ -373,7 +374,7 @@ def _():
 
 @test("bridge: release_prisoners is in the action table; set_population_cap passes the baby caps on")
 def _():
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     assert "release_prisoners = act_release_prisoners" in src
     acts = bridge_part_src("ai-bridge-actions")
     assert "set_popcap(cap, strict, babies, pct)" in acts

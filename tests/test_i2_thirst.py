@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src  # noqa: E402
 
@@ -476,7 +477,7 @@ def _():
 
 @test("bridge: the thirst section (in the pulse), the module listed, thirst_unforbid with a dry run")
 def _():
-    b = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    b = bridge_hub_src()
     assert re.search(r"thirst = function\(\) return safe\(function\(\) return reqscript\('ai-thirst'\)\.report\(\)", b)
     pulse = b[b.index("PULSE_SECTIONS = {"):]
     assert "'thirst'" in pulse[:pulse.index("}")]

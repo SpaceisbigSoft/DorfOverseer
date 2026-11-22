@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src  # (13c lua-modules) the modules' sources, with lua/ai-util.lua
 from harness import test, finish, code_has  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 sys.path.insert(0, str(ROOT / "brain"))
 
 try:
@@ -377,7 +378,7 @@ def _():
 
 @test("the bridge: answer_meeting in the action table, bounded; the world section; probe_meeting and meeting_here")
 def _():
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     # (r5 p5) the loaded hub's own tables and a stand-in ai-diplomacy (tests/bridge_behaviour.py), not its text
     import bridge_behaviour as BB
     BB.wired(section="world", module="ai-diplomacy", fn="world_report", txt=True, actions=["answer_meeting"],
@@ -638,7 +639,7 @@ def _():
 
 @test("(0.105.24) the bridge: send_mission in the action table, checked, to ai-mission-send; mission_here; the switch on the Rules")
 def _():
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     assert code_has(src, "send_mission = act_send_mission,") and code_has(src, "mission_here = cmd_mission_here,")
     assert code_has(src, "reqscript('ai-mission-send').status()") and code_has(src, "send_mission = {'missions'}")
     import test_bridge_memory as tbm

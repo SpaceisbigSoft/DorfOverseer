@@ -29,6 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -319,7 +320,7 @@ def _():
 @test("6: the feeder pile and the furnish step clear the cached food_store section")
 def _():
     need_lua()
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     lua = LuaRuntime()
     start = src.index("CACHE_INVALIDATES = {")
     end = src.index("SECTION_CACHE = SECTION_CACHE or {}")

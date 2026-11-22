@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import make_test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 
 import planner_paper as PP  # noqa: E402
@@ -257,9 +258,7 @@ def _():
 # --- the bridge's wiring --------------------------------------------------------------------
 
 ORDERS = (LUA / "ai-bridge-orders.lua").read_text(encoding="utf-8")
-BRIDGE = (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
-
-
+BRIDGE = bridge_hub_src()
 @test("bridge: every paper recipe is an order recipe; the section, its cache and the module are wired")
 def _():
     for r in PP.PAPER_RECIPES:

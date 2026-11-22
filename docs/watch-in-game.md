@@ -106,7 +106,7 @@ New levels go along a 3-wide main hall on each floor (docs/building.md, "Hallway
 - **All, after the keeper's first daily check**: `logs\seen-ledger.md` exists and `logs\health-check.txt` has a `seen:` part ("seen since 0.105.32: N seen, M refused or failed, K not yet met, E section errors"); a report section that returns `{"error"}` is flagged there ("report section 'x' returns an error: ...").
 - **All, after an hour of the overseer**: `logs\forts\<fort>\seen-sections.json` holds every section of the full report with `ok` counts rising, `first_ok_bridge` the running bridge's version; a section that failed has `error`, `first_error` and its `error_text`. Pulses are not counted.
 - **The ledger against the game**: pick two actions it calls "seen" and one "refused" and find them in the journal; a Rules switch's "value now" matches the Rules tab. Is anything marked seen that the journal doesn't show? (It should never claim more than the evidence.)
-- **The versions**: every 0.105.32-0.105.45 section and action is listed under its own version; one under the wrong version or missing means its comment tag in `lua/ai-bridge.lua` misleads (fix the tag, or `NAME_VERSIONS` in brain/seen.py).
+- **The versions**: every 0.105.32-0.105.45 section and action is listed under its own version; one under the wrong version or missing means its comment tag in `lua/ai-bridge-catalog.lua` (the actions) or `lua/ai-bridge-sections.lua` (the sections) misleads (fix the tag, or `NAME_VERSIONS` in brain/seen.py).
 - **Run once by hand on the PC**: `python brain\seen.py` in `DF-AI` writes all six pages and the summary in a few seconds (the journals are read whole).
 
 
