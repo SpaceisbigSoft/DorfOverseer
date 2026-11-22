@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
 from planner import Memory, PLANNER_CONFIG, plan, TICKS_PER_DAY  # noqa: E402
@@ -213,7 +213,7 @@ def _():
     src = (ROOT / "lua" / "ai-bridge-orders.lua").read_text(encoding="utf-8")
     assert "leather_waterskin = {job = 'MakeFlask', material_category = {'leather'}}" in src
     assert "glass_vial = {job = 'MakeFlask', material = 'GLASS_GREEN'}" in src
-    gsrc = (ROOT / "lua" / "ai-military-gear.lua").read_text(encoding="utf-8")
+    gsrc = split_src("ai-military-gear.lua")   # (r9 t3) the hub and its parts
     assert "function flask_report()" in gsrc and "pos.equipment.flask" in gsrc
 
 
