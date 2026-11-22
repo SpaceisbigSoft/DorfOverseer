@@ -479,5 +479,21 @@ def _():
     assert props and props[0].action["accept"] is False and props[0].action["ids"] == [2], props
 
 
+@test("v12: a vampire's waiting petition holds its kind at ask (DF's order takes a whole kind)")
+def _():
+    m = Memory()
+    props, notes = run(V._petition_rules, fort(pending=[pet(2, "Citizenship", days=5, vampire=True)]), m)
+    for p in props:
+        if p.action.get("type") == "petition_orders":
+            assert p.action["orders"].get("citizenship") != 1, p.action
+    assert any("whole kind" in n for n in notes), notes
+    # an order already at accept is put back to ask while the vampire waits
+    s = fort(pending=[pet(3, days=5, vampire=True)],
+             orders=dict({k: 0 for k in V.PETITION_KINDS}, performer=1, scholar=1, sanctuary=1, citizenship=1))
+    props, _ = run(V._petition_rules, s, m)
+    kinds = {V.petition_kind(e) for e in s["petitions"]["pending"]}
+    assert props and all(props[0].action["orders"].get(k) == 0 for k in kinds), props
+
+
 if __name__ == "__main__":
     finish()

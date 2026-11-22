@@ -318,5 +318,41 @@ def _():
     assert "messenger = messenger," in rep and "messenger_status(" in rep
 
 
+# ---- (r10 v12) the verifier's cases ---------------------------------------------------------------
+
+@test("v12: an ELECTED messenger's vacant slot is not filled")
+def _():
+    env = world("W.FORT.positions.own:insert('#', W.pos{id = 7, code = 'MESSENGER', appointed_by = W.ivec({1}),"
+                " number = -1, flags = {ELECTED = true}})\n"
+                "W.FORT.positions.assignments:insert('#', {id = 2, position_id = 7, histfig = -1, flags = {active = true},"
+                " squad_id = -1})\nW.FORT.positions.next_assignment_id = 3")
+    before = snapshot(env)
+    a = env.appoint("MESSENGER", False, None)
+    assert a.ok is False and "not the fort's to fill" in str(a.error), dict(a)
+    assert snapshot(env) == before
+
+
+@test("v12: another post with the messenger's duty is never filled in its place")
+def _():
+    env = world("W.FORT.positions.own:insert('#', W.pos{id = 9, code = 'DIPLOMAT', appointed_by = W.ivec({1}),"
+                " flags = {ELECTED = true}, responsibilities = {[W.DUTY] = true}})\n"
+                "W.FORT.positions.assignments:insert('#', {id = 2, position_id = 9, histfig = -1, flags = {active = true},"
+                " squad_id = -1})\nW.FORT.positions.next_assignment_id = 3\n" + POST)
+    a = env.appoint("MESSENGER", False, None)
+    fa = env.W.FORT.positions.assignments
+    for i in range(fa.n):
+        if fa[i].position_id == 9:
+            assert fa[i].histfig == -1, "the DIPLOMAT slot was filled"
+    if a.ok:
+        assert any(fa[i].position_id == 7 and fa[i].histfig != -1 for i in range(fa.n)), dict(a)
+
+
+@test("v12: population needed but neither the count nor DF's flag readable: wait")
+def _():
+    env = world("")
+    assert env.pop_gate(20, None, None) is not None
+    assert env.pop_gate(0, None, None) is None and env.pop_gate(20, 25, True) is None
+
+
 if __name__ == "__main__":
     finish()

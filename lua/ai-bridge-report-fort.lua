@@ -795,7 +795,7 @@ PETITION_BIND = PETITION_BIND or nil       -- {via = 'names'|'symbols'|nil, why 
 function petition_orders_bind()
     if PETITION_BIND then return PETITION_BIND.via, PETITION_BIND.why end
     local I = dfhack.internal
-    local via, why
+    local via, why, bound_now
     local ok, err = pcall(function()
         if type(I) ~= 'table' or not I.getAddress or not I.setAddress then why = 'no dfhack.internal'; return end
         local todo, mine = {}, 0
@@ -807,7 +807,16 @@ function petition_orders_bind()
         if #todo == 0 then via = (mine > 0) and 'symbols' or 'names'; return end
         local anchor = I.getAddress(PETITION_ORDER_ANCHOR)
         if not anchor then why = PETITION_ORDER_ANCHOR .. ' has no address'; return end
-        local addrs, seen = {}, {}
+        -- (r10 v12) no two orders on one byte, none on the anchor itself, the
+        -- ones already bound included
+        local addrs, seen = {}, {[anchor] = true}
+        for _, k in ipairs(PETITION_ORDERS) do
+            local b = I.getAddress(petition_order_name(k))
+            if b ~= nil then
+                if seen[b] then why = 'two petition orders share an address'; return end
+                seen[b] = true
+            end
+        end
         for _, k in ipairs(todo) do
             local a = I.getAddress(PETITION_ORDER_SYMBOLS[k])
             if not a then why = 'no address for ' .. PETITION_ORDER_SYMBOLS[k]; return end
@@ -815,6 +824,7 @@ function petition_orders_bind()
             if seen[a] then why = 'two petition orders share an address'; return end
             seen[a], addrs[k] = true, a
         end
+        bound_now = addrs                       -- (r10 v12) unbound again if anything below raises
         for k, a in pairs(addrs) do I.setAddress(petition_order_name(k), a) end
         for k in pairs(addrs) do
             local okv, v = pcall(function() return df.global[petition_order_name(k)] end)
@@ -826,7 +836,10 @@ function petition_orders_bind()
         end
         via = 'symbols'
     end)
-    if not ok then via, why = nil, tostring(err) end
+    if not ok then
+        via, why = nil, tostring(err)
+        for k2 in pairs(bound_now or {}) do pcall(I.setAddress, petition_order_name(k2), 0) end
+    end
     PETITION_BIND = {via = via, why = why}
     return via, why
 end

@@ -312,6 +312,9 @@ function pop_gate(req, pop, met)
         return 'post listed but not open yet: population ' .. req .. ' reached (now ' .. tostring(pop)
                .. ') and DF has not opened it (it re-checks its posts only at some events)'
     end
+    if pop == nil and met == nil then           -- (r10 v12) nothing known: wait, don't guess
+        return 'post needs population ' .. req .. ' and neither the count nor DF\'s flag could be read'
+    end
     return nil
 end
 
@@ -571,16 +574,23 @@ function appoint(code, dry_run, txt)
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
     local assignment, a_idx, pos
     local added_slot = false                    -- (r2 h9) a messenger's slot made for this appointment
+    local msg_pos_id                            -- (r10 v12) the post messenger_status judged
     if code == 'MESSENGER' then                 -- (r10 p2) only into a post DF has given and opened
         local okst, st = pcall(messenger_status, txt, ent)
-        if okst and type(st) == 'table' then
-            if st.post ~= 'fort' then
-                return {ok = false, rejected = true, why = st.why,
-                        error = 'the fort has no MESSENGER office yet: ' .. tostring(st.why)}
-            end
-            local gate = (not st.held_by) and pop_gate(st.requires_population, st.population, st.pop_met)
-            if gate then return {ok = false, rejected = true, error = gate, why = gate} end
+        if not okst or type(st) ~= 'table' then
+            return {ok = false, rejected = true, error = 'the messenger post could not be read: ' .. tostring(st)}
         end
+        if st.post ~= 'fort' then
+            return {ok = false, rejected = true, why = st.why,
+                    error = 'the fort has no MESSENGER office yet: ' .. tostring(st.why)}
+        end
+        local gate = (not st.held_by) and pop_gate(st.requires_population, st.population, st.pop_met)
+        if gate then return {ok = false, rejected = true, error = gate, why = gate} end
+        if st.appointable == false then        -- (r10 v12) elected, inherited, appointer away...
+            return {ok = false, rejected = true, why = st.why,
+                    error = "the messenger is not the fort's to fill (" .. tostring(st.why) .. ')'}
+        end
+        msg_pos_id = st.position_id
     end
     if MILITARY_OFFICES[code] then              -- (0.104.168)
         local r = military_slot(ent, code)
@@ -590,7 +600,11 @@ function appoint(code, dry_run, txt)
         for idx, a in ipairs(ent.positions.assignments) do
             local p = position_of(ent, a.position_id)
             -- (r10 p2) the messenger's post found by its duty too
-            if p and (p.code == code or (code == 'MESSENGER' and is_messenger(p))) then
+            -- (r10 v12) the messenger: only the very post messenger_status judged
+            local match = p and ((code == 'MESSENGER' and msg_pos_id ~= nil and p.id == msg_pos_id)
+                or (code == 'MESSENGER' and msg_pos_id == nil and is_messenger(p))
+                or (code ~= 'MESSENGER' and p.code == code))
+            if match then
                 if a.histfig ~= -1 then
                     return {ok = false, rejected = true, error = code .. ' is already held'}
                 end

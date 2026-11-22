@@ -167,6 +167,15 @@ def _petition_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
     # accepts, put back to ask (DF would go on taking visitors in by them)
     want = (petition_orders_wanted(s, cfg) if welcome
             else {k: 0 for k, v in _d(po.get("set")).items() if v == 1 and k in PETITION_KINDS})
+    # (r10 v12) DF's orders take a whole kind: while a vampire's petition of a
+    # kind waits, that kind stays at ask (0) until it has been declined
+    vamp_kinds = sorted({petition_kind(e) for e in pending if e.get("vampire")} & set(PETITION_KINDS))
+    for k in vamp_kinds:
+        if want.get(k) == 1 or orders.get(k) == 1:
+            want[k] = 0
+    if vamp_kinds:
+        notes.append("a vampire's petition waits (" + ", ".join(k.replace("_", " ") for k in vamp_kinds)
+                     + "): DF's standing order takes a whole kind, so that kind stays at ask until it is declined")
     now = abs_tick(s)
     held = sorted(k for k, t in _d(po.get("yours")).items()
                   if isinstance(t, int) and 0 <= now - t < cfg["r10p1_orders_yours_days"] * TICKS_PER_DAY)
@@ -242,7 +251,8 @@ def _citizenship_notes(s: dict, cfg: dict, pending: list, notes: list, memory=No
     else:
         why = ("a vampire" if wanted else "this fort isn't taking citizens now (closed, at its population target, "
                                           "or the Rules keep visitors out)")
-        notes.append(f"{len(here)} citizenship petition(s) wait{tail}: {why}; they are left waiting")
+        notes.append(f"{len(here)} citizenship petition(s) wait{tail}: {why}; the AI declines them in time "
+                     "(_citizenship_rule)")
 
 
 def _citizenship_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
