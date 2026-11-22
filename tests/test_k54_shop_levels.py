@@ -410,7 +410,6 @@ def _():
     src = py_family_src("overseer")
     assert "r = bridge.act(shop_level_action(p.action, state))" in src
     assert "from planner_shopslots import shop_level_action" in src
-    from py_parts import py_family_src
     psrc = py_family_src("planner")     # (r7 d2) planner.py and its parts
     assert "shop_level_action" not in psrc and "planner_shopslots" not in psrc
 
