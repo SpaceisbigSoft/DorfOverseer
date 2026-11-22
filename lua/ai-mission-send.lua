@@ -20,7 +20,7 @@
 -- site invasions run end to end to "mission set up" (result 'sent', below);
 -- only rescue and recover_artifact still stop at the site.
 --
--- It runs only when the Rules switch `send_messenger` is on (off by default),
+-- It runs only when the Rules switch `send_messenger` is on (on by default from r10 p3),
 -- the player isn't using the game (the camera director's player_busy), the
 -- messenger is home and the screen to open (the World button) and the goal
 -- button (Diplomacy) were shown to the AI once (probe_missions.py --here).

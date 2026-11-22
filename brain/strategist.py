@@ -353,12 +353,13 @@ def shown_rules(proposals: list | None, recent_decisions: list | None) -> set:
 
 # (0.105.39) Rules keys named only once the player changes them: the review
 # can't send a mission (nor raise the rule), and the line stays as it was
-QUIET_AT_DEFAULT = {"missions": "rescue", "send_missions": False,
+QUIET_AT_DEFAULT = {"missions": "all", "send_missions": True,     # (r10 p3) the new defaults
                     "world_cleanup": "safe",     # (0.105.40) the review has no cleanup to steer
                     "peace": "ai",               # (0.105.41, item 8) nor a peace proposal to answer
                     "hunt": "ai",                # (0.105.45) hunting: said only once the player changes it
                     "floor_layout": "hallway",   # (layout B) how new levels are placed: likewise
-                    "raid_policy": "off"}        # (0.105.47, J17) the raid policy: likewise ((0.105.48) off by default)
+                    "raid_policy": "ai",         # (0.105.47, J17) the raid policy: likewise ((r10 p3) 'ai' by default)
+                    "send_messenger": True}      # (r10 p3) on by default: said only once the player turns it off
 
 # (v35 fix) three-state Rules switches: "ai" (the AI decides), "always", "never"
 THREE_STATE = {"open_caverns": {"ai": "AI decides", "always": "always", "never": "never"}}

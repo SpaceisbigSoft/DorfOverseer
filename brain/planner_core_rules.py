@@ -64,13 +64,15 @@ def player_rules(s: dict) -> dict:
             "peace": st.get("peace") if st.get("peace") in ("ai", "accept", "refuse") else "ai",
             # (0.105.0, 13b) a messenger appointed and sent to make contact with sites not in contact
             "make_contact": st.get("make_contact") is not False,
-            # (0.105.24, 13b) the AI drives DF's World screen to send the messenger: on only when the player says so
-            "send_messenger": st.get("send_messenger") is True,
+            # (0.105.24, 13b) the AI drives DF's World screen to send the messenger. (r10 p3, the
+            # player 22 Nov) on unless the player says otherwise: every fort makes initial contact
+            "send_messenger": st.get("send_messenger") is not False,
             # (0.105.39, 13b) missions on the world map: off / rescue (and stolen artifacts) /
             # explore (and those) / all (raids, pillage, tribute, conquest too: they can start a war)
-            "missions": st.get("missions") if st.get("missions") in ("off", "rescue", "explore", "all") else "rescue",
-            # (0.105.39) the AI sends them itself by DF's World screen: on only when the player says so
-            "send_missions": st.get("send_missions") is True,
+            # (r10 p3) 'all' by default: the raid policy (the sliders) decides the raids
+            "missions": st.get("missions") if st.get("missions") in ("off", "rescue", "explore", "all") else "all",
+            # (0.105.39) the AI sends them itself by DF's World screen. (r10 p3) on unless the player says otherwise
+            "send_missions": st.get("send_missions") is not False,
             # (0.105.24) locations shut to visitors a while after a heist / when the mayor is swamped by visitors
             "heist_lockout": st.get("heist_lockout") is not False,
             "shut_to_visitors": st.get("shut_to_visitors") is not False,
@@ -119,9 +121,10 @@ def player_rules(s: dict) -> dict:
             # wounded visitors) / ai (the default: great dangers too) (brain/planner_hunt.py)
             "hunt": st.get("hunt") if st.get("hunt") in ("off", "small", "ai") else "ai",
             # (0.105.47, J17) raids inside missions 'all': by the sliders, or forced (brain/planner_raids.py)
-            # (0.105.48, K9) off unless the settings say otherwise (the audit: off until watched live)
+            # (0.105.48, K9) off unless the settings say otherwise (the audit: off until watched live).
+            # (r10 p3, the player 22 Nov) 'ai' by default: the fort's character decides; 'off' never
             "raid_policy": st.get("raid_policy") if st.get("raid_policy") in ("ai", "aggressive", "reactive", "off")
-            else "off",
+            else "ai",
             # (0.105.46, I4) a fallen fort DF sends no migrants to: the AI calls a wave
             # (DFHack's force Migrants; brain/planner_recovery.py): off only when the settings say so
             "call_migrants": st.get("call_migrants") is not False,

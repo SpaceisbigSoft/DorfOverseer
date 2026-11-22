@@ -185,11 +185,16 @@ hall, basic workshops and stockpiles are always built when missing.
   refuse a large one, but the amount the AI read was a topic index, not a
   sum, so since 0.105.48 it refuses every tribute until the sum can be read.
 - **Appoint a messenger, make contact** (on, 0.105.0): a Messenger is
-  appointed, and the nearest site not in contact is named for Make contact.
-- **Send the messenger by the World screen** (off, 0.105.24): the AI drives DF's
-  World screen to send the messenger itself. It stops at the first step
-  nobody has recorded yet, which today is step 4 of 6, logs what it saw and
-  shuts the screen. Off, the AI only names the site for you to send.
+  appointed and sent to make contact. From r10 every fort, the Hermit hold
+  too, first makes initial contact with up to 4 of its nearest towns, forts
+  and hamlets (one at a time, at least two weeks apart). After that the fort's
+  character decides: a welcoming or trading fort (Outsiders 30+, Trade 50+)
+  meets a new neighbour every 8 weeks, most forts one a year, a closed hold
+  (Outsiders -100 or less) only when the situation calls for it (a war to
+  end, an attack while short of friends, a trade it needs). Off: none.
+- **Send the messenger by the World screen** (on from r10, 0.105.24): the AI
+  drives DF's World screen to send the messenger itself, never under a
+  window of yours. Off, the AI only names the site for you to send.
 - **Shut to visitors a while after a theft** (on, 0.105.24): after an
   artifact heist, or a visitor killing a citizen, the tavern, temples,
   library and guildhalls are shut to visitors for 168 days. Residents are
@@ -326,11 +331,12 @@ too. The AI makes and sends squads itself (see [military.md](military.md)).
   may send squads on (see [military.md](military.md#missions-13b)). Each
   choice takes in the ones before it.
   - *none* (`off`): no missions (the messenger has its own switches).
-  - *rescue and recover* (`rescue`, the default): rescue a kidnapped
-    citizen, recover a stolen artifact.
+  - *rescue and recover* (`rescue`): rescue a kidnapped citizen, recover a
+    stolen artifact.
   - *rescue, recover, explore* (`explore`): those, and exploring ruins.
-  - *all, raids too (war)* (`all`): those, and raids, pillage, demanding
-    tribute and conquest. These can start a war.
+  - *all, raids too (war)* (`all`, the default from r10): those, and raids,
+    pillage, demanding tribute and conquest, as the Raids choice allows.
+    These can start a war.
   A reserve of soldiers always stays home (more with lower Militarism), one
   mission at a time, never with a threat near or during a siege.
 - **Peace offered** (`peace`, Army tab, 0.105.41): what the AI answers when a
@@ -342,7 +348,7 @@ too. The AI makes and sends squads itself (see [military.md](military.md)).
   the fort attacked gets peace only when Caution beats Militarism by 100.
   *always accept* (`accept`), *always refuse* (`refuse`). Until a diplomat
   comes the AI's notes say what it would answer; the defences stay as they are.
-- **Send missions by the World screen** (`send_missions`, off,
+- **Send missions by the World screen** (`send_missions`, on from r10,
   0.105.39): the AI drives DF's World screen to send the mission itself, as
   with the messenger, for each goal whose button you have shown it once. It
   stops at the first step nobody has recorded yet, logs what it saw and shuts
@@ -360,7 +366,9 @@ too. The AI makes and sends squads itself (see [military.md](military.md)).
   and a hostile camp or fort (or bandits) within 8 world tiles, or a new
   one within 16. *never* (`off`): no raid, pillage, tribute or conquest.
   One attack a season at most, a reserve always home. Every preset sends
-  missions with raids at `all` and leaves this on *AI decides*.
+  missions with raids at `all` and leaves this on *AI decides* (the default
+  again from r10). An aggressive fort waits for its initial contact before
+  raiding a civ that never attacked it.
 
 ### Forbidden items and junk (beside Military, 0.105.27)
 

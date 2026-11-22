@@ -248,7 +248,7 @@ def _():
     assert snapshot(env) == before                 # the reads write nothing either
 
 
-@test("present: the planner proposes the appointment (Make contact on), the sending switch stays off by default")
+@test("present: the planner proposes the appointment (Make contact on); (r10 p3) the sending switches on by default")
 def _():
     s = {"settings": {"make_contact": True, "appoint_nobles": True},
          "dwarves": {"total": 40}, "stocks": {"drink": 2000, "prepared_meals": 2000},
@@ -260,7 +260,8 @@ def _():
     planner_world._messenger_rule(s, CFG, props, notes)
     assert props and props[0].action == {"type": "appoint", "office": "MESSENGER"}, (props, notes)
     st = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert re.search(r"^\s*send_messenger = false,", st, re.M) and re.search(r"^\s*send_missions = false,", st, re.M)
+    # (r10 p3, the player 22 Nov: every fort makes initial contact) on by default now
+    assert re.search(r"^\s*send_messenger = true,", st, re.M) and re.search(r"^\s*send_missions = true,", st, re.M)
 
 
 # ---- held: nothing --------------------------------------------------------------------------------

@@ -3,7 +3,9 @@ by default until watched live, and the certain bugs fixed so they're right
 when turned back on.
 
   * the defaults: raid_policy 'off', send_missions and send_messenger off; no
-    built-in preset turns them on;
+    built-in preset turns them on. (r10 p3, the player 22 Nov 00:51: initial
+    contact for every fort, then the AI decides, raids included) now 'ai',
+    on and on by default; still no built-in preset names them;
   * raids: only sites people live in (never a monument), never the civ the
     messenger is making contact with; retaliation only while still at war
     and never against a trade partner; 0 residents read as unknown;
@@ -57,20 +59,22 @@ def lst(t):
 
 # --- the defaults ------------------------------------------------------------------------
 
-@test("defaults: raid_policy off, send_missions and send_messenger off (the brain's fallbacks too)")
+@test("defaults (r10 p3): raid_policy ai, send_missions and send_messenger on (the brain's fallbacks too)")
 def _():
     r = player_rules({"settings": {}})
-    assert r["raid_policy"] == "off" and r["send_missions"] is False and r["send_messenger"] is False, r
-    assert PR.raid_stance({"settings": {}})[0] == "off"
+    assert r["raid_policy"] == "ai" and r["send_missions"] is True and r["send_messenger"] is True, r
+    assert PR.raid_stance({"settings": {}})[0] == "reactive"          # Militarism 0: strikes back only
+    off = player_rules({"settings": {"raid_policy": "off", "send_missions": False, "send_messenger": False}})
+    assert off["raid_policy"] == "off" and off["send_missions"] is False and off["send_messenger"] is False
     src = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-    assert code_has(src, "raid_policy = 'off',") and code_has(src, "send_missions = false,") \
-        and code_has(src, "send_messenger = false,")
+    assert code_has(src, "raid_policy = 'ai',") and code_has(src, "send_missions = true,") \
+        and code_has(src, "send_messenger = true,")
     acts = bridge_part_src("ai-bridge-actions")
     i = acts.index("function send_raid_policy()")
     assert "return 'off'" in acts[i:i + 400]
 
 
-@test("presets: no built-in preset names send_messenger, send_missions or raid_policy (they never turn them on)")
+@test("presets: no built-in preset names send_messenger, send_missions or raid_policy (the fort's own values stay)")
 def _():
     src = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
     a = src.index("BUILTIN_PRESET_RULES = {")
@@ -116,7 +120,12 @@ def _():
     s3 = TR.fort(rows, militarism=150)
     s3["missions"]["sites"] = {"nearest": [{"id": 4, "owner_civ": 43, "relation": "NoContact", "dist": 9}]}
     s3["offices"] = {"offices": {"MESSENGER": {"held": ["Urist"], "vacant": 0}}}
-    assert TR.sent(TR.rule(s3, TR.Mem())[0])[0].action["site_id"] == 5
+    # (r10 p3) while initial contact is still to make the aggressive fort raids nobody
+    # who didn't attack it; once it is done the site named is still never raided
+    assert not TR.sent(TR.rule(s3, TR.Mem())[0])
+    m3 = TR.Mem()
+    m3.world_seen = {"contacts": {"sites": {}, "initial_done": TR.NOW - TICKS_PER_DAY}}
+    assert TR.sent(TR.rule(s3, m3)[0])[0].action["site_id"] == 5
     # without any of these the nearer one goes (the test can fail)
     assert TR.sent(TR.rule(TR.fort(rows, militarism=150), TR.Mem())[0])[0].action["site_id"] == 4
 

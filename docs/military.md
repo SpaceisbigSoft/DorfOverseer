@@ -169,8 +169,8 @@ The military block, on the Army tab beside Rules (0.105.33; all of it is in [con
 | Invaders caught in cages | keep them caged (release and put to death only ask you) |
 | Lock werebeasts in at the full moon | on |
 | Seal a cavern a beast is in | on |
-| Missions to send out (`missions`, 0.105.39) | rescue and recover (or: none, rescue, recover, explore, all, raids too) |
-| Send missions by the World screen (`send_missions`, 0.105.39) | off |
+| Missions to send out (`missions`, 0.105.39) | all, raids too (from r10; or: none, rescue and recover, rescue, recover, explore) |
+| Send missions by the World screen (`send_missions`, 0.105.39) | on (from r10) |
 | Raids (`raid_policy`, 0.105.47) | AI decides by the sliders (or: aggressive, strike back only, never) |
 
 ## Missions (13b)

@@ -82,6 +82,8 @@ def note_world(s: dict, memory) -> None:
     if not isinstance(getattr(memory, "world_seen", None), dict):
         memory.world_seen = {}
     note_grudges(s, memory)
+    from planner_contact import note_contacts      # (r10 p3) the contact book: per site sent, made, failed
+    note_contacts(s, memory)
     from planner_peace import note_attacks          # (0.105.41, item 8) the civs the fort attacked
     note_attacks(s, memory)
     memory.world_seen["export"] = export_wishes(s, memory)
@@ -359,8 +361,11 @@ def _messenger_out(ms: dict) -> list:
 
 def _contact_site(s: dict, memory) -> dict | None:
     """The site to name for Make contact now, or None: the switch on, the
-    messenger home (no Diplomacy mission out), a site not in contact, no
-    threat or siege near, and not named in the last season."""
+    messenger home (no Diplomacy mission out), no threat, siege, alarm,
+    crisis or World screen of the player's, and the site the contact plan
+    picks (brain/planner_contact.py, r10 p3: initial contact first, then by
+    the fort's character and the situation), not named within its gap.
+    The site comes back with `_why`, `_kind` and `_gap` (ticks)."""
     if not player_rules(s)["make_contact"]:
         return None
     ms = _d(s.get("missions"))
@@ -369,23 +374,27 @@ def _contact_site(s: dict, memory) -> dict | None:
     o = _d(_d(_d(s.get("offices")).get("offices")).get("MESSENGER"))
     if not _l(o.get("held")):
         return None
+    from planner_contact import contact_hold, contact_plan
+    if reachable_threats(s, _traits(s), PLANNER_CONFIG) or contact_hold(s, memory, PLANNER_CONFIG):
+        return None
     # not in contact: DF's NoContact, or no diplomacy state at all (never met);
     # (0.105.47) never a site DF said is INACCESSIBLE (remembered) or on
-    # another landmass (the report's `inaccessible`)
-    from planner_missions import unreachable_sites, unavailable_sites
-    gone = unreachable_sites(s, memory) | unavailable_sites(s, "make_contact", memory)    # (r9) DF's NO_CIV & co too
-    sites = [x for x in _l(_d(ms.get("sites")).get("nearest"))
-             if isinstance(x, dict) and x.get("relation") in ("NoContact", "unknown")
-             and not x.get("inaccessible") and x.get("id") not in gone]
-    if not sites:
-        return None
-    if reachable_threats(s, _traits(s), PLANNER_CONFIG) or any(_d(e).get("active") for e in _l(_world(s).get("sieges"))):
+    # another landmass (the report's `inaccessible`); (r9) DF's NO_CIV & co;
+    # (r10 p3) only sites people live in, and the book's failures never again
+    plan_ = contact_plan(s, memory, PLANNER_CONFIG)
+    site = plan_.get("site")
+    if site is None:
         return None
     now = abs_tick(s)
+    gap = int(plan_.get("gap_days") or 14) * TICKS_PER_DAY
     said = _seen(memory).get("contact_said")
-    if isinstance(said, int) and 0 < now - said < TICKS_PER_YEAR // 4:     # (named this cycle: said)
+    if isinstance(said, int) and 0 < now - said < gap:     # (named this cycle: said)
         return None
-    return min(sites, key=lambda x: (int(x.get("dist") or 999), int(x.get("id") or 0)))
+    from planner_contact import last_sent_tick
+    sent = last_sent_tick(memory)                           # (r10 p3) the book's last send paces it too
+    if sent is not None and 0 <= now - sent < gap:
+        return None
+    return dict(site, _why=plan_.get("why"), _kind=plan_.get("kind"), _gap=gap)
 
 
 def _send_status(s: dict) -> dict:
@@ -430,10 +439,15 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     o = _d(_d(_d(s.get("offices")).get("offices")).get("MESSENGER"))
     if not _l(o.get("held")):
         return
-    if reachable_threats(s, _traits(s), cfg) or any(_d(e).get("active") for e in _l(_world(s).get("sieges"))):
+    from planner_contact import contact_book, contact_hold, contact_plan
+    book = contact_book(memory)
+    if book.get("initial_done") is not None and book.get("initial_done") == abs_tick(s) and book.get("initial_words"):
+        notes.append(str(book["initial_words"]))            # (r10 p3) said the cycle it happened
+    hold = ("a threat is near" if reachable_threats(s, _traits(s), cfg) else "") or contact_hold(s, memory, cfg)   # (r10 p3) a threat, a siege, the alarm, a crisis, the player's World screen
+    if hold:
         if any(isinstance(x, dict) and x.get("relation") in ("NoContact", "unknown")
                for x in _l(_d(ms.get("sites")).get("nearest"))):
-            notes.append("a site waits for Make contact, but not while a threat is near")
+            notes.append(f"a site waits for Make contact, but not while {hold}")
         return
     # (0.105.39 review) the messenger's own last run (the sender keeps one per
     # goal: a rescue's run never hides it); an older bridge's single `last`
@@ -470,8 +484,13 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         return
     site = _contact_site(s, memory)
     if site is None:
+        # (r10 p3) why the messenger stays home (the character, nothing to do)
+        held = contact_plan(s, memory, cfg).get("held")
+        if held:
+            notes.append(f"contact: {held}")
         return
     name = site.get("name") or "site " + str(site.get("id"))
+    why = f": {site['_why']}" if site.get("_why") else ""
     if rules["send_messenger"] and send:
         known = set(str(b) for b in _l(send.get("buttons")))
         if "World" not in known:
@@ -482,8 +501,8 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
                                  "on Diplomacy: --here Diplomacy")
                               + "): the messenger stays home meanwhile and the site is named again next season")
             return
-        if last.get("result") == "sent" and recent and now - last_tick < TICKS_PER_YEAR // 4:
-            return          # sent this season: its controller shows in `missions` soon
+        if last.get("result") == "sent" and recent and now - last_tick < int(site.get("_gap") or TICKS_PER_YEAR // 4):
+            return          # sent within the plan's gap: its controller shows in `missions` soon
         # (0.105.47, live 17:09) the messenger must be able to walk off the map
         from planner_missions import way_out_gate
         if not way_out_gate(s, cfg, 1 if _d(ms.get("way_out")).get("messenger_blocked") else 0,
@@ -491,13 +510,13 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
             return
         proposals.append(Proposal("contact", {"type": "send_mission", "goal": "make_contact", "site_id": site.get("id")},
                                   f"send the messenger ({_l(o.get('held'))[0]}) to make contact with {name} "
-                                  f"({site.get('dist')} tiles away, not in contact), by the World screen", 7))
+                                  f"({site.get('dist')} tiles away, not in contact), by the World screen{why}", 7))
         return
     # (0.105.35) kept: DFHack can't make a mission. (0.105.47) The World
-    # screen's steps were all recorded on 14 Nov; the switch stays off by
-    # default until a live run has been watched
+    # screen's steps were all recorded on 14 Nov. (r10 p3) the switch is on by
+    # default: this is the player's own "off"
     ask_player(notes, f"Make contact (13b): the messenger ({_l(o.get('held'))[0]}) could go to "
-                      f"{name} ({site.get('dist')} tiles away), a site not in contact. DFHack can't make the "
+                      f"{name} ({site.get('dist')} tiles away), a site not in contact{why}. DFHack can't make the "
                       "mission itself; the AI sends it by DF's World screen (every step recorded) once the Rules "
                       "tab's \"Send the messenger by the World screen\" is on: until then the messenger stays home "
                       "and the site is named again next season")

@@ -1,6 +1,7 @@
 """(0.105.39, G4) The Rules switches for Phase 13b's missions: `missions`
-(off / rescue / explore / all, default rescue) and `send_missions` (default
-off) in lua/ai-overseer-settings.lua (defaults, sanitize, for_ai, old saves,
+(off / rescue / explore / all; (r10 p3, the player 22 Nov) default all, the
+raid policy deciding the raids) and `send_missions` ((r10 p3) default on) in
+lua/ai-overseer-settings.lua (defaults, sanitize, for_ai, old saves,
 set_rules), the Army tab's rows in the window, and the docs; in a real Lua
 engine (lupa, Lua 5.3).
 
@@ -51,27 +52,29 @@ def _():
     assert len(S.MISSION_HELP) <= 110
 
 
-@test("defaults: rescue, and send_missions off; for_ai hands both to the brain")
+@test("defaults (r10 p3): all, and send_missions on; for_ai hands both to the brain")
 def _():
     S = TP.H.settings()
     d = S.defaults()
-    assert d.missions == "rescue" and d.send_missions is False
+    assert d.missions == "all" and d.send_missions is True
     a = S.for_ai(d)
-    assert a.missions == "rescue" and a.send_missions is False
+    assert a.missions == "all" and a.send_missions is True
     s = S.load_settings()                 # nothing saved: the defaults
-    assert s.missions == "rescue" and s.send_missions is False
+    assert s.missions == "all" and s.send_missions is True
 
 
-@test("sanitize: each choice kept; an unknown value reads rescue; send_missions only true when true")
+@test("sanitize: each choice kept; an unknown value reads the default (all); send_missions only true when true")
 def _():
     S = TP.H.settings()
+    rev = S.CONTACT_REV          # (r10 p3) a save with the contact revision: its values as they are
     for m in ("off", "rescue", "explore", "all"):
-        assert S.sanitize(TP.t({"missions": m})).missions == m
-        assert S.for_ai(TP.t({"missions": m})).missions == m
+        assert S.sanitize(TP.t({"missions": m, "contact_rev": rev})).missions == m
+        assert S.for_ai(TP.t({"missions": m, "contact_rev": rev})).missions == m
     for bad in ("All", "raid", 1, True, False, ""):
-        assert S.sanitize(TP.t({"missions": bad})).missions == "rescue", bad
-    assert S.sanitize(TP.t({"send_missions": True})).send_missions is True
-    assert S.sanitize(TP.t({"send_missions": "yes"})).send_missions is False
+        assert S.sanitize(TP.t({"missions": bad, "contact_rev": rev})).missions == "all", bad
+    assert S.sanitize(TP.t({"send_missions": True, "contact_rev": rev})).send_missions is True
+    assert S.sanitize(TP.t({"send_missions": "yes", "contact_rev": rev})).send_missions is False
+    assert S.sanitize(TP.t({"send_missions": False, "contact_rev": rev})).send_missions is False
     assert S.for_ai(TP.t({"send_missions": True})).send_missions is True
 
 
@@ -81,7 +84,7 @@ def _():
     TP.H.persist["ai-overseer/settings"] = TP.t({"version": 2, "mode": "copilot", "send_messenger": True,
                                                  "construct": False})
     s = S.load_settings()
-    assert s.missions == "rescue" and s.send_missions is False
+    assert s.missions == "all" and s.send_missions is True          # (r10 p3) the new defaults
     assert s.mode == "copilot" and s.send_messenger is True and s.construct is False
 
 
@@ -102,7 +105,7 @@ def _():
     r = TP.act({"type": "set_rules", "rules": {"missions": "explore", "send_missions": True}})
     assert r.ok, dict(r)
     assert TP.saved().missions == "explore" and TP.saved().send_missions is True
-    assert r.changed.missions.old == "rescue" and r.changed.missions.new == "explore"
+    assert r.changed.missions.old == "all" and r.changed.missions.new == "explore"     # (r10 p3) 'all' the default
     for bad in ("conquest", True, 3):
         r = TP.act({"type": "set_rules", "rules": {"missions": bad}})
         assert not r.ok and "missions" in r.error, (bad, dict(r))
@@ -118,17 +121,20 @@ def _():
     assert r.ok and TP.saved().missions == "off"
 
 
-@test("presets: (0.105.48, K9) every preset sets missions 'all' but none turns on the messenger, the missions or "
-      "the raids: send_messenger, send_missions and raid_policy stay as the player has them")
+@test("presets: every preset sets missions 'all'; none names send_messenger, send_missions or raid_policy, so they "
+      "stay as the fort has them ((r10 p3) on / 'ai' by default, the player's own off kept)")
 def _():
     S = TP.H.settings()
     keys = lua_list(S.PRESET_RULE_KEYS)
     for k in ("missions", "send_missions", "send_messenger", "raid_policy"):
         assert k in keys, k
     for name in TP.PRESETS:
+        p0 = S.load_preset(name, S.defaults())             # (r10 p3) a new fort: everything on, the AI decides
+        assert p0.missions == "all" and p0.send_missions is True and p0.raid_policy == "ai", name
+        assert p0.send_messenger is True, name
         s = S.defaults()
-        s.missions, s.raid_policy, s.send_messenger = "rescue", "off", False
-        p = S.load_preset(name, s)
+        s.missions, s.raid_policy, s.send_messenger, s.send_missions = "rescue", "off", False, False
+        p = S.load_preset(name, s)                          # the player's own "off": kept
         assert p.missions == "all" and p.send_missions is False and p.raid_policy == "off", name
         assert p.send_messenger is False, name
         # and a player's own choice is kept
@@ -141,18 +147,18 @@ def _():
         assert r.send_messenger is None and r.send_missions is None and r.raid_policy is None, name
 
 
-@test("raid_policy (J17): ai / aggressive / reactive / off, (0.105.48) default off, sanitized, for_ai, set_rules, in RULE_CHOICES")
+@test("raid_policy (J17): ai / aggressive / reactive / off, (r10 p3) default ai, sanitized, for_ai, set_rules, in RULE_CHOICES")
 def _():
     S = TP.H.settings()
     assert lua_list(S.RAID_POLICY_CHOICES) == ["ai", "aggressive", "reactive", "off"]
     assert lua_list(S.RULE_CHOICES.raid_policy) == ["ai", "aggressive", "reactive", "off"]
     for m in lua_list(S.RAID_POLICY_CHOICES):
         assert S.RAID_POLICY_NAMES[m] and len(S.RAID_POLICY_NAMES[m]) <= 24, m
-    assert S.defaults().raid_policy == "off" and S.for_ai(S.defaults()).raid_policy == "off"
-    assert S.defaults().send_missions is False and S.defaults().send_messenger is False
+    assert S.defaults().raid_policy == "ai" and S.for_ai(S.defaults()).raid_policy == "ai"
+    assert S.defaults().send_missions is True and S.defaults().send_messenger is True
     for m in ("ai", "aggressive", "reactive", "off"):
-        assert S.sanitize(TP.t({"raid_policy": m})).raid_policy == m
-    assert S.sanitize(TP.t({"raid_policy": "war"})).raid_policy == "off"
+        assert S.sanitize(TP.t({"raid_policy": m, "contact_rev": S.CONTACT_REV})).raid_policy == m
+    assert S.sanitize(TP.t({"raid_policy": "war"})).raid_policy == "ai"
     r = TP.act({"type": "set_rules", "rules": {"raid_policy": "reactive"}})
     assert r.ok and TP.saved().raid_policy == "reactive", dict(r)
     assert not TP.act({"type": "set_rules", "rules": {"raid_policy": "always"}}).ok
@@ -170,10 +176,11 @@ def _():
     m = GB.control("MilitaryPage", "missions", kind="CycleHotkeyLabel", values=lua_list(S.MISSION_CHOICES), pad=4)
     assert [v for _, v in m.options] == lua_list(S.MISSION_CHOICES)
     assert [n for n, _ in m.options] == [S.MISSION_NAMES[x] for x in lua_list(S.MISSION_CHOICES)]
-    GB.control("MilitaryPage", "send_missions", kind="ToggleHotkeyLabel", values=[True, False], default=False)
+    GB.control("MilitaryPage", "send_missions", kind="ToggleHotkeyLabel", values=[True, False], default=True)   # (r10 p3)
     on = GB.find(GB.page(GB.window({"send_missions": True}), "MilitaryPage"), "send_missions")
     assert on.initial_option is True
-    odd = GB.find(GB.page(GB.window({"send_missions": "yes"}), "MilitaryPage"), "send_missions")
+    odd = GB.find(GB.page(GB.window({"send_missions": "yes", "contact_rev": S.CONTACT_REV}), "MilitaryPage"),
+                  "send_missions")
     assert odd.initial_option is False                                 # only true is on
     texts = [w.text for w in GB.widgets(GB.page(GB.window(), "MilitaryPage")) if w.text]
     assert S.MISSION_HELP in texts, texts

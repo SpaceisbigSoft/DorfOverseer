@@ -193,8 +193,9 @@ def _():
     assert not p
     p, _ = rule(fort(only, send=send, send_missions=True, missions="explore"))
     assert p[0].action["goal"] == "explore"
-    assert player_rules({"settings": {}})["missions"] == "rescue" and player_rules({"settings": {}})["send_missions"] is False
-    assert player_rules({"settings": {"missions": "bogus"}})["missions"] == "rescue"
+    # (r10 p3, the player 22 Nov) 'all' and on by default: the raid policy decides the raids
+    assert player_rules({"settings": {}})["missions"] == "all" and player_rules({"settings": {}})["send_missions"] is True
+    assert player_rules({"settings": {"missions": "bogus"}})["missions"] == "all"
 
 
 @test("raids only against a hostile or at-war civ, and only at 'all'; a target DF's screen refused is passed over")
@@ -233,7 +234,7 @@ def _():
 
 @test("send_missions off or the goal's buttons unshown: a note names target and squads, and one Needs you")
 def _():
-    p, notes = rule(fort())
+    p, notes = rule(fort(send_missions=False))          # (r10 p3) on by default: the player's off
     assert not p
     named = [n for n in notes if "rescue Urist McHeld from Site101" in n]
     assert named and "The Axes of Iron" in named[0] and '"Send missions by the World screen" is off' in named[0], notes
@@ -242,7 +243,7 @@ def _():
     p, notes = rule(fort(send=button("explore"), send_missions=True))
     assert not p and len(needs(notes)) == 1 and any("hasn't been shown" in n for n in notes), notes
     # the same words every cycle (the Needs you list shows a change only)
-    assert needs(rule(fort())[1]) == needs(rule(fort(militarism=100))[1])
+    assert needs(rule(fort(send_missions=False))[1]) == needs(rule(fort(militarism=100, send_missions=False))[1])
     # no targets: nothing at all
     assert rule(fort([]))[0] == [] and rule(fort([]))[1] == []
 
@@ -293,8 +294,9 @@ def _():
     import strategist
     line = strategist.rules_line(player_rules({"settings": {}}))
     assert "missions" not in line, line
-    line = strategist.rules_line(player_rules({"settings": {"missions": "all", "send_missions": True}}))
-    assert "missions=all" in line and "send_missions" not in line.split("off:")[-1], line
+    # (r10 p3) 'all' and on are the defaults now: the player's 'rescue' and off are named
+    line = strategist.rules_line(player_rules({"settings": {"missions": "rescue", "send_missions": False}}))
+    assert "missions=rescue" in line and "switched off by the player: send_missions" in line, line
 
 
 # --- following a mission home ----------------------------------------------------------
