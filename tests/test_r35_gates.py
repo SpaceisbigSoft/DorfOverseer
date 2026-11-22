@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 
 from harness import test, finish  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
+from py_parts import py_family_src  # noqa: E402
 
 _src = (ROOT / "tests" / "test_r32_gatesplit.py").read_text(encoding="utf-8")
 _ns: dict = {"module_src": module_src, "sys": sys}
@@ -185,7 +186,7 @@ def _():
 
 @test("no Needs you in planner_gates tells the player to do what the AI does")
 def _():
-    src = (ROOT / "brain" / "planner_gates.py").read_text(encoding="utf-8")
+    src = py_family_src("planner_gates")         # (r7) the module and its parts
     for bad in ("open it yourself", "build there yourself", "dig or build them a way in", "close the gates by hand",
                 "check its job isn't suspended", "open a second way out yourself", ": open it\")",
                 "take the {kind} down or dig them a way in", "look at the gates for dwarves left out"):

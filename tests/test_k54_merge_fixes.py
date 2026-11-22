@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from py_parts import py_family_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 import planner_matchup as M  # noqa: E402
@@ -30,7 +31,7 @@ def _():
 
 @test("peaceful fort: its only melee squad is never turned to crossbows")
 def _():
-    src = (ROOT / "brain" / "planner_military.py").read_text(encoding="utf-8")
+    src = py_family_src("planner_military")      # (r7) the module and its parts
     assert "if len([q for q in manned if not is_ranged(q)]) <= 1:" in src
 
 
