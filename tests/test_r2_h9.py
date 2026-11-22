@@ -28,7 +28,14 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_parts, _lua_string  # noqa: E402
+
+# (r9) ai-missions is a hub and parts: the parts' texts handed in (PART_SOURCES), as the
+# tests' prelude does, without its reqscript (the module runs here without one)
+MISSIONS_SRC = "PART_SOURCES = {" + ", ".join(
+    f"[{_lua_string(p)}] = {_lua_string((ROOT / 'lua' / (p + '.lua')).read_text(encoding='utf-8'))}"
+    for p in split_parts("ai-missions.lua")) + "}; " + (ROOT / "lua" / "ai-missions.lua").read_text(encoding="utf-8")
+
 from planner import PLANNER_CONFIG, Memory, NEEDS_YOU  # noqa: E402
 import planner_growth  # noqa: E402
 import planner_outside as O  # noqa: E402
@@ -574,7 +581,7 @@ def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
 
     def world(setup):
-        return lua.execute(fake, (ROOT / "lua" / "ai-missions.lua").read_text(encoding="utf-8"), setup)
+        return lua.execute(fake, MISSIONS_SRC, setup)
 
     def lst(t):
         return [t[i] for i in range(1, len(t) + 1)]

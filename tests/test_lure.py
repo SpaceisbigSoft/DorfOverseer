@@ -492,7 +492,8 @@ def _():
 # --- 3. the seal and the watcher leave a lure's door to it -----------------------------
 
 THREATS_SRC = split_src("ai-threats.lua")   # (r8) ai-threats is a hub and parts: their texts together
-WATCH_SRC = (LUA_DIR / "ai-gates-watch.lua").read_text(encoding="utf-8")
+WATCH_SRC = "\n".join((LUA_DIR / f"{n}.lua").read_text(encoding="utf-8")   # (r9) the watch and its look
+                      for n in ("ai-gates-watch", "ai-gates-watch-look"))
 
 
 @test("ai-threats: the openings report marks a lure's open door; seal_cavern leaves it unlocked")

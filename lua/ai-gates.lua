@@ -308,7 +308,7 @@ _ENV.U, _ENV.key, _ENV.unkey, _ENV.STAIR_UP, _ENV.STAIR_DOWN, _ENV.ref_ids = U, 
 -- once ai-gates.lua is touched too, or the game restarts.
 ---------------------------------------------------------------------------
 
-PARTS = {'scan', 'watch', 'fortify', 'works', 'wings', 'save', 'stuck'}
+PARTS = {'scan', 'watch', 'watch-look', 'fortify', 'works', 'wings', 'save', 'stuck'}
 -- each part marks the version it came with (the bridge's `version` lists one
 -- that differs from BRIDGE_VERSION); started afresh at each load, so a part
 -- that failed to load shows as unmarked

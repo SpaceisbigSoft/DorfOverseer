@@ -14,6 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
+from lua_modules_util import split_parts, _lua_string  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -21,7 +22,12 @@ except ImportError:
     print("SKIPPED: these tests need the lupa package (pip install lupa)")
     sys.exit(0)
 
-SRC = (ROOT / "lua" / "ai-missions.lua").read_text(encoding="utf-8")
+# (r9) ai-missions is a hub and parts: the parts' texts handed in (PART_SOURCES), as the
+# tests' prelude does, without its reqscript (the module runs here without one)
+MISSIONS_SRC = "PART_SOURCES = {" + ", ".join(
+    f"[{_lua_string(p)}] = {_lua_string((ROOT / 'lua' / (p + '.lua')).read_text(encoding='utf-8'))}"
+    for p in split_parts("ai-missions.lua")) + "}; " + (ROOT / "lua" / "ai-missions.lua").read_text(encoding="utf-8")
+SRC = MISSIONS_SRC
 FAKE = r"""
 local src, setup = ...
 local env = setmetatable({}, {__index = _G})
