@@ -11,6 +11,15 @@ local json = require('json')
 
 SETTINGS_KEY = 'ai-overseer/settings'
 SETTINGS_VERSION = 2   -- 2 (0.94): Hostility and Hospitality became Outsiders
+-- (r10 p3, the player 22 Nov 00:51: every fort makes initial contact, then the
+-- AI decides how much contact, raids included) the contact defaults' revision.
+-- A save without it (or older) was written when the messenger, the missions'
+-- sending and the raids were off by default: the stored settings can't tell
+-- the player's own "off" from the old default, so those values (send_messenger
+-- false, send_missions false, raid_policy 'off', missions 'rescue') read as the
+-- new defaults once; anything else the save holds is kept. From then on the
+-- save carries contact_rev and the player's choice is kept as it is.
+CONTACT_REV = 1
 TRAIT_MIN, TRAIT_MAX, TRAIT_STEP = -100, 100, 10
 PRESET_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer/presets'
 
@@ -366,15 +375,19 @@ function defaults()
         -- (0.105.24, 13b) the messenger actually sent, by the AI driving DF's World
         -- screen (lua/ai-mission-send.lua): off by default until its last steps
         -- are recorded; off, the AI only names the site for the player to send.
-        -- (0.105.47) every step recorded 14 Nov: on, the AI sends it end to end;
-        -- still off by default until a live run has been watched
-        send_messenger = false,
-        -- (0.105.39, 13b) missions sent out (MISSION_CHOICES): rescue a citizen and
-        -- recover an artifact by default; raids and the rest (war) only at 'all'
-        missions = 'rescue',
-        -- (0.105.39) the World screen driven to send a mission (like send_messenger:
-        -- off by default; off, the AI names the target and the squads for you)
-        send_missions = false,
+        -- (0.105.47) every step recorded 14 Nov: on, the AI sends it end to end.
+        -- (r10 p3, the player 22 Nov) on by default: every fort makes initial
+        -- contact, then contact goes by its character (brain/planner_contact.py);
+        -- off: never sent (the AI names the site for you)
+        send_messenger = true,
+        -- (0.105.39, 13b) missions sent out (MISSION_CHOICES). (r10 p3) 'all' by
+        -- default: the raid policy (raid_policy, the sliders) decides the raids;
+        -- 'rescue' / 'explore' / 'off' are the player's limits
+        missions = 'all',
+        -- (0.105.39) the World screen driven to send a mission. (r10 p3) on by
+        -- default; off: the AI names the target and the squads for you
+        send_missions = true,
+        contact_rev = CONTACT_REV,     -- (r10 p3) see CONTACT_REV
         -- (0.105.24) after an artifact heist (or a visitor killing a citizen) the
         -- tavern, temples and library shut to visitors a while; off: never (a lockout lifted)
         heist_lockout = true,
@@ -401,8 +414,9 @@ function defaults()
         hunt = 'ai',               -- (0.105.45) hunting (HUNT_CHOICES)
         floor_layout = 'hallway',  -- (layout B) how new levels are placed (FLOOR_LAYOUT_CHOICES)
         -- (0.105.47, J17) raids by the sliders (RAID_POLICY_CHOICES); (0.105.48, K9)
-        -- 'off' by default until the audit's mission and raid fixes are watched live
-        raid_policy = 'off',
+        -- 'off' by default until watched live; (r10 p3, the player 22 Nov) 'ai' by
+        -- default: the fort's character decides (brain/planner_raids.py); 'off': never
+        raid_policy = 'ai',
         -- (0.105.41, 13e) traffic zones on the AI's own finished levels: high on its
         -- stairs and corridors, low on its rooms and fields (lua/ai-traffic.lua)
         traffic = true,
@@ -568,6 +582,18 @@ function sanitize(s)
     out.hunt = one_of(s.hunt, HUNT_CHOICES, d.hunt)                       -- (0.105.45)
     out.floor_layout = one_of(s.floor_layout, FLOOR_LAYOUT_CHOICES, d.floor_layout)   -- (layout B)
     out.raid_policy = one_of(s.raid_policy, RAID_POLICY_CHOICES, d.raid_policy)   -- (0.105.47, J17)
+    -- (r10 p3) a save from before the contact defaults (CONTACT_REV): the
+    -- values that were only the old defaults become the new ones, once
+    local rev = math.tointeger(tonumber(s.contact_rev))
+    if rev == nil or rev < CONTACT_REV then
+        -- send_messenger and send_missions: false was the old default (true the
+        -- player's own choice), so both read as on
+        out.send_messenger, out.send_missions = true, true
+        local nd = defaults()      -- (d is out itself by now: its values are the save's)
+        if s.raid_policy == nil or s.raid_policy == 'off' then out.raid_policy = nd.raid_policy end
+        if s.missions == nil or s.missions == 'rescue' then out.missions = nd.missions end
+    end
+    out.contact_rev = CONTACT_REV
     for _, k in ipairs({'wipe_learned', 'wipe_learned_all'}) do
         local n = math.tointeger(tonumber(s[k]))
         out[k] = (n and n >= 0) and n or 0
@@ -731,8 +757,12 @@ table.insert(PRESET_RULE_KEYS, 'keep_enemy_gear')   -- (0.105.27) invaders' gear
 -- (0.105.47, J17) the missions level ('all') and the raid policy are kept with
 -- a preset. (0.105.48, K9, the audit's "switch off until fixed") no built-in
 -- preset turns the messenger, the missions or the raids on: send_messenger,
--- send_missions and raid_policy stay as the Rules tab has them (off by
--- default); a preset the player saved still carries the player's own choice
+-- send_missions and raid_policy stay as the Rules tab has them; a preset the
+-- player saved still carries the player's own choice. (r10 p3, the player 22
+-- Nov) those three are on / 'ai' by default now, in every preset the Hermit
+-- hold included (initial contact for all, then the character decides); a
+-- preset saved before CONTACT_REV drops the values that were only the old
+-- defaults (load_preset), so loading it doesn't switch them off again
 table.insert(PRESET_RULE_KEYS, 'send_messenger')
 table.insert(PRESET_RULE_KEYS, 'send_missions')
 table.insert(PRESET_RULE_KEYS, 'missions')
@@ -818,8 +848,25 @@ function save_preset(name, s)
     if not valid_preset_name(name) then return false, 'use letters, numbers, spaces, - or _' end
     dfhack.filesystem.mkdir_recursive(PRESET_DIR)
     local data = sanitize(s)
-    json.encode_file({version = SETTINGS_VERSION, traits = data.traits, rules = rules_of(data)}, preset_path(name))
+    json.encode_file({version = SETTINGS_VERSION, contact_rev = CONTACT_REV, traits = data.traits,
+                      rules = rules_of(data)}, preset_path(name))
     return true
+end
+
+-- (r10 p3) a preset file saved before CONTACT_REV: the contact values that
+-- were only the old defaults (send_messenger / send_missions false,
+-- raid_policy 'off', missions 'rescue') are left out, so the fort keeps the new
+-- defaults; any other value the file holds is applied as before
+function preset_rules_upgrade(data)
+    local rules = type(data) == 'table' and data.rules or nil
+    if type(rules) ~= 'table' or (math.tointeger(tonumber(data.contact_rev)) or 0) >= CONTACT_REV then return rules end
+    local out = {}
+    for k, v in pairs(rules) do out[k] = v end
+    if out.send_messenger == false then out.send_messenger = nil end
+    if out.send_missions == false then out.send_missions = nil end
+    if out.raid_policy == 'off' then out.raid_policy = nil end
+    if out.missions == 'rescue' then out.missions = nil end
+    return out
 end
 
 -- Applies a preset's traits and (0.99) the Rules choices it carries; keeps
@@ -828,9 +875,11 @@ function load_preset(name, s, applied)
     if not valid_preset_name(name) then return nil, 'bad preset name' end
     local ok, data = pcall(json.decode_file, preset_path(name))
     if (not ok or type(data) ~= 'table') and BUILTIN_PRESETS[name] then
-        ok, data = true, {traits = builtin_traits(name), rules = BUILTIN_PRESET_RULES[name]}
+        ok, data = true, {traits = builtin_traits(name), rules = BUILTIN_PRESET_RULES[name],
+                    contact_rev = CONTACT_REV}
     end
     if not ok or type(data) ~= 'table' then return nil, 'could not read preset' end
+    data.rules = preset_rules_upgrade(data)
     local merged = sanitize(s)
     merged.traits = sanitize({traits = data.traits}).traits
     return apply_rules(merged, data.rules, applied)

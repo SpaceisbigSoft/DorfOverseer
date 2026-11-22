@@ -607,8 +607,9 @@ def _():
     assert "Cottageflings" in p[0].reason and not any("Make contact (13b)" in n for n in notes), notes
     import overseer
     assert "make contact" in overseer.short(p[0].action)
-    # the default is off: the site is named for the player instead, the switch mentioned
-    assert player_rules({"settings": {}})["send_messenger"] is False
+    # (r10 p3) the default is on now; the player's off: the site is named for the player instead,
+    # the switch mentioned
+    assert player_rules({"settings": {}})["send_messenger"] is True
     off = mk(on=False)
     props, notes = plan(off, Memory())
     assert not by_rule(props, "contact")
@@ -680,12 +681,14 @@ def _():
       assert(load(src, 'settings', 't', env))()
       return env end""")(ssrc)
     d = S.defaults()
-    assert d.send_messenger is False and S.for_ai(d).send_messenger is False
+    assert d.send_messenger is True and S.for_ai(d).send_messenger is True          # (r10 p3) on by default
     s2 = S.sanitize(lua.table_from({"send_messenger": True}))
     assert s2.send_messenger is True and S.for_ai(s2).send_messenger is True
+    s3 = S.sanitize(lua.table_from({"send_messenger": False, "contact_rev": S.CONTACT_REV}))
+    assert s3.send_messenger is False and S.for_ai(s3).send_messenger is False   # the player's off kept
     assert player_rules({"settings": {"send_messenger": True}})["send_messenger"] is True
     import gui_behaviour as GB                   # (r5 p5) the window built, not its text
-    GB.control("RulesPage", "send_messenger", kind="ToggleHotkeyLabel", values=[True, False], default=False)
+    GB.control("RulesPage", "send_messenger", kind="ToggleHotkeyLabel", values=[True, False], default=True)   # (r10 p3)
     ok = lua.eval("function(src) local f, e = load(src, 'm', 't', {}); return f ~= nil, e end")(
         module_src("ai-mission-send.lua"))
     assert ok[0], ok

@@ -208,3 +208,9 @@ number, appointers), slots and holders; the civilisation's site templates, its o
 and its raw positions (`SITE`, `REQUIRES_POPULATION`, `APPOINTED_BY`, `NUMBER`); the citizens
 counted; and `ai.why`. If a fort with enough dwarves still has only a template, the next step is
 the Nobles screen (word-found buttons, as trade does), not a data write.
+
+**(r10 p3) Sending by default.** From r10 the switches are on by default (`send_messenger`,
+`send_missions`, `missions` `all`, `raid_policy` `ai`): every fort makes initial contact once a messenger
+holds the post, then the planner decides (`brain/planner_contact.py`). The sender's guards are
+unchanged. Saved settings hold the full sanitized table, so a stored `false` can't be told from the old
+default: a save without `contact_rev` reads those old defaults as the new ones once.

@@ -302,6 +302,15 @@ def raid_candidates(s: dict, cfg: dict = PLANNER_CONFIG, memory=None, squads=Non
     stance, why_stance = raid_stance(s, cfg)
     if stance == "off":
         return [], [why_stance], stance
+    early: list = []
+    if stance == "aggressive" and player_rules(s).get("raid_policy") == "ai":
+        # (r10 p3, the player 22 Nov) initial contact first: until the messenger has
+        # met the neighbours, the aggressive fort only strikes back and clears threats
+        from planner_contact import initial_pending
+        if initial_pending(s, memory, cfg):
+            early.append(f"aggressive ({why_stance}), but initial contact comes first: until the messenger has "
+                         "met the neighbours, only an attacker or a hostile site close by is raided")
+            stance, why_stance = "reactive", "initial contact first"
     rows, known = _rows(s, extra)
     if squads is None:
         from planner_missions import sendable_squads
@@ -310,7 +319,7 @@ def raid_candidates(s: dict, cfg: dict = PLANNER_CONFIG, memory=None, squads=Non
     need_ratio = _need_ratio(s, stance, cfg)
     sights = _d(_seen(memory).get("sites"))
     base = _int(_seen(memory).get("since"))
-    passed: list = []
+    passed: list = early
     out: list = []
 
     def clear(r) -> tuple[bool, float, float]:

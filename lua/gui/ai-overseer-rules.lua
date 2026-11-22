@@ -184,7 +184,7 @@ function RulesPage:init()
         initial_option = p.settings.make_contact ~= false,
         on_change = function(v) p:set_field('make_contact', v) end,
     })
-    -- (0.105.24, 13b) the AI drives the World screen to send the messenger (a trial: off by default)
+    -- (0.105.24, 13b) the AI drives the World screen to send the messenger ((r10 p3) on by default: every fort makes initial contact; off: never)
     table.insert(views, widgets.ToggleHotkeyLabel{
         view_id = 'send_messenger',
         frame = {t = 9 + jrow, l = 62, w = 56},

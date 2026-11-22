@@ -355,3 +355,20 @@ PART.update({
     "r5p3_refusal_forget_days": 336,      # a streak is kept this long after its last refusal (the general one: 60)
     "r5p3_refusal_keep": 30,              # streaks kept at most (the oldest go first; r5 Z2: was 60, past the memory budget)
 })
+
+
+# (r10 p3, the player 22 Nov 00:51) initial contact for every fort, then contact
+# by the fort's character and the situation (brain/planner_contact.py)
+PART.update({
+    "contact_initial_max": 4,             # initial contact: this many sites at most, nearest first
+    "contact_initial_tiles": 40,          # ...those within this many world tiles (always the nearest one)
+    "contact_initial_gap_days": 14,       # ...this many days between two
+    "contact_open_outsiders": 30,         # Outsiders at or past this: an open fort (routine contact)
+    "contact_open_trade": 50,             # ...or Trade at or past this
+    "contact_open_greed": 60,             # ...or Greed at or past this with Trade not below 0
+    "contact_closed_outsiders": -100,     # Outsiders at or below this (the Hermit hold's -150): no routine contact
+    "contact_open_days": 56,              # the open fort: one more site this often (half at Outsiders or Trade 100+)
+    "contact_measured_days": 336,         # the rest: one a year
+    "contact_situation_days": 28,         # a contact the situation calls for: at most this often
+    "contact_friends_min": 2,             # attacked or a hostile site near with fewer friends than this: look for more
+})
