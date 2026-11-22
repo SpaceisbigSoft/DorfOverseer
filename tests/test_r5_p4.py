@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -273,8 +273,7 @@ env.df.tiletype_shape[1] = 'FLOOR'
 def deep_env(cave_z=None):
     lua = LuaRuntime(unpack_returned_tuples=True)
     base = lua.execute(const("test_r40_sections.py", "FAKE"))()
-    env = lua.execute(const("test_i6_speed.py", "HUB"), base, (LUA_DIR / "ai-bridge-report.lua").read_text(
-        encoding="utf-8"), None, None, None)
+    env = lua.execute(const("test_i6_speed.py", "HUB"), base, bridge_part_src("ai-bridge-report"), None, None, None)
     lua.execute(DEEP, env, cave_z)
     return lua, env
 

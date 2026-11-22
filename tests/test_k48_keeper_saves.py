@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 sys.path.insert(0, str(ROOT / "brain"))
 
 TMP = Path(tempfile.mkdtemp())
@@ -133,7 +134,7 @@ def _():
 
 @test("run id: the Lua ledger takes fort_run (ledger_set refuses fields it doesn't list)")
 def _():
-    src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     block = src[src.index("LEDGER_FIELDS = {"):src.index("}", src.index("LEDGER_FIELDS = {"))]
     assert re.search(r"\bfort_run\s*=\s*true", block), block[-200:]
     assert "fort_run" in ledger.FIELDS

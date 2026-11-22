@@ -28,7 +28,7 @@ except ImportError:
 
 import quirks  # noqa: E402
 import test_r33_society as T  # noqa: E402   (its fakes; its tests don't run here)
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from planner import Memory, plan  # noqa: E402
 from planner_core import PLANNER_CONFIG, IDLE_OLD_LINES, _idle_share, idle_line, update_idle  # noqa: E402
 from planner_growth import fort_strain  # noqa: E402
@@ -290,7 +290,7 @@ def _():
 
 @test("fix report: recreation_status gets txt; a failure is {error=...}, so the brain lets everyone out")
 def _():
-    src = (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     assert "pcall(soc.recreation_status, txt)" in src
     assert "out.recreation = {error = tostring(rec):sub(1, 160)}" in src
     import planner_society as PS

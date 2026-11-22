@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 import planner  # noqa: E402
 import planner_moods  # noqa: E402
@@ -155,7 +155,7 @@ def _():
 def _():
     need_lua()
     from lupa.lua53 import LuaRuntime
-    src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     body = re.search(r"\nfunction slaughter_pick\(.*?\nend\n", src, re.S).group(0)
     L = LuaRuntime(unpack_returned_tuples=True)
     L.execute(body)

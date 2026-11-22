@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import finish, have_lua, make_test, skip, test as plain_test  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 import masterplan  # noqa: E402
 import masterplan_floors as MF  # noqa: E402
@@ -381,7 +382,7 @@ def _():
 
 @plain_test("(a) the bridge's parse_floor takes spill as one of its booleans (true or false, anything else refused)")
 def _():
-    src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     assert re.search(r"FLOOR_BOOLS = \{[^}]*'spill'", src), "spill is not one of parse_floor's booleans"
 
 

@@ -16,6 +16,7 @@ import re
 import sys
 
 from harness import ROOT, finish, test
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -328,7 +329,7 @@ def _():
 
 @test("ranges: the bridge's tables are the test's (the contract's), key for key")
 def _():
-    src = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     body = src[src.index("local FLOOR_INTS"):src.index("function parse_floor")]
     ints = {k: (int(a), int(b)) for k, a, b in re.findall(r"(\w+) = \{(-?\d+), (-?\d+)\}", body)}
     assert ints == INTS, set(ints.items()) ^ set(INTS.items())
@@ -342,7 +343,7 @@ def _():
 
 @test("ranges: parse_floor uses the file's own int_in and stands right after parse_plan")
 def _():
-    src = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     a, b, c = src.index("function parse_plan("), src.index("function parse_floor("), src.index("function act_start_project(")
     assert a < b < c
     between = src[a:b]

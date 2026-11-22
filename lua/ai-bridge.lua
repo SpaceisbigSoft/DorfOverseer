@@ -36,10 +36,12 @@
 -- (13c) The bridge is in parts. This file keeps the commands, BRIDGE_VERSION,
 -- the ACTIONS table (with DRY_OK and DISPLAY_ONLY, what may pass while the AI
 -- is halted), the report's SECTIONS and their cache. Beside it, loaded into
--- its environment (BRIDGE_PARTS below): ai-bridge-report.lua (the report's
--- readers and the event feed), ai-bridge-orders.lua (work orders and tools),
--- ai-bridge-actions.lua (the other action handlers) and ai-bridge-probes.lua
--- (probes and screen recording). The five go to the game together.
+-- its environment (BRIDGE_PARTS below): ai-bridge-report.lua with
+-- ai-bridge-report-supplies, -fort and -world (the report's readers and the
+-- event feed), ai-bridge-orders.lua (work orders and tools),
+-- ai-bridge-actions.lua with ai-bridge-actions-fort, -works and -civic (the
+-- other action handlers), ai-bridge-probes.lua (probes and screen recording)
+-- and ai-bridge-design.lua. All the parts go to the game together.
 --@ module = true
 
 local json = require('json')
@@ -109,7 +111,9 @@ NOT_IN_FORT = {ok = false, error = 'no fortress is loaded (the game is at a menu
 -- stay here. Read from this file's own folder (DFHack loads a script by its
 -- path), else wherever DFHack finds them.
 -- (D0) ai-bridge-design: the Design track's landmarks
-BRIDGE_PARTS = {'ai-bridge-report', 'ai-bridge-orders', 'ai-bridge-actions', 'ai-bridge-probes', 'ai-bridge-design'}
+-- (r6) ai-bridge-report and ai-bridge-actions each in four files (by theme;
+-- each file's later parts right after it, in the order the one file had)
+BRIDGE_PARTS = {'ai-bridge-report', 'ai-bridge-report-supplies', 'ai-bridge-report-fort', 'ai-bridge-report-world', 'ai-bridge-orders', 'ai-bridge-actions', 'ai-bridge-actions-fort', 'ai-bridge-actions-works', 'ai-bridge-actions-civic', 'ai-bridge-probes', 'ai-bridge-design'}
 -- (0.105.26) Each part carries a marker, PART_VERSIONS['<part>'] = '<version>',
 -- the same string as BRIDGE_VERSION: one find-replace of the quoted version
 -- across lua/*.lua bumps them all. `version` lists a part whose marker differs

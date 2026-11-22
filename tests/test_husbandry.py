@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, Proposal, plan  # noqa: E402
@@ -276,7 +276,7 @@ def _():
     for name in ("herd_breeders", "tame_wild", "train_hunt", "herd_targets"):
         assert name in overseer.SHORT_WORDS
     # the butcher's one-at-a-time pick spares the breeders; the gate dogs' pen is no pasture
-    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    acts = bridge_part_src("ai-bridge-actions")
     i = acts.index("function act_slaughter_one(a)")
     assert "kept[u.id]" in acts[i:i + 1400] and "kept_all()" in acts[i:i + 1400]
     soc = (LUA_DIR / "ai-society.lua").read_text(encoding="utf-8")

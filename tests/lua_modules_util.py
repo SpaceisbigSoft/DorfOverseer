@@ -54,9 +54,36 @@ def split_parts(name: str) -> list[str]:
     return [f"{stem}-{p}" for p in re.findall(r"'([\w-]+)'", listed.group(1))] if listed else []
 
 
+# (r6) the bridge parts split into themed files: the first file's name ->
+# the later ones (loaded right after it, in this order, by ai-bridge.lua's
+# BRIDGE_PARTS), read from the hub's list
+def bridge_later_parts(stem: str) -> list[str]:
+    import re
+    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    listed = re.findall(r"'([\w-]+)'", re.search(r"^BRIDGE_PARTS = \{(.*?)\}", hub, re.M).group(1))
+    return [n for n in listed if n.startswith(stem + "-") and n != stem]
+
+
+BRIDGE_SPLIT = ("ai-bridge-report", "ai-bridge-actions")
+
+
+def bridge_part_src(name: str) -> str:
+    """(r6) A bridge part's text as when it was one file: lua/<name>.lua and the
+    files split off it (ai-bridge-report -> -supplies, -fort, -world;
+    ai-bridge-actions -> -fort, -works, -civic) after it, in load order. Run in
+    one env it does what the parts do loaded one after another."""
+    stem = name[:-4] if name.endswith(".lua") else name
+    out = (LUA_DIR / (stem + ".lua")).read_text(encoding="utf-8")
+    for p in bridge_later_parts(stem) if stem in BRIDGE_SPLIT else []:
+        out += "\n" + (LUA_DIR / (p + ".lua")).read_text(encoding="utf-8")
+    return out
+
+
 def split_src(name: str) -> str:
     """lua/<name> and, for a split hub, its parts' texts after it (for tests
     that read the source itself, not run it)."""
+    if name[:-4] in BRIDGE_SPLIT:
+        return bridge_part_src(name)
     out = (LUA_DIR / name).read_text(encoding="utf-8")
     for p in split_parts(name) if name in SPLIT else []:
         out += "\n" + (LUA_DIR / (p + ".lua")).read_text(encoding="utf-8")
@@ -101,4 +128,5 @@ def with_util(src: str, name: str = "") -> str:
 
 def module_src(name: str) -> str:
     """lua/<name> read, with the prelude."""
-    return with_util((LUA_DIR / name).read_text(encoding="utf-8"), name)
+    src = bridge_part_src(name) if name[:-4] in BRIDGE_SPLIT else (LUA_DIR / name).read_text(encoding="utf-8")
+    return with_util(src, name)

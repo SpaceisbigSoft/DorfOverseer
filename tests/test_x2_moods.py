@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 import test_i2_thirst as I2  # noqa: E402
 
 LUA_DIR = ROOT / "lua"
@@ -121,7 +122,7 @@ def _():
 
 def pick_env():
     L = _lua()
-    src = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     m = re.search(r"^function slaughter_pick_mood\(.*?^end\n", src, re.S | re.M)
     assert m
     L.execute(m.group(0))
@@ -268,7 +269,7 @@ return env"""
 
 def act(units, **a):
     L = _lua()
-    env = L.execute(ACT_ENV, (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8"),
+    env = L.execute(ACT_ENV, bridge_part_src("ai-bridge-actions"),
                     L.table_from([L.table_from(u) for u in units]))
     a.setdefault("mood", True)
     a.setdefault("mood_unit", 5)

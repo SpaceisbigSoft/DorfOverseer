@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, code_has, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 from planner import Memory, plan, PLANNER_CONFIG  # noqa: E402
 import planner_firebreath as PF  # noqa: E402
@@ -148,7 +148,7 @@ def _():
     bridge = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     assert code_has(bridge, "pcall(function() return reqscript('ai-threats').mark_fire_breathers(o) end)")
     assert code_has(bridge, "others_on_map = function() return safe(function() local o = get_others_on_map()")
-    assert "fire_breath" not in (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    assert "fire_breath" not in bridge_part_src("ai-bridge-report")
     need_lua()
     lua, env = lua_env()
     o = lua.execute("return {threats = {{id = 5000}, {id = 6000}, {id = 7000}, {id = 8000}, {name = 'x'}}}")

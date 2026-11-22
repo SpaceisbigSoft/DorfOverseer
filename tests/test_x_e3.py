@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 from snapshots import snapshot  # noqa: E402
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 sys.path.insert(0, str(ROOT / "brain"))
 
 try:
@@ -554,7 +555,7 @@ def _():
     assert overseer.short({"type": "water_work", "kind": "power"}) == "the pump stack's power: next step"
     assert overseer.short({"type": "water_work", "kind": "power", "shut": True}) == \
         "switch off the pump stack's power"
-    act = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    act = bridge_part_src("ai-bridge-actions")
     assert "source is wheel or windmill" in act and "source = a.source" in act
     from lua_modules_util import split_src   # (13e) the hub and its parts
     gates = split_src("ai-gates.lua")

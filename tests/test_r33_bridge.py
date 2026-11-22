@@ -22,6 +22,7 @@ except ImportError:
     sys.exit(0)
 
 from digest import normalize  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 LUA_DIR = ROOT / "lua"
 HARNESS = re.search(r'HARNESS = r"""(.*?)"""',
@@ -54,7 +55,7 @@ def test(name):
 
 
 def src(name: str) -> str:
-    return (LUA_DIR / f"{name}.lua").read_text(encoding="utf-8")
+    return bridge_part_src(name)   # (r6) a split bridge part: its files together
 
 
 STONE = r"""

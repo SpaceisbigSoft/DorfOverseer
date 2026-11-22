@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, code_has, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan, player_rules  # noqa: E402
@@ -34,7 +34,7 @@ except ImportError:
 LUA_DIR = ROOT / "lua"
 CFG = PLANNER_CONFIG
 BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-ACTS = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+ACTS = bridge_part_src("ai-bridge-actions")
 
 # A fort level at z 100. W.zone{...} a zone (a location's with loc = {type,
 # visitors}, else a dining hall), W.art{...} an artifact item with its

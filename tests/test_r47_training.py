@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import (PLANNER_CONFIG, Memory, Proposal, TICKS_PER_DAY, abs_tick, note_cycle, plan,  # noqa: E402
@@ -398,7 +398,7 @@ def _():
     assert "if training and rank == 1 then rank = nil end" in m
     assert "local from = not training and squad_with_uniform(fort, sq.id) or nil" in m
     assert "not tmarks[tostring(sid)]" in m and "training = tmarks[tostring(sid)] and true or nil" in m
-    r = (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    r = bridge_part_src("ai-bridge-report")
     assert "fight_need = fight_focus ~= nil or nil" in r and "content_ids" in r
     import gui_behaviour as GB              # (r5 p5) the settings and the window run, not their text
     GB.rule_switch("training_squad", "MilitaryPage", True)

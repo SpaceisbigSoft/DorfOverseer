@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 LUA = ROOT / "lua"
 HARNESS = re.search(r'HARNESS = r"""(.*?)"""',
@@ -170,11 +171,11 @@ def _():
 
 @test("1. one helper touches DF's kitchen list; the bans and the seed reserve go through the shared record")
 def _():
-    src = (LUA / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     assert src.count("dfhack.kitchen.addExclusion") == 1 and src.count("dfhack.kitchen.removeExclusion") == 1
     body = src[src.index("function act_seed_reserve(a)"):src.index("-- (0.99.7) Soldiers")]
     assert "kitchen_exclude" not in body and "kitchen_hold(" in body and "kitchen_release(" in body
-    others = [p for p in LUA.glob("*.lua") if p.name != "ai-bridge-actions.lua"
+    others = [p for p in LUA.glob("*.lua") if not p.name.startswith("ai-bridge-actions")   # (r6) the actions part and its split-off files
               and ("addExclusion" in p.read_text(encoding="utf-8") or "removeExclusion" in p.read_text(encoding="utf-8"))]
     assert not others, others
 

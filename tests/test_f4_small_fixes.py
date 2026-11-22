@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import finish, make_test  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 _B16 = ROOT / "tests" / "test_b16_floors_end_to_end.py"
 _SRC = _B16.read_text(encoding="utf-8")
@@ -214,11 +215,11 @@ def _():
 
 @test("S2. the bridge's act_allow_burial and the report's in_ai_tombs read the tomb levels through own_areas")
 def _():
-    acts = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    acts = bridge_part_src("ai-bridge-actions")
     i = acts.index("function act_allow_burial")
     body = acts[i:acts.index("\nend\n", i)]
     assert "own_areas" in body and "ar.own" in body, body[:600]
-    rep = (ROOT / "lua" / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    rep = bridge_part_src("ai-bridge-report")
     i = rep.index("function in_ai_tombs")
     body = rep[i:rep.index("\nend\n", i)]
     assert "own_areas" in body and "a.own" in body, body[:600]

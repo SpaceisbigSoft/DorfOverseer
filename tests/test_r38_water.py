@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from harness import test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
@@ -1069,7 +1069,7 @@ def _():
     assert "river" not in power_wanted(s, works, dict(PLANNER_CONFIG, water_far_reach=0))
     # the bridge: job_max 0 sets the cistern's and the well's far reach to 0
     import re
-    src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     fn = re.search(r"^function far_reach_of\(a\).*?^end", src, re.S | re.M).group(0)
     lua = LuaRuntime(unpack_returned_tuples=True)
     got = lua.execute("""

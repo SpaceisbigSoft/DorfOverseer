@@ -447,7 +447,8 @@ def _():
     import re
     for name in ("ai-water", "ai-cleanup", "ai-captives", "ai-threats", "ai-threat-facts", "ai-paper",
                  "ai-bridge-orders", "ai-bridge-report", "ai-mission-send", "ai-bridge"):
-        src = (ROOT / "lua" / f"{name}.lua").read_text(encoding="utf-8")
+        from lua_modules_util import bridge_part_src   # (r6) a split bridge part: its files together
+        src = bridge_part_src(name)
         uses = [m.start() for m in re.finditer(r"cur_savegame\.save_dir", src)]
         for at in uses:
             before = src[max(0, at - 700):at]

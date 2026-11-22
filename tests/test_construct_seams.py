@@ -41,7 +41,7 @@ import planner_construct as pc  # noqa: E402
 from planner import Memory, plan  # noqa: E402
 from planner_core import PLANNER_CONFIG, Proposal, refusal_key, player_rules  # noqa: E402
 from planner_industry import _keep_rule  # noqa: E402
-from lua_modules_util import module_src, split_src, split_parts  # noqa: E402
+from lua_modules_util import module_src, split_src, split_parts, bridge_part_src  # noqa: E402
 import test_preset as TP  # noqa: E402  (the bridge with a stub DFHack; its tests don't run on import)
 
 LUA_DIR = ROOT / "lua"
@@ -49,7 +49,7 @@ CFG = PLANNER_CONFIG
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
 GARDEN = {"agriculture": 120, "husbandry": 80, "surface": 80, "welfare": 40, "grandeur": 40}
 GUI = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
-BRIDGE_ACTIONS = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+BRIDGE_ACTIONS = bridge_part_src("ai-bridge-actions")
 HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 GATES_SRC = split_src("ai-gates.lua")   # (13e) the hub and its parts
 

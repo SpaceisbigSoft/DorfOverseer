@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 import test_i2_thirst as I2  # noqa: E402  (its fake fort)
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -142,7 +143,7 @@ def _():
 
 def _lua_fn(file: str, name: str) -> str:
     import re
-    src = (ROOT / "lua" / file).read_text(encoding="utf-8")
+    src = bridge_part_src(file)   # (r6) a split bridge part: its files together
     m = re.search(r"^function " + re.escape(name) + r"\(.*?^end\n", src, re.S | re.M)
     assert m, name
     return m.group(0)

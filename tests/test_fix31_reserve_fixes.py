@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan, select, record  # noqa: E402
 from planner_core import Proposal, TICKS_PER_YEAR  # noqa: E402
 from planner_moods import _mood_reserve_rule, RESERVE_BATCH  # noqa: E402
@@ -282,7 +282,7 @@ def _():
 
 @test("fix 3: the bridge reports the brewable thread plants")
 def _():
-    src = (ROOT / "lua" / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     assert "out.thread_brewable_plants = out.thread_brewable_plants + n" in src
 
 

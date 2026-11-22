@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -185,7 +185,7 @@ def _():
             error('no ' .. name)
         end
         assert(load(src, 'ai-bridge-actions', 't', env))()
-        return env""", (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8"))
+        return env""", bridge_part_src("ai-bridge-actions"))
     r = env.act_slaughter_one(lua.table_from({"oldest": True}))
     assert r.ok and r.unit_id == 3, dict(r)            # the oldest not kept (1 and 2 are the AI's)
 

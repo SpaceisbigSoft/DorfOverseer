@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, code_has, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan, TICKS_PER_DAY  # noqa: E402
@@ -507,7 +507,7 @@ def _():
 # --- 3. the bridge -------------------------------------------------------------------------
 
 BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-ACTS = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+ACTS = bridge_part_src("ai-bridge-actions")
 NAMES = ("hunters", "food_standing", "fruit_zone", "cavern_farm")
 
 

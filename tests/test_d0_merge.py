@@ -39,6 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import make_test, finish  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 from snapshots import digest, plan_cases, snapshot  # noqa: E402
 
 try:
@@ -393,7 +394,7 @@ def layouts_env(lua_dir: Path):
     """ai-layouts and the bridge's parse_style of one tree, in their own Lua."""
     lua = LuaRuntime(unpack_returned_tuples=True)
     lay = (lua_dir / "ai-layouts.lua").read_text(encoding="utf-8")
-    src = (lua_dir / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     fn = re.search(r"\nlocal function parse_style\(st\)\n.*?\nend\n", src, re.S).group(0)
     env = lua.execute("""
         local lay_src = ...

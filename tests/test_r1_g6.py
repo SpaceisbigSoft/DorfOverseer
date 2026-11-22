@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 import planner  # noqa: E402
 import planner_moods  # noqa: E402
@@ -107,7 +107,7 @@ def slaughter_env(units, kept=None):
             error('no ' .. name)
         end
         assert(load(src, 'ai-bridge-actions', 't', env))()
-        return env""", (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8"),
+        return env""", bridge_part_src("ai-bridge-actions"),
         lua.table_from([lua.table_from(u) for u in units]), lua.table_from(kept or {}))
     return lua, env
 
@@ -380,7 +380,7 @@ def _():
 
 @test("4 lua: the bridge's cloth counts leave the hospital floor's cloth out of the reserves too")
 def _():
-    src = (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     body = src[src.index("function hospital_store_test()"):src.index("function get_supplies()")]
     assert "findCivzonesAt(xyz2pos(x, y, z))" in body and "in_inventory" in body
 

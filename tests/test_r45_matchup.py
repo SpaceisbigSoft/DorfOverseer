@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 from planner import Memory, PLANNER_CONFIG, plan  # noqa: E402
 import planner_military as PM  # noqa: E402
@@ -172,7 +172,7 @@ def _():
 
 @test("bridge: the report calls the facts module under pcall (a small diff), the module compiles")
 def _():
-    src = (ROOT / "lua" / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     assert "pcall(reqscript, 'ai-threat-facts')" in src
     assert "pcall(TF.add_facts, out.threats[#out.threats], u)" in src
     need_lua()
