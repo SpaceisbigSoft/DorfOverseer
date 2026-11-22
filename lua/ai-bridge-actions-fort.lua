@@ -339,7 +339,7 @@ function act_refresh_shelter(a)
     if a.dry_run == true then return {ok = true, dry_run = true, stale = S.shelter_stale()} end
     local r = S.refresh_shelter()
     if not r then return reject('the civilian alert\'s burrow is not the AI shelter') end
-    r.ok = true
+    if r.ok == nil then r.ok = true end      -- (r9) a redraw that found nothing: ok = false, the old tiles back
     return r
 end
 

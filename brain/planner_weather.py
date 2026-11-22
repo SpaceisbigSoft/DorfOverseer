@@ -152,6 +152,14 @@ def note_keep_in(memory, now, action: dict, ok) -> None:
     memory.weather_alarm = wa
 
 
+def _kept_members(s: dict) -> int:
+    """(r9) The civilians the bridge keeps in for the weather now (the
+    society section's weather_keep_in; 0 unread)."""
+    wk = _d(_d(s.get("society")).get("weather_keep_in"))
+    n = wk.get("members")
+    return n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
+
+
 def _spell(memory) -> dict:
     wa = getattr(memory, "weather_alarm", None) if memory is not None else None
     return dict(wa) if isinstance(wa, dict) else {}
@@ -238,6 +246,13 @@ def _weather_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
             # (item4) a letting-out that didn't go through: tried again
             proposals.append(Proposal("threat_alert", dict(LET_OUT),
                                       "no evil weather about: the civilians kept in go back to work outside", 0))
+        elif _kept_members(s):
+            # (r9, A7 2) the bridge still keeps civilians in the shelter for
+            # the weather with no spell in memory (memory lost, a brain from
+            # before): let out
+            proposals.append(Proposal("threat_alert", dict(LET_OUT),
+                                      f"no evil weather about and {_kept_members(s)} civilian(s) still kept in the "
+                                      "shelter for it: back to work outside", 0))
         memory.weather_alarm = {}
         return
     days = (now - wa["since"]) // TICKS_PER_DAY

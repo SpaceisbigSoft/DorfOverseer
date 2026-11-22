@@ -733,7 +733,7 @@ def _():
         return s
 
     p = by_rule(plan(ready(), Memory())[0], "chronic_convict")
-    assert len(p) == 1 and p[0].action == {"type": "convict", "max": 1, "unit_id": 9}, p
+    assert len(p) == 1 and p[0].action == {"type": "convict", "max": 1, "unit_id": 9, "disorderly": True}, p
     for change, word in ((lambda s: s["dwarves"].update(needs_medical_care=1), "someone is wounded"),
                          (lambda s: s["justice"]["punish"].update(beatings=1), "a beating waits"),
                          (lambda s: s["justice"].update(restraints_used=2), "no free jail chain"),
@@ -753,6 +753,7 @@ def _():
 @test("crisis: any citizen killed by a citizen; 2+ dwarves with 2+ tantrums in 28 days; held while a tantrum was seen in 14 days")
 def _():
     s = fort()
+    s["dwarves"]["total"] = 40          # (r9) the one-tantrum hold is a small fort's (crisis_tantrum_quiet_max_pop)
     s["dwarves"]["stress"] = {"content": s["dwarves"]["total"]}
     m = Memory()
     note_cycle(copy.deepcopy(s), m)

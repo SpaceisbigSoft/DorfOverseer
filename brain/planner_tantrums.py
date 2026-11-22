@@ -195,8 +195,9 @@ def _hospital_guard_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
     """(I7c fix 4) While a tantrum is loose, one calm squad stationed in each
     hospital zone: soldiers on station meet a tantrum before it reaches a bed.
     Taken off a day after the last tantrum seen loose, after
-    hospital_guard_max_days, or when its soldiers thirst; not posted while
-    enemies can reach the dwarves (the military rules want the squads)."""
+    hospital_guard_max_days, or when its soldiers thirst; not posted, and
+    (r9) taken off at once, while enemies can reach the dwarves (the
+    military rules want the squads)."""
     sec = tantrum_section(s)
     if not sec:
         return
@@ -209,7 +210,13 @@ def _hospital_guard_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
     for g in guards:
         q = _d(squads.get(g["squad_id"]))
         since = g.get("since")
+        # (r9) enemies about: the guard goes back to the military rules at
+        # once (it was refused while enemies were about but never lifted, so
+        # the fort's largest calm squad could stand in the hospital through a
+        # siege)
+        enemies = _enemies_about(s)
         why = ("the hospital guard is switched off" if not cfg["hospital_guard_on"]
+               else "enemies can reach the dwarves" if enemies
                else "no tantrum loose for a day" if quiet
                else f"{q.get('parched')} of its soldiers are thirsty or hungry" if int(q.get("parched") or 0)
                else f"on guard {cfg['hospital_guard_max_days']} days" if isinstance(since, int)
@@ -218,7 +225,8 @@ def _hospital_guard_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
         if why:
             proposals.append(Proposal("hospital_guard", {"type": "hospital_guard", "squad_id": g["squad_id"],
                                                          "release": True},
-                                      f"{why}: squad {g['squad_id']} leaves its guard at the hospital", 2))
+                                      f"{why}: squad {g['squad_id']} leaves its guard at the hospital",
+                                      0 if enemies else 2))
             return
     if not cfg["hospital_guard_on"] or not loose or _enemies_about(s):
         return
@@ -305,6 +313,12 @@ def _convict_blockers(s: dict, cfg: dict, r: dict) -> list:
         out.append("no free jail chain")
     if not justice_held(s):
         out.append("no sheriff or captain of the guard")
+    # (r9) a jail with no usable well: a prisoner gets no booze, only well
+    # water, and planner_society frees every prisoner then (convict, release,
+    # convict again each week, or a chained dwarf with nothing to drink)
+    from planner_wells import usable_wells
+    if not usable_wells(s):
+        out.append("no usable well for the jail's water")
     if int(_traits(s).get("justice", 0) or 0) <= -50:
         out.append("the Justice slider is lenient")
     return out
@@ -343,9 +357,11 @@ def _chronic_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         if why_not:
             last_resort = f"; no conviction ({', '.join(why_not)})"
         else:
-            proposals.append(Proposal("chronic_convict", {"type": "convict", "max": 1, "unit_id": r["id"]},
+            proposals.append(Proposal("chronic_convict", {"type": "convict", "max": 1, "unit_id": r["id"],
+                                                         "disorderly": True},
                                       f"{head}, still after {cfg['chronic_convict_after_days']}+ days of care: the last "
-                                      "resort, one of their own solved cases convicted (a free jail chain, nobody "
+                                      "resort, one of their own disorderly-behaviour cases convicted (a free jail "
+                                      "chain, a usable well, nobody "
                                       "wounded, no beating waiting)", 4))
             last_resort = "; the last resort: one of their own cases convicted"
     notes.append(f"chronic tantrum case{'s' if len(cases) > 1 else ''} ({len(cases)}): {head}; missing "
