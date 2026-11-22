@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) planner_core's parts
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import (PLANNER_CONFIG, Memory, Proposal, TICKS_PER_DAY, abs_tick, note_cycle, plan,  # noqa: E402
@@ -406,7 +407,7 @@ def _():
     assert "training_squad" in overseer.SHORT_WORDS
     for k in ("training_squad_welfare", "training_squad_max", "training_squad_adults_per", "never_draft_days"):
         assert k in PLANNER_CONFIG
-    assert re.search(r'"training_squad": st.get\("training_squad"\) is not False', (ROOT / "brain" / "planner_core.py").read_text())
+    assert re.search(r'"training_squad": st.get\("training_squad"\) is not False', py_family_src("planner_core"))
 
 
 if __name__ == "__main__":

@@ -282,8 +282,7 @@ def _():
 @test("no 'yourself' or 'by hand' instruction left in the core group's Needs you lines but the kept World screen ones")
 def _():
     for name in ("planner.py", "planner_core.py", "planner_building.py"):
-        from py_parts import py_family_src
-        src = py_family_src(name[:-3])     # (r7 d2) planner.py with its parts
+        src = py_family_src(name[:-3])     # (r7) the module with its parts
         assert "yourself" not in src, name
         assert "ask_player(" not in src or name != "planner_building.py", name
 
