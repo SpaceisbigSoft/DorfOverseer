@@ -87,18 +87,43 @@ def _():
     assert "World" in M.lst(env.status().buttons), M.lst(env.status().buttons)
 
 
-@test("a key that doesn't open the World screen: stopped at open, marked failed, the ask returns")
+@test("a key that doesn't open the World screen: marked failed, no outcome booked (no year's block), the ask returns")
 def _():
     env, G = world("G.key_opens = false")
     r = M.start(env)
     assert r.ok and r.sending, dict(r)
     G.pump()
     assert env.WORLD_KEY_FAILED is True
-    last = env.status().last
-    assert last.result == "stopped" and last.step == "open" and "D_WORLD" in str(last.why), dict(last)
+    assert env.status().last is None, dict(env.status().last)      # nothing for the planner to block on
     assert "World" not in M.lst(env.status().buttons)
     r = M.start(env)
     assert not r.ok and r.needs_button == "World", dict(r)
+
+
+@test("a key that opens another panel: it is shut once, the key marked failed")
+def _():
+    env, G = world("G.key_opens = false; G.overlay = nil")
+    M.LUA.execute("local G = ...; local sim = G.env.require('gui').simulateInput; "
+                  "G.env.require = function(n) return {simulateInput = function(v, k) "
+                  "if k == 'D_WORLD' then table.insert(G.inputs, k); G.overlay = 'dwarfmode/Squads' return end "
+                  "if k == 'LEAVESCREEN' and G.overlay then table.insert(G.inputs, k); G.overlay = nil return end "
+                  "return sim(v, k) end} end", G)
+    assert M.start(env).ok
+    G.pump()
+    assert env.WORLD_KEY_FAILED is True and G.overlay is None, (env.WORLD_KEY_FAILED, G.overlay)
+    assert "LEAVESCREEN" in inputs(G), inputs(G)
+
+
+@test("a halt or the player taking over at open doesn't mark the key failed")
+def _():
+    env, G = world("G.key_opens = false")
+    assert M.start(env).ok
+    G.pump(1)                                   # the open step acts: the key pressed
+    run = env.RUN
+    assert run is not None and run.world_via_key is True, run
+    env.stop(run, "stopped", "player_busy")
+    G.pump()
+    assert env.WORLD_KEY_FAILED is False
 
 
 @test("a calibrated World button is still clicked; the key unused")

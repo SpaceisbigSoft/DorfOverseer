@@ -235,7 +235,7 @@ finish = function(run, closed)
         end)
     end
     pcall(save_log, run)
-    pcall(save_outcome, run)
+    if not run.key_failed then pcall(save_outcome, run) end   -- (r12 v5) a failed World key books no outcome
     if RUN == run then RUN = nil end
 end
 
@@ -247,11 +247,25 @@ function stop(run, result, reason)
     run.stopped_at = run.step_name
     -- (r12) the World screen didn't open by DF's key: not tried again this DF
     -- session (the ask to show the button returns)
-    if run.world_via_key and run.step_name == 'open' and result ~= 'sent' then
+    -- (r12 v5) only the AI's own surprise (the open step timed out, or the key
+    -- changed the screen): a halt or the player taking over doesn't mark it.
+    -- The run's outcome isn't booked (finish): the planner sees World unknown
+    -- and asks for the button once, with no year's block on Make contact.
+    if run.world_via_key and run.step_name == 'open' and result ~= 'sent' and reason == 'unexpected' then
         local okw, open = pcall(world_screen)
         if not (okw and open) then
             WORLD_KEY_FAILED = true
+            run.key_failed = true
             run.why = (run.why and run.why .. '; ' or '') .. 'DF\'s World key (D_WORLD) did not open the World screen'
+            -- another panel the key opened instead: shut once (the run began on dwarfmode/Default)
+            pcall(function()
+                local f = dfhack.gui.getCurFocus(true)
+                f = type(f) == 'table' and f[1] or f
+                if f and not tostring(f):find('^dwarfmode/Default') and not tostring(f):find('^world') then
+                    require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN')
+                    run.why = run.why .. ' (' .. tostring(f) .. ' shut)'
+                end
+            end)
         end
     end
     local ok, err = pcall(function()
