@@ -430,6 +430,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
         local fresh = CONSTRUCTIONS_FRESH == true
         local r = safe(function() return reqscript('ai-constructions').survey(fresh) end)
         if fresh and not (type(r) == 'table' and r.error) then CONSTRUCTIONS_FRESH = nil end
+        -- (r9, audit A3 18) a walk not through yet (its round goes on next
+        -- report) is sent but not kept for the section's 3 days
+        if type(r) == 'table' and (r.partial or r.refreshing) then return r, true end
         return r
     end,
     -- (0.105.47) the deep plan's crossing of the first cavern: none, ready,

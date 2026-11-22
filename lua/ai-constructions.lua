@@ -56,6 +56,10 @@ WALKABLE = {floor = true, ramp = true, stair_up = true, stair_down = true, stair
 
 SURVEY_CACHE = SURVEY_CACHE or nil
 SURVEY_RESUME = SURVEY_RESUME or nil   -- (0.105.33) {site, at}: where a cut-short walk stopped
+                                       -- (r9) and acc: the counts walked so far this round
+SURVEY_FULL = SURVEY_FULL or nil       -- (r9) {site, result}: the last walk that went through every record
+-- (r9) the count fields a walk adds up (carried over a walk cut short)
+COUNT_FIELDS = {'total', 'by_shape', 'by_item', 'surface', 'underground', 'roofed_surface_tiles', 'ai', 'wall_tops'}
 
 local function counts(keys)
     local t = {}
@@ -322,8 +326,22 @@ function survey(fresh)
     else
         -- (0.105.33) a walk cut short resumes next time where it stopped
         -- (it always restarted at the first record: a big fort's counts were
-        -- always the same first records), round to the start again
-        local start = (SURVEY_RESUME and SURVEY_RESUME.site == site) and SURVEY_RESUME.at or 0
+        -- always the same first records). (r9, audit A3 18) with the counts
+        -- walked so far carried on, so a round's totals are every record's
+        -- (they were each call's own slice, kept for a day as the totals)
+        local res = (SURVEY_RESUME and SURVEY_RESUME.site == site and type(SURVEY_RESUME.acc) == 'table')
+            and SURVEY_RESUME or nil
+        local start = res and (math.tointeger(res.at) or 0) or 0
+        if res then
+            for _, k in ipairs(COUNT_FIELDS) do
+                local v = res.acc[k]
+                if type(v) == 'table' then
+                    for kk, vv in pairs(v) do out[k][kk] = vv end
+                elseif v ~= nil then
+                    out[k] = v
+                end
+            end
+        end
         local n, stopped = 0, nil
         local function visit(i, con)
             n = n + 1
@@ -372,14 +390,21 @@ function survey(fresh)
             i = i + 1
             if i > start and not visit(i, con) then break end
         end
-        if stopped == nil and start > 0 then
-            i = 0
-            for _, con in ipairs(list) do      -- then the records before it
-                i = i + 1
-                if i > start or not visit(i, con) then break end
+        SURVEY_RESUME = nil
+        if stopped then
+            local acc = {}
+            for _, k in ipairs(COUNT_FIELDS) do
+                local v = out[k]
+                if type(v) == 'table' then
+                    acc[k] = {}
+                    for kk, vv in pairs(v) do acc[k][kk] = vv end
+                else
+                    acc[k] = v
+                end
             end
+            SURVEY_RESUME = {site = site, at = stopped, acc = acc}
+            out.walked = stopped
         end
-        SURVEY_RESUME = stopped and {site = site, at = stopped} or nil
         if start > 0 then out.resumed_at = start end
     end
     local okq, planned = pcall(planned_constructions)
@@ -391,9 +416,20 @@ function survey(fresh)
     if okf and type(rep) == 'table' then
         out.soil_floors, out.soil_floors_left = rep.projects, rep.tiles
     end
+    -- (r9) a round not through yet: the last full round's totals stand in
+    -- (refreshing), else the counts so far (partial); kept for no day: the
+    -- next report walks on
+    local full = SURVEY_FULL and SURVEY_FULL.site == site and SURVEY_FULL.result or nil
+    if out.partial and full then
+        for _, k in ipairs(COUNT_FIELDS) do out[k] = full[k] end
+        out.partial, out.refreshing = nil, true
+    end
     out.block_pct = out.total > 0 and math.floor(100 * out.by_item.blocks / out.total + 0.5) or nil
     out.line = line_of(out)
     out.ms = math.floor((os.clock() - t0) * 1000)
-    SURVEY_CACHE = {tick = now, site = site, result = out}
+    if not (out.partial or out.refreshing) then
+        SURVEY_CACHE = {tick = now, site = site, result = out}
+        if list ~= nil then SURVEY_FULL = {site = site, result = out} end
+    end
     return out
 end

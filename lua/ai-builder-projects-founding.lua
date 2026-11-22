@@ -13,8 +13,6 @@ PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-founding
 local ez = ez
 local find = PROJECTS_PART_LOCALS.find
 
--- Only while digging: removes dig designations on the project's own tiles
--- (dug tiles stay dug, stairs are never removed).
 ---------------------------------------------------------------------------
 -- Founding (a fresh embark): the fort's first staircase. Every level the AI
 -- digs grows from a staircase where the dwarves live, and a new embark has
@@ -251,6 +249,9 @@ function unreached_stairs_dropped(stairs, banned)
     return kept
 end
 
+-- Cancelling a project. Only while digging: removes dig designations on the
+-- project's own tiles (dug tiles stay dug, stairs are never removed).
+-- (r9, audit A3 20: this note stood above the founding code)
 function cancel_project(id, unreached)
     local data = load_projects()
     local p = find(data, id)

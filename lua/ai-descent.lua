@@ -144,7 +144,10 @@ function plan_crossing(read, forbid, x, y, zb, layer, opts)
                 local built = shaft.material == 'CONSTRUCTION'
                 cells[#cells + 1] = {x = x, y = y, z = z, mode = built and 'build' or 'dig', text = built and 'Cx' or 'i'}
             elseif BUILD_ON[shaft.shape] then
-                if shaft.building and not opts.ours then
+                -- (r9, audit A3 10) "ours" covers only a construction being
+                -- built (the crossing's own): a trap, a door of the cavern
+                -- seal, the player's building refuses (construction == false)
+                if shaft.building and (not opts.ours or shaft.construction == false) then
                     return nil, ('something is built at %s'):format(where(x, y, z, ez))
                 end
                 cells[#cells + 1] = {x = x, y = y, z = z, mode = 'build', text = 'Cx'}
@@ -157,7 +160,7 @@ function plan_crossing(read, forbid, x, y, zb, layer, opts)
                 if t.shape == 'WALL' then
                     -- rock or a wall already built: the shaft's side as it is
                 elseif BUILD_ON[t.shape] then
-                    if t.building and not opts.ours then
+                    if t.building and (not opts.ours or t.construction == false) then   -- (r9)
                         return nil, ('something is built beside the stair at %s'):format(where(nx, ny, z, ez))
                     end
                     cells[#cells + 1] = {x = nx, y = ny, z = z, mode = 'build', text = 'Cw'}
@@ -271,8 +274,22 @@ local function forbid(x, y, z)
     return ok and why or nil
 end
 
+-- (r9, audit A3 10) a building on the tile: true when it is a construction
+-- (a wall or stair being built), false when it is anything else, nil when
+-- it can't be told
+function construction_at(x, y, z)
+    local ok, is = pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+        if not b then return nil end
+        return b:getType() == df.building_type.Construction
+    end)
+    if ok then return is end
+    return nil
+end
+
 local function read(x, y, z)
     local ok, t = pcall(function() return B().tile_info(x, y, z) end)
+    if ok and t and t.building then t.construction = construction_at(x, y, z) end
     return ok and t or nil
 end
 

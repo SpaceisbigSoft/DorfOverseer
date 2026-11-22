@@ -136,10 +136,18 @@ local function find_landmark(d, id)
 end
 
 -- Surface landmarks being built: each takes a building slot (slot_cap).
+-- (r9, audit A3 16) one with no tile built and no stage gone on for
+-- LANDMARK_SLOT_DAYS (its pieces' items never come) holds its slot no
+-- longer: it stays open and goes on when they come (progress_tick: the last
+-- change landmark_step saw; an older record without it counts as before)
+LANDMARK_SLOT_DAYS = 60
 function landmarks_open_surface()
-    local n = 0
+    local n, now = 0, now_tick()
     for _, l in ipairs(landmarks_data().list) do
-        if l.ground == 'surface' and l.status == 'building' then n = n + 1 end
+        if l.ground == 'surface' and l.status == 'building' then
+            local t = tonumber(l.progress_tick)
+            if not (t and now - t >= LANDMARK_SLOT_DAYS * 1200) then n = n + 1 end
+        end
     end
     return n
 end
@@ -1558,11 +1566,17 @@ function landmark_step(id, dry_run)
         return stat(res, (mode or 'build') .. '_designated')
     end
     local function wait(stage, n, what)
+        -- (r9) the last change seen (tiles left, the stage): its slot's clock
+        if not dry_run and (rec.progress_left ~= n or rec.progress_stage ~= stage or not rec.progress_tick) then
+            rec.progress_left, rec.progress_stage, rec.progress_tick = n, stage, now_tick()
+            save_landmarks(d)
+        end
         return out({ok = false, rejected = true, waiting = true, stage = stage, left = n,
                     error = ('%s: %d %s still to build'):format(rec.name or 'the landmark', n, what)})
     end
     local function advance(stage, extra)
         if not dry_run then
+            rec.progress_tick, rec.progress_left, rec.progress_stage = now_tick(), nil, nil   -- (r9)
             rec.stage = stage
             for key, v in pairs(extra or {}) do rec[key] = v end
             save_landmarks(d)

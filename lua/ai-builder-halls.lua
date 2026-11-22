@@ -744,8 +744,15 @@ function place_hall(kind, dry_run, opts)
         end
         local n, why = hall_apply('build', cells, h.z + 1, 'the hall\'s roof', dry_run)
         if not n and stair_cell then
-            stair_cell.text, stair_cell = 'Cf', nil
-            n, why = hall_apply('build', cells, h.z + 1, 'the hall\'s roof', dry_run)
+            -- (r9, audit A3 13, as the keep's) a stair down the game won't
+            -- take: that tile left open, not floored over the roof stair (its
+            -- builder, on the roof, would have no way down)
+            for i, cl in ipairs(cells) do
+                if cl == stair_cell then table.remove(cells, i) break end
+            end
+            stair_cell = nil
+            n, why = 0, nil
+            if #cells > 0 then n, why = hall_apply('build', cells, h.z + 1, 'the hall\'s roof', dry_run) end
         end
         if not n then return out({ok = false, error = why}) end
         if not dry_run then

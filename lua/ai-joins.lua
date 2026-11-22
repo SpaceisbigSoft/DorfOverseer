@@ -145,6 +145,10 @@ function route(T, a, b, owner, ia, ib, y_first)
         local t = T(p.x, p.y)
         if t and t.recent then return nil, 'a corridor is being dug there already' end
         if not t or not t.rock then return nil, ('not plain rock at x%d y%d'):format(p.x, p.y) end
+        if t.other then return nil, ('a room is planned or designated at x%d y%d'):format(p.x, p.y) end   -- (r9)
+        -- (r9) water, magma or aquifer right above: damp stone (the game
+        -- cancels the dig) and a leak into the corridor
+        if t.wet_above then return nil, ('water, magma or aquifer above x%d y%d'):format(p.x, p.y) end
     end
     -- nothing but the two ends may open onto it
     for _, p in ipairs(list) do
@@ -155,7 +159,10 @@ function route(T, a, b, owner, ia, ib, y_first)
                     local n = T(nx, ny)
                     if not n then return nil, 'off the map' end
                     if n.danger then return nil, ('water, magma, warm stone, a cavern or open air beside x%d y%d'):format(nx, ny) end
-                    if n.open then
+                    -- (r9) a tile designated but not dug yet, or inside a room
+                    -- still being dug, is other space too: dug, it would open
+                    -- onto the corridor
+                    if n.open or n.other then
                         local o = owner[key(nx, ny)]
                         local near_a = o == ia and math.max(math.abs(nx - a.x), math.abs(ny - a.y)) <= 1
                         local near_b = o == ib and math.max(math.abs(nx - b.x), math.abs(ny - b.y)) <= 1
@@ -320,6 +327,8 @@ function widen_run(T, run)
         for _, q in ipairs(list) do
             local t = T(q.x, q.y)
             if not t or not t.rock then ok, last = false, ('not plain rock at x%d y%d'):format(q.x, q.y) break end
+            if t.other then ok, last = false, ('a room is planned or designated at x%d y%d'):format(q.x, q.y) break end   -- (r9)
+            if t.wet_above then ok, last = false, ('water, magma or aquifer above x%d y%d'):format(q.x, q.y) break end    -- (r9)
             for dx = -1, 1 do
                 for dy = -1, 1 do
                     local nk = key(q.x + dx, q.y + dy)
@@ -327,7 +336,7 @@ function widen_run(T, run)
                         local n = T(q.x + dx, q.y + dy)
                         if not n then ok, last = false, 'off the map'
                         elseif n.danger then ok, last = false, 'water, magma, warm stone, a cavern or open air beside it'
-                        elseif n.open then ok, last = false, ('it would open onto other space at x%d y%d'):format(q.x + dx, q.y + dy)
+                        elseif n.open or n.other then ok, last = false, ('it would open onto other space at x%d y%d'):format(q.x + dx, q.y + dy)
                         end
                     end
                 end
@@ -358,10 +367,38 @@ end
 local OPEN_SHAPES = {FLOOR = true, STAIR_UP = true, STAIR_DOWN = true, STAIR_UPDOWN = true, RAMP = true,
                      BOULDER = true, PEBBLES = true, TWIG = true, SAPLING = true, SHRUB = true}
 
+-- (r9, audit A3 8) the inside (the wall ring left out) of every room on z
+-- the AI is still digging: its undug tiles will open up, so a corridor
+-- keeps off them as off open space
+local function planned_boxes(B, z)
+    local out = {}
+    local ok, data = pcall(function() return B.load_projects() end)
+    if not ok or type(data) ~= 'table' then return out end
+    for _, p in ipairs(type(data.list) == 'table' and data.list or {}) do
+        if p.phase == 'dig' then
+            local okA, areas = pcall(B.project_areas, p)
+            for _, a in ipairs(okA and areas or {}) do
+                local az = math.tointeger(a.z) or math.tointeger(p.z)
+                if az == z and math.tointeger(a.x1) and math.tointeger(a.y1) and math.tointeger(a.x2) and math.tointeger(a.y2) then
+                    table.insert(out, {x1 = a.x1 + 1, y1 = a.y1 + 1, x2 = a.x2 - 1, y2 = a.y2 - 1})
+                end
+            end
+        end
+    end
+    return out
+end
+
 function game_reader(z)
     local B = reqscript('ai-builder')
     local cache = {}
     local recent = recent_tiles()
+    local boxes = planned_boxes(B, z)
+    local function in_box(x, y)
+        for _, b in ipairs(boxes) do
+            if x >= b.x1 and x <= b.x2 and y >= b.y1 and y <= b.y2 then return true end
+        end
+        return false
+    end
     return function(x, y)
         local k = key(x, y)
         local v = cache[k]
@@ -373,6 +410,12 @@ function game_reader(z)
         -- are slow, and most tiles never need them)
         local building = t.building
         local lazy = {__index = function(self, k)
+            if k == 'wet_above' then      -- (r9) read only for the tiles to dig
+                local up = B.tile_info(x, y, z + 1)
+                local wet = up ~= nil and (up.liquid or up.aquifer) and true or false
+                rawset(self, 'wet_above', wet)
+                return wet
+            end
             if k ~= 'passage' then return nil end
             local passage = false
             if self.open and not building then
@@ -387,7 +430,11 @@ function game_reader(z)
         v = setmetatable({open = open, recent = recent[('%d,%d,%d'):format(x, y, z)] ~= nil, rock = (B.natural_wall(t)) == true and not t.smoothed,      -- (never an engraved wall)
              -- (0.105.33) a cavern, open sky or open air (a chasm, a shaft)
              -- beside the corridor counts too: it would open the fort onto it
-             danger = t.liquid or t.aquifer or t.warm or t.feature or t.outside or t.shape == 'EMPTY' or false}, lazy)
+             danger = t.liquid or t.aquifer or t.warm or t.feature or t.outside or t.shape == 'EMPTY' or false,
+             -- (r9, audit A3 8) designated and not dug (another dig, a room of
+             -- an open project, the cistern's basin), or inside a room still
+             -- being dug: space to come
+             other = (not open) and (t.designated == true or in_box(x, y)) or false}, lazy)
         cache[k] = v
         return v
     end
