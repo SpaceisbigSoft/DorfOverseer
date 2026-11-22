@@ -330,7 +330,8 @@ def _():
 @test("5 the cistern's plug refused by the guard: held (held = true) with the guard's reason, before any "
       "dig-now; the refusal counted once per tile")
 def _():
-    src = (LUA_DIR / "ai-builder-cistern.lua").read_text(encoding="utf-8")
+    from cistern_src import cistern_src       # (r8 s8) the cistern is three files now
+    src = cistern_src()
     i = src.index("dig_check_tiles({{x = p.plug.x, y = p.plug.y}}, zi")
     seg = src[i:i + 900]
     assert "held = true" in seg and "guards the underworld" in seg and "d.guard_held" in seg, seg
@@ -571,7 +572,8 @@ def _():
     state["why"] = None
     r = step()
     assert r.stage == "filling" and wk.stage == "filling" and not wk.plug_guard, dict(r)
-    cis = (LUA_DIR / "ai-builder-cistern.lua").read_text(encoding="utf-8")
+    from cistern_src import cistern_src       # (r8 s8) the cistern is three files now
+    cis = cistern_src()
     assert "is left alone (%s): it guards the underworld" in cis and "waits: %s (read again next time)" in cis
 
 

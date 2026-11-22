@@ -834,7 +834,8 @@ def _():
 @test("cistern: the tunnel's reach grows to a far still pool only when none is near enough (the map's width at most)")
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
-    src = (ROOT / "lua" / "ai-builder-cistern.lua").read_text(encoding="utf-8")
+    from cistern_src import cistern_src       # (r8 s8) the cistern is three files now
+    src = cistern_src()
     env = lua.eval("""function(src)
       local env = setmetatable({}, {__index = _G})
       env.SURVEY = nil
@@ -862,7 +863,8 @@ def _():
 def _():
     import re
     lua = LuaRuntime(unpack_returned_tuples=True)
-    src = (ROOT / "lua" / "ai-builder-cistern.lua").read_text(encoding="utf-8")
+    from cistern_src import cistern_src       # (r8 s8) the cistern is three files now
+    src = cistern_src()
     wells = (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8")
     solid = re.search(r"^function solid_rock\(t\).*?^end", wells, re.S | re.M).group(0)
     env = lua.eval("""function(src, solid)

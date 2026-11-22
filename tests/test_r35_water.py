@@ -369,7 +369,8 @@ if LuaRuntime is not None:
         assert got == [("cistern_retire", [True, "leaked twice"])], got
         got, _, _ = BB.forwarded("cistern_step", {"relink": True}, "ai-builder")
         assert got == [("cistern_relink", [False])], got
-        for f in ("ai-builder-cistern.lua", "ai-bridge-actions.lua", "ai-waterworks.lua", "ai-bridge.lua"):
+        for f in ("ai-builder-cistern.lua", "ai-builder-cistern-status.lua", "ai-builder-cistern-step.lua",
+                  "ai-bridge-actions.lua", "ai-waterworks.lua", "ai-bridge.lua"):
             text = (ROOT / "lua" / f).read_text(encoding="utf-8")
             assert LUA.eval("function(s, n) local f, e = load(s, n, 't', {}); return e end")(text, f) is None, f
 else:
