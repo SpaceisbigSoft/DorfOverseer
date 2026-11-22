@@ -62,12 +62,10 @@ ON = {"type": "civ_alert", "on": True}
 OFF = {"type": "civ_alert", "on": False}
 
 
-def _c(cfg: dict, k: str):
-    return cfg.get(k, PLANNER_CONFIG[k])
+from util import conf_get as _c  # noqa: E402  (r6 c2) was a copy here
 
 
-def _int(v) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
+from util import is_int as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def alarm_cause(reason: str) -> tuple[str, str]:

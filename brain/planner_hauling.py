@@ -52,8 +52,7 @@ __all__ = ["hauling_report", "haulers_wanted", "hauling_stalled", "_hauling_labo
            "note_hauling", "hauling_surplus"]
 
 
-def _int(v) -> int:
-    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+from util import int_or_zero as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def hauling_report(s: dict) -> dict | None:

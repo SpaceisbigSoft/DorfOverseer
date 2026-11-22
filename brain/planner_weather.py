@@ -66,12 +66,10 @@ __all__ = ["weather_of", "weather_danger", "weather_held", "_weather_rules", "_w
 TICKS_PER_HOUR = 50
 
 
-def _c(cfg: dict, k: str):
-    return cfg.get(k, PLANNER_CONFIG[k])
+from util import conf_get as _c  # noqa: E402  (r6 c2) was a copy here
 
 
-def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+from util import is_num as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def weather_of(s: dict) -> dict:

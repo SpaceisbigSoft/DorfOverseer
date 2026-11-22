@@ -540,6 +540,7 @@ def supply_order_kept(s: dict, what, cfg: dict) -> str | None:
     return None
 
 
+# (r6 c2) kept local: unlike util's helpers (rounded to int)
 def _clamp(v: float, lo: int, hi: int) -> int:
     return int(max(lo, min(hi, round(v))))
 

@@ -35,8 +35,7 @@ __all__ = ["defence_floor", "note_defence_floor", "floor_note", "present_threat"
 BEAST_KEYS = ("ForgottenBeast", "Titan", "Megabeast", "Demon", "SemiMegabeast")
 
 
-def _num(v):
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+from util import num_or_none as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def _great(t: dict) -> bool:

@@ -202,9 +202,7 @@ def _peek(memory) -> dict:
     return {"prefs": prefs, "log": l.get("log") if isinstance(l.get("log"), list) else []}
 
 
-def _date(state: dict) -> str:
-    d = _d(state.get("date"))
-    return f"{d.get('day')} {d.get('month')} y{d.get('year')}"
+from util import date_text as _date  # noqa: E402  (r6 c2) was a copy here
 
 
 def _pref(l: dict, subject: str, now: int) -> dict:

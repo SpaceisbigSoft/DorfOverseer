@@ -102,6 +102,7 @@ def journal_hint(action: dict, cfg: dict = PLANNER_CONFIG) -> dict:
         return {}
 
 
+# (r6 c2) kept local: unlike util's helpers (finite numbers cut to int)
 def _whole(v):
     """A whole number out of the answer, or None."""
     if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or v in (float("inf"), float("-inf")):

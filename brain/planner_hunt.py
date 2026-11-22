@@ -81,17 +81,16 @@ NOTE_MAX = 8            # targets said each cycle (the rest counted)
 PARTY_SQUADS_MAX = 8    # squads looked at for a party (subsets of up to 2^8)
 
 
-def _num(v) -> float | None:
-    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+from util import float_or_none as _num  # noqa: E402  (r6 c2) was a copy here
 
 
+# (r6 c2) kept local: unlike util's helpers (via _num, 0 for none)
 def _int(v) -> int:
     n = _num(v)
     return int(n) if n is not None else 0
 
 
-def _id(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _id  # noqa: E402  (r6 c2) was a copy here
 
 
 def hunt_mode(s: dict) -> str:

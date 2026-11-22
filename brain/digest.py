@@ -29,12 +29,10 @@ STOCK_ORDER = [
 UNHAPPY = ("miserable", "very_unhappy", "unhappy")
 
 
-def _d(v) -> dict:
-    return v if isinstance(v, dict) else {}
+from util import as_dict as _d  # noqa: E402  (r6 c2) was a copy here
 
 
-def _l(v) -> list:
-    return v if isinstance(v, list) else []
+from util import as_list as _l  # noqa: E402  (r6 c2) was a copy here
 
 
 def _top(counts: dict, n: int) -> str:
@@ -512,8 +510,7 @@ def numbers(s: dict) -> dict[str, int]:
     return n
 
 
-def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+from util import is_num as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def _n(v) -> int:

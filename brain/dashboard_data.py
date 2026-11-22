@@ -26,6 +26,7 @@ MONTHS = ["Granite", "Slate", "Felsite", "Hematite", "Malachite", "Galena", "Lim
 STRESS = ["miserable", "very_unhappy", "unhappy", "fine", "content", "happy", "ecstatic"]
 
 
+# (r6 c2) kept local: unlike util's helpers (any float()-able, ints as int)
 def _num(v):
     try:
         f = float(v)

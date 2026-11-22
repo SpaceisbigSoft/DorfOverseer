@@ -74,8 +74,7 @@ WEAPONS = {"metal_battle_axe", "metal_spear", "metal_mace", "metal_pick", "metal
 CRAFTS = {"metal_crafts", "metal_amulet", "metal_bracelet", "metal_ring", "metal_earring"}
 
 
-def _int(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def _shop_of(recipe: str) -> str | None:

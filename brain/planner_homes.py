@@ -65,6 +65,7 @@ def taste_on(s: dict) -> bool:
     return mode in ("guided", "architect") and _int(citizens_taste(s).get("adults")) > 0
 
 
+# (r6 c2) kept local: unlike util's helpers (int(v or 0), 0 on error)
 def _int(v) -> int:
     try:
         return int(v or 0)

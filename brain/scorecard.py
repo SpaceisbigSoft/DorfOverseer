@@ -86,20 +86,10 @@ def season_key(name: str) -> tuple[int, int] | None:
 
 # ---------------------------------------------------------------- runs
 
-def state_run(path: Path) -> str | None:
-    """The run a kept season state belongs to (brain/overseer.py keep_state
-    writes "_run" first); None for one kept before runs were marked."""
-    try:
-        with open(path, "rb") as f:
-            head = f.read(200).decode("utf-8", "replace")
-    except OSError:
-        return None
-    m = re.match(r'\{"_run": "([^"]*)"', head)
-    return m.group(1) if m else None
+from util import state_run  # noqa: E402  (r6 c2) was a copy here
 
 
-def _site(key: str) -> str:
-    return str(key).rpartition("#")[2]
+from util import site_of as _site  # noqa: E402  (r6 c2) was a copy here
 
 
 def dir_site(name: str) -> str:
@@ -488,8 +478,7 @@ def per(a, b):
     return round(a / b, 1) if a is not None and b else None
 
 
-def _whole(v) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
+from util import is_int as _whole  # noqa: E402  (r6 c2) was a copy here
 
 
 def level_surface(lv: dict, s: dict) -> int | None:

@@ -70,8 +70,7 @@ COOLDOWN_KEYS["train_cook"] = "cook_train_cooldown_ticks"
 TOMB_RULES = ("tombs_ghosts", "build", "tombs")
 
 
-def _c(cfg: dict, k: str):
-    return cfg[k] if k in cfg else PLANNER_CONFIG[k]
+from util import conf_lookup as _c  # noqa: E402  (r6 c2) was a copy here
 
 
 def _welfare(s: dict) -> float:

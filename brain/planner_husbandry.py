@@ -89,8 +89,7 @@ def hunt_animals_wanted(traits: dict, cfg: dict) -> int:
     return round(cfg["hunt_animals_max"] * factor(traits, "militarism"))
 
 
-def _int(v) -> int:
-    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+from util import int_or_zero as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def _kinds_short_of_breeders(herd: dict, females: int) -> list:

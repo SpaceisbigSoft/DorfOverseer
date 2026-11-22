@@ -67,12 +67,10 @@ AGENDA_THEMES.update({GUARD_RULE: "a squad on the stair while an unseen intruder
 HUMANOID_SIZE = 70000        # a thief's or visitor's body when the report gives none
 
 
-def _int(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # noqa: E402  (r6 c2) was a copy here
 
 
-def _num(v):
-    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+from util import float_or_none as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def holdfast(memory) -> dict:

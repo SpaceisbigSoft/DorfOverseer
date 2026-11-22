@@ -132,8 +132,7 @@ def residency_stance(traits: dict, cfg: dict) -> str:
     return "weigh"
 
 
-def _h9(cfg: dict, k: str):
-    return cfg[k] if k in cfg else PLANNER_CONFIG[k]
+from util import conf_lookup as _h9  # noqa: E402  (r6 c2) was a copy here
 
 
 def residency_kind(e: dict) -> str:

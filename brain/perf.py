@@ -27,12 +27,10 @@ PERF_MAX_BYTES = 1_000_000      # ~5000 rows (some 14 game years a file), then p
 RECENT_ROWS = 60                # the last rows kept in memory per fort
 
 
-def _d(v) -> dict:
-    return v if isinstance(v, dict) else {}
+from util import as_dict as _d  # noqa: E402  (r6 c2) was a copy here
 
 
-def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+from util import is_num as _num  # noqa: E402  (r6 c2) was a copy here
 
 
 def slow_sections(perf: dict, n: int = 3) -> list[tuple[str, float]]:

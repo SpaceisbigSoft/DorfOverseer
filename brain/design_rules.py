@@ -223,6 +223,7 @@ def _h(*parts) -> int:
     return int(hashlib.sha256("|".join(str(p) for p in parts).encode()).hexdigest()[:12], 16)
 
 
+# (r6 c2) kept local: unlike util's helpers (float()-able, `default`)
 def _num(v, default=0.0) -> float:
     try:
         return float(v) if v is not None and not isinstance(v, bool) else default
@@ -230,6 +231,7 @@ def _num(v, default=0.0) -> float:
         return default
 
 
+# (r6 c2) kept local: unlike util's helpers (any number, or `default`, via _num)
 def _int(v, default=0) -> int:
     return int(_num(v, default))
 
@@ -239,8 +241,7 @@ def _word(v) -> str:
     return re.sub(r"[^A-Za-z]", "", str(v or ""))[:16]
 
 
-def _clamp(v, lo, hi):
-    return max(lo, min(hi, v))
+from util import clamp as _clamp  # noqa: E402  (r6 c2) was a copy here
 
 
 def _sphere_word(v) -> str:

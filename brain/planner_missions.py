@@ -64,8 +64,7 @@ def _m(s: dict) -> dict:
     return _d(s.get("missions"))
 
 
-def _int(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def allowed_goals(s: dict) -> tuple:

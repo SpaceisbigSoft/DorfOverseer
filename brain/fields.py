@@ -28,8 +28,7 @@ _FIELDS: dict | None = None
 _ON = True              # (planner_config garden_fort) off: no surface fields, no gardens in the soil
 
 
-def _int(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def read(state: dict | None) -> dict | None:

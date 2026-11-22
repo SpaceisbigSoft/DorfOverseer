@@ -50,8 +50,7 @@ ROOM_WORDS = {"TEMPLE": "temple", "LIBRARY": "library", "INN_TAVERN": "tavern", 
               "DiningHall": "dining hall", "MeetingHall": "meeting hall"}
 
 
-def _id(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _id  # noqa: E402  (r6 c2) was a copy here
 
 
 def artifact_rooms(a: dict, cfg: dict) -> list:

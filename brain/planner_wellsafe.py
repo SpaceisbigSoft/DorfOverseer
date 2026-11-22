@@ -49,8 +49,7 @@ WELL_SAFETY_TODO = {
 }
 
 
-def _c(cfg: dict | None, k: str):
-    return (cfg or {}).get(k, PLANNER_CONFIG.get(k))
+from util import conf_soft as _c  # noqa: E402  (r6 c2) was a copy here
 
 
 def _ws(s: dict) -> dict:

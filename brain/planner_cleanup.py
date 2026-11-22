@@ -62,8 +62,7 @@ CLEANUP_LEVELS = {"off": (), "safe": ("spatter", "dead", "items"), "full": ("spa
 JOURNAL_MAX = 12
 
 
-def _int(v) -> int:
-    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+from util import int_or_zero as _int  # noqa: E402  (r6 c2) was a copy here
 
 
 def cleanup_report(s: dict) -> dict | None:

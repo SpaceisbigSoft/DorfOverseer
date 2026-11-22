@@ -78,12 +78,10 @@ MAX_LINES = 6
 
 # --- small helpers -------------------------------------------------------------------
 
-def _int(v) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
+from util import is_int as _int  # noqa: E402  (r6 c2) was a copy here
 
 
-def _clamp(v, lo, hi):
-    return max(lo, min(hi, v))
+from util import clamp as _clamp  # noqa: E402  (r6 c2) was a copy here
 
 
 def _text(v, n: int) -> str:

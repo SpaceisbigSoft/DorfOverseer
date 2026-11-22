@@ -35,6 +35,7 @@ def _state(memory) -> dict:
     return c
 
 
+# (r6 c2) kept local: unlike util's helpers (`or {}`, not a dict check)
 def _date(state: dict) -> str:
     d = state.get("date") or {}
     return f"{d.get('day')} {d.get('month')} y{d.get('year')}"
