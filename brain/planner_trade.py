@@ -78,8 +78,12 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
                                   f"take up to {min(per, tr['goods'])} crafts to the depot"
                                   + (" (the goods piles are full)" if full else ""), 3))
     trader = _d(tr.get("trader"))
-    if cs and not trader.get("at_depot") and not _d(tr.get("screen")).get("open"):
-        here = any(str(c.get("state")) == "AtDepot" for c in cs)
+    here = any(str(c.get("state")) == "AtDepot" for c in cs)
+    # (r9, audit A8 #24) not once the AI has traded with (or been turned down
+    # by) the caravan at the depot (fresh false): the call made a new
+    # TradeAtDepot job all visit and kept the broker standing at the depot
+    if (cs and not trader.get("at_depot") and not _d(tr.get("screen")).get("open")
+            and not (here and trader.get("fresh") is False and len(cs) == 1)):
         proposals.append(Proposal("call_trader", {"type": "call_trader",
                                                   "wait_ticks": cfg["trade_anyone_after_ticks"]},
                                   f"a caravan from {cs[0].get('civ')} is {'at the depot' if here else 'coming'}: "

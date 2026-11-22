@@ -213,6 +213,20 @@ def _():
     assert r.meeting is None and r.unknown is None, (r.meeting, r.unknown and lst(r.unknown))
 
 
+@test("(r9, A8 #22) the world report lists a friend (an ally, a tribute) past the 24th civ; plain civs past it "
+      "are counted, not listed")
+def _():
+    env, _ = world(r"""
+for i = 1, 30 do G.civ(1000 + i, 'C' .. i); G.relation(1000 + i, 'Peace') end
+G.civ(2000, 'ELF'); G.relation(2000, 'Peace', {allies = true})
+G.civ(2001, 'HUMAN'); G.relation(2001, 'AcceptingTribute')
+""")
+    r = env.world_report()
+    ids = [c.id for c in lst(r.civs)]
+    assert len(ids) == 26 and 2000 in ids and 2001 in ids, ids
+    assert r.civs_more == 6, r.civs_more
+
+
 MEETING = r"""
 G.civ(300, 'ELF')
 df.global.game.main_interface.diplomacy = {open = true, taking_requests = false, selecting_land_holder_position = false,

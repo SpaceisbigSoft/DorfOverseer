@@ -141,7 +141,11 @@ function player_busy()
     if okU and u then return 'a unit is selected' end
     local okB, b = pcall(dfhack.gui.getSelectedBuilding, true)
     if okB and b then return 'a building is selected' end
-    local s = CAM.set
+    -- (r9, audit A8 #18) only while the camera is running: CAM.set is cleared
+    -- by the running camera alone, so with it off, halted or pinned since it
+    -- last moved the view, any scroll of the player's read "moved by hand"
+    -- for ever and the World-screen sender (start) refused every mission
+    local s = (CAM.mode ~= nil and CAM.mode ~= 'off' and not CAM.pinned) and CAM.set or nil
     if s and (df.global.window_x ~= s.x or df.global.window_y ~= s.y or df.global.window_z ~= s.z) then
         return 'the view was moved by hand'
     end
@@ -741,7 +745,7 @@ end
 function step()
     local mode, why = wanted_mode()
     CAM.mode, CAM.why = mode, why
-    if mode == 'off' then return 'off' end
+    if mode == 'off' then CAM.set = nil return 'off' end     -- (r9) the view is the player's again
     if not dfhack.isMapLoaded() then return 'no map' end
     if CAM.pinned then CAM.why = 'staying here (' .. KEYS.stay .. ' to let go)' return 'pinned' end
     local busy = player_busy()

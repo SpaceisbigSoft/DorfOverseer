@@ -98,11 +98,11 @@ def _contact_sends(s: dict) -> bool:
     if not (player_rules(s)["send_messenger"] and send and "World" in set(str(b) for b in _l(send.get("buttons")))):
         return False
     # a run that stopped at a step lately: the rule only says so (once a season), no send
-    from planner_missions import last_of_goal, interrupted
+    from planner_missions import last_of_goal, interrupted, SOFT_STOPS     # (r9) 'unavailable' a soft stop too
     last = last_of_goal(send, "make_contact")
     t = last.get("tick") if isinstance(last.get("tick"), int) else None
     if (t is not None and 0 <= abs_tick(s) - t < SEND_RETRY_TICKS and last.get("result") in ("stopped", "error")
-            and last.get("reason") not in ("inaccessible", "no_messenger") and not interrupted(last)):
+            and last.get("reason") not in SOFT_STOPS and not interrupted(last)):
         return False
     return True
 
@@ -365,8 +365,8 @@ def _contact_site(s: dict, memory) -> dict | None:
     # not in contact: DF's NoContact, or no diplomacy state at all (never met);
     # (0.105.47) never a site DF said is INACCESSIBLE (remembered) or on
     # another landmass (the report's `inaccessible`)
-    from planner_missions import unreachable_sites
-    gone = unreachable_sites(s, memory)
+    from planner_missions import unreachable_sites, unavailable_sites
+    gone = unreachable_sites(s, memory) | unavailable_sites(s, "make_contact", memory)    # (r9) DF's NO_CIV & co too
     sites = [x for x in _l(_d(ms.get("sites")).get("nearest"))
              if isinstance(x, dict) and x.get("relation") in ("NoContact", "unknown")
              and not x.get("inaccessible") and x.get("id") not in gone]
@@ -436,8 +436,9 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     last_tick = last.get("tick") if isinstance(last.get("tick"), int) else None
     recent = last_tick is not None and 0 <= now - last_tick < SEND_RETRY_TICKS
     blocked = last_tick is not None and 0 <= now - last_tick < retry_ticks(last, SEND_RETRY_TICKS)
-    if last.get("reason") == "inaccessible":
+    if last.get("reason") in ("inaccessible", "unavailable"):
         pass                # (0.105.47) that site is dropped (unreachable_sites); the next one is tried
+        #                     (r9) DF's NO_CIV / ALREADY_IN_CONTACT / ... too (unavailable_sites)
     elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and last.get("reason") == "no_messenger":
         # (0.105.47) DF listed no messenger: the messenger rule appoints one; tried again tomorrow
         if blocked:

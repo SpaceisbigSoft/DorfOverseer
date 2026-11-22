@@ -128,6 +128,24 @@ def _():
     assert env.on_screen(94, 15, 170, 64) and not env.on_screen(94, 64, 170, 64) and not env.on_screen(-1, 3, 170, 64)
 
 
+@test("(r9, A8 #21) a guess retired by two misses is tried again after a week (its misses afresh); one retired "
+      "at once (it did harm) stays retired")
+def _():
+    lua, env, G = store()
+    key = "ai-overseer/trade-buttons"
+    lua.execute("local env = ...; env.os = {time = function() return env.NOW end}; env.NOW = 1000000", env)
+    env.miss(key, "Depot", "missing")
+    assert env.miss(key, "Depot", "missing") is True
+    assert env.miss(key, "Trade", "a seize's line", True) is True
+    env.NOW = 1000000 + 6 * 24 * 3600
+    assert env.get(key).Depot is None and env.get(key).Trade is None
+    env.NOW = 1000000 + 7 * 24 * 3600
+    b = env.get(key)
+    assert b.Depot is not None and b.Depot["from"] == "guess" and b.Trade is None, dict(b)
+    f = env.read_file()
+    assert f.retired[key].Depot is None and f.misses[key].Depot is None and f.retired[key].Trade
+
+
 # --- trade with the guess (lua/ai-trade.lua) --------------------------------------------
 
 def trade_env():
@@ -365,6 +383,47 @@ def _():
         assert env2.df["global"].game.main_interface.assign_trade.open is False       # nothing clicked
         assert env2.df["global"].game.main_interface.view_sheets.open is False
         assert B2.read_file().retired["ai-overseer/trade-buttons"].Depot and env2.buttons().Depot is None
+
+
+@test("(r9, A8 #17) open_trade never takes over a sheet the player reads, and doesn't click when the screen "
+      "changed before the click")
+def _():
+    lua, env, B, *_ = trade_env()
+    lua.execute(DEPOT_SETUP, env)
+    lua.execute("""local env = ...
+        local vs = env.df.global.game.main_interface.view_sheets
+        vs.open, vs.active_sheet, vs.active_id = true, 7, 55          -- a dwarf's sheet
+        env.df.view_sheet_type.UNIT = 7
+        env.dfhack.gui.matchFocusString = function(f) return f == 'dwarfmode/ViewSheets' end""", env)
+    r = env.open_screen(False, None)
+    assert r.waiting and "reading a sheet" in r.error, dict(r)
+    mi = env.df["global"].game.main_interface
+    assert mi.view_sheets.active_id == 55 and len(list(env.TIMERS.values())) == 0
+    # the plain map: the sheet set; the player opens a menu before the click: no click
+    lua2, env2, B2, *_ = trade_env()
+    lua2.execute(DEPOT_SETUP, env2)
+    paint(lua2, env2, 42, 15, "Trade")
+    r = env2.open_screen(False, None)
+    assert r.ok and r.clicking, dict(r)
+    lua2.execute("local env = ...; env.dfhack.gui.matchFocusString = function(f) return f == 'dwarfmode/Stockpile' end; "
+                 "env.TIMERS[1]()", env2)
+    assert env2.LAST_OPEN.clicked is False and "changed" in env2.LAST_OPEN.error, dict(env2.LAST_OPEN)
+    assert env2.df["global"].game.main_interface.assign_trade.open is False
+
+
+@test("(r9, A8 #24) a caravan traded with is remembered in the save: after a restart (DONE empty) it is still done")
+def _():
+    lua, env, B, *_ = trade_env()
+    lua.execute("""local env = ...
+        local store = {}
+        env.dfhack.persistent = {getSiteData = function(k, d) local v = store[k]; if v == nil then return d end; return v end,
+                                 saveSiteData = function(k, v) store[k] = v end}""", env)
+    c = lua.table_from({"entity": 7, "import_value": 1000})
+    c2 = lua.table_from({"entity": 8, "import_value": 50})
+    assert not env.is_done(c)
+    env.mark_done(c)
+    lua.execute("local env = ...; env.DONE = {}", env)           # DFHack restarted
+    assert env.is_done(c) and not env.is_done(c2)
 
 
 # --- the meeting light (lua/ai-meeting-open.lua) ------------------------------------------

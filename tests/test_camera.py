@@ -195,6 +195,27 @@ def _():
     assert env.step() == "held"
 
 
+@test("(r9, A8 #18) 'the view was moved by hand' only while the camera runs: off, halted or pinned, a scroll of "
+      "the player's is no business of player_busy (the mission sender asks it)")
+def _():
+    lua, env, W = fresh()
+    citizens(lua, W, [(0, 0, 0)])
+    buildings(lua, W)
+    assert env.step() == "moved"
+    W.G.window_x = W.G.window_x + 7                                  # the player scrolled
+    assert env.player_busy() == "the view was moved by hand"
+    env.stay(True)                                                    # pinned
+    assert env.player_busy() is None
+    env.stay(False)
+    env.skip()
+    W.T += 30
+    assert env.step() == "moved"
+    W.G.window_x = W.G.window_x + 5
+    assert env.player_busy() == "the view was moved by hand"
+    env.CAM.mode = "off"                                              # turned off (or halted) since
+    assert env.player_busy() is None
+
+
 @test("camera (0.104.88): a fight interrupts the tour at once and the camera follows it; then back to the tour")
 def _():
     lua, env, W = fresh()

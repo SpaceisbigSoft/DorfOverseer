@@ -463,6 +463,44 @@ function resolver(R, civ, group)
     end
 end
 
+-- (r9, audit A8 #19) Who holds a site now, and that holder's civilisation.
+-- df-structures: world_site.civ_id is the MAKER (maker_civ_id) and
+-- cur_owner_id the holder (specialization_enid, a site government or a band).
+-- Read by the maker alone, a goblin-built site the fort's civ holds read
+-- hostile and a dwarf-built one the goblins hold read ours. Now the holder
+-- first; its civilisation is itself when it is one, else its PARENT link's
+-- (entity_links, ID_IS_UMBRELLA_CIV) when that is a civilisation, else the
+-- maker (nobody holds it, or the holder's civ can't be read). Returns owner, owner_civ, maker (ids or nil).
+function site_owner(s)
+    local okc, c = pcall(function() return s.civ_id end)
+    if not okc or type(c) ~= 'number' or c < 0 then c = nil end
+    local oko, cur = pcall(function() return s.cur_owner_id end)   -- newer saves only
+    if not oko or type(cur) ~= 'number' or cur < 0 then cur = nil end
+    if not cur then return c, c, c end
+    -- the holders' civs cached a minute (a walk asks for every site's holder)
+    local okt, t = pcall(function() return os.time() end)
+    if not okt or type(t) ~= 'number' then t = 0 end
+    if not OWNER_CIV or t - (OWNER_CIV_AT or 0) > 60 then OWNER_CIV, OWNER_CIV_AT = {}, t end
+    local cached = OWNER_CIV[cur]
+    if cached ~= nil then return cur, cached or c, c end
+    local owner_civ
+    pcall(function()
+        local e = df.historical_entity.find(cur)
+        if not e then return end
+        if df.historical_entity_type[e.type] == 'Civilization' then owner_civ = cur return end
+        for _, l in ipairs(each(e.entity_links)) do
+            if df.entity_entity_link_type[l.type] == 'PARENT' then
+                local p = df.historical_entity.find(l.target)
+                if p and df.historical_entity_type[p.type] == 'Civilization' then owner_civ = l.target return end
+            end
+        end
+    end)
+    OWNER_CIV[cur] = owner_civ or false
+    -- the holder's civilisation not found (no PARENT link read): the maker, as
+    -- before (the safe side: a site built by the fort's civ is never attacked)
+    return cur, owner_civ or c, c
+end
+
 local function sites(R, civ, group, fort_site)
     local out = {n_hostile = 0, n_neutral = 0, n_unknown = 0, nearest = {}, ruins = {}}
     -- the fort's diplomacy, both ways (r2 h9: resolver)
@@ -514,15 +552,13 @@ local function sites(R, civ, group, fort_site)
         local ok, e = pcall(function()
             local id = s.id
             if id == fort_site then return nil end
-            local civ_id = s.civ_id
-            local okc, cur = pcall(function() return s.cur_owner_id end)   -- newer saves only
-            if not okc then cur = nil end
-            local who = (cur and cur >= 0 and cur) or (civ_id and civ_id >= 0 and civ_id) or nil
+            -- (r9, A8 #19) the holder, not the maker (site_owner)
+            local who, civ_id = site_owner(s)
             if not who then return nil end                                 -- empty or ruined
             if civ_id == civ or who == civ or who == group then return nil end   -- our own
             local r = rel_of(civ_id, who)
             local x, y = s.pos.x, s.pos.y
-            return {id = int(id), owner_civ = int(civ_id ~= -1 and civ_id or who), relation = r or 'unknown',
+            return {id = int(id), owner_civ = int(civ_id or who), relation = r or 'unknown',
                     x = x, y = y, site = s}
         end)
         if not ok then R.note('world_site fields')
@@ -628,8 +664,9 @@ end
 --
 -- `ready` is the open World screen's verdict for the goal, only when the
 -- screen's focus site is the target's site. Everything is read through R.rd;
--- the walk stops after TARGET_BUDGET seconds (dfhack.getTickCount, os.clock
--- without it) and says partial.
+-- each part of the walk (rescue, artifacts, sites: (r9) a budget each) stops
+-- after TARGET_BUDGET seconds (dfhack.getTickCount, os.clock without it) and
+-- says partial.
 
 -- (0.105.47) Can the fort's people get there at all? Recorded 14 Nov: a
 -- goblin site on an island read INACCESSIBLE for Attack, Request workers
@@ -727,15 +764,13 @@ function site_hostile(site_id)
     local civ, group = fort_ids(R)
     local s = R.rd('world_site.find', function() return df.world_site.find(site_id) end)
     if not s then return nil, 'no site ' .. tostring(site_id) end
-    local c = R.rd('world_site.civ_id', function() return s.civ_id end)
-    local okc, cur = pcall(function() return s.cur_owner_id end)
-    if not okc then cur = nil end
-    local who = (cur and cur >= 0 and cur) or (c and c >= 0 and c) or nil
+    -- (r9, A8 #19) the holder and its civilisation, not the maker (site_owner)
+    local who, c = site_owner(s)
     local ours = who ~= nil and (who == civ or who == group or c == civ)
-    local r = resolver(R, civ, group)(c, cur)      -- (r2 h9) both ways
+    local r = resolver(R, civ, group)(c, who)      -- (r2 h9) both ways
     return {hostile = hostile(r) and not ours, at_war = type(r) == 'string' and r:find('War') ~= nil and not ours,
             relation = r or 'unknown', owner = who and int(who) or nil, ours = ours or nil,
-            civ = (c and c >= 0) and int(c) or nil}      -- (0.105.41, item 8) the owner's civilisation
+            civ = c and int(c) or nil}      -- (0.105.41, item 8) the owner's civilisation
 end
 
 local function link_type(R, enum, label, l)
@@ -746,13 +781,21 @@ end
 function targets(R, civ, group, fort_site, sc)
     R = R or new_reader()
     DROPPED_INACCESSIBLE = 0      -- (0.105.47) targets on another landmass, this walk
+    -- (r9, audit A8 #8) a budget per part (the rescue walk, the artifacts, the
+    -- sites), not one for all: in a big fort (War-hold) the rescue walk over
+    -- every figure of the group spent the whole 0.05 s and the artifacts and
+    -- sites were never looked at ("targets": [], partial). `partial` says any
+    -- part ran out; each part starts its own clock with phase().
     local t0 = clock()
-    local partial = false
+    local partial, phase_over = false, false
     local function over()
-        if partial then return true end
+        if phase_over then return true end
         local t = t0 and clock()
-        if t and t - t0 > TARGET_BUDGET then partial = true end
-        return partial
+        if t and t - t0 > TARGET_BUDGET then partial, phase_over = true, true end
+        return phase_over
+    end
+    local function phase()
+        t0, phase_over = clock(), false
     end
     local found = {}
     for _, g in ipairs(GOAL_ORDER) do found[g] = {} end
@@ -788,11 +831,10 @@ function targets(R, civ, group, fort_site, sc)
         return ent_names[id] or nil
     end
     local function owner_of(s)
-        local c = R.rd('world_site.civ_id', function() return s.civ_id end)
-        local okc, cur = pcall(function() return s.cur_owner_id end)   -- newer saves only
-        if not okc then cur = nil end
-        local r = rel_of(c, cur)
-        return (c and c >= 0 and c) or (cur and cur >= 0 and cur) or nil, cur, r
+        -- (r9, A8 #19) the holder's civilisation (or the holder), not the maker
+        local who, c = site_owner(s)
+        local r = rel_of(c, who)
+        return c or who, who, r
     end
     -- one target at a site; nil when the site is ours or unknown
     local fort_land = fs and site_landmass(fs)
@@ -901,6 +943,7 @@ function targets(R, civ, group, fort_site, sc)
     end
 
     -- recover_artifact -------------------------------------------------------
+    phase()
     if not over() then
         local arts = R.rd('world.artifacts.all', function() return df.global.world.artifacts.all end)
         walk(arts, function(a)
@@ -934,6 +977,7 @@ function targets(R, civ, group, fort_site, sc)
     end
 
     -- explore and the offensive goals: one walk over the sites ---------------
+    phase()
     for _, s in ipairs(list) do
         if over() then break end
         local okw = pcall(function()
