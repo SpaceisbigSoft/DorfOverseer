@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from harness import test, finish, skip  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 sys.path.insert(0, str(ROOT / "brain"))
 
 import planner  # noqa: E402
@@ -463,7 +464,7 @@ if LuaRuntime:
     def _():
         acts = bridge_part_src("ai-bridge-actions")
         assert "refresh_shelter_due(a.refresh == true)" in acts and "function act_weather_burrow" in acts
-        br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+        br = bridge_hub_src()
         assert "weather_burrow = act_weather_burrow" in br and "'weather_burrow'," in br
 else:
     @test("the 4 Lua test(s) of the block at line 392: not run")

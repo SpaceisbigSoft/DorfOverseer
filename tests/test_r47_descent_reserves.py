@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -312,7 +313,7 @@ else:
 
     @test("wiring: the action (and its dry run), the section, the module, the brain's default and label")
     def _():
-        hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+        hub = bridge_hub_src()
         assert "cross_cavern = function(a)" in hub and "'cross_cavern'," in hub
         assert "descent = function()" in hub and "'ai-descent'," in hub
         assert SECTION_DEFAULTS.get("descent") == {}

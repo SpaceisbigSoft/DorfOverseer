@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 
 import digest  # noqa: E402
 import planner_slots as SL  # noqa: E402
@@ -371,7 +372,7 @@ def _():
 
 @test("park_project: in DRY_OK, and its dry run saves nothing")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     dry = src[src.index("DRY_OK = {}"):src.index("}) do DRY_OK[name] = true end")]
     assert "'park_project'" in dry
     lua, B, W = builder()

@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src, bridge_part_src, split_src  # noqa: E402
 from py_parts import py_family_src  # noqa: E402  (r7) planner_core's parts
 
@@ -391,7 +392,7 @@ def _():
 
 @test("bridge: action, dry run, module listed; make_squad's training branch; trim and report skip/mark it; the needs report")
 def _():
-    b = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    b = bridge_hub_src()
     assert "training_squad = function(a)" in b and "'training_squad'," in b
     assert "'ai-training-squad'" in b[b.index("BRIDGE_MODULES = {"):b.index("MARKED_MODULES")]
     m = split_src("ai-military.lua")   # (r8) the hub and its parts

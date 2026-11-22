@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, TICKS_PER_YEAR  # noqa: E402
 import planner_missions as PM  # noqa: E402
@@ -517,7 +518,7 @@ if HAVE_LUPA:
 
     @test("the bridge: mission_pets in the action table (dry run allowed), its label; ai-raids a bridge module")
     def _():
-        br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+        br = bridge_hub_src()
         assert "mission_pets = function(a)" in br and "'mission_pets'," in br and "'ai-raids'," in br
         from overseer import SHORT_WORDS
         assert "mission_pets" in SHORT_WORDS

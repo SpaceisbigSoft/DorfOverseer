@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import make_test, test as plain_test, finish, need_lua, skip  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, abs_tick, plan  # noqa: E402
 import planner_wells  # noqa: E402
@@ -180,7 +181,7 @@ def _():
 
 @plain_test("wiring: the actions, the section, the labels, the config")
 def _():
-    bridge = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    bridge = bridge_hub_src()
     for name in ("well_safety = function(a)", "well_rescue = function(a)", "'well_safety', 'well_rescue',",
                  "well_safety = function() return safe(", "'well_safety',   -- (0.105.47)", "'ai-well-safety',"):
         assert name in bridge, name

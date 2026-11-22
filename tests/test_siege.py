@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, skip  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
 
@@ -468,7 +469,7 @@ else:
 @test("wiring: the bridge's actions, dry runs, sections, pulse, cache; the module listed; the labels; the "
       "Rules switches; the siege workshop and the recipes")
 def _():
-    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    hub = bridge_hub_src()
     for a in ("fortify_post", "archer_post", "place_siege_engine", "place_siege_shop"):
         assert f"    {a} = function(a)" in hub and f"'{a}'" in hub and f"CACHE_INVALIDATES.{a} = {{'siege'}}" in hub
     assert "    siege = function() return safe(" in hub and "    field_watch = function() return safe(" in hub

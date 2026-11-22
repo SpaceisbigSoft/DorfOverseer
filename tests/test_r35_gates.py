@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 from py_parts import py_family_src  # noqa: E402
 
@@ -259,7 +260,7 @@ def _():
 
 @test("lua: the two new actions are in ACTIONS and DRY_OK; everything compiles under 5.3")
 def _():
-    br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    br = bridge_hub_src()
     acts_ = br[br.index("ACTIONS = {"):br.index("DRY_OK = {}")]
     dry = br[br.index("DRY_OK = {}"):br.index("}) do DRY_OK[name] = true end")]
     for k in ("close_threatened_gates", "free_gate_jobs"):

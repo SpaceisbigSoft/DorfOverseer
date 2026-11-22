@@ -82,6 +82,8 @@ def bridge_part_src(name: str) -> str:
 def split_src(name: str) -> str:
     """lua/<name> and, for a split hub, its parts' texts after it (for tests
     that read the source itself, not run it)."""
+    if name == "ai-bridge.lua":
+        return bridge_hub_src()   # (r8) the hub with its own two parts where they run
     if name[:-4] in BRIDGE_SPLIT:
         return bridge_part_src(name)
     out = (LUA_DIR / name).read_text(encoding="utf-8")
@@ -124,6 +126,18 @@ PRELUDE = prelude()
 def with_util(src: str, name: str = "") -> str:
     """A module's source with the one-line prelude in front of its first line."""
     return prelude(name) + src
+
+
+def bridge_hub_src() -> str:
+    """(r8) lua/ai-bridge.lua's text as when it was one file: each
+    run_hub_part('<name>') line replaced by that file's text (ai-bridge-catalog:
+    ACTIONS, DRY_OK...; ai-bridge-sections: SECTIONS, the section cache), where
+    it runs. For a test that reads the hub's source; one that loads the hub
+    into a Lua env loads ai-bridge.lua itself (it reads its parts from lua/)."""
+    import re
+    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    return re.sub(r"^run_hub_part\('([\w-]+)'\).*\n",
+                  lambda m: (LUA_DIR / (m.group(1) + ".lua")).read_text(encoding="utf-8"), hub, flags=re.M)
 
 
 def module_src(name: str) -> str:

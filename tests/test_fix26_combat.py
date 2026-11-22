@@ -14,6 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
@@ -178,7 +179,7 @@ def _():
     assert [x.action for x in by_rule(p, "shelter_refresh")] == [{"type": "refresh_shelter"}]
     from overseer import SHORT_WORDS
     assert "refresh_shelter" in SHORT_WORDS
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     assert "refresh_shelter = act_refresh_shelter" in src and "'refresh_shelter'" in src
 
 

@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -396,7 +397,7 @@ def _():
 
 @test("bridge: unstick_gate is an action, its dry run allowed")
 def _():
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     assert "unstick_gate = act_unstick_gate" in src and "'unstick_gate'," in src
     acts = bridge_part_src("ai-bridge-actions")
     assert "function act_unstick_gate(a)" in acts

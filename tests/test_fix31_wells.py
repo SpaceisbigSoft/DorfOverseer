@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import make_test, test as plain_test, finish, need_lua, skip  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, abs_tick  # noqa: E402
 from planner_core import NEEDS_YOU  # noqa: E402
 
@@ -144,7 +145,7 @@ else:
 
 @plain_test("wells 4: renew_well_dig is an action, dry-run safe, clears the registry, has short words")
 def _():
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     assert "renew_well_dig = act_renew_well_dig" in src
     dry = src[src.index("DRY_OK = {}"):src.index("DRY_OK = {}") + 1500]
     assert "'renew_well_dig'" in dry

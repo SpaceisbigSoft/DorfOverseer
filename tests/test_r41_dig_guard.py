@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 LUA_DIR = ROOT / "lua"
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src, UTIL_SRC  # noqa: E402
 
@@ -605,7 +606,7 @@ def _():
 
 @test("report: the deep section carries deep_hazard (ai-bridge SECTIONS), with the Rules switch read")
 def _():
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     i = src.index("    deep = function()")
     seg = src[i:src.index("end) end,", i)]
     assert "deep_hazard_section()" in seg and "get_deep()" in seg

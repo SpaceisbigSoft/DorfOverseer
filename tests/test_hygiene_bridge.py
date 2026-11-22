@@ -22,9 +22,13 @@ except ImportError:
     sys.exit(0)
 
 LUA_DIR = ROOT / "lua"
+sys.path.insert(0, str(ROOT / "tests"))
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 PARTS = ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-report-fort", "ai-bridge-report-world",
     "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-civic",
     "ai-bridge-probes", "ai-bridge-design"]   # (D0); (r6) report and actions split by theme
+# (r8) the hub's own two files (ACTIONS, DRY_OK...; SECTIONS and the cache), run by it where their lines stood
+HUB_PARTS = ["ai-bridge-catalog", "ai-bridge-sections"]
 
 HARNESS = r"""
 local src, lua_dir = ...
@@ -103,7 +107,7 @@ def test(name):
 
 
 def bridge_text() -> str:
-    return "".join((LUA_DIR / f"{n}.lua").read_text(encoding="utf-8") for n in ["ai-bridge"] + PARTS)
+    return "".join((LUA_DIR / f"{n}.lua").read_text(encoding="utf-8") for n in ["ai-bridge"] + PARTS + HUB_PARTS)
 
 
 @test("parts: every part is in BRIDGE_PARTS, compiles alone, refuses to run outside the bridge")
@@ -111,10 +115,12 @@ def _():
     src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     listed = re.search(r"BRIDGE_PARTS = \{(.*?)\}", src).group(1)
     assert re.findall(r"'([\w-]+)'", listed) == PARTS, listed
+    assert re.findall(r"'([\w-]+)'", re.search(r"HUB_PARTS = \{(.*?)\}", src).group(1)) == HUB_PARTS
+    assert re.findall(r"^run_hub_part\('([\w-]+)'\)", src, re.M) == HUB_PARTS
     on_disk = sorted(p.stem for p in LUA_DIR.glob("ai-bridge-*.lua"))
-    assert on_disk == sorted(PARTS), on_disk
+    assert on_disk == sorted(PARTS + HUB_PARTS), on_disk
     L = LuaRuntime(unpack_returned_tuples=True)
-    for n in PARTS:
+    for n in PARTS + HUB_PARTS:
         part = (LUA_DIR / f"{n}.lua").read_text(encoding="utf-8")
         ok, err = L.eval("function(s) local f, e = load(s, 'p', 't', {}); return f ~= nil, e end")(part)
         assert ok, (n, err)
@@ -127,7 +133,7 @@ def _():
 @test("parts: every ACTIONS handler and command is defined once the parts are loaded")
 def _():
     M = H.module()
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     table = src[src.index("ACTIONS = {"):src.index("\n}\n", src.index("ACTIONS = {"))]
     for name, fn in re.findall(r"^\s+(\w+) = (act_\w+),", table, re.M):
         assert LUA.eval(f"function(M) return type(M.{fn}) == 'function' and M.ACTIONS.{name} == M.{fn} end")(M), name
@@ -148,7 +154,7 @@ def _():
     text = bridge_text()
     names = list(LUA.eval("function(M) local o = {} for k in pairs(M.DRY_OK) do o[#o + 1] = k end return o end")(M).values())
     assert len(names) >= 60 and "farm_thresholds" in names and "unstick_uniforms" in names
-    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    hub = bridge_hub_src()
     for n in names:
         assert LUA.eval(f"function(M) return M.ACTIONS['{n}'] ~= nil end")(M), n
         if f"function act_{n}(a)" in text:

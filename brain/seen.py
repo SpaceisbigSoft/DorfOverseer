@@ -205,7 +205,10 @@ def registry(root: Path = ROOT) -> dict:
             return p.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             return []
-    bridge = read(root / "lua" / "ai-bridge.lua")
+    # (r8) ACTIONS is in ai-bridge-catalog.lua and SECTIONS in ai-bridge-sections.lua
+    # now; in an older folder both are in ai-bridge.lua (the other two absent)
+    bridge = (read(root / "lua" / "ai-bridge.lua") + read(root / "lua" / "ai-bridge-catalog.lua")
+              + read(root / "lua" / "ai-bridge-sections.lua"))
     for kind, pat in (("action", r"^ACTIONS\s*=\s*\{"), ("section", r"^SECTIONS\s*=\s*\{")):
         i = _find(bridge, pat)
         if i is not None:

@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 
 import planner  # noqa: E402
@@ -304,7 +305,7 @@ return e
         assert E.weather_watch(1250, "a").announced                     # DF's announcement
         assert E.weather_watch(1260, "b") is not None                   # another save: afresh
         # the hook in the status call the overseer polls, and the pulse section
-        br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+        br = bridge_hub_src()
         status = br[br.index("local function cmd_status()"):]
         status = status[:status.index("\nend\n")]
         assert "weather_watch(abs_tick(), fort_key())" in status and "push_event(ev)" in status
@@ -396,7 +397,7 @@ return e
         assert list(env.intruders_inside().values()) == [1]                 # deep inside: not "at the walls"
         env.GATES.scanned = False
         assert env.intruders_at_walls() is None                             # no map: can't say
-        br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+        br = bridge_hub_src()
         assert "o.intruders_at_walls = reqscript('ai-gates').intruders_at_walls(ids)" in br
 
     # --- 8. the fire-breath cache: one world's ------------------------------------------------

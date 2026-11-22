@@ -25,6 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, code_has, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
@@ -628,7 +629,7 @@ def _():
 
 # --- 5. the bridge, the settings, the window ----------------------------------------------
 
-BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+BRIDGE = bridge_hub_src()
 ACTS = bridge_part_src("ai-bridge-actions")
 SETTINGS = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
 GUI = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")

@@ -27,6 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src, split_src  # noqa: E402
 
@@ -442,7 +443,7 @@ def _():
 @test("bridge: insane_guard's validator refuses a units value that isn't a list of ids, and passes ids on")
 def _():
     need_lua()
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     i = src.index("    insane_guard = function(a)")
     j = src.index("    end,\n", i) + len("    end,\n")
     fn = src[i:j].strip().rstrip(",").replace("insane_guard = function(a)", "return function(a)", 1)

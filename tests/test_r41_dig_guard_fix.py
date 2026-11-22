@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 LUA_DIR = ROOT / "lua"
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src, UTIL_SRC  # noqa: E402
 from builder_wells_util import wells_src  # noqa: E402  (r8) ai-builder-wells and its parts
 
@@ -485,7 +486,7 @@ def _():
     Dw.set(41, 25, 27, tl({"dig": 1}))
     assert B.dig_guard_sweep() is None and Dw.tile(41, 25, 27).dig == 1   # once per map
     # the report's deep section runs it
-    src = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     fn = src[src.index("function deep_hazard_section()"):src.index("\nend\n", src.index("function deep_hazard_section()"))]
     assert "dig_guard_sweep()" in fn
 

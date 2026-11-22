@@ -42,6 +42,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 from planner import Memory, PLANNER_CONFIG as CFG, plan  # noqa: E402
@@ -188,7 +189,7 @@ def _():
     assert not r.ok and r.rejected and "no free bolts" in str(r.error), dict(r)
     src = bridge_part_src("ai-bridge-actions")
     assert "function act_assign_bolts(a)" in src
-    assert "assign_bolts = act_assign_bolts" in (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    assert "assign_bolts = act_assign_bolts" in bridge_hub_src()
 
 
 # ---- 1. the bolts handed out (the brain, on E's real squad) --------------------------------------------

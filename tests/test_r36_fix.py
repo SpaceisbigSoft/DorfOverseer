@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 
 _src = (ROOT / "tests" / "test_r32_gatesplit.py").read_text(encoding="utf-8")
@@ -271,13 +272,13 @@ def _():
                         {"ok": False, "rejected": True, "error": "the civilian alert's burrow is not the AI shelter"},
                         s, m, abs_tick(s))
     assert not m.shelter_supply
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     assert "civ_alert_shelter = function()" in src and "'civ_alert_shelter'," in src
 
 
 @test("nit: the bridge's civ_alert_shelter reads 'ai', 'player', 'none'")
 def _():
-    src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     i = src.index("civ_alert_shelter = function()")
     body = src[i + len("civ_alert_shelter = "):src.index("\n    end,", i) + len("\n    end")]
     fn = LUA.eval("""function(body)

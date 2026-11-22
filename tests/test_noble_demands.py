@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 from lua_modules_util import module_src  # noqa: E402
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 try:
@@ -445,7 +446,7 @@ def _():
 
 @test("bridge: the section, the action (dry run), its label, its cache and the module are registered")
 def _():
-    hub = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    hub = bridge_hub_src()
     assert "noble_demands = function() return safe(" in hub
     assert "    polish_room = function(a)" in hub and "'polish_room'," in hub
     assert "'ai-noble-demands'" in hub.split("BRIDGE_MODULES = {")[1].split("}")[0]

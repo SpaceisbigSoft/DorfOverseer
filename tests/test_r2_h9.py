@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, NEEDS_YOU  # noqa: E402
 import planner_growth  # noqa: E402
@@ -349,7 +350,7 @@ def _():
 
 @test("bridge: free_caravan wired (dry run), its words, the survival class; the drought rule runs in plan()")
 def _():
-    b = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
+    b = bridge_hub_src()
     assert re.search(r"free_caravan = function\(a\)[\s\S]{0,300}reqscript\('ai-recovery'\)\.free_caravan\(", b)
     dry = b[b.index("DRY_OK = {}"):b.index("}) do DRY_OK[name] = true end")]
     assert "'free_caravan'" in dry

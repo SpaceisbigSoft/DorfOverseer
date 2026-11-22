@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 
 try:
@@ -284,7 +285,7 @@ def _():
 
 @test("halted: `ai-bridge run` refuses before it unpauses; the unpause action refuses by itself too")
 def _():
-    src = (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
+    src = bridge_hub_src()
     i = src.index("local function cmd_run(args)")
     body = src[i:src.index("\nend\n", i)]
     assert body.index("is_halted()") < body.index("pause_state = false"), "run unpauses while halted"

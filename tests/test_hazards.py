@@ -22,6 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -556,7 +557,7 @@ def _():
 
 @test("bridge: the actions in ACTIONS and DRY_OK, the section (in the pulse), the module listed; digest default; the builder's hook")
 def _():
-    hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
+    hub = bridge_hub_src()
     assert re.search(r"^\s*magma_guard = function\(a\)", hub, re.M) and re.search(r"^\s*magma_reclaim = function\(a\)", hub, re.M)
     assert "'magma_guard', 'magma_reclaim'," in hub
     assert re.search(r"env_hazards = function\(\) return safe\(function\(\) return reqscript\('ai-hazards'\)\.report\(\)", hub)
