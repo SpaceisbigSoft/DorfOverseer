@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from lua_modules_util import with_util, split_src  # noqa: E402
+from lua_modules_util import with_util, split_src, split_parts  # noqa: E402
 from snapshots import snapshot  # noqa: E402
 from harness import test, finish  # noqa: E402
 
@@ -241,8 +241,9 @@ def _():
 # --- L8 gui 1081/1185-1187/1218-1221: no stale save over the keeper's ---------------------------
 
 GUI_FAKE = r"""
-local src = ...
+local src, parts = ...
 local env = setmetatable({}, {__index = _G})
+env.PART_SOURCES = parts   -- (r9) the hub's parts (lua/gui/ai-overseer-*.lua), as their texts
 local stored = {traits = {caution = {value = 0, extreme = false}}, ai_sliders = {}, open_caverns = false,
                 disposal = 'destroy', levels = {}}
 local function copy(v) if type(v) ~= 'table' then return v end local o = {} for k, x in pairs(v) do o[k] = copy(x) end return o end
@@ -265,7 +266,8 @@ return env, function() return stored end, function(s) stored = s end
 @test("L8 gui persist: a field the keeper saved while the window was open is not turned back")
 def _():
     L = LuaRuntime(unpack_returned_tuples=True)
-    env, get, put = L.execute(GUI_FAKE, GUI)
+    parts = L.table_from({n: (LUA_DIR / (n + ".lua")).read_text(encoding="utf-8") for n in split_parts("gui/ai-overseer.lua")})
+    env, get, put = L.execute(GUI_FAKE, GUI, parts)
     assert env.merge_changes is not None and env.OverseerWindow is not None
     w = L.eval("function(env) local w = setmetatable({}, {__index = env.OverseerWindow}); w:reload(); return w end")(env)
     # the keeper's act_set_rules saves open_caverns while the window is open

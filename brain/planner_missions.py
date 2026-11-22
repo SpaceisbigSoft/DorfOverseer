@@ -53,7 +53,7 @@ MISSION_LEVELS = {"off": (), "rescue": ("rescue", "recover_artifact"),
 MISSION_WORDS = {"rescue": "rescue", "recover_artifact": "recover an artifact", "explore": "explore",
                  "tribute": "demand tribute", "raid": "raid", "pillage": "pillage", "conquer": "conquer",
                  "make_contact": "make contact"}
-# (0.105.39 review) the switches as the Army tab names them (lua/gui/ai-overseer.lua)
+# (0.105.39 review) the switches as the Army tab names them (lua/gui/ai-overseer-rules.lua)
 MISSIONS_SWITCH = 'the Army tab\'s "Missions to send out"'
 SEND_SWITCH = 'the Army tab\'s "Send missions by the World screen"'
 JOURNAL_MAX = 12          # mission journal entries waiting for the overseer at most

@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 GUI_PATH = ROOT / "lua" / "gui" / "ai-overseer.lua"
 
 STUB = r"""
-local gui_src = ...
+local gui_src, part_srcs = ...
 local G = {}
 local function defclass(cls, parent)
   cls = cls or {}
@@ -114,6 +114,7 @@ function G.load(S, extra)
   env.defclass = defclass
   env.DEFAULT_NIL = G.DEFAULT_NIL
   env.dfhack_flags = {module = true}
+  env.PART_SOURCES = part_srcs     -- (r9) the hub's parts (lua/gui/ai-overseer-<part>.lua), as their texts
   env.dfhack = setmetatable({utf2df = function(x) return x end, getTickCount = function() return 0 end},
                             {__index = S.dfhack})   -- the settings' stub: its persistence
   for _, c in ipairs({'COLOR_GREY', 'COLOR_WHITE', 'COLOR_LIGHTCYAN', 'COLOR_LIGHTRED', 'COLOR_YELLOW',
@@ -167,7 +168,10 @@ def _boot():
         import test_preset as TP          # its stub DFHack and the real settings module
         _S["TP"] = TP
         _S["LUA"] = TP.LUA
-        _S["G"] = TP.LUA.execute(STUB, GUI_PATH.read_text(encoding="utf-8"))
+        from lua_modules_util import LUA_DIR, split_parts      # (r9) the panel is a hub and parts
+        parts = TP.LUA.table_from({n: (LUA_DIR / (n + ".lua")).read_text(encoding="utf-8")
+                                   for n in split_parts("gui/ai-overseer.lua")})
+        _S["G"] = TP.LUA.execute(STUB, GUI_PATH.read_text(encoding="utf-8"), parts)
     return _S["LUA"], _S["G"], _S["TP"]
 
 

@@ -43,10 +43,11 @@ GATES_PARTS = ["ai-gates-" + p for p in re.findall(r"'([\w-]+)'", re.search(
 # (r8) every other module split into a hub and parts (a PARTS line in its file): the
 # bridge finds them from the files (split_modules), so does this test
 OTHER_SPLIT = {}
-for _p in sorted(LUA_DIR.glob("*.lua")):
+for _p in sorted(LUA_DIR.glob("*.lua")) + sorted(LUA_DIR.glob("gui/*.lua")):   # (r9) gui/ai-overseer too
     _m = re.search(r"^PARTS = \{([^}]*)\}", _p.read_text(encoding="utf-8"), re.M)
     if _m and _p.stem not in ("ai-builder", "ai-gates"):
-        OTHER_SPLIT[_p.stem] = [f"{_p.stem}-{x}" for x in re.findall(r"'([\w-]+)'", _m.group(1))]
+        _n = _p.relative_to(LUA_DIR).with_suffix("").as_posix()   # (r9) 'gui/ai-overseer'
+        OTHER_SPLIT[_n] = [f"{_n}-{x}" for x in re.findall(r"'([\w-]+)'", _m.group(1))]
 OTHER_PARTS = [n for _mod, _parts in OTHER_SPLIT.items() for n in [_mod] + _parts]
 VERSION = re.search(r"^BRIDGE_VERSION = '([^']+)'", HUB, re.M).group(1)
 
@@ -145,7 +146,7 @@ MARKED = BRIDGE_PARTS + HUB_PARTS + OTHER_PARTS + ["ai-builder"] + BUILDER_PARTS
 def _():
     for n in MARKED:
         src = (LUA_DIR / f"{n}.lua").read_text(encoding="utf-8")
-        marks = re.findall(r"PART_VERSIONS(?:\['([\w-]+)'\]|\s*=\s*\{\['([\w-]+)'\])\s*=\s*'([^']+)'", src)
+        marks = re.findall(r"PART_VERSIONS(?:\['([\w/-]+)'\]|\s*=\s*\{\['([\w/-]+)'\])\s*=\s*'([^']+)'", src)   # (r9) gui/
         assert len(marks) == 1, (n, marks)
         name = marks[0][0] or marks[0][1]
         assert name == n and marks[0][2] == VERSION, (n, marks)
@@ -157,7 +158,7 @@ def _():
     for p in sorted(LUA_DIR.rglob("*.lua")):
         n = p.read_text(encoding="utf-8").count(f"'{VERSION}'")
         if n:
-            hits[p.stem] = n
+            hits[p.relative_to(LUA_DIR).with_suffix("").as_posix()] = n   # (r9) gui/ parts by their script name
     assert hits == {"ai-bridge": 1, **{n: 1 for n in MARKED}}, hits
 
 

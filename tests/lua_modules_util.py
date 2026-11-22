@@ -44,6 +44,7 @@ COMPANIONS = {"ai-military.lua": ["ai-military-gear"], "ai-society.lua": ["ai-so
 # takes their texts from PART_SOURCES, which the prelude sets
 SPLIT = ("ai-gates.lua", "ai-society.lua", "ai-military.lua", "ai-threats.lua", "ai-waterworks.lua", "ai-thirst.lua", "ai-military-gear.lua", "ai-trade.lua", "ai-homes.lua", "ai-mission-send.lua", "ai-missions.lua")
 SPLIT += ("ai-society-burrows.lua",)   # (r9 t1) a companion split too: its parts fed with its hub's
+SPLIT += ("gui/ai-overseer.lua",)   # (r9 t5) the in-game window: a hub in lua/gui/
 
 
 def split_parts(name: str) -> list[str]:
