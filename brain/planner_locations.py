@@ -362,7 +362,10 @@ def _location_petition_rules(s: dict, cfg: dict, proposals: list, notes: list, r
 def _meeting_notes(s: dict, notes: list) -> None:
     """(0.91) A diplomat's or the liaison's meeting screen waits for the
     player's answers (DF's meeting screen): said in Needs you, with who is
-    meeting whom. The AI doesn't answer meetings yet (a probe first)."""
+    meeting whom. (r9, audit A8 #25) The AI answers it itself since
+    0.105.0 (brain/planner_world.py, lua/ai-diplomacy.lua press_named: a
+    place shown, else the word or the reply line read off the screen); this
+    Needs you stands only while it can't."""
     m = _d(s.get("meetings"))
     if not m:
         return

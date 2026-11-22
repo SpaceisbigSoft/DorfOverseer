@@ -41,7 +41,7 @@ from planner_threats import alarm_held
 __all__ = ["MISSION_GOALS", "OFFENSIVE_GOALS", "MISSION_LEVELS", "allowed_goals", "mission_reserve",
            "sendable_squads", "mission_target", "_mission_rule", "note_missions", "mission_journal",
            "mission_line", "MISSION_WORDS", "last_of_goal", "MISSIONS_SWITCH", "SEND_SWITCH",
-           "unreachable_sites", "note_unreachable", "SOFT_STOPS", "departure_words", "note_departures",
+           "unreachable_sites", "unavailable_sites", "note_unreachable", "SOFT_STOPS", "departure_words", "note_departures",
            "gate_danger", "way_out_gate", "_mission_way_rule"]
 
 # the goals in the order the AI prefers them (the contract's order)
@@ -190,7 +190,10 @@ def interrupted(last: dict) -> bool:
 # step nobody recorded: DF said the site is INACCESSIBLE (the site is
 # dropped: unreachable_sites) or listed no messenger (the messenger rule
 # appoints one): the goal isn't blocked and nothing waits for the player
-SOFT_STOPS = ("inaccessible", "no_messenger")
+# (r9) and DF's "not OKAY" for that goal at that site (NO_CIV, ALREADY_IN_CONTACT,
+# OWN_CIV...: reason 'unavailable'): that goal skips that site (unavailable_sites)
+# and tries the next, instead of the nearest site blocking the goal a year
+SOFT_STOPS = ("inaccessible", "no_messenger", "unavailable")
 
 
 def retry_ticks(last: dict, year_ticks: int) -> int:
@@ -218,10 +221,42 @@ def note_unreachable(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> None:
         sid, t = _int(o.get("site_id")), _int(o.get("tick"))
         if o.get("reason") == "inaccessible" and sid is not None:
             un[str(sid)] = t if t is not None else abs_tick(s)
+    # (r9, audit A8 #7) DF's "not OKAY" for one goal at one site (reason
+    # 'unavailable'): remembered as "goal:site" so that goal tries the next site
+    na = seen.get("unavailable")
+    if not isinstance(na, dict):
+        na = seen["unavailable"] = {}
+    for g, o in (list(_d(send.get("last_by_goal")).items()) or [(_d(send.get("last")).get("goal") or "make_contact", send.get("last"))]):
+        o = _d(o)
+        sid, t = _int(o.get("site_id")), _int(o.get("tick"))
+        g = o.get("goal") or g
+        if o.get("reason") == "unavailable" and sid is not None and g:
+            na[f"{g}:{sid}"] = t if t is not None else abs_tick(s)
     now = abs_tick(s)
     keep = cfg.get("mission_unreachable_ticks", 3 * 403200)
-    for k in [k for k, v in un.items() if not isinstance(v, int) or not 0 <= now - v < keep]:
-        del un[k]
+    for d in (un, na):
+        for k in [k for k, v in d.items() if not isinstance(v, int) or not 0 <= now - v < keep]:
+            del d[k]
+
+
+def unavailable_sites(s: dict, goal: str, memory=None, cfg: dict = PLANNER_CONFIG) -> set:
+    """(r9, audit A8 #7) The sites DF's New mission said "not OKAY" to for
+    this goal (NO_CIV, ALREADY_IN_CONTACT, CANNOT_COMMUNICATE, OWN_CIV...):
+    remembered (note_unreachable) and the goal's last run that just said so.
+    Without this the nearest such site was picked again every year."""
+    out = set()
+    seen = getattr(memory, "missions_seen", None) if memory is not None else None
+    if isinstance(seen, dict) and isinstance(seen.get("unavailable"), dict):
+        now = abs_tick(s)
+        keep = cfg.get("mission_unreachable_ticks", 3 * 403200)
+        for k, v in seen["unavailable"].items():
+            g, _, sid = str(k).partition(":")
+            if g == goal and isinstance(v, int) and 0 <= now - v < keep and sid.lstrip("-").isdigit():
+                out.add(int(sid))
+    last = last_of_goal(_d(_m(s).get("send")), goal)
+    if last.get("reason") == "unavailable" and _int(last.get("site_id")) is not None:
+        out.add(last["site_id"])
+    return out
 
 
 def unreachable_sites(s: dict, memory=None, cfg: dict = PLANNER_CONFIG) -> set:
@@ -452,8 +487,8 @@ def _stopped(s: dict, goal: str, cfg: dict) -> dict | None:
     last = last_of_goal(_d(_m(s).get("send")), goal)
     if last.get("result") not in ("stopped", "error"):
         return None
-    if last.get("reason") == "inaccessible":
-        return None
+    if last.get("reason") in ("inaccessible", "unavailable"):
+        return None             # (r9) 'unavailable' too: only that goal at that site (unavailable_sites)
     t = _int(last.get("tick"))
     if t is None or not 0 <= abs_tick(s) - t < retry_ticks(last, cfg["mission_retry_ticks"]):
         return None
@@ -491,6 +526,8 @@ def mission_target(s: dict, cfg: dict = PLANNER_CONFIG, memory=None, squads=None
     def usable(t) -> bool:
         if t["site_id"] in gone or t.get("inaccessible"):
             return False
+        if t["site_id"] in unavailable_sites(s, t["goal"], memory, cfg):
+            return False        # (r9) DF said "not OKAY" for this goal there: the next site
         if t.get("ready") not in (None, "OKAY"):
             return False
         if _stopped(s, t["goal"], cfg):

@@ -316,10 +316,14 @@ def raid_candidates(s: dict, cfg: dict = PLANNER_CONFIG, memory=None, squads=Non
     def clear(r) -> tuple[bool, float, float]:
         need = site_strength(r, cfg)
         ratio = power / max(1.0, need)
-        # an older bridge (no raid_sites): nothing known of the site, the old rule
-        return (not known) or ratio >= need_ratio, need, ratio
+        # (r9, audit A8 #23) no raid_sites (lua/ai-raids failed to load): the
+        # site's strength isn't known, so it is never "clearly beaten" (before:
+        # the matchup was skipped and a 0.67x squad passed)
+        return known and ratio >= need_ratio, need, ratio
     attackers = raid_attackers(s, memory, cfg) if stance != "aggressive" else {}
     # (0.105.48, K9) only sites people live in; never the civ the messenger is making contact with
+    if not known and rows:
+        passed.append("the sites' sizes couldn't be read (no raid_sites): no raid until they can")
     empty = [r for r in rows if not _raidable(r)]
     rows = [r for r in rows if _raidable(r)]
     if empty:

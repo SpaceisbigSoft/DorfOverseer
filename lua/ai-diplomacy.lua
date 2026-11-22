@@ -20,12 +20,15 @@
 --     sieges (plotinfo.invasions.list: civ_id, flags.siege, created_year).
 -- NOT known without seeing it in game: where the meeting screen's answer
 -- buttons are, which topic is being asked right now, and how much a tribute
--- is. So the screen is answered only through buttons the player showed the
--- AI once (meeting_here Yes|No|Done, as the trade screen's Trade button),
--- every read is inside pcall, and each open meeting screen is written to
--- dfhack-config/ai-overseer/meeting-probe.json for the next round. When an
--- answer can't be given, nothing is pressed: today's Needs-you note stands
--- and the overseer leaves the screen after 10 minutes, as before.
+-- is. So the screen is answered through a place the player showed the AI
+-- (meeting_here Yes|No|Done), else (r9, audit A8 #25: as press_named does
+-- since 0.105.47-0.105.52) the answer's word or exactly one of the fort's
+-- reply lines read off the screen, Okay for a topic with no choice, then the
+-- answer's key (Yes/Done/Okay: SELECT); every read is inside pcall, and each
+-- open meeting screen is written to dfhack-config/ai-overseer/meeting-probe.json.
+-- When an answer can't be given, nothing is pressed: the Needs-you note
+-- stands and, unattended, the overseer leaves the screen (brain/overseer_loop.py:
+-- MEETING_GIVEUP_S, 2 minutes, when the AI can't answer it; else MEETING_CLOSE_S).
 --@ module = true
 
 local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
@@ -394,16 +397,25 @@ function world_report(txt)
         if ent and is_civ and gid ~= civ_id then
             local r = enum_name(df.diplomacy_state_type, R.rd('diplomacy_state.relation', function() return st.relation end))
             rel[gid] = r
-            if #out.civs < MAX_CIVS then
+            -- (r9, audit A8 #22) past MAX_CIVS a friend (an ally, a peace
+            -- pending, a tribute) is still listed (up to MAX_CIVS more): the
+            -- raid policy's friends are read from here (planner_raids.raid_friends)
+            local ally, offered = false, false
+            pcall(function() offered = st.flags.peace_offering_received and true or false end)
+            pcall(function() ally = st.flags.allies and true or false end)
+            local friend = ally or offered or r == 'AcceptingTribute' or r == 'OfferingTribute'
+            if #out.civs < MAX_CIVS or (friend and #out.civs < 2 * MAX_CIVS) then
                 local e = {id = gid, name = txt(civ_name(ent)), race = race_of(ent), relation = r or 'unknown',
                            hostile = HOSTILE[r] or nil}
-                pcall(function() if st.flags.peace_offering_received then e.peace_offered = true end end)
-                pcall(function() if st.flags.allies then e.allies = true end end)
+                if offered then e.peace_offered = true end
+                if ally then e.allies = true end
                 if r == 'AcceptingTribute' or r == 'OfferingTribute' then
                     e.tribute = r == 'AcceptingTribute' and 'they take' or 'they give'   -- a guess at the direction
                     pcall(function() e.tribute_season = enum_name(df.season, st.tribute_season) end)
                 end
                 table.insert(out.civs, e)
+            else
+                out.civs_more = (out.civs_more or 0) + 1
             end
         end
     end

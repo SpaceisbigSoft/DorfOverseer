@@ -479,6 +479,28 @@ if HAVE_LUPA:
         assert r.ok and r.restored == 1 and n(z.assigned_units) == 1 and n(sheep.general_refs) == 1
         assert len(L(env.pets_report(sq).book)) == 0
 
+    @test("(r9, A8 #20) a booked pet home while its owner is dead is put back; owner off the map: waited for a "
+          "season, then put back (before: kept 'away' for ever)")
+    def _():
+        lua, env, G = lua_env()
+        lua.execute("local env = ...; env.df.global.cur_year, env.df.global.cur_year_tick = 120, 0", env)
+        z = G.zone(900, "AI pasture", True)
+        owner = G.unit(301)
+        sheep = G.unit(501, lua.table_from({"relationship_ids": lua.table_from({"PetOwner": 301})}))
+        G.put(sheep, z)
+        assert env.release_pets(lua.table_from([501])).ok
+        sq = lua.table_from([lua.table_from({"id": 11, "units": lua.table_from([301])})])
+        owner.flags1.inactive = True                       # the soldier off on the mission
+        assert env.pets_report(sq).book[1].state == "away"
+        lua.execute("local env = ...; env.df.global.cur_year_tick = 100800", env)     # a season on
+        assert env.pets_report(sq).book[1].state == "ready"
+        # the owner dead: at once
+        lua.execute("local env = ...; env.df.global.cur_year_tick = 0", env)
+        assert env.pets_report(sq).book[1].state == "away"
+        owner.dead = True
+        assert env.pets_report(sq).book[1].state == "ready"
+        assert env.restore_pets().restored == 1
+
     @test("the bridge: a raid on a civ that isn't hostile only with the policy's reason the Raids switch allows; off "
           "refuses every attack; the fort's own civ never")
     def _():

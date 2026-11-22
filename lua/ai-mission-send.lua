@@ -16,6 +16,9 @@
 -- differs from what was recorded (or that was never recorded), writes
 -- exactly what it saw (mission-send.json and the `missions` report's
 -- `send`), and closes the World screen: DF is never left on it.
+-- (r9, audit A8 #25) That was 0.105.24; since 0.105.47 Make contact and the
+-- site invasions run end to end to "mission set up" (result 'sent', below);
+-- only rescue and recover_artifact still stop at the site.
 --
 -- It runs only when the Rules switch `send_messenger` is on (off by default),
 -- the player isn't using the game (the camera director's player_busy), the
@@ -978,7 +981,7 @@ STEP_DEFS.squads = {name = 'squads',
         local st = read_state(run)
         local scr = world_screen()
         if not scr then return false, 'gone', 'the World screen closed' end
-        local spots, rows, done = {}, nil, nil
+        local spots, rows, done, ids = {}, nil, nil, {}
         for _, sid in ipairs(run.squad_ids or {}) do
             if not contains(st.ac_squads, sid) then
                 local idx = index_of(scr.squad, sid)
@@ -991,14 +994,18 @@ STEP_DEFS.squads = {name = 'squads',
                 local x, y = tick_spot(rows, done, idx, {'No specific orders'})
                 if not x then return false, 'not_found', 'squad ' .. sid .. ': ' .. y end
                 table.insert(spots, {x, y})
+                table.insert(ids, sid)
             end
         end
         if #spots == 0 then left(run, 'squads: on the mission already'); return true end
-        for _, p in ipairs(spots) do
+        run.ticked, run.ticked_ids = {}, {}
+        for i, p in ipairs(spots) do
             local ok, err = pcall(click, p[1], p[2])
             if not ok then return false, 'click_failed', 'the click failed: ' .. tostring(err):sub(1, 160) end
+            -- (r9) kept as pressed, so a run that stops later unticks them (stop)
+            table.insert(run.ticked, p)
+            table.insert(run.ticked_ids, ids[i])
         end
-        run.ticked = spots
         return true
     end,
     check = function(st, run)
@@ -1146,6 +1153,7 @@ local function save_log(run)
                             probe = run.probe,
                             -- (0.105.47) what was left as DF chose, the boxes ticked, the facts read
                             left = run.left, ticked = run.ticked, topics = run.topics, sent_ac = run.sent_ac,
+                            unticked = run.unticked, untick_failed = run.untick_failed,     -- (r9)
                             intent_before = run.intent_before, intent_mismatch = run.intent_mismatch,
                             messenger_unverified = run.messenger_unverified,
                             messenger_flag_before = run.messenger_flag_before,
@@ -1198,7 +1206,8 @@ local function save_outcome(run)
                  controller_left = run.controller_left, saw = run.saw, hf_id = run.hf_id,
                  artifact_id = run.artifact_id, left_ids = run.left_ids, left_open = run.left_open,
                  goal_mismatch = run.goal_mismatch, sent_ac = run.sent_ac, intent_mismatch = run.intent_mismatch,
-                 messenger_unverified = run.messenger_unverified, order_unverified = run.order_unverified}
+                 messenger_unverified = run.messenger_unverified, order_unverified = run.order_unverified,
+                 untick_failed = run.untick_failed}      -- (r9) squads a stopped run couldn't take off
     local okp, old = pcall(function() return last_outcome() end)
     local by = by_goal_of(okp and old or nil)
     by[run.goal or 'make_contact'] = small(out)
@@ -1299,8 +1308,8 @@ end
 
 -- Stop the run: what it saw written down, the World screen shut, the
 -- outcome kept for the report. result: 'stopped' (a surprise or a step
--- never recorded), 'error', 'sent' (all steps done: not reachable until the
--- last steps are recorded).
+-- never recorded), 'error', 'sent' (all steps done: (0.105.47) Make contact
+-- and the site invasions, recorded end to end).
 -- (0.105.39 review) Every part inside pcall and RUN always cleared: an
 -- error while stopping (or in the callback once the screen shut) never
 -- leaves a run stuck that start() would wait on for ever.
@@ -1332,6 +1341,17 @@ finish = function(run, closed)
             for i = 1, math.min(#ids, 4) do run.left_ids[i] = id_of(ids[i]) end
         end
     end)
+    -- (r9, audit A8 #15) the fort attacked them only when the mission went:
+    -- a run that stopped at a step books nobody (their peace stays open)
+    if run.result == 'sent' and run.attacks and #run.attacks > 0 then
+        pcall(function()
+            local D = reqscript('ai-diplomacy')
+            local done = {}
+            for _, id in ipairs(run.attacks) do
+                if not done[id] then done[id] = true; D.note_attacked(id) end
+            end
+        end)
+    end
     pcall(save_log, run)
     pcall(save_outcome, run)
     if RUN == run then RUN = nil end
@@ -1353,16 +1373,56 @@ function stop(run, result, reason)
     end)
     if not ok then run.why = (run.why and run.why .. '; ' or '') .. 'while stopping: ' .. tostring(err):sub(1, 120) end
     local called = false
-    local okc, cerr = pcall(close_world, run, 0, function(closed)
-        if called then return end
-        called = true
-        finish(run, closed)
-    end)
-    if not okc and not called then
-        run.why = (run.why and run.why .. '; ' or '') .. 'closing: ' .. tostring(cerr):sub(1, 120)
-        called = true
-        finish(run, world_screen() == nil)
+    local function shut()
+        local okc, cerr = pcall(close_world, run, 0, function(closed)
+            if called then return end
+            called = true
+            finish(run, closed)
+        end)
+        if not okc and not called then
+            run.why = (run.why and run.why .. '; ' or '') .. 'closing: ' .. tostring(cerr):sub(1, 120)
+            called = true
+            finish(run, world_screen() == nil)
+        end
     end
+    -- (r9, audit A8 #13) a run that stops after ticking squads (a later check
+    -- failed): the controller stays after Mission details is left, so the
+    -- squads ticked would go out as a smaller party than the matchup counted.
+    -- Each box is a toggle: the run's own ticks still on the controller are
+    -- pressed again (only on Mission details, its own controller, never for
+    -- 'sent', when the player took over or the AI was halted), then read back a few frames later
+    -- (run.unticked, or run.untick_failed with what is still there).
+    local again = {}
+    if result ~= 'sent' and reason ~= 'player_busy' and reason ~= 'halted' and run.ticked_ids and #run.ticked_ids > 0 then
+        pcall(function()
+            local st = read_state(run)
+            if st.mode ~= 'MISSION_DETAILS' or (run.ac_id and st.ac_id ~= run.ac_id) or st.ac_squads == nil then return end
+            for i, sid in ipairs(run.ticked_ids) do
+                local p = run.ticked[i]
+                if p and contains(st.ac_squads, sid) then
+                    local okk = pcall(click, p[1], p[2])
+                    if okk then table.insert(again, sid) end
+                end
+            end
+        end)
+    end
+    if #again == 0 then return shut() end
+    later(POLL_FRAMES, function()
+        pcall(function()
+            local st = read_state(run)
+            local still = {}
+            for _, sid in ipairs(again) do
+                if st.ac_squads == nil or contains(st.ac_squads, sid) then table.insert(still, sid) end
+            end
+            if #still == 0 then run.unticked = again
+            else
+                run.untick_failed = still
+                run.why = (run.why and run.why .. '; ' or '') .. 'squad(s) ' .. table.concat(still, ', ') ..
+                          ' still on the mission after unticking'
+            end
+        end)
+        shut()
+    end)
 end
 
 local function pause_state()
@@ -1698,6 +1758,14 @@ function start(a)
                  site_id = site_id, site = name, messenger = mid, steps = steps_for(goal), step = 1, acted = false,
                  waited = 0, frames = 0, trail = {}, started = now_tick(),
                  messenger_hf = mid and MESSENGER_HF or nil, messenger_name = mid and MESSENGER_NAME or nil}
+    -- (r9, audit A8 #15) whom an offensive mission attacks (the bridge's
+    -- send_mission): booked in the save only once the run is 'sent' (finish)
+    if type(a.attacks) == 'table' then
+        run.attacks = {}
+        for _, id in pairs(a.attacks) do
+            if type(id) == 'number' and id >= 0 then table.insert(run.attacks, id) end
+        end
+    end
     run.step_name = run.steps[1].name
     local st0 = read_state(run)
     run.controllers_before = st0.controllers

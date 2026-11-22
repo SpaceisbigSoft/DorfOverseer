@@ -415,6 +415,71 @@ def _():
     assert last.step == "squads" and last.reason == "unexpected", dict(last)
 
 
+# (r9, A8 #13) the boxes are toggles: the fake's tick takes a squad off when it is on,
+# and squad 5's row (the third) does nothing, so the run stops after squad 3 was ticked
+TOGGLE = r"""
+local react = G.react
+G.react = function(x, y)
+  local s = G.screen
+  if s and G.MODES[s.view_mode] == 'MISSION_DETAILS' and x == 85 and (y - 2) % 3 == 0 then
+    local ac, i = G.ac(), (y - 2) // 3
+    if ac.goal ~= G.GOALS.DIPLOMACY and i < #s.squad then
+      table.insert(G.ticks, {x, y})
+      if i == G.noop_row then return end
+      local id, keep, was = s.squad[i].id, G.vec(), false
+      for j = 0, #ac.assigned_squads - 1 do
+        if ac.assigned_squads[j] == id then was = true else G.push(keep, ac.assigned_squads[j]) end
+      end
+      if not was then G.push(keep, id) end
+      ac.assigned_squads = keep
+      return
+    end
+  end
+  return react(x, y)
+end
+"""
+
+
+@test("(r9, A8 #13) a run that stops after ticking squads unticks its own ticks before leaving (read back: "
+      "unticked); a run sent: nothing unticked")
+def _():
+    env, G = world(TOGGLE + "G.noop_row = 2")
+    r, last = send(env, G, goal="raid", site_id=73, squad_ids=[3, 5])
+    assert last.result == "stopped" and last.step == "squads", dict(last)
+    ac = G.controllers[0]
+    assert ac.assigned_squads._n == 0, "squad 3 was left on the mission"
+    assert clicks(G).count((85, 2)) == 2, clicks(G)          # ticked, then unticked
+    assert G.screen is None
+    st = env.status()
+    assert st.last.untick_failed is None, dict(st.last)
+    # without a stop after the ticks (sent): nothing unticked
+    env, G = world(TOGGLE)
+    r, last = send(env, G, goal="raid", site_id=73, squad_ids=[3])
+    assert last.result == "sent" and G.controllers[0].assigned_squads._n == 1, dict(last)
+
+
+ATTACKS = r"""
+G.attacked = {}
+local rq = G.env.reqscript
+G.env.reqscript = function(name)
+  if name == 'ai-diplomacy' then return {note_attacked = function(id) table.insert(G.attacked, id) end} end
+  return rq(name)
+end
+"""
+
+
+@test("(r9, A8 #15) the civ an offensive mission attacks is booked when the run is sent, not when it starts; "
+      "a run that stops books nobody")
+def _():
+    env, G = world(ATTACKS + "G.row_text = {[0] = 'Patrol the walls'}")
+    r, last = send(env, G, goal="raid", site_id=73, squad_ids=[3], attacks=LUA.table_from([300, 301]))
+    assert r.ok and last.result == "stopped", dict(last)
+    assert lst(G.attacked) == [], lst(G.attacked)
+    env, G = world(ATTACKS)
+    r, last = send(env, G, goal="raid", site_id=73, squad_ids=[3], attacks=LUA.table_from([300, 300]))
+    assert last.result == "sent" and lst(G.attacked) == [300], (dict(last), lst(G.attacked))
+
+
 @test("travellers who can't walk off the map: the send refused (waiting, no_way_out), nothing pressed")
 def _():
     env, G = world("G.blocked = {1104}")
@@ -636,10 +701,14 @@ def _():
     orig = planner_core.player_rules
     try:
         pm.player_rules = lambda st: {**orig(st), "missions": "all"}
-        t, stopped = pm.mission_target(s2, pm.PLANNER_CONFIG, m)
+        # (r9, A8 #23) the raid policy's rows read (raid_sites), a squad that beats the sites
+        strong = [{"id": 4, "power": {"power": 200.0}}]
+        s2["missions"]["raid_sites"] = {"rows": []}
+        t, stopped = pm.mission_target(s2, pm.PLANNER_CONFIG, m, squads=strong)
         assert t["site_id"] == 73 and stopped == [], (t, stopped)
-        s3 = _state(missions={"send": send, "targets": targets}, settings={"traits": {}, "raid_policy": "aggressive"})
-        t, stopped = pm.mission_target(s3, pm.PLANNER_CONFIG)
+        s3 = _state(missions={"send": send, "targets": targets, "raid_sites": {"rows": []}},
+                    settings={"traits": {}, "raid_policy": "aggressive"})
+        t, stopped = pm.mission_target(s3, pm.PLANNER_CONFIG, squads=strong)
         assert t["site_id"] == 73 and stopped == [], (t, stopped)       # the run's own outcome, without memory
         notes = []
         pm._stopped_needs_you(s3, "raid", pm.PLANNER_CONFIG, notes)

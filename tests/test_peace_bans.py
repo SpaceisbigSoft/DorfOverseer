@@ -250,13 +250,14 @@ return function(a) got.a = nil; return env.act_answer_meeting(a), got.a end
     assert r.ok and a.peace is None
 
 
-@test("bridge: send_mission remembers the civ (and owner) an offensive mission goes against, not on a dry run")
+@test("bridge: send_mission hands the sender the civ (and owner) an offensive mission goes against; (r9, A8 #15) "
+      "booked by the sender once 'sent' (tests/test_r47_mission_send.py), never at start")
 def _():
     fn = _bridge_fn("act_send_mission")
     assert "owner = {h.civ, h.owner}" in fn
-    assert "note_attacked(owner[1])" in fn and "not a.dry_run" in fn
+    assert "attacks = owner and {owner[1], owner[2]} or nil" in fn and "note_attacked" not in fn
     missions = (LUA_DIR / "ai-missions.lua").read_text(encoding="utf-8")
-    assert "civ = (c and c >= 0) and int(c) or nil}" in missions
+    assert "civ = c and int(c) or nil}" in missions
 
 
 @test("settings: the peace choice (ai, accept, refuse; default ai) saved, sanitized, sent to the AI; "

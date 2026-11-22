@@ -1067,8 +1067,34 @@ function opened_by_ai()
     return OPENED_FOR ~= nil and OPENED_FOR == caravan_key(t.mer) or false
 end
 
-function mark_done(c) local k = caravan_key(c); if k then DONE[k] = true end end
-function is_done(c) local k = caravan_key(c); return k ~= nil and DONE[k] == true end
+-- (r9, audit A8 #24) kept in the save too (the newest DONE_KEEP): DONE alone
+-- lived in memory, so after a DFHack restart the AI haggled again with the
+-- caravan it had already traded with (or been turned down by)
+DONE_KEY, DONE_KEEP = 'ai-overseer/trade-done', 8
+function mark_done(c)
+    local k = caravan_key(c)
+    if not k then return end
+    DONE[k] = true
+    pcall(function()
+        local list = {}
+        for _, x in ipairs(U.site_get(DONE_KEY, {})) do
+            if type(x) == 'string' and x ~= k then table.insert(list, x) end
+        end
+        table.insert(list, k)
+        while #list > DONE_KEEP do table.remove(list, 1) end
+        U.site_put(DONE_KEY, list)
+    end)
+end
+function is_done(c)
+    local k = caravan_key(c)
+    if k == nil then return false end
+    if DONE[k] == true then return true end
+    local ok, list = pcall(U.site_get, DONE_KEY, {})
+    for _, x in ipairs(ok and type(list) == 'table' and list or {}) do
+        if x == k then DONE[k] = true; return true end
+    end
+    return false
+end
 
 -- Close the trade screen (nothing to buy, or the deal refused), without
 -- DFHack's "leave the screen?" question.
@@ -1252,6 +1278,14 @@ function open_screen(dry_run, txt)
     end)
     if okf and not plain then return {ok = true, waiting = true, error = 'the player has a menu open'} end
     local vs = df.global.game.main_interface.view_sheets
+    -- (r9, audit A8 #17) a sheet the player is reading (a dwarf's, another
+    -- building's) is never taken over for the depot's: only the plain map,
+    -- or the depot's own sheet already up
+    local oks, reading = pcall(function()
+        return dfhack.gui.matchFocusString('dwarfmode/ViewSheets') and vs.open
+            and not (vs.active_sheet == df.view_sheet_type.BUILDING and vs.active_id == dep.id)
+    end)
+    if oks and reading then return {ok = true, waiting = true, error = 'the player is reading a sheet'} end
     if dry_run then return {ok = true, dry_run = true, at = b and {button_at(b)} or nil, search = not b or nil} end
     vs.open = true
     pcall(function() vs.context = df.view_sheets_context_type.REGULAR_PLAY end)
@@ -1272,6 +1306,17 @@ function open_screen(dry_run, txt)
         if okh and halted == true then
             close_sheet()
             LAST_OPEN = {clicked = false, halted = true, error = 'the AI was halted in the game'}
+            return
+        end
+        -- (r9, A8 #17) the focus looked at again before the click: a menu the
+        -- player opened meanwhile, or another sheet over the depot's: no click
+        local okf2, still_ok = pcall(function()
+            local mi = df.global.game.main_interface.view_sheets
+            return (dfhack.gui.matchFocusString('dwarfmode/Default') or dfhack.gui.matchFocusString('dwarfmode/ViewSheets'))
+                and mi.active_id == dep.id
+        end)
+        if okf2 and not still_ok then
+            LAST_OPEN = {clicked = false, error = 'the screen changed before the click (the player): not clicked'}
             return
         end
         local how = b and (b.default and 'guess' or 'shown') or nil
@@ -1333,7 +1378,10 @@ function open_screen(dry_run, txt)
                 end)
                 close_sheet()
                 if how == 'guess' then guess_result('Depot', b, false, 'clicked and the trade screen did not open') end
-                if how ~= 'shown' then failed_try(key) end
+                -- (r9, A8 #17) a shown place that missed waits half a day too
+                -- (OPEN_AFTER), not counted against the visit's tries: before,
+                -- open, tick, press, close came round every cycle
+                if how ~= 'shown' then failed_try(key) else failed_try(nil) end
                 if LAST_OPEN then LAST_OPEN.guess_missed = (how == 'guess') or nil; LAST_OPEN.missed = true end
             end)
         end

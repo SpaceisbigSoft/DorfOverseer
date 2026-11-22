@@ -342,7 +342,8 @@ rawset(e, 'histfig_ids', nil)
     assert len(r2.targets) == 0 and "targets" in lst(r2.unknown), lst(r2.unknown)
 
 
-@test("time budget: the walk stops after 0.05 s of os.clock and says partial")
+@test("time budget: each part of the walk stops after 0.05 s of os.clock and says partial; (r9, A8 #8) a rescue "
+      "walk that runs out no longer starves the artifacts and the sites")
 def _():
     env = world(EVERY + r"""
 local t = 0
@@ -353,7 +354,8 @@ for i = 1, 200 do B.event_other() end
     assert r.targets_partial is True
     got = brief(r)
     assert got[:2] == [("rescue", 20), ("rescue", 21)], got
-    assert not any(g == "explore" for g, _ in got), got     # never reached
+    # (r9) before: the rescue walk spent the budget and explore and raid were never reached
+    assert ("explore", 23) in got and ("raid", 20) in got, got
     # direct call, with its own reader
     out, partial = env.targets(None, 100, 200, 10)
     assert partial is True
@@ -458,6 +460,28 @@ B.site(23, 'Kin', 100, 52, 52)
     assert h.hostile is False and h.ours is True
     h, why = env.site_hostile(99)
     assert h is None and "no site 99" in why
+
+
+@test("(r9, A8 #19) a site's owner is its holder (cur_owner_id) and the holder's civ (its PARENT link), not its "
+      "maker: a goblin-built site the fort's civ holds is ours; a dwarf-built one the goblins hold is hostile")
+def _():
+    env = world(r"""
+B.env.df.historical_entity_type = {[0] = 'Civilization', [1] = 'SiteGovernment', Civilization = 0, SiteGovernment = 1}
+B.env.df.entity_entity_link_type = {[0] = 'PARENT', [1] = 'CHILD', PARENT = 0, CHILD = 1}
+B.entity(300, 'Gobs', {type = 0, entity_links = {}})
+rawset(B.ENTS[100], 'type', 0)
+B.entity(310, 'Gob Council', {type = 1, entity_links = {{type = 0, target = 300}}})
+B.entity(110, 'Our Council', {type = 1, entity_links = {{type = 0, target = 100}}})
+B.relation(300, 1)
+B.site(40, 'Taken Back', 300, 53, 50, {cur = 110, type = 1})      -- goblin-built, held by the fort's civ
+B.site(41, 'Lost Hall', 100, 54, 50, {cur = 310, type = 3})       -- dwarf-built, held by the goblins
+""")
+    h = env.site_hostile(40)
+    assert h.ours is True and h.hostile is False, dict(h)
+    h = env.site_hostile(41)
+    assert h.ours is None and h.hostile is True and h.civ == 300 and h.owner == 310, dict(h)
+    got = brief(env.report())
+    assert ("raid", 41) in got and not any(s == 40 for _, s in got), got
 
 
 @test("(0.105.39 review 2) explore needs a readable site type (not a cave or a lair shrine); no MonsterLair name")

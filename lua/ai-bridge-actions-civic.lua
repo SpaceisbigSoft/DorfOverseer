@@ -462,17 +462,14 @@ function act_send_mission(a)
         end
         owner = {h.civ, h.owner}
     end
-    local r = reqscript('ai-mission-send').start({goal = goal, site_id = site, squad_ids = squads, hf_id = hf,
-                                                  artifact_id = art, dry_run = a.dry_run == true})
     -- (0.105.41, item 8) the fort attacked them: remembered in the save, so a
-    -- peace offer from them is weighed with it (lua/ai-diplomacy.lua)
-    if owner and not a.dry_run and type(r) == 'table' and r.ok ~= false then
-        pcall(function()
-            local D = reqscript('ai-diplomacy')
-            if owner[1] then D.note_attacked(owner[1]) end
-            if owner[2] and owner[2] ~= owner[1] then D.note_attacked(owner[2]) end
-        end)
-    end
+    -- peace offer from them is weighed with it (lua/ai-diplomacy.lua).
+    -- (r9, audit A8 #15) booked by the sender once the run is 'sent', not
+    -- here: start() answers ok at once, and a run that stopped at its first
+    -- step still refused their peace for good
+    local r = reqscript('ai-mission-send').start({goal = goal, site_id = site, squad_ids = squads, hf_id = hf,
+                                                  artifact_id = art, dry_run = a.dry_run == true,
+                                                  attacks = owner and {owner[1], owner[2]} or nil})
     return r
 end
 

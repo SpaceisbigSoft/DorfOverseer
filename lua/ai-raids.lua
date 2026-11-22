@@ -44,6 +44,9 @@ RAID_LIVED_IN = {Town = true, Hamlet = true, Fortress = true, DarkFortress = tru
 AI_ZONE_PREFIX = 'AI '     -- the AI's own zones' names ('AI pasture', 'AI gate dogs', ...)
 PET_BOOK_KEY = 'ai-overseer/raid_pets'
 PET_BOOK_MAX = 24
+-- (r9, audit A8 #20) a booked pet home while its owner stays off the map this
+-- long (a season) is put back anyway: a grazer left out of its pasture starves
+PET_OWNER_AWAY_TICKS = 100800
 PETS_MAX = 20
 
 local function int(v)
@@ -189,6 +192,11 @@ function raid_sites()
         local M = reqscript('ai-missions')
         if type(M.resolver) == 'function' then rel_of = M.resolver(nil, civ, group) end
     end)
+    local owner_fn
+    pcall(function()
+        local M = reqscript('ai-missions')
+        if type(M.site_owner) == 'function' then owner_fn = M.site_owner end
+    end)
     local names, kinds = {}, {}
     local function ent_info(id)
         if not id or id < 0 then return nil, nil end
@@ -210,12 +218,18 @@ function raid_sites()
             if okh and hidden then return nil end
             local okr, ruined = pcall(function() return s.flag.RUINED end)
             if okr and ruined then return nil end
+            -- (r9, A8 #19) the holder and its civilisation, not the maker
+            -- (ai-missions site_owner; the old reading when it can't be had)
             local c = s.civ_id
             local okc, cur = pcall(function() return s.cur_owner_id end)
             if not okc then cur = nil end
             local who = (cur and cur >= 0 and cur) or (c and c >= 0 and c) or nil
+            if owner_fn then
+                local o, oc = owner_fn(s)
+                who, c = o, oc
+            end
             if not who then return nil end
-            if c == civ or who == civ or who == group or cur == civ or cur == group then return nil end
+            if c == civ or who == civ or who == group then return nil end
             local dist = math.max(math.abs(s.pos.x - fx), math.abs(s.pos.y - fy))
             if dist > RAID_MAX_DIST then return nil end
             local l = landmass(s)
@@ -376,8 +390,14 @@ local function book_state(e)
     if not z then return 'gone' end
     if held_of(u) then return 'gone' end           -- held again (by the player or DF): not ours to move
     if not on_map(u) then return 'away' end
+    -- (r9, A8 #20) the owner dead (or no more): the pet is put back now; the
+    -- owner off the map: waited for a season, then put back (before: 'away' for ever)
     local o = e.owner_id and find_unit(e.owner_id)
-    if o and not on_map(o) then return 'away' end
+    if o and alive(o) and not on_map(o) then
+        local since = tonumber(e.tick)
+        if since and abs_tick() - since >= PET_OWNER_AWAY_TICKS then return 'ready' end
+        return 'away'
+    end
     return 'ready'
 end
 

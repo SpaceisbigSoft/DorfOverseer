@@ -25,6 +25,12 @@ local U = reqscript('ai-util')
 
 FILE = dfhack.getDFPath() .. '/dfhack-config/ai-overseer/screen-buttons.json'
 RETIRE_AFTER = 2           -- a guess that failed this many times is no longer tried
+-- (r9, audit A8 #21) ... for a week: two "missing" reads (the sheet a slow
+-- frame late, in any of the PC's forts) retired a guess for every save for
+-- good. A guess retired by its count is tried again after RETIRE_KEEP_S (its
+-- misses counted afresh); one retired at once (a seize's line, Seize or Offer
+-- at the place) stays retired. Every guessed press still reads its word first.
+RETIRE_KEEP_S = 7 * 24 * 3600
 
 -- (0.105.47) The AI's own guesses, from its October clicks on this PC that
 -- worked (logs/runs 23-24 Oct: open_trade at x94/x73/x60 y15 on windows
@@ -56,7 +62,25 @@ function read_file()
     d.buttons = type(d.buttons) == 'table' and d.buttons or {}
     d.misses = type(d.misses) == 'table' and d.misses or {}
     d.retired = type(d.retired) == 'table' and d.retired or {}
+    d.retired_at = type(d.retired_at) == 'table' and d.retired_at or {}    -- (r9) os.time() of a count's retirement
     return d
+end
+
+-- (r9) The retirements still in force: a count's retirement older than
+-- RETIRE_KEEP_S is dropped (with its misses) and the file written.
+local function in_force(f, key, now)
+    local r, at = f.retired[key], f.retired_at[key]
+    if type(r) ~= 'table' or type(at) ~= 'table' then return r end
+    local changed = false
+    for name, t in pairs(at) do
+        if type(t) == 'number' and now - t >= RETIRE_KEEP_S then
+            r[name], at[name] = nil, nil
+            if type(f.misses[key]) == 'table' then f.misses[key][name] = nil end
+            changed = true
+        end
+    end
+    if changed then write_file(f) end
+    return r
 end
 
 function write_file(d)
@@ -86,7 +110,7 @@ end
 
 function get(key)
     local f = read_file()
-    return merge(U.site_get(key, {}), f.buttons[key], DEFAULTS[key], f.retired[key])
+    return merge(U.site_get(key, {}), f.buttons[key], DEFAULTS[key], in_force(f, key, os.time()))
 end
 
 -- A place the player showed (or a guess that worked): kept for every save here.
@@ -112,6 +136,8 @@ function miss(key, name, why, now)
     if gone then
         f.retired[key] = type(f.retired[key]) == 'table' and f.retired[key] or {}
         f.retired[key][name] = tostring(why or 'failed'):sub(1, 160)
+        f.retired_at[key] = type(f.retired_at[key]) == 'table' and f.retired_at[key] or {}
+        f.retired_at[key][name] = (now ~= true) and os.time() or nil     -- (r9) a count's: tried again in a week
     end
     write_file(f)
     return gone

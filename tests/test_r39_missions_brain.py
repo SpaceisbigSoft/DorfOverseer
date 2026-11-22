@@ -56,7 +56,10 @@ def fort(targets=None, militarism=0, send=None, **rules) -> dict:
     s["missions"] = {"controllers": [], "reports": {"n": 0, "unviewed": 0}, "spoils": {"n": 0}, "sites": {},
                      "unknown": [], "squads": [{"id": q["id"], "name": q["name"], "members": q["members"], "away": 0}
                                                for q in s["military"]["squads"]],
-                     "targets": [target()] if targets is None else targets}
+                     "targets": [target()] if targets is None else targets,
+                     # (r9, A8 #23) the raid policy's rows read (none of their own): without
+                     # raid_sites no site is "clearly beaten"
+                     "raid_sites": {"rows": []}}
     if send is not None:
         s["missions"]["send"] = send
     return s
@@ -196,12 +199,19 @@ def _():
 
 @test("raids only against a hostile or at-war civ, and only at 'all'; a target DF's screen refused is passed over")
 def _():
+    _fort = globals()["fort"]
+    def fort(*a, **kw):      # (r9, A8 #23) squads that clearly beat a site of unknown size (raid_unknown_pop)
+        f = _fort(*a, **kw)
+        for q in f["military"]["squads"]:
+            q["power"]["power"] = 100.0
+        return f
     send = button(*PM.MISSION_GOALS)
     for level in ("rescue", "explore"):
         assert not rule(fort([target("raid", 5, hostile=True)], send=send, send_missions=True, missions=level))[0]
     # (0.105.47, J17) the aggressive policy (the switch) keeps the old rule on the targets list:
     # its hostile sites only (the raid policy's own rows, raid_sites, are tests/test_r47_raids.py's)
     agg = {"raid_policy": "aggressive"}
+
     # reactive (the sliders at 0): never a civ that hasn't attacked nor sits close and hostile
     assert not rule(fort([target("raid", 5, dist=20), target("pillage", 6, dist=20), target("tribute", 7, dist=20)],
                          send=send, send_missions=True, missions="all"))[0]
