@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src, split_src  # noqa: E402
 
 import planner  # noqa: E402
 import planner_moods  # noqa: E402
@@ -391,7 +391,7 @@ def _():
 def _():
     need_lua()
     from lupa.lua53 import LuaRuntime
-    src = (LUA_DIR / "ai-military.lua").read_text(encoding="utf-8")
+    src = split_src("ai-military.lua")   # (r8) the hub and its parts
     bd = re.search(r"\nlocal function breaking_down\(.*?\nend\n", src, re.S).group(0)
     dr = re.search(r"\nfunction draftable\(.*?\nend\n", src, re.S).group(0)
     L = LuaRuntime(unpack_returned_tuples=True)

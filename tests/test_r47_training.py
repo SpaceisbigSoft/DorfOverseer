@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src, split_src  # noqa: E402
 from py_parts import py_family_src  # noqa: E402  (r7) planner_core's parts
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -394,7 +394,7 @@ def _():
     b = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     assert "training_squad = function(a)" in b and "'training_squad'," in b
     assert "'ai-training-squad'" in b[b.index("BRIDGE_MODULES = {"):b.index("MARKED_MODULES")]
-    m = (LUA_DIR / "ai-military.lua").read_text(encoding="utf-8")
+    m = split_src("ai-military.lua")   # (r8) the hub and its parts
     assert "function make_squad(dry_run, txt, opts)" in m
     assert "if training and rank == 1 then rank = nil end" in m
     assert "local from = not training and squad_with_uniform(fort, sq.id) or nil" in m
