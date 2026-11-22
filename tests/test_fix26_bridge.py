@@ -31,7 +31,7 @@ HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-report-fort", "ai-bridge-report-world",
     "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-civic",
     "ai-bridge-probes", "ai-bridge-design"]   # (D0); (r6) report and actions split by theme
-BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "projects-progress", "projects-finish", "projects-founding", "projects-wayin", "projects-polish", "farms", "wells", "cistern", "surface", "rooms", "halls",
+BUILDER_PARTS = ["ai-builder-" + p for p in ("sites", "projects", "projects-progress", "projects-finish", "projects-founding", "projects-wayin", "projects-polish", "farms", "wells", "wells-shaft", "wells-watch", "wells-place", "cistern", "cistern-status", "cistern-step", "surface", "keep", "deepdepot", "wagonroad", "dump", "rooms", "halls",
                                               "landmarks", "court",    # (D0); (0.105.47) the garden court
                                               "floorstore", "floorpiles", "floors")]   # (layout B) the floors' record; piles; the site on a floor
 # (13e) the gates' hub and parts, as the hub lists them

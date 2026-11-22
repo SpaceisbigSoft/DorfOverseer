@@ -625,7 +625,7 @@ end
 -- modules, and a test's swap (B.tile_info = ...) reaches every part.
 ---------------------------------------------------------------------------
 
-PARTS = {'sites', 'projects', 'projects-progress', 'projects-finish', 'projects-founding', 'projects-wayin', 'projects-polish', 'farms', 'wells', 'cistern', 'surface', 'rooms', 'halls',   -- (0.105.30) halls
+PARTS = {'sites', 'projects', 'projects-progress', 'projects-finish', 'projects-founding', 'projects-wayin', 'projects-polish', 'farms', 'wells', 'wells-shaft', 'wells-watch', 'wells-place', 'cistern', 'cistern-status', 'cistern-step', 'surface', 'keep', 'deepdepot', 'wagonroad', 'dump', 'rooms', 'halls',   -- (0.105.30) halls
          'landmarks',   -- (D0) the Design track's landmarks
          'court',       -- (0.105.47) the Garden fort's garden court above ground
          'floorstore',      -- (layout B) the floors' saved record and report

@@ -36,6 +36,7 @@ LUA_DIR = ROOT / "lua"
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src, UTIL_SRC  # noqa: E402
+from builder_wells_util import wells_src  # noqa: E402  (r8) ai-builder-wells and its parts
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -380,7 +381,7 @@ def _():
     assert "underworld" not in cave and "2 channel(s) left out" in cave and "a cave-in would follow" in cave, cave
     both = B.dig_guard_note(mk(3, "next to raw adamantine", 1, "a floor beside it would hang over nothing (a cave-in)"))
     assert "the dig guard refused 2: next to raw adamantine" in both and "1 channel(s) left out" in both, both
-    wells = (LUA_DIR / "ai-builder-wells.lua").read_text(encoding="utf-8")
+    wells = wells_src()
     assert re.search(r"channel the well spot at x%d y%d z%d'\):format\(\s*spot\.x, spot\.y, ez\(spot\.z\)\) \.\. "
                      r"dig_guard_note\(dry\)", wells)
     assert re.search(r"channel the shaft at elevation %d'\):format\(ez\(zk\)\)\s*\.\. dig_guard_note\(d\)", wells)

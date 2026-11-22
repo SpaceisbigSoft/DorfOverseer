@@ -272,7 +272,9 @@ if LuaRuntime is not None:
         """)
         try:
             # the part loaded again with onStateChange in reach (DFHack's)
-            LUA.eval("function(B) assert(loadfile(LUA_DIR .. '/ai-builder-wells.lua', 't', B))() end")(B)
+            # (r8) the watch is in ai-builder-wells-watch; the shaft part before it hands it its helpers
+            for part in ("ai-builder-wells-shaft", "ai-builder-wells-watch"):
+                LUA.eval("function(B, n) assert(loadfile(LUA_DIR .. '/' .. n .. '.lua', 't', B))() end")(B, part)
             assert B.shaft_watch_start() is True
             assert B.shaft_watch_start() is False                            # alive: not twice
             LUA.execute("for k in pairs(ACTIVE) do ACTIVE[k] = nil end")     # the world unloaded: timers gone

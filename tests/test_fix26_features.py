@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from lua_modules_util import module_src  # noqa: E402
+from builder_wells_util import wells_src  # noqa: E402  (r8) ai-builder-wells and its parts
 from harness import test, finish  # noqa: E402
 
 import planner  # noqa: E402
@@ -414,7 +415,7 @@ return e
 
     @test("lua wells (group 2): a forgotten beast shuts the shaft only near it in its own cavern, not anywhere below")
     def _():
-        E = LUA.execute(WELLS_GAME, (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8"))
+        E = LUA.execute(WELLS_GAME, wells_src())
         T = E.T
         T.units[1] = LUA.table_from({"id": 9, "danger": True, "great": True, "flags1": LUA.table_from({}),
                                      "pos": LUA.table_from({"x": 150, "y": 150, "z": 30})})    # 140 tiles off
@@ -429,7 +430,7 @@ return e
         assert list(T.pulls.values()) == [8] and T.hatch.door_flags.closed is True
         E.SHAFT_WATCH.on = False
         # a demon in the underworld under it (38 levels down, no cavern known): never
-        E2 = LUA.execute(WELLS_GAME, (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8"))
+        E2 = LUA.execute(WELLS_GAME, wells_src())
         E2.T.units[1] = LUA.table_from({"id": 9, "danger": True, "great": True, "flags1": LUA.table_from({}),
                                         "pos": LUA.table_from({"x": 12, "y": 10, "z": 2})})
         E2.shaft_watch_start()
@@ -445,7 +446,7 @@ return e
     @test("lua wells (K48-K4): a forgotten beast 91 tiles off shuts nothing; the watcher opens what it shut once the "
           "danger is gone and the hold has run out")
     def _():
-        E = LUA.execute(WELLS_GAME, (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8"))
+        E = LUA.execute(WELLS_GAME, wells_src())
         T = E.T
         LUA.execute("""function K4_fix(E)
             local data = E.load_projects()
@@ -487,7 +488,7 @@ return e
 
     @test("lua wells (group 2): shaft_judge, the verdict the watcher, well_shaft and the brain share")
     def _():
-        E = LUA.execute(WELLS_GAME, (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8"))
+        E = LUA.execute(WELLS_GAME, wells_src())
         t = lambda **k: LUA.table_from(k)
         w = t(x=100, y=100, z=150, hz=140)
         J = lambda c, **o: E.shaft_judge(t(**c), w, t(**o))

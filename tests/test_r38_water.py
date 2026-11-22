@@ -19,6 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from builder_wells_util import wells_src  # noqa: E402  (r8) ai-builder-wells and its parts
 from harness import test, finish  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
@@ -1132,7 +1133,7 @@ def _():
     assert not props                                               # 600 ticks after the near save
     _water_rules({"water": w, "date": {"year": 0, "tick": 2200}}, PLANNER_CONFIG, props, notes)
     assert props and "cut off" in props[0].reason
-    src = (ROOT / "lua" / "ai-builder-wells.lua").read_text(encoding="utf-8")
+    src = wells_src()
     assert "tostring(wl.near_tick or wl.tick)" in src
     # the report's copy: no river_blocks; the save keeps them
     env = world()
