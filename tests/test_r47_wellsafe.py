@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import make_test, test as plain_test, finish, need_lua, skip  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from planner import PLANNER_CONFIG, TICKS_PER_DAY, Memory, abs_tick, plan  # noqa: E402
 import planner_wells  # noqa: E402
 import planner_wellsafe  # noqa: E402
@@ -187,7 +188,7 @@ def _():
     import overseer
     assert "well_safety" in digest.SECTION_DEFAULTS if hasattr(digest, "SECTION_DEFAULTS") else '"well_safety": {}' in \
         (ROOT / "brain" / "digest.py").read_text(encoding="utf-8")
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert '"well_safety":' in src and '"well_rescue":' in src
     for k in ("cavern_well_cooldown_days", "cavern_well_site_tries", "well_rescue_after_ticks", "well_rescue_near",
               "well_safety_cooldown_ticks", "well_rescue_cooldown_ticks"):

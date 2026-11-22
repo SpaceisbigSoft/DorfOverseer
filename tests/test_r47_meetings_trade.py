@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, code_has  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src  # noqa: E402
 
 try:
@@ -580,7 +581,7 @@ def _():
 
 @test("overseer (0.105.49): an answer the bridge raises on (ok false) counts as a dead press: no more presses, left after the give-up time")
 def _():
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     i = src.index('bridge.act({"type": "answer_meeting"})')
     block = src[i:i + 2200]
     j = block.index("except BridgeError as e:")
@@ -610,7 +611,7 @@ def _():
     # a meeting it couldn't answer and left: the light waits half an hour (no 1-minute open/leave loop)
     assert PM.meeting_reopen_wait() == PLANNER_CONFIG["meeting_reopen_after_s"] == 1800
     assert not PM.meeting_open_due(st, True, True, False, None, False, 0 - PM.meeting_reopen_wait() + 120)
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert "open_meeting_tried = nowt + meeting_reopen_wait()" in src
 
 
@@ -641,7 +642,7 @@ def _():
     assert "open_meeting" in bridge.BATCH_NEVER
     import overseer
     assert "open_meeting" in overseer.ACTION_LABELS if hasattr(overseer, "ACTION_LABELS") else True
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert '"open_meeting": "open the meeting waiting behind DF\'s diplomacy light"' in src
     assert "meeting_open_due(st, args.autopilot, meeting_unattended(args)" in src
     assert 'bridge.act({"type": "open_meeting"})' in src

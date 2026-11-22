@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -411,7 +412,7 @@ def _():
     pl = (ROOT / "brain" / "planner.py").read_text(encoding="utf-8")
     for name in ("_destroyer_gate_rule", "_intruder_guard_rule", "_squad_matchup_filter", "_kill_hold_filter"):
         assert pl.count(name) >= 2, name
-    ov = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    ov = py_family_src("overseer")
     assert "note_thief_targets(state, memory, events)" in ov
     for k in ("one_enemy_gate_tiles", "kill_hold_ticks", "destroyer_wall_min_tiles", "post_rest_min_ticks"):
         assert k in PLANNER_CONFIG, k

@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 import planner  # noqa: E402
@@ -242,7 +243,7 @@ def _():
     assert planner_moods.mood_journal(s, m) == []                  # once a day
     s["date"]["tick"] = int(s["date"].get("tick") or 0) + TICKS_PER_DAY
     assert len(planner_moods.mood_journal(s, m)) == 1
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert 'for e in mood_journal(state, memory):' in src and '"kind": "mood"' in src
 
 

@@ -29,6 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -613,7 +614,7 @@ def _():
 
 @test("wiring: overseer labels, planner imports, the wells' summary says shore")
 def _():
-    ov = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    ov = py_family_src("overseer")
     assert '"near_gates": "keep the civilians' in ov and '"retire_water_zones": "take down' in ov
     pl = (ROOT / "brain" / "planner.py").read_text(encoding="utf-8")
     assert "_guard(_near_gates_rule, s, memory, cfg, proposals, notes)" in pl

@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import make_test, finish  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 import fields  # noqa: E402
 import masterplan  # noqa: E402
@@ -377,7 +378,7 @@ def _():
     assert "garden_court" in SECTION_DEFAULTS
     import overseer
     assert "place_garden_court" in overseer.ACTION_WORDS if hasattr(overseer, "ACTION_WORDS") else True
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert '"place_garden_court": "' in src
     assert "place_garden_court" in overseer.BIG_MOVES
     import planner_recovery

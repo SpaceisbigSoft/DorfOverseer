@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import finish, have_lua, make_test, skip  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 import planner_shopslots as PS  # noqa: E402
@@ -406,7 +407,7 @@ def _():
 
 @plain_test("brain: the overseer sends the workshops level through shop_level_action (plan() itself unchanged)")
 def _():
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert "r = bridge.act(shop_level_action(p.action, state))" in src
     assert "from planner_shopslots import shop_level_action" in src
     psrc = (ROOT / "brain" / "planner.py").read_text(encoding="utf-8")

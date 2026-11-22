@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 TMP = Path(tempfile.mkdtemp())
 os.environ.setdefault("DFAI_LOG_DIR", str(TMP / "logs"))
 sys.path.insert(0, str(ROOT / "brain"))
@@ -378,7 +379,7 @@ def _():
 
 @test("the overseer tallies each report before normalize() swaps its errors for defaults")
 def _():
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     i = src.index("seen_ledger.note_report(state, memstore.fort_dir(key))")
     j = src.index("normalize(state)      # (13c) once, in place")
     assert i < j and "import seen as seen_ledger" in src

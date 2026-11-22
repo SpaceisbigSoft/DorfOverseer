@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 sys.path.insert(0, str(ROOT / "brain"))
 
 import digest  # noqa: E402
@@ -262,7 +263,7 @@ def _():
     finally:
         PLANNER_CONFIG["perf_slow_cycle_factor"] = keep
     # the main loop asks slow_factor for the full report's spacing
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert "every = PLAN_EVERY_TICKS * slow_factor(fps_low, args.unattended)" in src
 
 

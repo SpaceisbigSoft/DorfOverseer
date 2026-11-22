@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 import planner  # noqa: E402
 import planner_core  # noqa: E402
@@ -228,7 +229,7 @@ def _():
 
 @test("one_cycle: the steps before the plan, the strategist, select and the record all go through cycle_step")
 def _():
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     body = src[src.index("def one_cycle("):src.index("def remember_world(")]
     for name in ("observe", "note_cycle", "note_tantrums", "note_heists", "note_intrusions", "note_events",
                  "remember_world", "calibrate", "outcomes", "culture", "plan", "strategist", "learning_apply",
@@ -244,7 +245,7 @@ def _():
 @test("whole failed cycles: counted apart from idle polls, a standing 'rule cycle failed' line")
 def _():
     import overseer
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     run = src[src.index("def _run("):]
     assert "failed_cycles += 1" in run and "in_cycle = True" in run
     seen = {}

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import make_test, finish, code_has  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 import planner  # noqa: E402
@@ -272,7 +273,7 @@ def _():
 
 @test("overseer: an unattended meeting the AI leaves to the player is left soon; no 'yourself' for the trade button")
 def _():
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert code_has(src, 'or (r.get("pressed") and not r.get("ok")) or r.get("left_to_player"):')
     assert "press Trade yourself" not in src and "refused, left to you" not in src
     assert "left for you to fix" not in src

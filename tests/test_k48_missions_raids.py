@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, code_has  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 try:
@@ -316,7 +317,7 @@ def _():
     assert not O.world_leave_due(st, 0.0, float("-inf"), T, True, True, False, "pin", False)
     assert not O.world_leave_due(st, 0.0, T - 10, T, True, True, False, None, False)          # tried lately
     assert not O.world_leave_due({"in_fort": True}, 0.0, float("-inf"), T, True, True, False, None, False)
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert 'bridge.act({"type": "close_world"})' in src and '"close_world": "leave DF\'s World screen"' in src
     hub = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     assert code_has(hub, "close_world = function(a)") and code_has(hub, "BATCH_NEVER.close_world = true")
@@ -422,7 +423,7 @@ def _():
     assert not TW.by_rule(props, "meeting") and any("left to you" in n for n in notes), notes
     s["unattended"] = True
     assert TW.by_rule(plan(s, Memory())[0], "meeting")
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert 'state["unattended"] = bool(controls.get("unattended") or os.environ.get("DFAI_PIN"))' in src
 
 

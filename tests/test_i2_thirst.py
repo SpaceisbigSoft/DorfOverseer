@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -488,7 +489,7 @@ def _():
     assert s["thirst"] == {} and "thirst" in s["_errors"]
     import overseer
     assert "thirst_unforbid" in overseer.SHORT_WORDS
-    assert "thirst_journal" in (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    assert "thirst_journal" in py_family_src("overseer")
 
 
 # --- 5. the brain -----------------------------------------------------------------------------

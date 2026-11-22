@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src  # noqa: E402
 
 try:
@@ -604,7 +605,7 @@ def _():
             raise OSError("no game")
     said = []
     assert pw.leave_open(Dead(), said.append) is None and "failed" in said[0]
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert src.count("_leave_open(bridge)") >= 4         # Ctrl-C (twice), the STOP file, the run's end
     assert "leave_fort_open()" in (ROOT / "brain" / "keeper.py").read_text(encoding="utf-8")
 

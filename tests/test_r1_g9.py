@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 TMP = Path(tempfile.mkdtemp())
 os.environ["DFAI_LOG_DIR"] = str(TMP / "logs")
 from harness import test, finish, need_lua  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 
@@ -251,7 +252,7 @@ def _():
 
 @test("fallen: the overseer's loop neither unpauses nor unsticks a fallen fort")
 def _():
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     loop = src[src.index("def main() -> int:"):]
     assert "fallen_idle = bool(args.autopilot and fallen.idle(st, fallen_probe(bridge), say, journal))" in loop   # (x3, V7) the loaded fort checked
     stall = loop.index("elif stalled and fallen_idle:")

@@ -25,6 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, code_has, need_lua  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from snapshots import plan_cases, snapshot  # noqa: E402
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
@@ -852,7 +853,7 @@ def _():
     import overseer
     for a in ACTIONS:
         assert a in overseer.SHORT_WORDS and a in overseer.CAMERA_QUIET, a
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     i = src.index('if acting and p.action["type"] in CLEANUP_ACTIONS and not p.action.get("dry_run"):')
     assert src.index("r = bridge.act(shop_level_action(p.action, state))", i) - i < 600       # the journal line comes first
     assert '"kind": "cleanup"' in src[i:i + 400]

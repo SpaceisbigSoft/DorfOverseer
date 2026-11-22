@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, have_lua  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, Proposal, abs_tick  # noqa: E402
@@ -274,7 +275,7 @@ def _():
 
 @test("B7: the overseer runs the review's proposals through the holds before putting them in front")
 def _():
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     i = src.index("def _review():")
     j = src.index('cycle_step(memory, state, "strategist", _review', i)
     assert "hold_review_proposals(state, memory, list(ai_props)" in src[i:j], "not called in _review"

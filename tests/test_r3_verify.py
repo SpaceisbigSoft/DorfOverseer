@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import finish, have_lua, make_test, skip, test as plain_test  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 from planner import Memory, PLANNER_CONFIG  # noqa: E402
 import masterplan_floors as MF  # noqa: E402
@@ -100,7 +101,7 @@ def _():
     got = PF.journal_hint(bed(), CFG)
     PF.LAST_SENT.clear()
     assert got == {}, f"a hint never sent with this line was journaled: {got}"
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     i = src.index("for p in allowed:")
     assert "floor_forget_sent()" in src[i:i + 300], "the overseer must forget the last hint before each proposal"
 

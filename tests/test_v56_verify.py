@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 import test_i2_thirst as I2  # noqa: E402  (its fake fort)
 
@@ -241,7 +242,7 @@ def _():
     # unpauses (fallen_idle), and fallen.idle() looks at nothing of the game now loaded. DF loads a
     # save paused: the player (or the keeper) loading another fort, or an earlier save, gets a game
     # that stays paused with no AI until someone unpauses it by hand.
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     loop = src[src.index("def main() -> int:"):]
     paused_branch = loop[loop.index('elif st.get("paused") and not answered:'):]
     paused_branch = paused_branch[:paused_branch.index("else:")]

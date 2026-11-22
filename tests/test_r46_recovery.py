@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan, note_cycle  # noqa: E402
 from planner_core import Proposal, player_rules  # noqa: E402
@@ -366,7 +367,7 @@ def _():
 def _():
     import overseer
     assert "call_migrants" in overseer.SHORT_WORDS
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert "recovery_journal(memory)" in src and '"kind": "recovery"' in src
     assert player_rules({"settings": {}})["call_migrants"] is True
     assert player_rules({"settings": {"call_migrants": False}})["call_migrants"] is False

@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 import planner  # noqa: E402
 from planner import Memory, plan, select, record, note_cycle, Proposal, PLANNER_CONFIG  # noqa: E402
@@ -467,7 +468,7 @@ def _():
 
 @test("(merge32 review) the panel's words: one branch for unstick_gate")
 def _():
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert src.count('if t == "unstick_gate"') == 1
     assert overseer.short({"type": "unstick_gate", "id": 7, "step": 3}) == "free a gate the game holds shut (step 3 of 3)"
 

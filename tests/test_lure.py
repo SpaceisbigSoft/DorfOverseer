@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import code_has, finish, test, need_lua  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -555,8 +556,7 @@ def _():
     import planner_core
     assert SECTION_DEFAULTS.get("lures") == {}
     for a in ("build_lure", "lure_open", "lure_shut"):
-        assert a in overseer.ACTION_LABELS if hasattr(overseer, "ACTION_LABELS") else a in Path(
-            ROOT / "brain" / "overseer.py").read_text(encoding="utf-8"), a
+        assert a in overseer.ACTION_LABELS if hasattr(overseer, "ACTION_LABELS") else a in py_family_src("overseer"), a
     for k in ("lure_after_days", "lure_open_days", "lure_retry_days", "lure_retry_max_days",
               "lure_build_cooldown_ticks", "lure_open_cooldown_ticks", "lure_shut_cooldown_ticks"):
         assert k in PLANNER_CONFIG, k

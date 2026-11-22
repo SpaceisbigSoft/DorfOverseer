@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 from lua_modules_util import module_src  # noqa: E402
 from harness import test, finish  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -449,7 +450,7 @@ def _():
     assert "    polish_room = function(a)" in hub and "'polish_room'," in hub
     assert "'ai-noble-demands'" in hub.split("BRIDGE_MODULES = {")[1].split("}")[0]
     assert "SECTION_CACHE_DAYS.noble_demands = 1" in hub
-    over = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    over = py_family_src("overseer")
     assert '"polish_room":' in over
     assert "noble_demands" in normalize({})
     assert PLANNER_CONFIG["noble_value_cooldown_ticks"] > 0

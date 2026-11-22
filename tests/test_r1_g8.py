@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, skip  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src, prelude, bridge_part_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, note_cycle  # noqa: E402
 from planner_core import TICKS_PER_DAY, TICKS_PER_YEAR, _stuck_again_rule, stuck_days, supply_order_kept  # noqa: E402
@@ -609,7 +610,7 @@ def _():
     assert j["kind"] == "laid_to_rest" and j["was"] == "death" and ZULBAN_AGAIN["kind"] == "death", j
     first = dict(ZULBAN_AGAIN, again=None, old_death=None)
     assert overseer.journal_event(first) is first
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     i = src.index("events = bridge.events()")
     block = src[i:i + 1600]
     assert 'journal({"kind": "event", "fort": key, "event": journal_event(ev)})' in block

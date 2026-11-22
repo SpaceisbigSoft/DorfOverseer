@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import finish, make_test  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 sys.path.insert(0, str(ROOT / "brain"))
 
 import overseer  # noqa: E402
@@ -391,7 +392,7 @@ def _():
 
 @test("the overseer: floor_action wraps shop_level_action at the one send; p.action goes on as proposed")
 def _():
-    src = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+    src = py_family_src("overseer")
     assert "r = bridge.act(floor_action(shop_level_action(p.action, state), state, memory))" in src
     assert "from planner_floors import floor_action" in src
     code = [x for x in src.splitlines() if not x.lstrip().startswith("#")]

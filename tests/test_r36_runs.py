@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 
 from harness import make_test, finish  # noqa: E402
+from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -40,7 +41,7 @@ import revive  # noqa: E402
 
 test = make_test(before=TO._before)
 LUA_DIR = ROOT / "lua"
-OVERSEER = (ROOT / "brain" / "overseer.py").read_text(encoding="utf-8")
+OVERSEER = py_family_src("overseer")
 HARNESS = re.search(r'HARNESS = r"""(.*?)"""',
                     (ROOT / "tests" / "test_hygiene_bridge.py").read_text(encoding="utf-8"), re.S).group(1)
 LUA = LuaRuntime(unpack_returned_tuples=True)
