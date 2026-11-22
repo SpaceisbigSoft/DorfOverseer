@@ -303,7 +303,7 @@ if LuaRuntime:
     @test("timers halted: the shaft watch, the well-safety watch, the mission screen driver and the depot click "
           "ask ai-status first; the link watch waits")
     def _():
-        for f, marker in (("ai-builder-wells.lua", "local function shaft_watch_tick()"),
+        for f, marker in (("ai-builder-wells-watch.lua", "local function shaft_watch_tick()"),
                           ("ai-well-safety.lua", "local function tick()"),
                           ("ai-mission-send.lua", "local function tick(run)"),
                           ("ai-gates-watch.lua", "local function link_watch_tick()")):

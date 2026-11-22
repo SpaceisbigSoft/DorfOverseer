@@ -65,7 +65,7 @@ def _():
                 bad.append(f"{p.name}:{i}: {line.strip()[:100]}")
     assert not bad, bad
     # and the eleven files that wrote them before call it
-    for name in ("ai-lure", "ai-builder-wells", "ai-well-safety", "ai-gates-watch", "ai-threats", "ai-insane",
+    for name in ("ai-lure", "ai-builder-wells-shaft", "ai-well-safety", "ai-gates-watch", "ai-threats", "ai-insane",
                  "ai-gates-stuck", "ai-gates-save", "ai-waterworks", "ai-killers"):
         src = (LUA / f"{name}.lua").read_text(encoding="utf-8")
         assert "lock_door(" in src or "lock_gate(" in src or "shut_door(" in src, name

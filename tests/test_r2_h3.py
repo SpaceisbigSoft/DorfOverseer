@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
 from lua_modules_util import module_src  # noqa: E402
+from builder_wells_util import wells_src  # noqa: E402  (r8) ai-builder-wells and its parts
 
 import digest  # noqa: E402
 import planner  # noqa: E402
@@ -308,7 +309,7 @@ def _():
     wells(full, int(B.NEED_SLOTS))
     r = B.place_well(ltab(lua, urgent=True), lua.table(), True)        # the pool full: the cap as before
     assert not r.ok and "unfinished building projects" in str(r.error), dict(r)
-    assert "need = 'well'," in (LUA_DIR / "ai-builder-wells.lua").read_text(encoding="utf-8")
+    assert "need = 'well'," in wells_src()
 
 
 @test("2 brain: needs_pass marks the paper shop, a mood reserve's shops, a still while drink is short")

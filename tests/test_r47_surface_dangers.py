@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 from lua_modules_util import module_src  # noqa: E402
+from builder_wells_util import wells_src  # noqa: E402  (r8) ai-builder-wells and its parts
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan  # noqa: E402
@@ -620,7 +621,7 @@ def _():
     pl = (ROOT / "brain" / "planner.py").read_text(encoding="utf-8")
     assert "_guard(_near_gates_rule, s, memory, cfg, proposals, notes)" in pl
     assert "_guard(_ice_rule, s, memory, cfg, proposals, notes)" in pl
-    wl = (LUA / "ai-builder-wells.lua").read_text(encoding="utf-8")
+    wl = wells_src()
     assert "cavern = spot.cavern, shore = spot.shore}" in wl
     m = Memory()
     m.near_gates_seen = {"last": 5}
