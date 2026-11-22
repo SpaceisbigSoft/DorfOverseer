@@ -27,7 +27,8 @@ import planner_labor  # noqa: E402
 import planner_trade  # noqa: E402
 
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
-SRC = {m: Path(m.__file__).read_text(encoding="utf-8") for m in (planner_industry, planner_labor, planner_trade)}
+from py_parts import py_family_src  # noqa: E402  (r7 d4) a split module read with its parts
+SRC = {m: py_family_src(m.__name__) for m in (planner_industry, planner_labor, planner_trade)}
 
 
 def fort() -> dict:

@@ -230,7 +230,8 @@ def _():
 
 @test("8 tombs_ghosts is proposed in one place")
 def _():
-    src = (ROOT / "brain" / "planner_building.py").read_text(encoding="utf-8")
+    from py_parts import py_family_src  # (r7 d4) planner_building and its parts
+    src = py_family_src("planner_building")
     assert src.count('Proposal("tombs_ghosts"') == 1, src.count('Proposal("tombs_ghosts"')
 
 

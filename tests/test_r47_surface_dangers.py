@@ -544,7 +544,8 @@ def _():
 
 @test("planner_wells: a new well goes inside only from the last half-month of autumn (was winter, ice seen)")
 def _():
-    src = (ROOT / "brain" / "planner_wells.py").read_text(encoding="utf-8")
+    from py_parts import py_family_src  # (r7 d4) planner_wells and its parts
+    src = py_family_src("planner_wells")
     assert src.count("if _ice_now(s, memory, cfg):") == 2 and 'get("season") == "winter":\n            action["inside_only"]' not in src
     assert PW._ice_now(ice_state(LATE, "autumn"), Memory(), CFG) is True
     assert PW._ice_now(ice_state(LATE - 2 * 1200, "autumn"), Memory(), CFG) is False

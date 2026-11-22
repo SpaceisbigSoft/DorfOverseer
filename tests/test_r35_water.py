@@ -238,7 +238,8 @@ def _():
 def _():
     src = (ROOT / "brain" / "planner_farms.py").read_text(encoding="utf-8")
     assert "ask_player" not in src
-    src_w = (ROOT / "brain" / "planner_wells.py").read_text(encoding="utf-8")
+    from py_parts import py_family_src  # (r7 d4) planner_wells and its parts
+    src_w = py_family_src("planner_wells")
     src_ww = (ROOT / "brain" / "planner_water.py").read_text(encoding="utf-8")
     assert "ask_player" not in src_w and "ask_player" not in src_ww
     assert "yourself" not in src_w and "allow it on the Rules tab" not in src_w
