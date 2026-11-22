@@ -1,9 +1,9 @@
 """planner_building_rooms: the rooms the projects rule weighs (stairwell, deep
 notes, gardens, prayer, dining, hospital, barracks, temples, tombs), the
-dig stalls and redigs, room sizes and the placement customs (split out of
-planner_building in r7 d4, moved unchanged). planner_building keeps
-_project_rules, social_shortfall and temple_size (patched there by tests)
-and re-exports every name here."""
+dig stalls and redigs and room sizes (split out of planner_building in
+r7 d4, moved unchanged). planner_building keeps _project_rules,
+social_shortfall, temple_size and the placement customs (tests patch
+names there that these read) and re-exports every name here."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from planner_wells import *  # noqa: F401,F403  (13c: split out by theme)
 from planner_garden import garden_pace  # (0.105.47) the statue gardens sooner by Agriculture
 from planner_alloys import gear_metals  # (fix41) tin and bismuth kept for bronze while there is no iron
 
-__all__ = ["_stairwell_rule", "_deep_notes", "ORDINALS", "garden_name", "SOCIAL_KINDS", "prayer_uncovered", "dining_shortfall", "hospital_shortfall", "DIG_FIRST_KINDS", "WELL_DIG_ASK", "_well_dig_rule", "_dig_stall_rule", "_redig_rule", "barracks_wanted", "room_size", "PLACEMENT_CUSTOMS", "apply_customs", "customs_pass", "more_temple", "has_grand_temple", "tombs_short"]
+__all__ = ["_stairwell_rule", "_deep_notes", "ORDINALS", "garden_name", "SOCIAL_KINDS", "prayer_uncovered", "dining_shortfall", "hospital_shortfall", "DIG_FIRST_KINDS", "WELL_DIG_ASK", "_well_dig_rule", "_dig_stall_rule", "_redig_rule", "barracks_wanted", "room_size", "more_temple", "has_grand_temple", "tombs_short"]
 
 
 def _stairwell_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list) -> None:
@@ -411,93 +411,6 @@ def room_size(traits: dict) -> int:
     """Fort size trait -> bedroom size: small 2x2, normal 3x3, large 4x4."""
     size = traits.get("size", 0)
     return 2 if size <= -50 else 4 if size >= 50 else 3
-
-
-# (0.105.29) the customs that place a level of a kind (masterplan.hint applies
-# them); the layout ones are customs.LAYOUT. wide_ways and winding_ways bend
-# every level's ways: they ride along with these, never call the hint alone.
-PLACEMENT_CUSTOMS = {"bedrooms": ("cells",), "dining": ("deep_hall", "field_hall"), "tavern": ("market_gate",),
-                     "barracks": ("gate_barracks",), "archery": ("gate_barracks",), "workshops": ("field_kitchens",)}
-
-
-def apply_customs(action: dict, memory, traits: dict, profile: dict, citizens: int,
-                  urgent: bool = False) -> dict | None:
-    """(0.105.29) The fort's customs on a start_project: the master plan's hint
-    (placement customs; returned, and set as action["plan"]), style.customs
-    (layout customs) and action["customs"] (the journal's). The ladder calls it
-    as it is; customs_pass with urgent=True for every other rule's level.
-    urgent: the level keeps its own placement and gets nothing at all unless a
-    custom concerns its kind; the hint is kept only when it applied a placement
-    custom of that kind (else the rule's own placement stands)."""
-    kind = action["kind"]
-    lc = customs.layout_customs(traits, kind)
-    place = [c for c in PLACEMENT_CUSTOMS.get(kind, ()) if customs.has(traits, c)] if urgent else None
-    where = None
-    if memory is not None and (not urgent or place):
-        where = masterplan.hint(memory, kind, slot=action.get("set_piece"), traits=traits,
-                                profile=profile, action=action, citizens=citizens)
-        if urgent and not set(_l((where or {}).get("customs"))) & set(place):
-            where = None
-    if lc:
-        if not isinstance(action.get("style"), dict):
-            action["style"] = {}           # (as no style: plain, the bridge's defaults)
-        action["style"]["customs"] = lc
-    cs = sorted(set(lc) | set(_l((where or {}).get("customs"))))
-    if cs:
-        action["customs"] = cs
-    if where:
-        # the door rule follows the fort as it is now (the plan's own was set when it was drawn)
-        where["doors"] = ("fortified" if traits.get("fortification", 0) >= 70
-                          else "doored" if profile.get("entry_doors") else "open")
-        action["plan"] = where                 # the master plan's district for it, tried first
-    return where
-
-
-def customs_pass(proposals: list, memory, traits: dict, citizens: int) -> None:
-    """(0.105.29 customs fixes) The fort's customs on every start_project the
-    rules proposed without them: the urgent levels of _project_rules and the
-    workshop levels of bags, cloth, gems, bottleneck, kiln, glass, industry,
-    needs_shops, well_parts, the fishery, moods and bowyers (13 proposers
-    that skipped them: no ore_piles on 132 Deep mine workshop levels, no
-    field_kitchens). Run once by plan() after every rule has proposed, as
-    apply_customs(urgent=True): the hint only when a placement custom of the
-    kind is on, kept only when it applied (else the rule's own placement
-    stands), the layout customs always. The ladder's level (it has "plan" or
-    "customs" from apply_customs already) is left as it is. Nothing at all
-    changes for a fort with no custom on. The strategist's levels
-    (review.py) get the layout customs only.
-    (0.105.33) And the fort's Spacing on every new level whose style has
-    none: only the build rule's levels carried it, so 40% of the levels
-    (needs_shops, bottleneck, kiln, industry, mood, well_parts, homes_dig,
-    petition_build...) ignored the slider. A fort at spacing 0 changes nothing."""
-    profile = None
-    for p in proposals:
-        a = p.action
-        if not isinstance(a, dict) or a.get("type") != "start_project" or not isinstance(a.get("kind"), str):
-            continue
-        style = a.get("style")
-        if isinstance(style, dict) and "spacing" in style:
-            continue
-        if profile is None:
-            profile = profile_from(traits, (memory.culture if memory is not None else None) or new_history())
-        spacing = int(profile.get("spacing", 0) or 0)
-        if spacing:
-            p.action = dict(a, style=dict(style if isinstance(style, dict) else {}, spacing=spacing))
-    if not customs.active(traits):
-        return
-    for p in proposals:
-        a = p.action
-        if not isinstance(a, dict) or a.get("type") != "start_project" or not isinstance(a.get("kind"), str) \
-                or "customs" in a or "plan" in a:
-            continue
-        if profile is None:
-            profile = profile_from(traits, (memory.culture if memory is not None else None) or new_history())
-        b = dict(a)
-        if isinstance(b.get("style"), dict):
-            b["style"] = dict(b["style"])      # (a rule's style dict may be shared)
-        apply_customs(b, memory, traits, profile, citizens, urgent=True)
-        if b != a:
-            p.action = b
 
 
 def more_temple(s: dict, traits: dict, cfg: dict):

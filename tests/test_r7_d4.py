@@ -36,9 +36,12 @@ PARTS = {o: FAMILY_PARTS[o] for o in ORIGINALS}
 ALL = [m for o in ORIGINALS for m in [o] + PARTS[o]]
 KB = 1024
 # planner_building keeps _project_rules (57.6 KB by itself: tests patch the
-# names it reads on planner_building, test_hygiene_planner checks it and
-# social_shortfall/temple_size are defined there), so it stands a little over 60 KB
-LIMIT = {"planner_building": 64 * KB}
+# names it reads on planner_building and test_hygiene_planner checks it is
+# defined there), social_shortfall, temple_size and the placement customs
+# (test_customs_fixes patches planner_building.apply_customs, which
+# customs_pass reads): it stands over 60 KB, all of it one function and the
+# names patched where it reads them
+LIMIT = {"planner_building": 70 * KB}
 
 # dir() of each original at 6298b4a (0.105.62), before the split
 NAMES_AT_6298B4A = {}
@@ -270,6 +273,13 @@ def _():
         assert getattr(planner_building, n).__module__ == "planner_building", n
     names = planner_building._project_rules.__code__.co_names
     assert "social_shortfall" in names and "temple_size" in names
+    # test_customs_urgent: dining/social/hospital_shortfall, prayer_uncovered, manager_needs_office,
+    # read by _project_rules; test_customs_fixes: apply_customs, read by customs_pass
+    for n in ("dining_shortfall", "hospital_shortfall", "prayer_uncovered", "manager_needs_office"):
+        assert n in names, n
+    for n in ("apply_customs", "customs_pass"):
+        assert getattr(planner_building, n).__module__ == "planner_building", n
+    assert "apply_customs" in planner_building.customs_pass.__code__.co_names
     # test_r41_food_fixes: planner_wells.chain_metal, read by well_parts_plan
     for n in ("chain_metal", "well_parts_plan"):
         assert getattr(planner_wells, n).__module__ == "planner_wells", n
