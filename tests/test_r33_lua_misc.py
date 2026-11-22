@@ -103,7 +103,7 @@ def _():
                                                            __len = function() error('world.squads.all walked') end})""", env)
     after = dict(env.gaps_why("weapon", "WEAPON").why)
     assert after == before, (before, after)
-    src = (LUA_DIR / "ai-military-gear.lua").read_text(encoding="utf-8")
+    src = split_src("ai-military-gear.lua")   # (r9 t3) the hub and its parts
     assert len(re.findall(r"ipairs\(df\.global\.world\.squads\.all\)", src)) == 1      # fort_squads' fallback only
 
 

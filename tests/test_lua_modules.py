@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from lua_modules_util import UTIL_SRC, module_src  # (13c lua-modules)
+from lua_modules_util import UTIL_SRC, module_src, split_src  # (13c lua-modules); (r9 t3) split_src
 RESULTS = []
 
 try:
@@ -112,7 +112,7 @@ return env
 
 
 def gear_names(fname):
-    src = (ROOT / "lua" / fname).read_text(encoding="utf-8")
+    src = split_src(fname)   # (r9 t3) a split hub with its parts
     return re.findall(r"^function (\w+)\(", src, re.M)
 
 
@@ -149,12 +149,12 @@ def _():
 
     def used(t):
         c = re.sub(r"--[^\n]*", "", t)
-        c = re.sub(r"'[^']*'|\"[^\"]*\"", "", c)
-        return set(re.findall(r"(?<![\w.:])([A-Za-z_]\w*)(?!\s*=[^=])", c))   # (not a table key)
+        c = re.sub(r"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"", "", c)   # (r9 t3) within a line, escapes kept
+        return set(re.findall(r"(?<![\w.:])([A-Za-z_]\w*)\b(?!\s*=[^=])", c))   # (not a table key; (r9 t3) a whole name)
 
     for main, half in (("ai-military.lua", "ai-military-gear.lua"), ("ai-society.lua", "ai-society-burrows.lua")):
         m = (ROOT / "lua" / main).read_text(encoding="utf-8")
-        h = (ROOT / "lua" / half).read_text(encoding="utf-8")
+        h = split_src(half)   # (r9 t3) ai-military-gear with its parts
         bare = (used(h) & defs(m)) - defs(h) - {"held"}          # (held: a local of gear_report's)
         assert not bare, (half, sorted(bare))
 

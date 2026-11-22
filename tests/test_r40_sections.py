@@ -634,7 +634,12 @@ def military_srcs(version: str) -> dict:
         # (r8) ai-military is a hub: loaded from text it takes its parts' texts from PART_SOURCES
         mil = "PART_SOURCES = {" + ", ".join(f"[{_lua_string(n)}] = {_lua_string(new(n + '.lua'))}"
                                              for n in split_parts("ai-military.lua")) + "}; " + mil
-    return {"ai-military": mil, "ai-military-gear": get("ai-military-gear.lua"),
+    gear = get("ai-military-gear.lua")
+    if version != "old":
+        # (r9 t3) ai-military-gear is a hub too
+        gear = "PART_SOURCES = {" + ", ".join(f"[{_lua_string(n)}] = {_lua_string(new(n + '.lua'))}"
+                                              for n in split_parts("ai-military-gear.lua")) + "}; " + gear
+    return {"ai-military": mil, "ai-military-gear": gear,
             "ai-util": get("ai-util.lua")}
 
 
