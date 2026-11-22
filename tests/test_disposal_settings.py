@@ -26,7 +26,8 @@ import test_builder as TB     # the builder on a fake fort  # noqa: E402
 
 GUI = (ROOT / "lua" / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
 SETTINGS = (ROOT / "lua" / "ai-overseer-settings.lua").read_text(encoding="utf-8")
-SURFACE = (ROOT / "lua" / "ai-builder-surface.lua").read_text(encoding="utf-8")
+# (r8) ai-builder-surface.lua split by theme: the garbage dump is in ai-builder-dump.lua
+SURFACE = (ROOT / "lua" / "ai-builder-dump.lua").read_text(encoding="utf-8")
 
 
 def lua_list(t) -> list:
@@ -108,7 +109,8 @@ def _():
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
     chk = lua.eval("function(src, n) local f, e = load(src, n, 't', {}); return f ~= nil, e end")
-    for name in ("ai-overseer-settings.lua", "ai-builder-surface.lua", "ai-bridge-actions.lua", "gui/ai-overseer.lua"):
+    for name in ("ai-overseer-settings.lua", "ai-builder-surface.lua", "ai-builder-dump.lua", "ai-bridge-actions.lua",
+                 "gui/ai-overseer.lua"):
         ok = chk((ROOT / "lua" / name).read_text(encoding="utf-8"), name)
         assert ok[0], (name, ok)
 
@@ -254,7 +256,7 @@ def _():
     assert not (r.x - 8 < 60 < r.x + 3 + 8 and r.y - 8 < 60 < r.y + 3 + 8), (r.x, r.y)
 
 
-@wtest("place_dump_zone: the function is in ai-builder-surface.lua and returns the contract's fields")
+@wtest("place_dump_zone: the function is in ai-builder-dump.lua and returns the contract's fields")
 def _():
     assert code_has(SURFACE, "function place_dump_zone(inside, dry_run)")
     r = B.place_dump_zone(True, True)
