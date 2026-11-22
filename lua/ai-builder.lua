@@ -626,7 +626,7 @@ end
 ---------------------------------------------------------------------------
 
 PARTS = {'sites', 'projects', 'projects-progress', 'projects-finish', 'projects-founding', 'projects-wayin', 'projects-polish', 'farms', 'wells', 'wells-shaft', 'wells-watch', 'wells-place', 'cistern', 'cistern-status', 'cistern-step', 'surface', 'keep', 'deepdepot', 'wagonroad', 'dump', 'rooms', 'halls',   -- (0.105.30) halls
-         'landmarks',   -- (D0) the Design track's landmarks
+         'landmarks', 'landmarks-place', 'landmarks-stages',   -- (D0) the Design track's landmarks; (r9) split by theme
          'court',       -- (0.105.47) the Garden fort's garden court above ground
          'floorstore',      -- (layout B) the floors' saved record and report
          'floorpiles',      -- (layout B) a floor workshop's piles, given and linked

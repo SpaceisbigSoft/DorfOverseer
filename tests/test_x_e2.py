@@ -697,7 +697,7 @@ def _():
 def _():
     c = LuaRuntime(unpack_returned_tuples=True)
     chk = c.eval("function(src, name) local f, e = load(src, name, 't', {}) return f ~= nil, e end")
-    for f in ("ai-blueprints.lua", "ai-builder-landmarks.lua"):
+    for f in ("ai-blueprints.lua", "ai-builder-landmarks.lua", "ai-builder-landmarks-place.lua", "ai-builder-landmarks-stages.lua"):   # (r9) split
         ok, err = chk((LUA_DIR / f).read_text(encoding="utf-8"), f)
         assert ok, (f, err)
 
