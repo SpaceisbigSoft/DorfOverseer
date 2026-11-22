@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import make_test, finish, code_has  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 import planner  # noqa: E402
 from planner import Memory, plan, select, record, Proposal  # noqa: E402
@@ -30,7 +31,7 @@ import test_planner as TPL  # noqa: E402   (fort(): the saved test fort)
 test = make_test()
 YOU = "[you] "
 BRIDGE = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
-ACTIONS_SRC = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+ACTIONS_SRC = bridge_part_src("ai-bridge-actions")
 
 
 def now_of(s):

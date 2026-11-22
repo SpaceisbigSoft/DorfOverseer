@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 import planner_core  # noqa: E402
 import planner_moods  # noqa: E402
@@ -183,7 +183,7 @@ def _():
     env = W.env
     assert env.cloth_kind(W.cloth(1, "YARN", 1)) == "yarn"
     assert env.cloth_kind(W.cloth(1, None, 1)) is None
-    src = (ROOT / "lua" / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     assert "MK.cloth_kind" in src and src.count("local k = kind_of(it)") == 2
     assert "out.shearable_ready" in src and "out.thread_short" in src
 

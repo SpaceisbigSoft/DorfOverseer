@@ -22,8 +22,9 @@ except ImportError:
     sys.exit(0)
 
 LUA_DIR = ROOT / "lua"
-PARTS = ["ai-bridge-report", "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-probes",
-         "ai-bridge-design"]   # (D0)
+PARTS = ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-report-fort", "ai-bridge-report-world",
+    "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-civic",
+    "ai-bridge-probes", "ai-bridge-design"]   # (D0); (r6) report and actions split by theme
 
 HARNESS = r"""
 local src, lua_dir = ...

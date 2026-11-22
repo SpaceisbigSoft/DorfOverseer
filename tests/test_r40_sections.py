@@ -29,6 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 from snapshots import snapshot  # noqa: E402
 
 try:
@@ -46,7 +47,7 @@ VERSION_RE = re.compile(r"'0\.105\.\d+'")
 
 def new(name: str) -> str:
     # (delivery) the version marks are bumped each round: compared without them
-    return VERSION_RE.sub("'V'", (LUA_DIR / name).read_text(encoding="utf-8"))
+    return VERSION_RE.sub("'V'", bridge_part_src(name))   # (r6) a split bridge part: its files together
 
 
 def old(name: str) -> str | None:

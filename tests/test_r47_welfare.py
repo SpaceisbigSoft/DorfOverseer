@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 from planner_core import Proposal, AGENDA_THEMES  # noqa: E402
 import planner_welfare as W  # noqa: E402
@@ -381,7 +381,7 @@ def _():
 
 @test("report: each stressed dwarf's long-term stress, birth and arrival year, child; the count of the dead nobody can reach")
 def _():
-    src = (LUA / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     i = src.index("function get_needs")
     body = src[i:src.index("\nend\n", i)]
     for k in ("row.child = true", "row.longterm = u.status.current_soul.personality.longterm_stress",
@@ -433,12 +433,12 @@ def _():
         assert a in overseer.SHORT_WORDS, a
     for r in ("burial_corner", "burial_coffins", "slabs_ahead", "slabs_ahead_blanks", "slabs_ahead_place", "train_cook"):
         assert r in AGENDA_THEMES, r
-    acts = (LUA / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    acts = bridge_part_src("ai-bridge-actions")
     i = acts.index("function act_allow_burial")
     assert "reqscript('ai-welfare').corner_areas()" in acts[i:acts.index("\nend\n", i)]
     proj = (LUA / "ai-builder-projects.lua").read_text(encoding="utf-8")
     assert proj.count("reqscript('ai-welfare').open_tombs(own_areas(p))") == 2   # (F4, S2)
-    rep = (LUA / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    rep = bridge_part_src("ai-bridge-report")
     i = rep.index("function in_ai_tombs")
     assert "corner_areas()" in rep[i:rep.index("\nend\n", i)]
 

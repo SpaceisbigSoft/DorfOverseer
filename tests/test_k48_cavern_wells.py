@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 import planner_wells  # noqa: E402
 
 
@@ -115,7 +116,7 @@ def _():
 def _():
     need_lua()
     from lupa.lua53 import LuaRuntime
-    src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     i = src.index("function act_place_well(a)")
     part = src[i:src.index("\nend\n", i) + 5]
     lua = LuaRuntime(unpack_returned_tuples=True)

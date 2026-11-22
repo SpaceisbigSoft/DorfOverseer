@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import module_src, prelude  # noqa: E402
+from lua_modules_util import module_src, prelude, bridge_part_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, note_cycle  # noqa: E402
 from planner_core import TICKS_PER_DAY, TICKS_PER_YEAR, _stuck_again_rule, stuck_days, supply_order_kept  # noqa: E402
 from planner_orders import _stuck_orders_rule  # noqa: E402
@@ -518,7 +518,7 @@ def _():
 
 @test("the bridge wiring: the report sends ghost_slabs and ghosts_no_slab, the action passes `ghosts`")
 def _():
-    rep = (LUA / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    rep = bridge_part_src("ai-bridge-report")
     assert "reqscript('ai-builder').ghost_slab_counts()" in rep and "reqscript('ai-welfare').ghost_scan()" in rep
     # (r5 p5) the action run on a stand-in ai-welfare (tests/bridge_behaviour.py), not the hub's text
     import bridge_behaviour as BB

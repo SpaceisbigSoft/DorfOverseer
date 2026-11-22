@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import make_test, finish  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 import digest  # noqa: E402
 import planner_paper as PP  # noqa: E402
@@ -151,7 +152,7 @@ def _():
         assert env.ORDER_RECIPES[r].job == job and env.ORDER_RECIPES[r].kind == "stone", r
     got, _, _ = BB.forwarded("finish_project", {"project_id": 9, "give_up": True}, "ai-builder", "finish_project")
     assert got[0][1][3] is True, got
-    rep = (LUA / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    rep = bridge_part_src("ai-bridge-report")
     assert "each('DOOR'" in rep and "each('CABINET'" in rep and "each('CHAIR'" in rep
 
 

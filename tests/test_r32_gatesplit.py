@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from harness import test, finish  # noqa: E402
 
 try:
@@ -398,7 +398,7 @@ def _():
 def _():
     src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
     assert "unstick_gate = act_unstick_gate" in src and "'unstick_gate'," in src
-    acts = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    acts = bridge_part_src("ai-bridge-actions")
     assert "function act_unstick_gate(a)" in acts
 
 

@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, code_has  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import PLANNER_CONFIG, Memory, Proposal, record, select, abs_tick, TICKS_PER_DAY  # noqa: E402
@@ -111,7 +111,7 @@ def _():
 
 @test("A2-1: the bridge's workshop reach goes by the citizens' walk groups (ai-bridge-report)")
 def _():
-    src = (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     assert code_has(src, "function citizen_walk_groups()")
     assert code_has(src, "local groups = citizen_walk_groups()")
     assert code_has(src, "if g and groups[g] then ok = true end")
@@ -120,7 +120,7 @@ def _():
 if LuaRuntime is not None:
     @test("A2-1 (lua): citizen_walk_groups is the union of the citizens' groups, group 0 left out")
     def _():
-        src = (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
+        src = bridge_part_src("ai-bridge-report")
         start = src.index("function citizen_walk_groups()")
         body = src[start:src.index("\nend\n", start) + 5]
         lua = LuaRuntime(unpack_returned_tuples=True)
@@ -243,7 +243,7 @@ def _():
     dis = (LUA_DIR / "ai-disposal.lua").read_text(encoding="utf-8")
     assert code_has(dis, "pcall(dfhack.items.markForMelting, it)")
     assert code_has(dis, "pcall(dfhack.items.cancelMelting, it)")
-    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    acts = bridge_part_src("ai-bridge-actions")
     body = acts[acts.index("function act_mark_melt(a)"):acts.index("function act_mark_dump(a)")]
     assert "act_work_order" not in body, body
 

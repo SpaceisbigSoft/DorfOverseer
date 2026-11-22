@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, skip, need_lua  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 from planner import PLANNER_CONFIG, Memory  # noqa: E402
 from planner_core import Proposal  # noqa: E402
 import planner_welfare as W  # noqa: E402
@@ -39,8 +40,8 @@ LUA = ROOT / "lua"
 UTIL = (LUA / "ai-util.lua").read_text(encoding="utf-8")
 DISPOSAL = (LUA / "ai-disposal.lua").read_text(encoding="utf-8")
 SYND = (LUA / "ai-syndromes.lua").read_text(encoding="utf-8")
-REPORT = (LUA / "ai-bridge-report.lua").read_text(encoding="utf-8")
-ACTS = (LUA / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+REPORT = bridge_part_src("ai-bridge-report")
+ACTS = bridge_part_src("ai-bridge-actions")
 BURROWS = (LUA / "ai-society-burrows.lua").read_text(encoding="utf-8")
 DAY = 1200
 YEAR = 403200

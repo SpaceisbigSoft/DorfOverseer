@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import finish, have_lua, make_test, skip  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 import planner_shopslots as PS  # noqa: E402
 
@@ -354,7 +355,7 @@ def _():
 @plain_test("bridge: start_project passes spare, spare_for and join to the builder; bad values refused")
 def _():
     need()
-    src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     i = src.index("elseif a.kind == 'workshops' then")
     part = src[i:i + 1800]
     assert "p.spare = int_in(a.spare, 0, 8)" in part

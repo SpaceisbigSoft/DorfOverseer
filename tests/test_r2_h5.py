@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, code_has  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -203,7 +203,7 @@ def _():
     p = env.press("Trade", None)
     assert p.pressed == "Trade" and p.how == "found" and lst(p.at) == [52, 57] and p.traded and p.answer == "Trade", dict(p)
     # (the bridge presses on can_search, and closes its screen when nothing could be pressed)
-    act = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    act = bridge_part_src("ai-bridge-actions")
     assert code_has(act, "a.press == true and (r.calibrated or r.can_search)")
     assert code_has(act, "if p.rejected and not p.pressed and not p.closed and a.close == true")
 
@@ -323,7 +323,7 @@ def _():
     assert r.ok is False and "nothing the fort wants" in r.error, dict(r)      # before: the deal ended here
     r = env.deal(wants, 1.2, False, None, t([t({"key": "CLOTH", "count": 1})]))
     assert r.ok and r.fallback and r.buy_value == 8 and mf[4].selected, dict(r)
-    act = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    act = bridge_part_src("ai-bridge-actions")
     assert code_has(act, "T.deal(wants, margin, a.dry_run == true, txt, #extra > 0 and extra or nil)")
 
 

@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
-from lua_modules_util import module_src, UTIL_SRC  # noqa: E402
+from lua_modules_util import module_src, UTIL_SRC, bridge_part_src  # noqa: E402
 
 import backup  # noqa: E402
 import old_saves  # noqa: E402
@@ -517,7 +517,7 @@ def deep_rows(v):
 @lua_test("get_deep: with the cavern scan the caverns' open is the old walk's (test_r40_sections' world); seen is "
           "every seen sample (the old walk stopped counting at the first open one); the second report reads fewer blocks")
 def _():
-    src = (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     lua = LuaRuntime(unpack_returned_tuples=True)
     base = lua.execute(SECTIONS_FAKE)()
     old_env = lua.execute(HUB, base, src, None, None, None)

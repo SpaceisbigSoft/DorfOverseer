@@ -37,7 +37,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, need_lua, code_has  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan, TICKS_PER_DAY, abs_tick  # noqa: E402
@@ -442,7 +442,7 @@ def _():
 
 @test("bridge: deaths and reports feed the marks; others_on_map lists a marked visitor as a threat (turned)")
 def _():
-    rep = (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    rep = bridge_part_src("ai-bridge-report")
     br = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     assert code_has(rep, "pcall(function() reqscript('ai-threats').note_death(ev) end)")
     assert code_has(br, "pcall(function() reqscript('ai-threats').note_report(ev, txt) end)")

@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 import planner  # noqa: E402
@@ -504,9 +504,9 @@ def _():
 
 @test("bridge: convict takes unit_id (that culprit's cases only); the death event marks a tantrum's or berserker's kill")
 def _():
-    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    acts = bridge_part_src("ai-bridge-actions")
     assert "(only == nil or c.criminal == only)" in acts and "no solved case of that culprit" in acts
-    rep = (LUA_DIR / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    rep = bridge_part_src("ai-bridge-report")
     assert "reqscript('ai-tantrums').kill_kind(k, abs_tick())" in rep
     assert "ev.conflict = kind:sub(1, 1):upper() .. kind:sub(2)" in rep and "ev.killer_x" in rep
     soc = (LUA_DIR / "ai-society.lua").read_text(encoding="utf-8")

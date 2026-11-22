@@ -33,6 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, make_test, finish, code_has  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -52,7 +53,7 @@ LUA_DIR = ROOT / "lua"
 UTIL = (LUA_DIR / "ai-util.lua").read_text(encoding="utf-8")
 DISPOSAL = (LUA_DIR / "ai-disposal.lua").read_text(encoding="utf-8")
 CENSUS = (LUA_DIR / "ai-census.lua").read_text(encoding="utf-8")
-ACTS = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+ACTS = bridge_part_src("ai-bridge-actions")
 GUI = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
 CISTERN = (LUA_DIR / "ai-builder-cistern.lua").read_text(encoding="utf-8")
 

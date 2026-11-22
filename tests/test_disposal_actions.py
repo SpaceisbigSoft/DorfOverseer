@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 from harness import test, finish, code_has  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -519,7 +519,7 @@ return env
 
 def acts(dumps=None, builder=None, lua=None):
     lua = lua or LuaRuntime(unpack_returned_tuples=True)
-    src = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     part = src[src.index("-- (0.105.27) Disposal"):]
     part = "local string_list = string_list\n" + part
     made = lua.table_from([])

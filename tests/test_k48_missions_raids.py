@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, code_has  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -63,7 +63,7 @@ def _():
     src = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
     assert code_has(src, "raid_policy = 'off',") and code_has(src, "send_missions = false,") \
         and code_has(src, "send_messenger = false,")
-    acts = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    acts = bridge_part_src("ai-bridge-actions")
     i = acts.index("function send_raid_policy()")
     assert "return 'off'" in acts[i:i + 400]
 

@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from harness import test, finish, code_has  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
@@ -211,7 +211,7 @@ def _():
 
 # --- the bridge, the settings, the window -------------------------------------------
 
-ACTIONS = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+ACTIONS = bridge_part_src("ai-bridge-actions")
 SETTINGS_SRC = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
 GUI = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
 BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")

@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
 
 try:
     from lupa.lua53 import LuaRuntime
@@ -437,7 +438,7 @@ def _():
 # --- the bridge's parse_style (d0-spec 1.4) ---------------------------------------------------
 
 def bridge_parse_style(with_layouts=True):
-    src = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-actions")
     fn = re.search(r"\nlocal function parse_style\(st\)\n.*?\nend\n", src, re.S).group(0)
     lua = LuaRuntime(unpack_returned_tuples=True)
     lay = (ROOT / "lua" / "ai-layouts.lua").read_text(encoding="utf-8")

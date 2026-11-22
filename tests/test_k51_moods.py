@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 import planner_core  # noqa: E402
 import planner_moods  # noqa: E402
@@ -295,7 +295,7 @@ def _():
 
 @test("report: the bridge counts raw green glass for the reserve")
 def _():
-    src = (LUA / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     assert "out.green_glass" in src and "GLASS_GREEN" in src
 
 

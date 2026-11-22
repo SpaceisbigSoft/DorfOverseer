@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 
 from harness import test, finish  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 import planner  # noqa: E402
 import planner_core  # noqa: E402
@@ -472,7 +472,7 @@ def _():
     for v, want in ((True, "always"), (False, "ai"), ("never", "never"), ("always", "always"), ("x", "ai")):
         assert S.sanitize(L.table_from({"open_caverns": v})).open_caverns == want, (v, want)
     assert list(S.RULE_CHOICES.open_caverns.values()) == ["ai", "always", "never"]
-    acts = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    acts = bridge_part_src("ai-bridge-actions")
     assert "k == 'open_caverns' and type(v) == 'boolean'" in acts
 
 

@@ -47,7 +47,7 @@ ALLOWED = {
     **{(f, "dfhack.TranslateName"): "fallback for DFHack < 50.15" for f in (
         "ai-artifacts.lua", "ai-diplomacy.lua", "ai-bridge.lua", "ai-camera.lua",
         "ai-missions.lua", "ai-raids.lua", "ai-nobles.lua", "ai-trade.lua", "ai-thirst.lua")},
-    ("ai-bridge-actions.lua", "df.global.announcements"): "second try after df.global.d_init.announcements",
+    ("ai-bridge-actions-fort.lua", "df.global.announcements"): "second try after df.global.d_init.announcements",
     ("ai-constructions.lua", "df.global.world.constructions"): "second try after world.event.constructions",
     ("ai-disposal.lua", "df.civzone_type.GarbageDump"): "second try after civzone_type.Dump",
     ("ai-herd.lua", "df.global.plotinfo.equipment.training_assignments"): "second try after plotinfo.training.training_assignments",

@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan  # noqa: E402
 from planner_core import Proposal  # noqa: E402
 import planner_growth  # noqa: E402
@@ -375,7 +375,7 @@ def _():
 def _():
     src = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
     assert "release_prisoners = act_release_prisoners" in src
-    acts = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+    acts = bridge_part_src("ai-bridge-actions")
     assert "set_popcap(cap, strict, babies, pct)" in acts
 
 

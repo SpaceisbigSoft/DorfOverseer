@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from harness import test, finish, skip  # noqa: E402
 sys.path.insert(0, str(ROOT / "brain"))
 
@@ -461,7 +461,7 @@ if LuaRuntime:
 
     @test("lua act_civ_alert asks for the shelter only when due; the action is registered and dry-run honoured")
     def _():
-        acts = (ROOT / "lua" / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+        acts = bridge_part_src("ai-bridge-actions")
         assert "refresh_shelter_due(a.refresh == true)" in acts and "function act_weather_burrow" in acts
         br = (ROOT / "lua" / "ai-bridge.lua").read_text(encoding="utf-8")
         assert "weather_burrow = act_weather_burrow" in br and "'weather_burrow'," in br

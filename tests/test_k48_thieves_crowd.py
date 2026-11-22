@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan, record  # noqa: E402
@@ -332,7 +332,7 @@ return e
 
 @test("lua: the others_on_map rows carry the thief mark and the crowd (the pulse); the thieves list its crowd")
 def _():
-    src = (ROOT / "lua" / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-report")
     assert "TH.unit_thief_kind(u)" in src and "TH.crowd_of(u, report_units())" in src
     th = (ROOT / "lua" / "ai-threats.lua").read_text(encoding="utf-8")
     assert "row.crowd, row.location = crowd_of(u, report_units())" in th

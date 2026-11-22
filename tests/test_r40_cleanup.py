@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, code_has, need_lua  # noqa: E402
 from snapshots import plan_cases, snapshot  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, Proposal, plan, record, player_rules  # noqa: E402
@@ -628,7 +628,7 @@ def _():
 # --- 5. the bridge, the settings, the window ----------------------------------------------
 
 BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-ACTS = (LUA_DIR / "ai-bridge-actions.lua").read_text(encoding="utf-8")
+ACTS = bridge_part_src("ai-bridge-actions")
 SETTINGS = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
 GUI = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")
 ACTIONS = ("cleanup_items", "cleanup_units", "cleanup_spatter", "cleanup_dead_units")
