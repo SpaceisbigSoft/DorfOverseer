@@ -56,6 +56,9 @@ ALLOWED = {
     # (0.105.51) a Lua table, not a C++ function: library/lua/dfhack.lua sets it
     # (internal.scripts = internal.scripts or {}, the Script objects by path)
     ("ai-util.lua", "dfhack.internal.scripts"): "dfhack.lua's own table of loaded scripts (module_flags_reset)",
+    # (r8 s9) seen since ai-threats.lua was split: a table key `other = 0` further down the one file (now in
+    # ai-threats-survey.lua) kept this check from following the alias `local other = df.global...`
+    ("ai-threats.lua", "df.global.world.buildings.other.ZONE_PIT_POND"): "second try after other.ZONE_POND",
 }
 
 # (file, name): wrong in 53.17, found by this check in 0.105.48 and reported,

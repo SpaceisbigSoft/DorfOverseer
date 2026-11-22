@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import bridge_part_src  # noqa: E402  (r6) the bridge parts split
+from lua_modules_util import bridge_part_src, split_parts  # noqa: E402  (r6) the bridge parts split
 from snapshots import snapshot  # noqa: E402
 
 try:
@@ -563,10 +563,18 @@ def threats_srcs(version: str) -> dict:
     return {"ai-threats": get("ai-threats.lua"), "ai-util": get("ai-util.lua")}
 
 
+def load_threats(lua, base, version: str):
+    """(r8) ai-threats is a hub and parts now: the new hub takes its parts' texts
+    from PART_SOURCES (the old one file reads no such name)."""
+    if version == "new":
+        base.PART_SOURCES = lua.table_from({p: new(p + ".lua") for p in split_parts("ai-threats.lua")})
+    return load_set(lua, base, threats_srcs(version))
+
+
 def run_threats(version: str, inside: bool, times: int = 1):
     lua, make = fresh()
     base = make()
-    req = load_set(lua, base, threats_srcs(version))
+    req = load_threats(lua, base, version)
     T, U = req("ai-threats"), req("ai-util")
     outs = []
     for _ in range(times):
@@ -606,7 +614,7 @@ def _():
     for inside in (False, True):
         lua, make = fresh()
         base = make()
-        req = load_set(lua, base, threats_srcs("new"))
+        req = load_threats(lua, base, "new")
         T, U = req("ai-threats"), req("ai-util")
         if inside:
             U.report_begin()

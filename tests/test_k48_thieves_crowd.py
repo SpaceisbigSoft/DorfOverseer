@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan, record  # noqa: E402
@@ -334,7 +334,7 @@ return e
 def _():
     src = bridge_part_src("ai-bridge-report")
     assert "TH.unit_thief_kind(u)" in src and "TH.crowd_of(u, report_units())" in src
-    th = (ROOT / "lua" / "ai-threats.lua").read_text(encoding="utf-8")
+    th = split_src("ai-threats.lua")   # (r8) ai-threats is a hub and parts: their texts together
     assert "row.crowd, row.location = crowd_of(u, report_units())" in th
 
 

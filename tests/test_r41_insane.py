@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
 from snapshots import plan_cases, snapshot  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan  # noqa: E402
@@ -676,7 +676,7 @@ def _():
                                                "openings": {"a": {"x": 12, "y": 12, "z": 12, "kind": "way_down"}}})
     got = py(E.claimed_doors())
     assert got.get(31) is True and got.get(32) is True, got
-    tsrc = (LUA_DIR / "ai-threats.lua").read_text(encoding="utf-8")
+    tsrc = split_src("ai-threats.lua")   # (r8) ai-threats is a hub and parts: their texts together
     assert "elseif okf and insane[id] and not dry_run then" in tsrc and "table.insert(c.doors, id)" in tsrc
 
 

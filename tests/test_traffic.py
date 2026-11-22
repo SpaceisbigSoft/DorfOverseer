@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 from harness import test, finish, code_has, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan, player_rules  # noqa: E402
@@ -348,7 +348,7 @@ def _():
 
 # --- 4. hooks and wiring ---------------------------------------------------------------------
 
-THREATS = (LUA_DIR / "ai-threats.lua").read_text(encoding="utf-8")
+THREATS = split_src("ai-threats.lua")   # (r8) ai-threats is a hub and parts: their texts together
 PROJECTS = (LUA_DIR / "ai-builder-projects.lua").read_text(encoding="utf-8")
 BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 SETTINGS = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")

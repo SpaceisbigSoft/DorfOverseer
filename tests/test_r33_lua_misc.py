@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from lua_modules_util import with_util  # noqa: E402
+from lua_modules_util import with_util, split_src  # noqa: E402
 from snapshots import snapshot  # noqa: E402
 from harness import test, finish  # noqa: E402
 
@@ -390,7 +390,7 @@ def _():
 
 @test("L7 Lows: seal_cavern counts a lever only when it pulled; the messenger's mothers once; Skirmishing hostile")
 def _():
-    th = (LUA_DIR / "ai-threats.lua").read_text(encoding="utf-8")
+    th = split_src("ai-threats.lua")   # (r8) ai-threats is a hub and parts: their texts together
     i = th.index("local okp, pulled = pcall(function() return reqscript('ai-gates').pull_instant(lever) end)")
     seg = th[i:i + 400]
     assert "n = n + 1" in seg[seg.index("if okp and pulled then"):seg.index("else")], seg
