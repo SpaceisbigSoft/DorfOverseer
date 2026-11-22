@@ -381,4 +381,8 @@ PART.update({
     "contact_measured_days": 336,         # the rest: one a year
     "contact_situation_days": 28,         # a contact the situation calls for: at most this often
     "contact_friends_min": 2,             # attacked or a hostile site near with fewer friends than this: look for more
+    # (r10 p3 fixes, the verifier's M1/M3)
+    "contact_closed_situation_days": 84,  # a closed hold's situational contacts: at most a season apart
+    "contact_food_short_per_dwarf": 5,    # food a dwarf under this: a needed trade (a real shortage, not a wishlist)
+    "contact_initial_wait_days": 336,     # the aggressive fort waits for initial contact at most this long
 })

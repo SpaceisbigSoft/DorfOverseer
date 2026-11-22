@@ -13,8 +13,8 @@ it. With 'ai' the sliders decide (the presets just fall out of them):
     civ's reachable site, hostile or not, but never a friend: its own civ
     (never in the lists), an ally, a civ with a peace pending or tribute
     agreed, one whose caravan is here or has traded with the fort, and at
-    least raid_friends_min (Outsiders: one more when high, one fewer when
-    very low) kept from the civs at peace with the most trade. The weakest
+    least raid_friends_min (Outsiders: one more when high; (r10 p3) never fewer,
+    even when very low) kept from the civs at peace with the most trade. The weakest
     site the squads clearly beat first (Greed high: the richest), then the
     nearest;
   * reactive (everyone else): (a) retaliation, a civ that attacked the fort
@@ -135,7 +135,7 @@ def raid_friends(s: dict, memory=None, cfg: dict = PLANNER_CONFIG) -> dict:
             out[int(k)] = f"traded with ({int(_d(v).get('n') or 1)} caravan(s))"
     need = int(cfg.get("raid_friends_min", 2))
     o = _trait(s, "outsiders")
-    need += 1 if o >= 50 else (-1 if o <= -100 else 0)
+    need += 1 if o >= 50 else 0          # (r10 p3 fix L4) a very closed fort keeps two friends too, never one
     need = max(1, need)
     if len(out) < need:
         sieges = {_int(_d(e).get("id")): int(_d(e).get("n") or 0) for e in _l(w.get("sieges"))}
@@ -282,6 +282,21 @@ def contact_civs(s: dict, memory=None) -> dict:
     if t is not None and 0 <= abs_tick(s) - t < TICKS_PER_YEAR:
         sites.append(last.get("site_id"))
     out: dict = {}
+    # (r10 p3 fix M3) every site the contact book has sent to (or tried) within a
+    # year, not only the last send: a later send never uncovers an earlier envoy's civ
+    try:
+        from planner_contact import contact_book
+        now = abs_tick(s)
+        for k, e in contact_book(memory)["sites"].items():
+            e = _d(e)
+            t0 = _int(e.get("ot")) if _int(e.get("ot")) is not None else _int(e.get("t"))
+            if e.get("st") in ("sent", "tried") and t0 is not None and 0 <= now - t0 < TICKS_PER_YEAR \
+                    and str(k).lstrip("-").isdigit():
+                sites.append(int(k))
+                if _int(e.get("c")) is not None:
+                    out.setdefault(e["c"], int(k))
+    except Exception:  # noqa: BLE001  (a book that can't be read never opens a raid on the rest)
+        pass
     for sid in sites:
         for cid in civ_of.get(_int(sid), ()):
             out.setdefault(cid, sid)

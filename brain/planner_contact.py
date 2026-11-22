@@ -54,7 +54,8 @@ CONTACT_OPEN = ("NoContact", "unknown")          # DF's site relation: not in co
 HOSTILE = ("TotalWar", "Skirmishing")
 BOOK_MAX = 20                                    # sites kept in the book at most (the oldest go first)
 TRIES_MAX = 3                                    # stopped runs at one site before the AI gives up on it
-FINAL = ("sent", "made", "failed")               # an initial contact that counts as done
+FINAL = ("sent", "made", "failed")               # an initial contact booked (never offered again as initial)
+REACHED = ("sent", "made")                       # (fix M2) only these count toward the cap: a refusal is no contact
 
 
 from util import int_or_none as _int  # noqa: E402
@@ -158,16 +159,34 @@ def note_contacts(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> None:
             e["st"], e["why"] = "made", f"in contact now ({game_text(x.get('relation'), 20)})"
             e["t"] = now
     if len(sites) > BOOK_MAX:
-        for k in sorted(sites, key=lambda k: _int(_d(sites[k]).get("t")) or 0)[:len(sites) - BOOK_MAX]:
+        # (fix L2) the made ones go first (in contact: nothing to remember), then the
+        # further sends, then the further refusals; the initial ones and their
+        # refusals last (they are what keeps initial contact from repeating)
+        def rank(k):
+            e = _d(sites[k])
+            initial = e.get("k") == "initial"
+            if initial:
+                r = 3 if e.get("st") == "failed" else 4
+            else:
+                r = {"made": 0, "failed": 2}.get(e.get("st"), 1)
+            return (r, _int(e.get("t")) or 0)
+        for k in sorted(sites, key=rank)[:len(sites) - BOOK_MAX]:
             del sites[k]
+    # (fix M3) the first look while initial contact is to make: the aggressive
+    # fort's wait for it ends a year later, whatever happened
+    rules = player_rules(s)
+    if (book.get("initial_done") is None and rules["make_contact"] and rules["send_messenger"]
+            and not isinstance(book.get("first_look"), int)):
+        book["first_look"] = now
     # initial contact done: the messenger home (held) and nothing left for it
     if book.get("initial_done") is None and _messenger_held(s) and isinstance(
             _d(_d(s.get("missions")).get("sites")).get("nearest"), list):
         st = initial_state(s, memory, cfg)
         if not st["candidates"] and _sites(s) and not _d(_d(_d(s.get("missions")).get("send")).get("running")):
             book["initial_done"] = now
-            book["initial_words"] = (f"initial contact done: {st['done']} site(s) "
-                                     + (f"({', '.join(st['names'][:4])})" if st["names"] else "")
+            book["initial_words"] = (f"initial contact done: {st['done']} sent"
+                                     + (f" ({', '.join(st['names'][:4])})" if st["names"] else "")
+                                     + f", {st['refused']} refused"
                                      + "; further contact goes by the fort's character and the situation")
 
 
@@ -196,13 +215,17 @@ def contact_candidates(s: dict, memory=None, cfg: dict = PLANNER_CONFIG) -> list
 
 
 def initial_state(s: dict, memory=None, cfg: dict = PLANNER_CONFIG) -> dict:
-    """{done: initial contacts booked (sent, made or failed), cap, names,
-    candidates: the sites initial contact still goes to, nearest first}."""
+    """{done: initial contacts sent or made, refused: initial sites DF said no
+    to (or given up on), cap, names, candidates: the sites initial contact
+    still goes to, nearest first}. (fix M2) A refusal never counts toward the
+    cap nor ends the search: the next site is tried until one is sent or none
+    is left."""
     book = contact_book(memory)
     cap = int(cfg.get("contact_initial_max", 4))
     near = int(cfg.get("contact_initial_tiles", 40))
-    done = [e for e in book["sites"].values() if isinstance(e, dict) and e.get("k") == "initial"
-            and e.get("st") in FINAL]
+    initial = [e for e in book["sites"].values() if isinstance(e, dict) and e.get("k") == "initial"]
+    done = [e for e in initial if e.get("st") in REACHED]
+    refused = [e for e in initial if e.get("st") == "failed"]
     names = [str(e.get("n")) for e in done if e.get("n")]
     left = max(0, cap - len(done))
     cands = []
@@ -213,14 +236,22 @@ def initial_state(s: dict, memory=None, cfg: dict = PLANNER_CONFIG) -> dict:
         if not within and pool and not done:
             within = pool[:1]                        # the nearest one, however far: at least some contact
         cands = within[:left]
-    return {"done": len(done), "cap": cap, "names": names, "candidates": cands}
+    return {"done": len(done), "refused": len(refused), "cap": cap, "names": names, "candidates": cands}
 
 
 def initial_pending(s: dict, memory=None, cfg: dict = PLANNER_CONFIG) -> bool:
-    """Initial contact still to make, and it can be made: the switches on, a
-    messenger holds the post, a site waits."""
+    """Initial contact still to make: the switches on, not done, a site waits.
+    (fix M3) Whether or not a messenger holds the post yet (vacant, not open,
+    appoint_nobles off): the wait ends `contact_initial_wait_days` after the
+    book's first look, so nothing waits forever."""
     rules = player_rules(s)
-    if not (rules["make_contact"] and rules["send_messenger"]) or not _messenger_held(s):
+    if not (rules["make_contact"] and rules["send_messenger"]):
+        return False
+    book = contact_book(memory)
+    if book.get("initial_done") is not None:
+        return False
+    first = _int(book.get("first_look"))
+    if first is not None and abs_tick(s) - first >= int(cfg.get("contact_initial_wait_days", 336)) * TICKS_PER_DAY:
         return False
     return bool(initial_state(s, memory, cfg)["candidates"])
 
@@ -272,8 +303,11 @@ def _hostile_near(s: dict, cfg: dict) -> dict | None:
 
 
 def _trade_need(s: dict, cfg: dict) -> str:
-    """What the fort needs from a caravan now (a strange mood's material, food
-    or drink short), "" when nothing pressing."""
+    """What the fort needs from a caravan now, "" when nothing pressing.
+    (fix M1) A real shortage, not the caravan's shopping list: a strange mood
+    waiting on a material none of the fort has, drink under the urgent line
+    (drink_known_short), food under contact_food_short_per_dwarf a dwarf (the
+    stocks read, not missing)."""
     try:
         from planner_moods import mood_trade_wants
         mood = mood_trade_wants(s)
@@ -281,14 +315,16 @@ def _trade_need(s: dict, cfg: dict) -> str:
         mood = []
     if mood:
         return f"a strange mood waits for {game_text(str(_d(mood[0]).get('key') or 'a material'), 30).lower()}"
-    try:
-        from planner_trade import trade_wants
-        dw = _d(s.get("dwarves"))
-        wants = trade_wants(s, cfg, int(dw.get("citizens") or dw.get("total") or 0))
-    except Exception:  # noqa: BLE001
-        wants = []
-    short = [w["key"].lower() for w in wants if isinstance(w, dict) and w.get("key") in ("FOOD", "DRINK")]
-    return f"{' and '.join(short)} short" if short else ""
+    if "stocks" in _d(s.get("_errors")) or not isinstance(s.get("stocks"), dict):
+        return ""                                    # unread stocks are no shortage
+    from planner_core import food_per_dwarf
+    from planner_farms import drink_known_short
+    short = []
+    if food_per_dwarf(s) < float(cfg.get("contact_food_short_per_dwarf", 5)):
+        short.append("food")
+    if drink_known_short(s, cfg):
+        short.append("drink")
+    return f"{' and '.join(short)} running out" if short else ""
 
 
 def _caravan_lately(s: dict, memory) -> bool:
@@ -301,8 +337,11 @@ def _caravan_lately(s: dict, memory) -> bool:
 
 
 def _situation(s: dict, cands: list, memory, cfg: dict) -> tuple[dict | None, str]:
-    """(the site, why) the situation calls a messenger for, else (None, "")."""
+    """(the site, why) the situation calls a messenger for, else (None, "").
+    (fix M1) Only sites within contact_initial_tiles: the situation is local."""
     from planner_raids import raid_attackers, raid_friends, raid_stance
+    near_tiles = int(cfg.get("contact_initial_tiles", 40))
+    cands = [x for x in cands if _int(x.get("dist")) is not None and x["dist"] <= near_tiles]
     names = _civ_names(s)
     hostile = _hostile_civs(s)
     stance = raid_stance(s, cfg)[0]
@@ -351,7 +390,10 @@ def contact_plan(s: dict, memory=None, cfg: dict = PLANNER_CONFIG) -> dict:
     stance, why_stance = contact_stance(s, cfg)
     x, why = _situation(s, cands, memory, cfg)
     if x is not None:
-        return {"site": x, "kind": "situation", "why": why, "gap_days": int(cfg.get("contact_situation_days", 28))}
+        # (fix M1) a closed hold's situational contacts are a season apart at least
+        gap = int(cfg.get("contact_closed_situation_days" if stance == "closed" else "contact_situation_days",
+                          84 if stance == "closed" else 28))
+        return {"site": x, "kind": "situation", "why": why, "gap_days": gap}
     days = _routine_days(s, stance, cfg)
     if days is None:
         return {"site": None, "held": f"{why_stance}: nothing calls for it now (no war to end, no attack or "

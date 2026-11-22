@@ -110,7 +110,11 @@ def _():
     s = TR.fort(rows, militarism=150)
     s["missions"]["sites"] = {"nearest": [{"id": 4, "owner_civ": 43, "relation": "unknown", "dist": 9}]}
     s["missions"]["controllers"] = [{"id": 70, "goal": "DIPLOMACY", "site_id": 4, "site": "Site4"}]
-    a = TR.sent(TR.rule(s, TR.Mem())[0])
+    # (r10 p3 fix M3) the aggressive fort waits for initial contact even with nobody holding the
+    # post: initial contact marked done here, so the case tests the envoy's civ alone
+    done = TR.Mem()
+    done.world_seen = {"contacts": {"sites": {}, "initial_done": TR.NOW - TICKS_PER_DAY}}
+    a = TR.sent(TR.rule(s, done)[0])
     assert a and a[0].action["site_id"] == 5, a
     assert 43 in PR.contact_civs(s, TR.Mem())
     s2 = TR.fort(rows, militarism=150, send=TR.button({"make_contact": {"goal": "make_contact", "result": "sent",

@@ -154,7 +154,9 @@ def _():
     book = PC.contact_book(m)
     assert book.get("initial_done") == abs_tick(s5), book
     props, notes = plan(s5, m)
-    assert not contact(props) and any(n.startswith("initial contact done: 3 site(s)") for n in notes), notes
+    # (fix M2) the words count what was sent and what DF refused apart
+    assert not contact(props) and any(n.startswith("initial contact done: 2 sent") and "1 refused" in n
+                                      for n in notes), notes
     # the Hermit then sends nobody as routine, and says why
     s6 = later(s5, 400)
     s6["missions"]["sites"]["nearest"].append({"id": 4, "name": "New Town", "relation": "NoContact", "dist": 7,
@@ -411,6 +413,149 @@ def _():
         ok = lua.eval("function(src) local f, e = load(src, 'b', 't', {}); return f ~= nil, e end")(src)
         assert ok[0], (rel, ok)
         assert len(src.encode("utf-8")) < 60_000, rel
+
+
+# --- the verifier's findings (r10 p3 fixes) ------------------------------------------------------
+
+def stocked(s: dict, food: int, drink: int, dwarves: int = 30) -> dict:
+    s["dwarves"]["total"] = dwarves
+    for k in ("prepared_meals", "meat", "fish", "cheese", "eggs", "plants"):
+        s["stocks"][k] = 0
+    s["stocks"]["prepared_meals"], s["stocks"]["drink"] = food, drink
+    return s
+
+
+@test("fix M1: the Hermit's needed trade is a real shortage, a season apart, and local")
+def _():
+    st = preset_settings("Hermit hold")
+    m = done_memory(abs_tick(fort()) - 400 * TICKS_PER_DAY)
+    # 33 food and 20 drink a dwarf (years of it; the caravan wishlist's lines): no need, no contact
+    s = stocked(fort(st), 1000, 600)
+    assert PC._trade_need(s, CFG) == "", PC._trade_need(s, CFG)
+    p = PC.contact_plan(s, m, CFG)
+    assert p.get("site") is None and "nothing calls for it now" in p["held"], p
+    # really running out: a contact, a season apart for a closed hold (28 days for others)
+    s = stocked(fort(st), 30, 600)
+    p = PC.contact_plan(s, m, CFG)
+    assert p["kind"] == "situation" and "food running out" in p["why"] and p["gap_days"] == 84, p
+    open_ = dict(st, traits=dict(st["traits"], outsiders=0))
+    p = PC.contact_plan(stocked(fort(open_), 30, 600), m, CFG)
+    assert p["kind"] == "situation" and p["gap_days"] == 28, p
+    # unread stocks are no shortage
+    s = stocked(fort(st), 30, 600)
+    s["_errors"] = {"stocks": "x"}
+    assert PC._trade_need(s, CFG) == ""
+    # only sites within contact_initial_tiles: a far one is never the situation's
+    far = [{"id": 70, "name": "Far Town", "relation": "NoContact", "dist": 90, "type": "Town", "owner_civ": 77}]
+    p = PC.contact_plan(stocked(fort(st, sites=far), 30, 600), m, CFG)
+    assert p.get("site") is None, p
+
+
+@test("fix M2: refusals don't count toward the cap or end initial contact: the next site is tried")
+def _():
+    far = [{"id": 10 + i, "name": f"T{i}", "relation": "NoContact", "dist": 50 + i, "type": "Town", "owner_civ": 70 + i}
+           for i in range(3)]
+    s = fort(preset_settings("Hermit hold"), sites=far)
+    m = Memory()
+    sent_outcome(s, 10, result="stopped", reason="unavailable")
+    note_cycle(s, m)
+    st = PC.initial_state(s, m, CFG)
+    assert st["done"] == 0 and st["refused"] == 1 and [x["id"] for x in st["candidates"]] == [11], st
+    note_cycle(later(s, 20), m)
+    assert PC.contact_book(m).get("initial_done") is None
+    near = [{"id": 20 + i, "name": f"N{i}", "relation": "NoContact", "dist": 3 + i, "type": "Town", "owner_civ": 80 + i}
+            for i in range(6)]
+    s = fort(preset_settings("Hermit hold"), sites=near)
+    m = Memory()
+    for i in range(4):
+        s = later(s, 15)
+        sent_outcome(s, 20 + i, result="stopped", reason="inaccessible")
+        note_cycle(s, m)
+    s = later(s, 15)
+    note_cycle(s, m)
+    assert PC.contact_book(m).get("initial_done") is None
+    assert [x["id"] for x in PC.initial_state(s, m, CFG)["candidates"]] == [24, 25]
+    sent_outcome(s, 24)
+    note_cycle(s, m)
+    st = PC.initial_state(s, m, CFG)
+    assert st["done"] == 1 and st["refused"] == 4 and [x["id"] for x in st["candidates"]] == [25], st
+
+
+@test("fix M3: the aggressive fort waits for initial contact with the post vacant too (a year at most), and every "
+      "civ the book sent to within a year is kept from raids")
+def _():
+    civs = [{"id": c, "relation": "Peace"} for c in (22, 25, 26, 27)]
+    rows = [TR.site(2, 26, 6, pop=3, typ="Hamlet"), TR.site(3, 27, 7, pop=3, typ="Hamlet")]
+    near = [{"id": 2, "name": "Site2", "relation": "NoContact", "dist": 6, "type": "Hamlet", "owner_civ": 26},
+            {"id": 3, "name": "Site3", "relation": "NoContact", "dist": 7, "type": "Hamlet", "owner_civ": 27}]
+
+    def base():
+        s = TR.fort(copy.deepcopy(rows), world={"civs": copy.deepcopy(civs)}, militarism=150)
+        s["offices"] = {"offices": {"MESSENGER": {"vacant": 1, "held": [], "appointable": True}}}
+        s["missions"]["sites"] = {"nearest": copy.deepcopy(near)}
+        s["settings"]["send_messenger"] = True
+        return s
+    p, notes = TR.rule(base(), TR.Mem())
+    assert not TR.sent(p) and any("initial contact comes first" in n for n in notes), notes
+    m = TR.Mem()
+    m.world_seen = {"contacts": {"sites": {}, "first_look": TR.NOW - 340 * TICKS_PER_DAY}}
+    assert TR.sent(TR.rule(base(), m)[0])                 # a year waited: no longer
+    # the switch off: no wait
+    s = base()
+    s["settings"]["send_messenger"] = False
+    assert TR.sent(TR.rule(s, TR.Mem())[0])
+    # two envoys: both civs protected, not only the last send's
+    m = TR.Mem()
+    m.world_seen = {"contacts": {"sites": {
+        "2": {"n": "Site2", "c": 26, "st": "sent", "k": "initial", "t": TR.NOW - 20 * TICKS_PER_DAY, "ot": TR.NOW - 20 * TICKS_PER_DAY},
+        "3": {"n": "Site3", "c": 27, "st": "sent", "k": "initial", "t": TR.NOW - 6 * TICKS_PER_DAY, "ot": TR.NOW - 6 * TICKS_PER_DAY}},
+        "initial_done": TR.NOW - 6 * TICKS_PER_DAY}}
+    s = base()
+    s["offices"] = HELD
+    s["missions"]["send"]["last_by_goal"] = {"make_contact": {"goal": "make_contact", "site_id": 3, "result": "sent",
+                                                              "tick": TR.NOW - 6 * TICKS_PER_DAY}}
+    assert set(PR.contact_civs(s, m)) == {26, 27}, PR.contact_civs(s, m)
+    assert not TR.sent(TR.rule(s, m)[0])
+    # a year later both may be raided again (K9: within a year)
+    m.world_seen["contacts"]["sites"]["2"]["ot"] = TR.NOW - 400 * TICKS_PER_DAY
+    assert 26 not in PR.contact_civs(s, m)
+
+
+@test("fix L2: the book's trim drops made entries first and keeps the initial ones and refusals")
+def _():
+    s = fort()
+    m = Memory()
+    book = PC.contact_book(m, create=True)
+    for i in range(6):
+        book["sites"][str(200 + i)] = {"st": "failed", "k": "initial", "t": i}
+    book["sites"]["210"] = {"st": "sent", "k": "initial", "t": 1}
+    for i in range(PC.BOOK_MAX):
+        book["sites"][str(300 + i)] = {"st": "made", "k": "further", "t": 1000 + i}
+    note_cycle(later(s, 1), m)
+    left = PC.contact_book(m)["sites"]
+    assert len(left) <= PC.BOOK_MAX
+    assert all(str(200 + i) in left for i in range(6)) and "210" in left, sorted(left)
+
+
+@test("fix L4: an aggressive fort at Outsiders -150 keeps two friends at peace, not one")
+def _():
+    s = {"settings": {"traits": {"militarism": 150, "outsiders": -150}},
+         "world": {"civs": [{"id": c, "relation": "Peace"} for c in (22, 25, 26)]}, "date": {"year": 148}}
+    assert len(PR.raid_friends(s, TR.Mem(), CFG)) == 2, PR.raid_friends(s, TR.Mem(), CFG)
+
+
+@test("fix L5: the sender's and the bridge's missing-value fallback is 'all', the settings' default")
+def _():
+    src = (ROOT / "lua" / "ai-mission-send.lua").read_text(encoding="utf-8")
+    assert "MISSIONS_DEFAULT = 'all'" in src
+    from lua_modules_util import bridge_part_src
+    acts = bridge_part_src("ai-bridge-actions")
+    assert "if m == nil then m = 'all' end" in acts and "if m == nil then m = 'rescue' end" not in acts
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    for rel in ("lua/ai-mission-send.lua", "lua/ai-bridge-actions-civic.lua"):
+        s = (ROOT / rel).read_text(encoding="utf-8")
+        ok = lua.eval("function(src) local f, e = load(src, 'b', 't', {}); return f ~= nil, e end")(s)
+        assert ok[0] and len(s.encode("utf-8")) < 60_000, (rel, ok)
 
 
 if __name__ == "__main__":

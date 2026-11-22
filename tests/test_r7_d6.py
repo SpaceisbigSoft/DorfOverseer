@@ -45,10 +45,10 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # sha256 of repr(list(PLANNER_CONFIG.items())) and of repr(list(PLANNER_CONFIG)) at 6298b4a
 # (r9 c1) re-pinned after the garden court's two keys (garden_court_lift_ticks,
 # court_meeting_cooldown_ticks); (r10) re-pinned after r10 p1's three petition keys and p3's
-# eleven contact_* keys, no existing key changed or moved; the split itself was proven against 6298b4a in 0.105.63
-DUMP_6298B4A = "d8456154feb6fc9f2c1e3d54503ce55ee31c648c6a57700acc45d32b1bbb071c"
-KEYS_6298B4A = "892f3de877f38b9a707e46acc3277de5d57f4fa585a8cd08e44986d9b8d5a445"
-COUNT_6298B4A = 1274
+# eleven contact_* keys, (r10 p3 fixes) and three more contact_* keys, no existing key changed or moved; the split itself was proven against 6298b4a in 0.105.63
+DUMP_6298B4A = "b18ef9a0136e45508cde8731d7751fcf6f2b1d44308f8a8fad5ab237705f2546"
+KEYS_6298B4A = "6fb1673f9961cc7a45e02298520b5fef238e0c911323dae55941eab8bc266760"
+COUNT_6298B4A = 1277
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

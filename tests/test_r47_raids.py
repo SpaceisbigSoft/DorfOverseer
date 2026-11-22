@@ -113,7 +113,7 @@ def _():
 
 
 @test("aggressive: at least two friends kept (the civs at peace with the most contact); Outsiders high keeps one "
-      "more, very low one fewer")
+      "more, ((r10 p3) very low no fewer)")
 def _():
     world = {"civs": [{"id": 20, "relation": "Peace"}, {"id": 21, "relation": "Peace"}, {"id": 25, "relation": "Peace"},
                       {"id": 26, "relation": "TotalWar"}]}
@@ -122,7 +122,8 @@ def _():
     fr = PR.raid_friends(fort(world=world, militarism=150), m)
     assert set(fr) == {20, 21} and all("kept as a friend" in v for v in fr.values()), fr       # never the enemy (26)
     assert len(PR.raid_friends(fort(world=world, militarism=150, outsiders=60), m)) == 3
-    assert len(PR.raid_friends(fort(world=world, militarism=150, outsiders=-150), m)) == 1
+    # (r10 p3 fix L4) a very closed fort keeps two as well, never one
+    assert len(PR.raid_friends(fort(world=world, militarism=150, outsiders=-150), m)) == 2
     rows = [site(1, 20, 2), site(2, 21, 2), site(3, 25, 9), site(4, 26, 10)]
     p, _ = rule(fort(rows, world=world, militarism=150), m)
     assert sent(p)[0].action["site_id"] == 3, p       # 25: not a friend; the nearest clear win after the friends

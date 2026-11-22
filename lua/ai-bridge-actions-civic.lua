@@ -356,7 +356,7 @@ function send_mission_rules(goal)
         return false, 'the Rules\' mission goals (ai-overseer-settings MISSION_GOALS) could not be read'
     end
     local m = s.missions
-    if m == nil then m = 'rescue' end
+    if m == nil then m = 'all' end      -- (r10 p3) the settings' default
     local list = levels[m]
     if type(list) ~= 'table' then return false, SEND_MISSIONS_LABEL .. ' is not known' end
     local allowed = false

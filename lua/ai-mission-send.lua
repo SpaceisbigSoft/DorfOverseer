@@ -135,7 +135,7 @@ NEWM_FALLBACK = {[-1] = 'NONE', [0] = 'OKAY', 'NOT_DISPLAYED', 'OWN_SITE', 'OWN_
 -- (0.105.39 review) the Rules choice `missions`: which goals each allows is
 -- read from lua/ai-overseer-settings.lua's MISSION_GOALS (one table for the
 -- bridge, the sender and the GUI); settings that can't load: refused
-MISSIONS_DEFAULT = 'rescue'
+MISSIONS_DEFAULT = 'all'      -- (r10 p3) the settings' default (a missing value only)
 -- the switches as the Army tab names them (lua/gui/ai-overseer.lua)
 MISSIONS_LABEL = 'the Army tab\'s "Missions to send out"'
 SEND_MISSIONS_LABEL = 'the Army tab\'s "Send missions by the World screen"'
