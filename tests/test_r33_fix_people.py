@@ -28,7 +28,7 @@ except ImportError:
 
 import quirks  # noqa: E402
 import test_r33_society as T  # noqa: E402   (its fakes; its tests don't run here)
-from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src, split_src  # noqa: E402
 from planner import Memory, plan  # noqa: E402
 from planner_core import PLANNER_CONFIG, IDLE_OLD_LINES, _idle_share, idle_line, update_idle  # noqa: E402
 from planner_growth import fort_strain  # noqa: E402
@@ -59,7 +59,7 @@ def _():
         for i = #W.all, 1, -1 do if W.all[i] == W.drink then table.remove(W.all, i) end end""", env, w)
     env.hospital_burrow_status()
     assert not env.TOUCHED[80], "the removed pile 80 was read"
-    src = (LUA_DIR / "ai-society-burrows.lua").read_text(encoding="utf-8")
+    src = split_src("ai-society-burrows.lua")   # (r9) the hub and its parts
     body = src[src.index("local function hb_src_store"):src.index("-- The members' checks")]
     assert "ids = ids" in body and "src = c.src" not in body
     assert "dfhack.onStateChange['ai-society-burrows-hb']" in src and "HB_SRC = nil" in src

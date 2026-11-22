@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import Memory, PLANNER_CONFIG, plan  # noqa: E402
@@ -316,7 +316,7 @@ def _():
 
 @test("quarantine: the hospital burrow counts a quarantined citizen as a patient (ai-society-burrows is_patient)")
 def _():
-    src = (LUA_DIR / "ai-society-burrows.lua").read_text(encoding="utf-8")
+    src = split_src("ai-society-burrows.lua")   # (r9) the hub and its parts
     i = src.index("function is_patient(u)")
     j = src.index("\nend\n", src.index("function in_quarantine(u)")) + 5
     need_lua()

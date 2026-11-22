@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import split_src  # noqa: E402  (r9) ai-society-burrows split
 
 sys.path.insert(0, str(ROOT / "brain"))
 import planner_hunt  # noqa: E402
@@ -21,7 +22,7 @@ from planner_core import PLANNER_CONFIG  # noqa: E402
 
 @test("calm-down and near-gates burrows skip a dwarf in a mood (source)")
 def _():
-    calm = (ROOT / "lua" / "ai-society-burrows.lua").read_text(encoding="utf-8")
+    calm = split_src("ai-society-burrows.lua")   # (r9) the hub and its parts
     i = calm.index("function calm_burrow_tick")
     assert "not in_mood(u)" in calm[i:i + 4000]
     ng = (ROOT / "lua" / "ai-near-gates.lua").read_text(encoding="utf-8")

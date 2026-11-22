@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src, bridge_part_src  # noqa: E402
+from lua_modules_util import module_src, bridge_part_src, split_src  # noqa: E402
 
 import planner_core  # noqa: E402
 import planner_moods  # noqa: E402
@@ -278,7 +278,7 @@ def _():
     assert env.in_mood(t({"mood": -1})) is False
     assert env.in_mood(t({"mood": 0})) is True                     # fey
     assert env.in_mood(t({"mood": 6})) is True                     # melancholy
-    src = (LUA / "ai-society-burrows.lua").read_text(encoding="utf-8")
+    src = split_src("ai-society-burrows.lua")   # (r9) the hub and its parts
     base = src[src.index("local function rec_base(u)"):src.index("-- (0.104.80) BeWithFriends badly unmet")]
     keep = src[src.index("local function rec_keep("):src.index("local function rec_let_out(")]
     hb = src[src.index("local function hb_eligible("):src.index("-- (0.105.33, L6) The report's sources")]

@@ -43,6 +43,7 @@ COMPANIONS = {"ai-military.lua": ["ai-military-gear"], "ai-society.lua": ["ai-so
 # its parts (PARTS) from the files beside it; loaded from text in a test, it
 # takes their texts from PART_SOURCES, which the prelude sets
 SPLIT = ("ai-gates.lua", "ai-society.lua", "ai-military.lua", "ai-threats.lua", "ai-waterworks.lua", "ai-thirst.lua", "ai-military-gear.lua", "ai-trade.lua", "ai-homes.lua", "ai-mission-send.lua", "ai-missions.lua")
+SPLIT += ("ai-society-burrows.lua",)   # (r9 t1) a companion split too: its parts fed with its hub's
 
 
 def split_parts(name: str) -> list[str]:
@@ -102,11 +103,11 @@ def prelude(name: str = "") -> str:
     table = ", ".join(f"[{_lua_string(k)}] = {_lua_string(v)}" for k, v in srcs.items())
     me = _lua_string(name[:-4]) if name.endswith(".lua") else "nil"
     parts = ""
-    split = [p for n in [name] + [c + ".lua" for c in COMPANIONS.get(name, [])] if n in SPLIT for p in split_parts(n)]   # (r9) a split companion's parts too
-    if split:
+    hubs = [h for h in [name] + [c + ".lua" for c in COMPANIONS.get(name, [])] if h in SPLIT]   # (r9) a split companion's parts too
+    if hubs:
         parts = "PART_SOURCES = {" + ", ".join(
             f"[{_lua_string(p)}] = {_lua_string((LUA_DIR / (p + '.lua')).read_text(encoding='utf-8'))}"
-            for p in split) + "}; "
+            for h in hubs for p in split_parts(h)) + "}; "
     return (
         parts +
         "do local real_req, loaded, srcs, me = reqscript, {}, {" + table + "}, " + me + "; "
