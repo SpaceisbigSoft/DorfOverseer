@@ -266,7 +266,7 @@ def _():
 
 
 def _lua_fn(name: str) -> str:
-    src = (ROOT / "lua" / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    src = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     m = re.search(r"\nfunction " + name + r"\(.*?\nend\n", src, re.S)
     assert m, f"{name} not in ai-builder-projects.lua"
     return m.group(0)
@@ -278,7 +278,7 @@ def _():
         from lupa.lua53 import LuaRuntime
     except ImportError:
         return
-    src = (ROOT / "lua" / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    src = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     assert code_has(src, "stairs = unreached_stairs_dropped(stairs, banned)")
     L = LuaRuntime()
     L.execute("""

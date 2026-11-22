@@ -150,7 +150,7 @@ def _():
 
 @test("start_project: the site's new_corridor is in the result, the dry run and the project")
 def _():
-    src = (LUA_DIR / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    src = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     assert src.count("new_corridor = site.new_corridor") == 4, src.count("new_corridor = site.new_corridor")
 
 

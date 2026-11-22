@@ -349,7 +349,7 @@ def _():
 # --- 4. hooks and wiring ---------------------------------------------------------------------
 
 THREATS = (LUA_DIR / "ai-threats.lua").read_text(encoding="utf-8")
-PROJECTS = (LUA_DIR / "ai-builder-projects.lua").read_text(encoding="utf-8")
+PROJECTS = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
 BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 SETTINGS = (LUA_DIR / "ai-overseer-settings.lua").read_text(encoding="utf-8")
 GUI = (LUA_DIR / "gui" / "ai-overseer.lua").read_text(encoding="utf-8")

@@ -436,7 +436,7 @@ def _():
     acts = bridge_part_src("ai-bridge-actions")
     i = acts.index("function act_allow_burial")
     assert "reqscript('ai-welfare').corner_areas()" in acts[i:acts.index("\nend\n", i)]
-    proj = (LUA / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    proj = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     assert proj.count("reqscript('ai-welfare').open_tombs(own_areas(p))") == 2   # (F4, S2)
     rep = bridge_part_src("ai-bridge-report")
     i = rep.index("function in_ai_tombs")

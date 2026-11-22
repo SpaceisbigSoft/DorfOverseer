@@ -445,7 +445,7 @@ def _():
 def _():
     assert "if ok and L.stair_gap then ok, why = false, 'a hospital is not centred on the stairs' end" in SITES
     assert "ok, why = stair_gap_ok(L, ax, ay, {stair, L.main_stair})" in SITES
-    proj = (LUA_DIR / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    proj = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     assert re.search(r"if kind == 'hospital' then\s+L\.stair_gap = HOSPITAL_STAIR_GAP\s+L\.main_stair = stairs\[1\]", proj)
 
 

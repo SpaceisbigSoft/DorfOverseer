@@ -223,7 +223,7 @@ def _():
     i = rep.index("function in_ai_tombs")
     body = rep[i:rep.index("\nend\n", i)]
     assert "own_areas" in body and "a.own" in body, body[:600]
-    proj = (ROOT / "lua" / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    proj = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     assert proj.count("reqscript('ai-welfare').open_tombs(own_areas(p))") == 2
 
 

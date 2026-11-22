@@ -130,3 +130,15 @@ def module_src(name: str) -> str:
     """lua/<name> read, with the prelude."""
     src = bridge_part_src(name) if name[:-4] in BRIDGE_SPLIT else (LUA_DIR / name).read_text(encoding="utf-8")
     return with_util(src, name)
+
+
+def builder_part_src(name: str) -> str:
+    """(r8) A builder part's text as when it was one file: lua/<name>.lua and the
+    files split off it (ai-builder-projects -> ai-builder-projects-progress, ...)
+    after it, in ai-builder.lua's PARTS order."""
+    import re
+    stem = name[:-4] if name.endswith(".lua") else name
+    hub = (LUA_DIR / "ai-builder.lua").read_text(encoding="utf-8")
+    listed = ["ai-builder-" + p for p in re.findall(r"'([\w-]+)'", re.search(r"^PARTS = \{(.*?)\}", hub, re.M | re.S).group(1))]
+    return "\n".join((LUA_DIR / (n + ".lua")).read_text(encoding="utf-8")
+                     for n in listed if n == stem or n.startswith(stem + "-"))

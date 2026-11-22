@@ -734,7 +734,7 @@ def _():
     w.projects[1] = None
     w.old_areas[1] = T(lua, {"x1": 40, "y1": 40, "x2": 60, "y2": 60, "z": 100, "well": True})
     assert guard(lua, env, [7])["locked"] == 0 and d.door_flags.forbidden is False
-    bsrc = (LUA_DIR / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    bsrc = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     assert "well = p.kind == 'well' or nil" in bsrc
 
 

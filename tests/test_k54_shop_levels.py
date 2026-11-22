@@ -363,7 +363,7 @@ def _():
     assert "string_list(a.spare_for, layouts.WORKSHOPS, 8)" in part
     assert "a.join ~= false and a.join ~= true and a.join ~= 'band'" in part
     # the builder stores them with the level (made again from its params later)
-    bsrc = (ROOT / "lua" / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    bsrc = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     assert "spare = params.spare, spare_for = params.spare_for" in bsrc
 
 
@@ -396,7 +396,7 @@ def _():
 
 @plain_test("brain and builder name the same industries")
 def _():
-    src = (ROOT / "lua" / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    src = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     block = src[src.index("WORKSHOP_GROUP_ORDER = {"):src.index("WORKSHOP_PILE_USERS")]
     lua = {g: re.findall(r"'(\w+)'", body) for g, body in re.findall(r"(\w+) = \{([^{}]*)\}", block)}
     assert lua == PS.WORKSHOP_GROUP_ORDER, (lua, PS.WORKSHOP_GROUP_ORDER)

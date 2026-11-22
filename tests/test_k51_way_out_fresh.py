@@ -222,7 +222,7 @@ def _():
 @test("refusal_kind reads the game's own words: each phrase it matches is in lua/ai-builder-projects.lua")
 def _():
     import planner_way_out as pw
-    src = (ROOT / "lua" / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    src = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     for phrase, kind in (("ways to the surface: no second one is needed", "pointless"),
                          ("gate watcher is armed", "wait"), ("already being dug", "wait"),
                          ("not mapped yet", "wait"), ("search failed", "wait")):

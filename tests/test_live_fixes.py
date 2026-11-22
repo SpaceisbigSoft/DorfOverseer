@@ -297,7 +297,7 @@ def _():
 
 @test("2 the bridge: prioritize_project refuses a channel level (a well's hole)")
 def _():
-    src = (ROOT / "lua" / "ai-builder-projects.lua").read_text(encoding="utf-8")
+    src = __import__("lua_modules_util").builder_part_src("ai-builder-projects")   # (r8) the part and the files split off it
     i = src.index("function prioritize_project")
     body = src[i:i + 2500]
     assert "p.dig_done == 'open'" in body and "rejected = true" in body.split("p.dig_done == 'open'")[1][:200]
