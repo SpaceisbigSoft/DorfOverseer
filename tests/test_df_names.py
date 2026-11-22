@@ -51,7 +51,7 @@ ALLOWED = {
     ("ai-constructions.lua", "df.global.world.constructions"): "second try after world.event.constructions",
     ("ai-disposal.lua", "df.civzone_type.GarbageDump"): "second try after civzone_type.Dump",
     ("ai-herd.lua", "df.global.plotinfo.equipment.training_assignments"): "second try after plotinfo.training.training_assignments",
-    ("ai-society.lua", "df.global.plotinfo.equipment.training_assignments"): "second try after plotinfo.training.training_assignments",
+    ("ai-society-animals.lua", "df.global.plotinfo.equipment.training_assignments"): "second try after plotinfo.training.training_assignments",
     ("ai-noble-demands.lua", "df.global.world.engravings"): "first try; world.event.engravings (right) follows",
     # (0.105.51) a Lua table, not a C++ function: library/lua/dfhack.lua sets it
     # (internal.scripts = internal.scripts or {}, the Script objects by path)

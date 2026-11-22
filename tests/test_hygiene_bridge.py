@@ -249,7 +249,7 @@ def _():
 def _():
     L = LuaRuntime(unpack_returned_tuples=True)
     S = L.execute(r"""
-      local src = ...
+      local src, parts = ...
       local CIV, PEN = 1, 2
       local walks = {n = 0}
       local function zone(id, name, x2, units)
@@ -281,10 +281,12 @@ def _():
                                          report_units = function() return env.df.global.world.units.active end} end
       env.require = function() return {} end
       env.dfhack_flags = {module = true}
+      env.PART_SOURCES = parts   -- (r8 s3) the hub's parts, from their texts
       assert(load(src, 'ai-society', 't', env))()
       env.WALKS = walks
       return env
-    """, (LUA_DIR / "ai-society.lua").read_text(encoding="utf-8"))
+    """, (LUA_DIR / "ai-society.lua").read_text(encoding="utf-8"),
+        L.table_from({p: (LUA_DIR / (p + ".lua")).read_text(encoding="utf-8") for p in ("ai-society-animals", "ai-society-needs", "ai-society-posts")}))
     r = S.pasture_report()
     assert S.WALKS.n == 1, S.WALKS.n
     old_needs, old_ai = S.pasture_needs(), S.ai_pastures()
