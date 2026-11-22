@@ -756,7 +756,10 @@ function choose_site(L, stairs, reserved, plan, ceil_z)
                 end
                 for _, lv in ipairs(levels) do
                     local z = lv.z
-                    if os.clock() > deadline then out_of_time = true return end
+                    -- (r5 p1) reached, not passed: Windows' os.clock (wall time,
+                    -- ~1 ms steps) often hasn't moved within a pass, so a
+                    -- zero share never ran out there
+                    if os.clock() >= deadline then out_of_time = true return end
                     -- (0.105.23) above the ceiling (at or above the surface, the Deep mine): never
                     if ceil_z and z > ceil_z then goto continue end
                     local key = ('%d,%d,%d,%s'):format(stair.x, stair.y, z, tostring(lv.extend))
@@ -785,7 +788,7 @@ function choose_site(L, stairs, reserved, plan, ceil_z)
                         local site = TRY_BESIDE and offset_sites(L, stair, z, reserved, function(good, reason, s)
                             if good then return s end
                             note('beside', reason, z)
-                            if os.clock() > deadline then out_of_time = true error('timeout') end
+                            if os.clock() >= deadline then out_of_time = true error('timeout') end
                         end, dirs, grammar, (function()
                             rooms_by_z[z] = rooms_by_z[z] or room_tiles(z)
                             return rooms_by_z[z]

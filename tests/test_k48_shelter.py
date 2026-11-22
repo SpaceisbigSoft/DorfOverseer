@@ -218,6 +218,11 @@ def _():
     civ(lua2, w2, 4, 4, 99)
     beast(lua2, w2, 0, 1, 100)
     lua2.execute("local env = ...; env.SHELTER_SLICE_MS_FIRST = 0; env.SHELTER_SLICE_MS_PULSE = 0", env2)
+    # (r5 p1) a clock that moves 1 ms each time it is read: the slices go by
+    # their budgets (0 ms: a block a slice; the walk's 1 ms: an item a slice),
+    # not by how fast this PC is (under load, or with Windows' coarse
+    # os.clock, the walk took more or fewer pulses)
+    lua2.execute("local t = 0; os.clock = function() t = t + 0.001; return t end")
     seen = []
     r = None
     for _ in range(12):

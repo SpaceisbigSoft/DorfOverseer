@@ -45,7 +45,14 @@ HARNESS = re.search(r'HARNESS = r"""(.*?)"""', _hyg, re.S).group(1)
 # (none), loadfile counted (H.compiled) and a rerun of the hub in its own env
 HARNESS = HARNESS.replace("return H\n", r"""
 H.mtimes, H.compiled = {}, {}
-dfhack.filesystem.mtime = function(p) return H.mtimes[p] or 1 end
+-- (r5 p1) by the path with its slashes one way, as Windows reads a path:
+-- the hub asks for lua_dir .. '/ai-bridge-orders.lua' and the tests key by
+-- str(Path), which has backslashes there ("compiled once" saw no change)
+local function slashes(p) return (tostring(p):gsub('\\', '/')) end
+dfhack.filesystem.mtime = function(p)
+  for k, v in pairs(H.mtimes) do if slashes(k) == slashes(p) then return v end end
+  return 1
+end
 dfhack.findScript = function() return nil end
 dfhack.getDFHackVersion = function() return 'x' end
 dfhack.getDFVersion = function() return 'y' end

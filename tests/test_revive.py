@@ -19,6 +19,20 @@ import revive  # noqa: E402
 import run_summary  # noqa: E402
 from dfhack import GameNotRunning  # noqa: E402
 
+# (r5 p1) the PC's own processes are never asked (tasklist, Get-Process): on
+# the player's PC a Dwarf Fortress always runs, so "the game closed when the
+# keeper starts" saw it and never launched. Without a `run` of their own these
+# answer as off Windows (where the tests pass); with one, as written.
+def _no_pc(real, answer):
+    def probe(*a, run=None, **k):
+        return real(*a, run=run, **k) if run is not None else answer
+    return probe
+
+
+revive.df_running = _no_pc(revive.df_running, False)
+revive.own_game_state = _no_pc(revive.own_game_state, None)
+revive.any_df_running = _no_pc(revive.any_df_running, None)
+
 
 class FakeDF:
     def __init__(self):

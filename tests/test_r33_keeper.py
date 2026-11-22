@@ -36,6 +36,10 @@ pin.LAST_FORT = TMP / "logs" / "last-fort.json"
 revive.LAST_FORT = pin.LAST_FORT
 backup.BACKUP_DIR = TMP / "backups"
 backup.STATE = TMP / "backups" / "last.json"
+# (r5 p1) no df_save_dir from a real config.json: the restore goes to the
+# pin's own DF folder (with no %APPDATA%: tests/harness.py), never the player's saves
+import dfhack  # noqa: E402
+dfhack.CONFIG_PATH = TMP / "no-config.json"
 
 
 def _before():

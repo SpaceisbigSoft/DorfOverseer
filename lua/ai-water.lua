@@ -592,7 +592,9 @@ function survey_step(job, seconds)
     local first = true
     local function time_up()
         if first then first = false return false end    -- (at least one block a call)
-        return os.clock() > deadline
+        -- (r5 p1) reached, not passed: on Windows os.clock moves in ~1 ms
+        -- steps, and a zero slice ran many blocks a call there
+        return os.clock() >= deadline
     end
     local per_level = job.nbx * job.nby
     -- (0.105.38 review) the near box first, its blocks level by level from

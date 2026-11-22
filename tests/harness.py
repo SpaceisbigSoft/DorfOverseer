@@ -50,6 +50,13 @@ if not os.environ.get("DFAI_LOG_DIR"):
     os.environ["DFAI_LOG_DIR"] = _TMP
     atexit.register(shutil.rmtree, _TMP, True)
 
+# (r5 p1) %APPDATA% is the player's own: DF's user save folder is under it
+# (dfhack.save_roots), and on Windows a test whose save folder wasn't found
+# put its "AI restore" copies there (test_r33_keeper "autosave 2"). Every
+# test runs without it (as on Linux, where these tests pass); a test that
+# needs a user folder sets APPDATA to a temporary one of its own.
+os.environ.pop("APPDATA", None)
+
 
 class Skip(Exception):
     """Raised by skip(): the test did not run (it neither passes nor fails)."""
