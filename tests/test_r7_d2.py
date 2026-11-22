@@ -33,7 +33,7 @@ PARTS = {planner_select: ("SHOPS_RETRY_DAYS", "SHOPS_RETRY_MAX", "SQUAD_ORDER_KE
 LATE = {planner_select: ("mood_blocked", "order_gate", "reserve_room"),
         planner_record: ("note_gate_stuck", "note_holdfast", "note_way_out")}
 
-# dir(planner) at main 6298b4a (0.105.62), before the split
+# dir(planner) at main 6298b4a (0.105.62), before the split; (r11 n1) + _office_swap_rule
 NAMES_6298B4A = (
     'ACTION_LOG_MAX', 'ADJUST_BOUNDS', 'AGENDA_THEMES', 'AI_OFFICES', 'ALERT_DANGERS', 'ALL_FOOD',
     'ASKED_TICKS', 'BASIC_STOCKPILES', 'BASIC_WORKSHOPS', 'BREW_RECIPES', 'BUILDABLE_SHOPS', 'CHARACTER_KINDS',
@@ -83,7 +83,7 @@ NAMES_6298B4A = (
     '_lever_state', '_link_wanted', '_location', '_location_access_rule', '_location_petition_rules',
     '_location_short', '_location_supply_rules', '_location_value_rule', '_lone_squad', '_loop_count',
     '_lure_rule', '_meeting_answer_rule', '_meeting_notes', '_messenger_rule', '_miasma_rule',
-    '_migrants_rule', '_military_rules', '_mission_rule', '_mood_make', '_mood_materials',
+    '_migrants_rule', '_military_rules', '_mission_rule', '_office_swap_rule', '_mood_make', '_mood_materials',
     '_mood_reserve_rule', '_mood_rules', '_mood_slaughter', '_near_gates_rule', '_near_spot', '_necro_rule',
     '_needs_notes', '_needs_rules', '_no_shelter_note', '_noble_rooms_rule', '_noble_value_rule', '_number',
     '_office_held', '_offices_refill_rule', '_order_slots_rule', '_orphan_jobs_rule', '_paper_rule',

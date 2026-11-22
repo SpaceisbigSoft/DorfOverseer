@@ -20,6 +20,7 @@
 --@module = true
 
 local N = reqscript('ai-nobles')
+local U = reqscript('ai-util')      -- (r11) the shared helpers
 
 PART_VERSIONS = {['ai-nobles-swap'] = '0.105.67'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
 
@@ -43,9 +44,7 @@ OFFICE_JOBS = {
     CAPTAIN_OF_THE_GUARD = {'InterrogateSubject', 'ExecuteCriminal'},
 }
 
-local function name_of(u, txt)
-    return u and (txt or tostring)(dfhack.units.getReadableName(u)) or nil
-end
+local function name_of(u, txt) return u and U.name_of(u, txt) or nil end   -- (r11) ai-util's, protected
 
 local function position_of(ent, id)
     for _, p in ipairs(ent.positions.own) do
@@ -227,7 +226,7 @@ function replace(code, dry_run, txt, opts)
     local civil = false
     for _, c in ipairs(SWAP_OFFICES) do if c == code then civil = true end end
     if not civil then return no('the AI replaces only ' .. table.concat(SWAP_OFFICES, ', ')) end
-    local ent = reqscript('ai-util').fort_entity()
+    local ent = U.fort_entity()
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
     local a, a_idx, p = held_slot(ent, code)
     if not a then return no('nobody holds the ' .. code:lower():gsub('_', ' ') .. ' to replace') end
