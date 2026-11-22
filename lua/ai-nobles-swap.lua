@@ -21,7 +21,7 @@
 
 local N = reqscript('ai-nobles')
 
-PART_VERSIONS = {['ai-nobles-swap'] = '0.105.66'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-nobles-swap'] = '0.105.67'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
 
 -- the civilian offices the AI may give to a better holder. (r11 n1 fixes)
 -- Not the sheriff nor the captain of the guard: their posts lead the fortress
