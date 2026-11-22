@@ -46,6 +46,8 @@ WELL_SAFETY_TODO = {
     "level": "dig the next level of a cavern well's shaft (from the bottom up, nobody in its column)",
     # (K48-K4) the rescue stair was a walk from the cavern floor into the well's stairs for good
     "rescue_close": "close a cavern well's rescue stair now nobody is on it (a hatch on its top step, locked)",
+    # (r9, A4 24) the column's Restricted traffic was never set back once dug
+    "traffic_back": "set a cavern well's shaft column back to normal traffic now it is no longer dug",
 }
 
 

@@ -194,9 +194,42 @@ def _():
     for k in ("cavern_well_cooldown_days", "cavern_well_site_tries", "well_rescue_after_ticks", "well_rescue_near",
               "well_safety_cooldown_ticks", "well_rescue_cooldown_ticks"):
         assert k in CFG, k
-    from lua_modules_util import split_src   # (r8) ai-threats is a hub and parts: their texts together
-    threats = split_src("ai-threats.lua")
-    assert "reqscript('ai-well-safety').fort_doors()" in threats and "door_blocked(o)" in threats
+    # (r9, A4 25) ai-threats' side is tested by what it does (below), not by its source's words
+
+
+@plain_test("lua threats (r9, A4 25/26): a cavern well's door is put on record as a way in the seal can lock; its "
+            "shaft hatch is the well's even when the gates' scan found it first as a cavern entrance's hatch "
+            "(the seal locked every shaft hatch as a 'gate'), and an old 'gate' record of it becomes the well's")
+def _():
+    need_lua()
+    from lua_modules_util import module_src
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    E = lua.execute(_const("test_k51_cavern_r3.py", "THREATS_GAME"), module_src("ai-threats.lua"))
+    G, t = E.G, lua.table_from
+    hatch = t({"kind": "hatch", "x1": 11, "y1": 11, "z": 11})
+    G.mods["ai-gates"] = t({"GATES": t({"entrances": t([t({"id": 2, "kind": "cavern", "x": 11, "y": 12, "z": 12,
+                                                         "equipment": t([hatch])})])})})
+    G.mods["ai-builder"] = t({"well_lids": lambda *a: t([t({"project_id": 3,
+                                                             "shaft_hatch": t({"x": 11, "y": 11, "z": 11})})])})
+    G.mods["ai-well-safety"] = t({"fort_doors": lambda: t([t({"project_id": 3, "x": 20, "y": 20, "z": 30})]),
+                                  "door_blocked": lambda o, *a: None, "door_seal_skip": lambda o: None})
+    d = E.load_state()
+    E.gather_openings(d, 0)
+    o = d.openings["11,11,11"]
+    assert o.kind == "well" and o.source == "cavern well 3", (o.kind, o.source)
+    door = d.openings["20,20,30"]
+    assert door.kind == "gate" and door.source == "cavern well 3 door", (door.kind, door.source)
+    # a record from before (kind 'gate', the gates' entrance): the well's now
+    o.kind, o.source = "gate", "cavern entrance 2"
+    E.gather_openings(d, 0)
+    assert d.openings["11,11,11"].kind == "well"
+    # the seal: the door locked, the shaft hatch never
+    G.tiles["11,11,11"] = G.bld(7, "Hatch")
+    G.tiles["20,20,30"] = G.bld(8, "Door")
+    E.reqscript("ai-util").site_put(E.STATE_KEY, d)
+    r = E.seal_cavern("all caverns", t({}), False, False, 1, 5, True)
+    assert r.ok and G.tiles["20,20,30"].door_flags.forbidden is True, dict(r)
+    assert G.tiles["11,11,11"].door_flags.forbidden is False
 
 
 # ---- the bridge --------------------------------------------------------------------------
@@ -318,6 +351,34 @@ if LuaRuntime is not None:
         r = B.place_well(LUA.table_from({"cavern": True, "cooldown_days": 3}), now(), False)
         assert r.ok and r.dug_up, r.error
 
+    @test("(r9, A4 24) the column's Restricted traffic set back once the shaft is no longer dug: the levels it "
+          "changed (a record without them: the whole column); a well still dug keeps it")
+    def _():
+        LUA.execute("dfhack.timeout = function() return 1 end")
+        LUA.execute("""UNTRAFFIC = {}
+                       WS.UNTRAFFIC_FN = function(x, y, z) table.insert(UNTRAFFIC, x .. ',' .. y .. ',' .. z); return true end""")
+        try:
+            add_project(well_rec(9, ws_traffic=True, ws_traffic_z=LUA.table_from([69, 70])))
+            add_project(well_rec(10, phase="cancelled", ws_traffic=True))        # from before r9: no levels kept
+            add_project(well_rec(11, phase="dig", ws_traffic=True, ws_traffic_z=LUA.table_from([70])))
+            assert "traffic_back" in list(WS.report().todo.values())
+            out = WS.step(True)
+            assert out.ok and out.traffic_back == 2 + 8 and len(LUA.globals().UNTRAFFIC) == 0, dict(out)
+            out = WS.step(False)
+            assert out.ok and out.traffic_released == 2, dict(out)
+            got = sorted(LUA.globals().UNTRAFFIC.values())
+            assert got == sorted(["70,58,69", "70,58,70"] + [f"70,58,{z}" for z in range(63, 71)]), got
+            for pid in (9, 10):
+                _, p = project(pid)
+                assert p.ws_traffic is None and p.ws_traffic_z is None
+            _, p = project(11)
+            assert p.ws_traffic is True
+            assert "traffic_back" not in list(WS.report().todo.values())
+            # the brain's words for it
+            assert "traffic_back" in planner_wellsafe.WELL_SAFETY_TODO
+        finally:
+            LUA.execute("WS.UNTRAFFIC_FN = nil")
+
     @test("1 bridge: a site given up twice is kept free (its boxes reserved on the fort's levels round it); one give-up is not")
     def _():
         tick = 148 * 403200 + 100
@@ -384,6 +445,7 @@ if LuaRuntime is not None:
             assert out.traffic == 8, out.traffic
             data, p = project(pid)
             assert list(p.up.zs.values())[0] == 65 and p.ws_traffic
+            assert sorted(p.ws_traffic_z.values()) == list(range(63, 71))    # (r9, A4 24) to set back once dug
             # 64 still rock: 65 waits
             assert B.well_up_advance(p, True, None)[0] == "below"
             W.set(70, 58, 64, LUA.table_from({"shape": "EMPTY", "designated": False}))

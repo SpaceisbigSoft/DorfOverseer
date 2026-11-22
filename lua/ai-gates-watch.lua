@@ -359,7 +359,7 @@ function open_pieces(e)
     local n = 0
     for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
         for _, g in ipairs(list) do
-            local b = df.building.find(g.id)
+            local b = not g.well_shaft and df.building.find(g.id)      -- (r9, A4 26) the well's own
             if b and piece_shut(g, b) == false then n = n + 1 end
         end
     end
@@ -429,7 +429,9 @@ local function set_entrance(e, close, was_opening)
             for _, g in ipairs(list) do
                 local b = df.building.find(g.id)
                 local shut = b and piece_shut(g, b)
-                if shut == false or (booked and ai_piece(e, g)) or GATES.mine[g.id] then
+                if g.well_shaft then
+                    -- (r9, A4 26) a cavern well's shaft hatch: its own watcher's, never the gate's
+                elseif shut == false or (booked and ai_piece(e, g)) or GATES.mine[g.id] then
                     ours[g.id] = true
                 end
             end
@@ -438,7 +440,7 @@ local function set_entrance(e, close, was_opening)
     else
         pcall(cancel_closing_pulls, e)       -- (0.105.48, K2) a close pull still queued: taken away
         for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
-            for _, g in ipairs(list) do if ai_piece(e, g) then ours[g.id] = true end end
+            for _, g in ipairs(list) do if ai_piece(e, g) and not g.well_shaft then ours[g.id] = true end end
         end
     end
     -- (0.105.26 seal fix) opening: what the cavern seal holds stays shut

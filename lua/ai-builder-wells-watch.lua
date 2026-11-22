@@ -188,7 +188,9 @@ function shaft_threats(wells)
                     if not asked and c.flier ~= true then c.climber, asked = unit_climbs(u), true end
                     if w.cave then
                         if uf == nil then uf = feature_at(c.x, c.y, c.z) or false end
-                        c.layer_match = (uf == w.cave)
+                        -- (r9, A4 21) a block with no cavern feature is unknown, not
+                        -- another cavern (it was ignored): judged by its levels
+                        if uf then c.layer_match = (uf == w.cave) else c.layer_match = nil end
                     else
                         c.layer_match = nil
                     end

@@ -81,6 +81,11 @@ def _():
     assert HB.H.got.reopen is True, dict(HB.H.got)
     M.act_water_work(HB.t({"kind": "moat"}))
     assert HB.H.got.reopen is False
+    # (r9, A4 19) the leak watch's recheck by its own flag, whatever the why says
+    M.act_water_work(HB.t({"kind": "moat", "recheck": True, "why": "the leak watch"}))
+    assert HB.H.got.recheck is True, dict(HB.H.got)
+    M.act_water_work(HB.t({"kind": "moat"}))
+    assert HB.H.got.recheck is False
 
 
 # --- planner_core: the hospital's cloth taken off once -----------------------------
