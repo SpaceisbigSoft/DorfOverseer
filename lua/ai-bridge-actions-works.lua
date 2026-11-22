@@ -987,6 +987,9 @@ function act_water_work(a)
         -- whose way opens a cavern
         far_reach = whole_number(a.far_reach), job_max = whole_number(a.job_max), segment = whole_number(a.segment),
         open_caverns = a.open_caverns == true,
+        -- (r9, A4 19) the leak watch's recheck passed on by its own flag (it
+        -- worked only because the brain's why starts "recheck")
+        recheck = a.recheck == true,
         why = type(a.why) == 'string' and a.why:sub(1, 120) or nil})
 end
 

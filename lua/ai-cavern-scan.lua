@@ -134,22 +134,30 @@ function scan(rows, groups, positions, key, now)
         for _, it in ipairs(items()) do pcall(visit, nil, it) end
         status = {state = 'done', near = near}
     end
-    -- the open test: the seen samples' walk groups
+    -- the open test: the seen samples' walk groups. (r9, A4 23) OPEN_CHECKS a
+    -- report, from where the last report stopped (round the list), so a cavern
+    -- with more seen samples than that is looked at whole over a few reports
+    -- (only the first 4000 were read: a later breach far from them was never
+    -- found); an open sample is looked at first again the next report
     local out = {}
     for _, r in ipairs(rows) do
         local c = st.caverns[r.name]
         local row = {seen = #c.seen, open = false}
-        local n = 0
-        for _, p in ipairs(c.seen) do
-            if n >= OPEN_CHECKS then break end
-            n = n + 1
+        local total = #c.seen
+        local start = math.tointeger(c.open_next) or 1
+        if start < 1 or start > total then start = 1 end
+        local i = start
+        for _ = 1, math.min(total, OPEN_CHECKS) do
+            local p = c.seen[i]
             local g = dfhack.maps.getWalkableGroup({x = p.x, y = p.y, z = p.z})
             if g ~= 0 and groups[g] then
                 row.open = true
                 row.open_at = {x = p.x, y = p.y, z = p.z}
                 break
             end
+            i = i % total + 1
         end
+        c.open_next = i
         out[r.name] = row
     end
     LAST_STATUS = status

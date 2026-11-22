@@ -564,6 +564,21 @@ function deep_road_keys(with_mouth)
     return out
 end
 
+-- (r9, A4 26) The cavern wells' shaft hatches (key -> true): a scan can take
+-- one for a cavern entrance's hatch (the well's stairs lead down to it), and
+-- the gate watcher then locked or pulled it with the entrance. Its own
+-- watcher (ai-builder-wells-watch) works it. Tests replace this.
+function well_shaft_keys()
+    local out = {}
+    pcall(function()
+        for _, w in ipairs(reqscript('ai-builder').well_lids(false) or {}) do
+            local h = w.shaft_hatch
+            if type(h) == 'table' and math.tointeger(h.x) then out[key(h.x, h.y, h.z)] = true end
+        end
+    end)
+    return out
+end
+
 local function on_deep_road(g, road)
     if not next(road) then return false end
     for _, k in ipairs(g.inside_list or {}) do if road[k] then return true end end
@@ -590,6 +605,7 @@ function find_entrances(starts, buildings, now_tick, wait_since)
     local entrances = {}
     local cut_checked = 0        -- (0.105.0 review)
     local road = deep_road_keys()        -- (0.105.30)
+    local shafts                         -- (r9, A4 26) read once, when an entrance is sealed
     for i, g in ipairs(groups) do
         local e = {id = i, kind = g.kind, width = #g.inside_list, inside_list = g.inside_list,
                    outs = g.outs, equipment = {}, sealed = false, door_spots = {}}
@@ -649,6 +665,12 @@ function find_entrances(starts, buildings, now_tick, wait_since)
             end
             for _, b in pairs(keep) do table.insert(e.equipment, b) end
             table.sort(e.equipment, function(a, b) return a.id < b.id end)
+            -- (r9, A4 26) a cavern well's shaft hatch stays in the list (it
+            -- seals the way) but is marked: the watcher leaves it to its own
+            shafts = shafts or well_shaft_keys()
+            for _, b in ipairs(e.equipment) do
+                if b.z and shafts[key(b.x1, b.y1, b.z)] then b.well_shaft = true end
+            end
             e.sealed = true
             -- (0.105.23, 14.1 step 4a) a gatehouse's drawbridge in front of the
             -- hatch isn't needed to seal it (the hatch does): it's the outer

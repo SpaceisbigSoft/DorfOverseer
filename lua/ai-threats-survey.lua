@@ -31,6 +31,11 @@ function note_opening(d, x, y, z, kind, source, t)
     local o = d.openings[k]
     if o then
         if kind ~= 'open' and o.kind == 'open' then o.kind, o.source = kind, source end
+        -- (r9, A4 26) a cavern well's shaft hatch is the well's, whatever found
+        -- it first: the gates' scan can take it for a cavern entrance's hatch
+        -- (it is read first), and the seal then locked every shaft hatch as a
+        -- 'gate' (War-hold: all five read locked)
+        if kind == 'well' and o.kind ~= 'well' then o.kind, o.source = kind, source end
         return false
     end
     local n = 0

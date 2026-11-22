@@ -184,6 +184,21 @@ function restrict_tile(x, y, z)
     return ok and done or false
 end
 
+-- (r9, A4 24) a tile the column's restriction made Restricted set back to
+-- Normal (only when it still reads Restricted). True when changed.
+function unrestrict_tile(x, y, z)
+    if UNTRAFFIC_FN then return UNTRAFFIC_FN(x, y, z) end
+    local ok, done = pcall(function()
+        local des = dfhack.maps.getTileFlags(x, y, z)
+        if des and des.traffic == df.tile_traffic.Restricted then
+            des.traffic = df.tile_traffic.Normal
+            return true
+        end
+        return false
+    end)
+    return ok and done or false
+end
+
 -- {type = 'Door'|'Hatch'|other, id, built, locked, b} at a tile, or nil.
 function building_on(x, y, z)
     if BUILDING_FN then return BUILDING_FN(x, y, z) end
@@ -822,11 +837,43 @@ local function restrict_column(p, dry_run)
     local g = geom(p)
     local n = 0
     if not dry_run then
-        for z = g.hz, g.top do if restrict_tile(g.x, g.y, z) then n = n + 1 end end
+        -- (r9, A4 24) the levels it changed kept, to set back once dug
+        local zs = {}
+        for z = g.hz, g.top do
+            if restrict_tile(g.x, g.y, z) then n = n + 1; table.insert(zs, z) end
+        end
         p.ws_traffic = true
+        p.ws_traffic_z = zs
     else
         n = g.top - g.hz + 1
     end
+    return n
+end
+
+-- (r9, A4 24) Is the column's restriction left over? The column is restricted
+-- only while it is dug; it was never set back, so a well given up left a
+-- Restricted hall floor tile (and a finished one its column) for good.
+local function traffic_back_due(p)
+    return is_cavern_well(p) and p.ws_traffic == true and p.phase ~= 'dig'
+end
+
+-- ...set back: the levels it changed (a record from before r9 without them:
+-- the whole column, which was rock or the hall's floor when it was painted).
+-- Returns the tiles set back.
+local function release_column(p, dry_run)
+    if not traffic_back_due(p) then return 0 end
+    local g = geom(p)
+    local zs = type(p.ws_traffic_z) == 'table' and p.ws_traffic_z or nil
+    if not zs then
+        zs = {}
+        for z = g.hz, g.top do table.insert(zs, z) end
+    end
+    if dry_run then return #zs end
+    local n = 0
+    for _, z in ipairs(zs) do
+        if math.tointeger(z) and unrestrict_tile(g.x, g.y, z) then n = n + 1 end
+    end
+    p.ws_traffic, p.ws_traffic_z = nil, nil
     return n
 end
 
@@ -858,6 +905,12 @@ function step(dry_run)
     local out = {ok = true, wells = {}, traffic = 0, doors = 0, advanced = 0, dry_run = dry_run or nil}
     local any, changed = false, false
     for _, p in ipairs(data.list or {}) do
+        if traffic_back_due(p) then                     -- (r9, A4 24) dug, done or given up
+            local n = release_column(p, dry_run)
+            out.traffic_back = (out.traffic_back or 0) + n
+            if not dry_run then changed = true end
+            out.traffic_released = (out.traffic_released or 0) + 1
+        end
         if watched(p) then
             any = true
             local r = {project_id = p.id}
@@ -878,7 +931,14 @@ function step(dry_run)
             table.insert(out.wells, r)
         end
     end
-    if not any then return {ok = false, rejected = true, nothing_to_do = true, error = 'no cavern well to watch'} end
+    if not any then
+        -- (r9, A4 24) only a column's traffic set back: nothing to watch
+        if out.traffic_released then
+            if not dry_run then B.save_projects(data) end
+            return out
+        end
+        return {ok = false, rejected = true, nothing_to_do = true, error = 'no cavern well to watch'}
+    end
     if not dry_run then
         local r = watch_once(data, cits)
         out.advanced = r.advanced
@@ -893,7 +953,8 @@ function step(dry_run)
         end
         out.watch_started = (not watch_alive()) or nil
     end
-    if not (out.watch_started or out.traffic > 0 or out.doors > 0 or out.advanced > 0 or out.rescue_closed) then
+    if not (out.watch_started or out.traffic > 0 or out.doors > 0 or out.advanced > 0 or out.rescue_closed
+            or out.traffic_released) then
         return {ok = false, rejected = true, nothing_to_do = true, wells = out.wells,
                 error = 'nothing to do: the watcher runs, the shafts are restricted, the doors stand'}
     end
@@ -945,6 +1006,10 @@ function report(opts)
             end
             table.insert(wells, row)
         end
+    end
+    -- (r9, A4 24) a column's restriction left from its digging: set back
+    for _, p in ipairs(data.list or {}) do
+        if traffic_back_due(p) then todo.traffic_back = true end
     end
     local alive = watch_alive()
     if any and not alive then todo.watch = true end
