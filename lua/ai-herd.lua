@@ -45,15 +45,9 @@ AI_PASTURE_NAME = 'AI pasture'
 MAX_KINDS = 16
 MAX_TAMEABLE = 12
 
-local function report_units()
-    if U.REPORT_CTX and U.units_active then return U.units_active() end
-    return df.global.world.units.active
-end
+local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
 
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
 
 local function yes(f, ...)
     local ok, v = pcall(f, ...)

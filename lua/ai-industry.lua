@@ -653,10 +653,7 @@ end
 QUARRY_FORGET_DAYS = 56
 QUARRY_KEY = 'ai-overseer/quarry/tried'
 
-local function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and t or nil
-end
+local function now_tick() return U.now_tick(nil) end          -- (r6) ai-util's: nil when it can't be read
 
 function quarry_tried()
     local out, now = {}, now_tick()

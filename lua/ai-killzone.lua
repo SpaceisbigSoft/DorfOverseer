@@ -541,10 +541,7 @@ end
 KZ_PLAN_TICKS = 3 * 1200
 PLAN_MEMO = PLAN_MEMO or {}
 
-local function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and type(t) == 'number' and t or nil
-end
+local function now_tick() return U.now_tick(nil, true) end    -- (r6) ai-util's: nil unless a number
 
 -- the memo's key for entrance e: the scan, the entrance, the held ways in (bypass reads them)
 function plan_memo_key(G, e, held)

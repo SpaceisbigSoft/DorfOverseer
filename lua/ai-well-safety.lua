@@ -79,6 +79,8 @@ function builder()
     return reqscript('ai-builder')
 end
 
+-- (r6) kept here, not ai-util's now_tick: this module takes ai-util only in a
+-- pcall (its tests run it without one).
 function now_tick()
     local ok, t = pcall(function() return df.global.cur_year * YEAR + df.global.cur_year_tick end)
     return ok and t or 0

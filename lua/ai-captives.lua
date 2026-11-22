@@ -46,25 +46,16 @@ TOWER_NEAR = 40           -- world tiles: towers this close are listed
 TOWER_ROWS = 3
 local THIEF_PROFS = {THIEF = 'thief', MASTER_THIEF = 'thief', SNATCHER = 'snatcher'}
 
-local function report_units()
-    if U.REPORT_CTX and U.units_active then return U.units_active() end
-    return df.global.world.units.active
-end
+local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
 
-local function report_citizens()
-    if U.REPORT_CTX and U.citizens then return U.citizens(true) end
-    return dfhack.units.getCitizens(true)
-end
+local function report_citizens() return U.report_citizens(true) end   -- (r6) ai-util's, always the living (true)
 
 local function is(fn, u)
     local ok, v = pcall(fn, u)
     return ok and v or false
 end
 
-local function name_of(u, txt)
-    local ok, n = pcall(function() return (txt or tostring)(dfhack.units.getReadableName(u)) end)
-    return ok and n or ('unit ' .. tostring(u.id))
-end
+local function name_of(u, txt) return U.name_of(u, txt) end   -- (r6) ai-util's
 
 local function shape_at(x, y, z)
     local ok, s = pcall(function()

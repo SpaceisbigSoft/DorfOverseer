@@ -397,7 +397,7 @@ end
 -- the save: "x,y,z" -> tick
 RECENT_KEY = 'ai-overseer/joins'
 RECENT_DAYS = 56
-local function now_tick() return U.abs_tick() end
+local function now_tick() return U.abs_tick() end   -- (r6) not protected: an error goes to the caller
 
 function recent_tiles()
     local d = U.site_get(RECENT_KEY, {tiles = {}})

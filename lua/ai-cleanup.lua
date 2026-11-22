@@ -99,10 +99,7 @@ MUD, WATER, SOLID, POWDER = 12, 6, 0, 3
 
 -- --- helpers ---------------------------------------------------------------
 
-local function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and t or 0
-end
+local function now_tick() return U.now_tick(0) end            -- (r6) ai-util's: 0 when it can't be read
 
 local function ms_since(t0) return (os.clock() - t0) * 1000 end
 

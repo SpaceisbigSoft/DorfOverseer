@@ -35,14 +35,8 @@ local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
 -- (0.105.40 E3) inside a report, the report's one walk of the units
 -- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
-local function report_units()
-    if U.REPORT_CTX and U.units_active then return U.units_active() end
-    return df.global.world.units.active
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
 
 local INFECTION_BLEEDS = 300            -- df-structures: ">=300 causes bleeding"
 local RQ = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
@@ -52,9 +46,7 @@ COOLDOWN_DAYS = 28           -- ...and not sent again for this many
 STATE_KEY = 'ai-overseer/infected-rest'
 local DAY = 1200
 
-local function now_tick()
-    return U.abs_tick()
-end
+local function now_tick() return U.abs_tick() end             -- (r6) not protected: an error goes to the caller
 
 -- the save's record: sent = {id = {tick, job}}, cooldown = {id = tick} (got
 -- up with nothing asked), helped = {id = tick} (DF asked a treatment)

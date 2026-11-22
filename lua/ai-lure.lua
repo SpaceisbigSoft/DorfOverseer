@@ -72,10 +72,7 @@ function parse_key(k)
     if x and y and z then return x, y, z end
 end
 
-local function now_tick()
-    local ok, t = pcall(U.abs_tick)
-    return ok and t or 0
-end
+local function now_tick() return U.now_tick(0) end            -- (r6) ai-util's: 0 when it can't be read
 
 -- the save's record: lures = {"x,y,z" (the opening) = {x, y, z, beast,
 -- immune, tiles = {{x,y,z}}, traps = {{x,y,z}}, inner = {x,y,z,kind,dir},

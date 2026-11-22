@@ -71,7 +71,7 @@ function builder() return reqscript('ai-builder') end
 function labor() return reqscript('ai-labor') end
 
 local function enum(e, k) if e == nil or k == nil then return nil end return e[k] end
-local function now_tick() local ok, t = pcall(U.abs_tick); return ok and t or nil end
+local function now_tick() return U.now_tick(nil) end          -- (r6) ai-util's: nil when it can't be read
 local function txt_of(txt) return txt or function(s) return s end end
 
 local function units()

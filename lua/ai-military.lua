@@ -14,14 +14,8 @@ local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
 -- (0.105.40 E3) inside a report, the report's one walk of the units
 -- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
-local function report_units()
-    if U.REPORT_CTX and U.units_active then return U.units_active() end
-    return df.global.world.units.active
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
 -- (13c) the gear half: lua/ai-military-gear.lua (see the end of this file)
 -- (0.105.26) kept after the first lookup: reqscript finds the file again on
 -- every call (5-7 file checks on Windows), and the forwarders below call it

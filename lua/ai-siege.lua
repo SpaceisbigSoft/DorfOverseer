@@ -53,14 +53,8 @@ local ORTHO = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 -- df.siegeengine_orientation name (+y is south)
 ENGINE_ORIENTATION = {Up = 'North', Down = 'South', Left = 'West', Right = 'East'}
 
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
-local function report_units()
-    if U.REPORT_CTX and U.units_active then return U.units_active() end
-    return df.global.world.units.active
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
 
 -- The modules this one leans on, through functions the tests replace.
 function gates() return reqscript('ai-gates') end
@@ -824,10 +818,8 @@ local function is(f, u)
     return ok and v == true
 end
 
-local function name_of(u, txt)
-    local ok, n = pcall(function() return (txt or tostring)(dfhack.units.getReadableName(u)) end)
-    return ok and n or ('#' .. tostring(u.id))
-end
+local function unnamed(u) return '#' .. tostring(u.id) end
+local function name_of(u, txt) return U.name_of(u, txt, unnamed) end   -- (r6) ai-util's, '#<id>' when unread
 
 local function nearest(pos, list)
     local best

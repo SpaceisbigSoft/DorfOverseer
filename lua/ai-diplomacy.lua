@@ -32,14 +32,8 @@ local U = reqscript('ai-util')      -- (13c) helpers shared by the modules
 
 -- (0.105.40 E3) inside a report, the report's one walk of the units
 -- (ai-util REPORT_CTX: the same units, same order); outside one, afresh
-local function report_citizens(...)
-    if U.REPORT_CTX and U.citizens then return U.citizens(...) end
-    return dfhack.units.getCitizens(...)
-end
-local function report_units()
-    if U.REPORT_CTX and U.units_active then return U.units_active() end
-    return df.global.world.units.active
-end
+local report_citizens = U.report_citizens      -- (r6) ai-util's, the copy that was here
+local report_units = U.report_units            -- (r6) ai-util's, the copy that was here
 
 PROBE_FILE = dfhack.getDFPath() .. '/dfhack-config/ai-overseer/meeting-probe.json'
 PROBE_KEEP = 12                       -- the last samples kept in the probe file
@@ -95,12 +89,7 @@ local function new_reader()
     return R
 end
 
-local function enum_name(enum, v)
-    if v == nil then return nil end
-    local ok, n = pcall(function() return enum[v] end)
-    if ok and type(n) == 'string' then return n end
-    return tonumber(v) and tostring(v) or nil
-end
+local function enum_name(enum, v) return U.enum_name_num(enum, v) end   -- (r6) ai-util's
 
 local function each(v)
     local out = {}

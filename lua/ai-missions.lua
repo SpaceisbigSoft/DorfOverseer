@@ -55,6 +55,9 @@ local function short(s, max)
 end
 
 -- an enum value's name (df.X[v]), or the number when the enum has no name
+-- (r6) kept here: this module takes no ai-util at load (its tests run it
+-- without one); enum_name and name_of (a translated name, not a unit's) are
+-- its own: ai-util's enum_name_num is the same rule.
 local function enum_name(enum, v)
     if v == nil then return nil end
     local ok, n = pcall(function() return enum[v] end)
