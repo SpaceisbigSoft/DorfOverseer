@@ -389,7 +389,9 @@ local env = setmetatable({}, {__index = _G})
 local F = {site = 1, save = 'region1', put = {}, handlers = {}}
 env.F = F
 env.SC_MAP_UNLOADED = 5
-env.reqscript = function() return {site_put = function(k, v) F.put[k] = v end, site_get = function() return nil end} end
+-- (r6 c1) the fake ai-util has report_citizens, which ai-water takes from it now (as the old copy, outside a report)
+env.reqscript = function() return {site_put = function(k, v) F.put[k] = v end, site_get = function() return nil end,
+                                   report_citizens = function(...) return env.dfhack.units.getCitizens(...) end} end
 env.dfhack = {onStateChange = F.handlers,
               units = {getCitizens = function() return {{}} end, getPosition = function() return F.x or 50, 50, 100 end},
               maps = {getTileSize = function() return 200, 200, 200 end, getBlock = function() return nil end}}

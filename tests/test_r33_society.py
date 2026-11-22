@@ -334,7 +334,9 @@ def _():
                              isOwnCiv = function() return true end, isGrazer = function() return true end,
                              isVisitor = function(x) return x.visitor == true end,
                              getGeneralRef = function() return nil end}}
-      env.reqscript = function() return {} end
+      -- (r6 c1) the fake ai-util has the two helpers the module takes from it now (as the old copies, outside a report)
+      env.reqscript = function() return {report_citizens = function(...) return env.dfhack.units.getCitizens(...) end,
+                                         report_units = function() return env.df.global.world.units.active end} end
       env.require = function() return {} end
       assert(load(src, 'ai-society', 't', env))()
       return env""", (ROOT / "lua" / "ai-society.lua").read_text(encoding="utf-8"))

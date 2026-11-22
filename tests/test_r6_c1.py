@@ -22,10 +22,7 @@ from harness import test, finish, skip  # noqa: E402
 try:
     from lupa.lua53 import LuaRuntime
 except Exception:  # noqa: BLE001
-    try:
-        from lupa import LuaRuntime
-    except Exception:  # noqa: BLE001
-        LuaRuntime = None
+    LuaRuntime = None
 
 LUA_DIR = ROOT / "lua"
 NAMES = ("report_citizens", "report_units", "now_tick", "name_of", "enum_name")

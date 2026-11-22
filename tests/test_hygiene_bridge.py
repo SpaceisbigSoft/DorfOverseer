@@ -274,7 +274,10 @@ def _():
       env.dfhack = {units = {isAlive = function() return true end, isTame = function() return true end,
                              isOwnCiv = function() return true end, isGrazer = function() return true end,
                              getGeneralRef = function(u) return u.penned end}}
-      env.reqscript = function() return {grass_at = function(x) return x % 2 == 0 end} end
+      -- (r6 c1) the fake ai-util has the two helpers the module takes from it now (as the old copies, outside a report)
+      env.reqscript = function() return {grass_at = function(x) return x % 2 == 0 end,
+                                         report_citizens = function(...) return env.dfhack.units.getCitizens(...) end,
+                                         report_units = function() return env.df.global.world.units.active end} end
       env.require = function() return {} end
       env.dfhack_flags = {module = true}
       assert(load(src, 'ai-society', 't', env))()
