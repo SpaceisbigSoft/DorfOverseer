@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from digest import _d, normalize
 import outcomes
+from rests import citizen_death  # (r5 p2)
 
 DAY = 1200
 DAYS_PER_SEASON = 84
@@ -35,23 +36,25 @@ SEASON_NAMES = ("spring", "summer", "autumn", "winter")
 # One day's row. "day" is the absolute game day (year * 336 + day of year).
 FIELDS = ["day", "pop", "drink_pd", "meals_pd", "plants_pd", "unhappy_pct", "happy_pct", "idle_pct",
           "needs_care", "hungry", "unpastured", "free_beds", "wealth", "deaths", "threats",
-          "drink_ratio", "meals_ratio", "report_ms"]
+          "drink_ratio", "meals_ratio", "report_ms",
+          "idle_free_pct"]     # (r5 p2) the truly idle share (outcomes.idle_free_pct); idle_pct is the old measure
 # what a season or year keeps of them
 AVERAGED = ["pop", "drink_pd", "meals_pd", "plants_pd", "unhappy_pct", "happy_pct", "idle_pct",
-            "needs_care", "hungry", "wealth", "drink_ratio", "meals_ratio", "report_ms"]
+            "needs_care", "hungry", "wealth", "drink_ratio", "meals_ratio", "report_ms", "idle_free_pct"]
 LOWS = ["pop", "drink_pd", "meals_pd"]
 HIGHS = ["pop", "unhappy_pct", "hungry"]
 # a year keeps less (it's kept for ever)
-YEAR_AVERAGED = ["pop", "drink_pd", "meals_pd", "plants_pd", "unhappy_pct", "happy_pct", "idle_pct", "wealth"]
+YEAR_AVERAGED = ["pop", "drink_pd", "meals_pd", "plants_pd", "unhappy_pct", "happy_pct", "idle_pct", "wealth",
+                 "idle_free_pct"]
 YEAR_LOWS = ["drink_pd", "meals_pd"]
 YEAR_HIGHS = ["pop", "unhappy_pct"]
 WORDS = {"pop": "dwarves", "drink_pd": "drink per dwarf", "meals_pd": "meals per dwarf",
          "plants_pd": "food plants per dwarf", "unhappy_pct": "unhappy %", "happy_pct": "happy %",
-         "idle_pct": "idle adults %", "wealth": "wealth", "needs_care": "dwarves needing care",
+         "idle_pct": "idle adults %", "idle_free_pct": "truly idle non-soldiers %", "wealth": "wealth", "needs_care": "dwarves needing care",
          "hungry": "hungry or thirsty dwarves", "report_ms": "report time (ms)"}
 # smallest change between seasons worth a word
 TREND_TOL = {"drink_pd": 1.0, "meals_pd": 1.0, "plants_pd": 1.0, "unhappy_pct": 3.0, "happy_pct": 3.0,
-             "idle_pct": 5.0, "pop": 3, "wealth": None, "needs_care": 1.0, "hungry": 1.0, "report_ms": 50}
+             "idle_pct": 5.0, "idle_free_pct": 5.0, "pop": 3, "wealth": None, "needs_care": 1.0, "hungry": 1.0, "report_ms": 50}
 
 
 def _num(v):
@@ -98,11 +101,10 @@ def row_for(state: dict, events: list[dict] | None = None, cfg: dict | None = No
     m = outcomes.measure(state)
     row = {"day": today(state), "pop": m.get("pop")}
     for k in ("drink_pd", "meals_pd", "plants_pd", "unhappy_pct", "happy_pct", "idle_pct",
-              "needs_care", "hungry", "unpastured", "free_beds"):
+              "needs_care", "hungry", "unpastured", "free_beds", "idle_free_pct"):
         row[k] = m.get(k)
     row["wealth"] = _num(s.get("wealth"))
-    row["deaths"] = sum(1 for e in events or [] if isinstance(e, dict) and e.get("kind") == "death"
-                        and e.get("own_civ") and not e.get("animal") and not e.get("again"))
+    row["deaths"] = sum(1 for e in events or [] if citizen_death(e))     # (r5 p2) no ghost laid to rest
     if "others_on_map" not in s["_errors"]:
         row["threats"] = _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves", 0) or 0
     # stock against the target it is kept to (1.0 = exactly the target)
@@ -275,9 +277,11 @@ def trends(memory, now_day: int | None = None) -> list[dict]:
         b = {m: avg(memory, m, now_day - 55, now_day - 28, 7)[0] for m in AVERAGED}
         cur, prev = {k: v for k, v in a.items() if v is not None}, {k: v for k, v in b.items() if v is not None}
     out = []
-    for m in ("drink_pd", "meals_pd", "unhappy_pct", "idle_pct", "pop", "hungry", "wealth"):
+    for m in ("drink_pd", "meals_pd", "unhappy_pct", "idle_free_pct", "idle_pct", "pop", "hungry", "wealth"):
         if m not in cur or m not in prev:
             continue
+        if m == "idle_pct" and "idle_free_pct" in cur and "idle_free_pct" in prev:
+            continue        # (r5 p2) the true idle share said, the old one not beside it
         tol = TREND_TOL.get(m)
         if tol is None:
             tol = max(1.0, 0.1 * abs(prev[m]))

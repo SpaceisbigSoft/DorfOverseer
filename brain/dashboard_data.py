@@ -51,7 +51,8 @@ def days_rows(timeline: Path, step: int = 7) -> list[dict]:
             continue
         out.append({"day": int(day), "date": day_label(day), "year": round(day / DAYS_PER_YEAR, 3),
                     **{k: _num(r.get(k)) for k in ("pop", "drink_pd", "meals_pd", "unhappy_pct", "happy_pct",
-                                                    "idle_pct", "needs_care", "wealth", "deaths", "threats")}})
+                                                    "idle_pct", "needs_care", "wealth", "deaths", "threats",
+                                                    "idle_free_pct")}})
     return out
 
 
@@ -82,7 +83,8 @@ def season_rows(timeline: Path) -> list[dict]:
                     "avg_pop": avg("pop"), "high_pop": max(col("pop") or [0]),
                     "avg_drink_pd": avg("drink_pd"), "avg_meals_pd": avg("meals_pd"),
                     "avg_unhappy_pct": avg("unhappy_pct"), "high_unhappy_pct": max(col("unhappy_pct") or [0]),
-                    "avg_idle_pct": avg("idle_pct"), "end_wealth": (col("wealth") or [None])[-1]})
+                    "avg_idle_pct": avg("idle_pct"), "end_wealth": (col("wealth") or [None])[-1],
+                    "avg_idle_free_pct": avg("idle_free_pct")})      # (r5 p2) the truly idle share
     return out
 
 
@@ -124,6 +126,7 @@ def now_row(state: dict | None, rep: dict, days: list[dict]) -> dict:
     last = days[-1] if days else {}
     row = {"report": rep.get("heading", ""), "phase": rep.get("phase", ""), "siege": rep.get("siege", ""),
            "pop": last.get("pop"), "unhappy_pct": last.get("unhappy_pct"), "idle_pct": last.get("idle_pct"),
+           "idle_free_pct": last.get("idle_free_pct"),
            "wealth": last.get("wealth"), "drink_pd": last.get("drink_pd"), "meals_pd": last.get("meals_pd")}
     m = re.search(r"(\d+) FPS", rep.get("fort", ""))
     row["fps"] = int(m.group(1)) if m else None

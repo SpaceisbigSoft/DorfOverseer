@@ -301,6 +301,8 @@ class Memory:
     ores_freed: list = field(default_factory=list)       # (0.104.124) ores the masons were given in a crisis
     crisis: dict = field(default_factory=dict)          # (0.104.137) the fort in crisis: since, why
     deaths_seen: list = field(default_factory=list)     # (0.104.137) citizens' deaths (ticks), 12 weeks
+    dead_told: list = field(default_factory=list)       # (r5 p2) [unit id, tick] of citizens told dead: a later death of one is a ghost laid to rest
+    crisis_journal: list = field(default_factory=list)  # (r5 p2) crisis mode entered and left, waiting for the journal
     convict_watch: dict = field(default_factory=dict)   # (0.104.138) cases convicted, sentences then, held until
     fight_deaths: list = field(default_factory=list)    # (0.104.139) citizens killed by citizens (ticks), 4 weeks
     gate_part_extra: dict = field(default_factory=dict)   # (0.104.139) stuck entrances given one more part

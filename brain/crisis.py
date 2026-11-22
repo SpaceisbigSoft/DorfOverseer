@@ -35,6 +35,7 @@ RECOVERY_RULES |= {"booze_variety"}   # (0.105.24) the worst stress in B and E: 
 # levels that are themselves recovery when started (a build of these kinds is never held)
 # (0.105.48, K5) one table for crisis and recovery: brain/hold_classes.py
 import hold_classes as _hc  # noqa: E402
+from rests import citizen_death  # noqa: E402  (r5 p2)
 
 RECOVERY_KINDS = _hc.SURVIVAL_KINDS
 # work that waits while the fort is in crisis: every rule classed expansion
@@ -61,8 +62,9 @@ def note_deaths(state: dict, memory, events: list) -> int:
     animal or an outsider not counted). Returns how many new."""
     now, n = abs_tick(state), 0
     for e in events or []:
-        if (isinstance(e, dict) and e.get("kind") == "death" and e.get("own_civ") and not e.get("animal")
-                and not e.get("again") and not e.get("ghost")):
+        # (r5 p2) through rests.citizen_death: a ghost laid to rest in any of
+        # its shapes (told again, a ghost's, marked `rest`) is no death
+        if citizen_death(e):
             memory.deaths_seen.append(now)
             n += 1
             # (0.104.139) killed by one of their own in a real fight (not a
@@ -162,15 +164,44 @@ def update(s: dict, memory, cfg: dict, notes: list) -> list:
     why = crisis_reasons(s, memory, cfg, held)
     if why and not held:
         memory.crisis = {"since": now, "why": why}
+        _journal_step(s, memory, cfg, {"step": "entered", "why": list(why), "since": now})
         notes.append("CRISIS: the fort is in crisis (" + "; ".join(why) + "): new expansion waits and recovery "
                      "comes first (burial, slabs, the hospital, justice, needs)")
     elif held and not why and now - int(c.get("since") or now) >= cfg["crisis_min_days"] * TICKS_PER_DAY:
         memory.crisis = {}
+        _journal_step(s, memory, cfg, {"step": "left", "since": int(c.get("since") or now),
+                                       "days": round((now - int(c.get("since") or now)) / TICKS_PER_DAY, 1),
+                                       "why_was": list(c.get("why") or [])})
         notes.append("the crisis is over: expansion goes on")
         return []
     elif held:
         memory.crisis = dict(c, why=why or c.get("why") or [])
     return (memory.crisis or {}).get("why") or []
+
+
+def _journal_step(s: dict, memory, cfg, entry: dict) -> None:
+    """(r5 p2, A3 B11) Crisis mode entered or left, kept for the journal
+    (overseer._journals writes kind "crisis", as recovery's): it was said only
+    in the notes, so no journal, season report or audit could tell it was on.
+    The entry carries its own date (the journal line is written next cycle)."""
+    if isinstance(cfg, dict) and cfg.get("r5p2_crisis_journal", True) is False:
+        return
+    q = getattr(memory, "crisis_journal", None)
+    if not isinstance(q, list):
+        return
+    d = s.get("date") if isinstance(s.get("date"), dict) else None
+    q.append(dict(entry, **({"date": d} if d else {}), tick=abs_tick(s)))
+    del q[:-50]
+
+
+def crisis_journal(memory) -> list:
+    """The crisis journal entries waiting (each written once)."""
+    q = getattr(memory, "crisis_journal", None)
+    if not isinstance(q, list):
+        return []
+    out = [e for e in q if isinstance(e, dict)]
+    q.clear()
+    return out
 
 
 def _old_table(cfg) -> bool:

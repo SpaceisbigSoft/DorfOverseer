@@ -48,7 +48,11 @@ def _numbers(state: dict, memory) -> list[str]:
     for k, label in (("drink_pd", "drinks"), ("meals_pd", "meals")):
         if isinstance(r.get(k), (int, float)):
             out.append(f"{r[k]:g} {label} per dwarf")
-    for k, label in (("unhappy_pct", "unhappy"), ("idle_pct", "idle")):
+    # (r5 p2, A3 stale 13) the truly idle non-soldiers' share (the exit's
+    # measure) when the bridge gives it; the old "idle" (any idle adult,
+    # soldiers and the praying counted) only without it
+    idle = ("idle_free_pct", "truly idle") if isinstance(r.get("idle_free_pct"), (int, float)) else ("idle_pct", "idle")
+    for k, label in (("unhappy_pct", "unhappy"), idle):
         if isinstance(r.get(k), (int, float)):
             out.append(f"{r[k]:g}% {label}")
     w = s.get("wealth")

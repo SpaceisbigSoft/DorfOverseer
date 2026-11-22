@@ -21,7 +21,8 @@ from __future__ import annotations
 from digest import _d
 from planner_config import PLANNER_CONFIG
 
-__all__ = ["MEETING_OPEN_EVERY_S", "meeting_open_due", "meeting_open_said", "meeting_reopen_wait"]
+__all__ = ["MEETING_OPEN_EVERY_S", "meeting_open_due", "meeting_open_said", "meeting_reopen_wait",
+           "meeting_entry", "meeting_report_lines"]
 
 MEETING_OPEN_EVERY_S = float(PLANNER_CONFIG.get("meeting_open_every_s", 60))   # (0.105.47) a light clicked at most this often
 
@@ -62,3 +63,66 @@ def meeting_open_said(r: dict) -> str | None:
     if r.get("rejected"):
         return f"Unattended: a meeting waits in DF and the AI couldn't open it: {r.get('error')}"
     return None
+
+
+# (r5 p2, A3 B2) Meetings in the journal. The main loop sends open_meeting,
+# answer_meeting and close_meeting with bridge.act, outside the planner, so no
+# decision line was ever written: the seen ledger read "open_meeting not yet
+# met" in all six forts and no audit could count a meeting opened, answered or
+# left. Each is now a journal line of its own, kind "meeting", with the action
+# and the bridge's answer in a decision's shape (brain/seen.py counts them),
+# and DF's own word that the diplomats left (the announcement topic `meeting`,
+# lua/ai-reports.lua) is one too.
+MEETING_STEPS = {"open_meeting": "opened", "answer_meeting": "answered", "close_meeting": "left"}
+LEFT_WORDS = ("left unhappy", "has left", "have left", "complete a meeting", "is leaving", "are leaving",
+              "will be leaving")
+_KEEP = ("ok", "error", "answer", "why", "topic", "pressed", "needs_button", "left_to_player", "screen",
+         "clicking", "rejected", "popups", "via", "waiting")
+
+
+def _journal_on() -> bool:
+    return PLANNER_CONFIG.get("r5p2_meeting_journal", True) is not False
+
+
+def meeting_entry(action: str, r, held_s=None) -> dict | None:
+    """The journal line (without kind, fort, date) for one meeting action and
+    the bridge's answer (or None: switched off, or nothing happened: a light
+    not clicked, no screen left). An answer that raised is {"ok": False,
+    "error": ...}."""
+    if not _journal_on():
+        return None
+    r = _d(r)
+    if action == "open_meeting" and not (r.get("clicking") or r.get("rejected")):
+        return None
+    if action == "answer_meeting" and not (r.get("pressed") or r.get("needs_button") or r.get("left_to_player")
+                                           or r.get("ok") is False):
+        return None
+    if action == "close_meeting" and not r.get("screen"):
+        return None
+    step = MEETING_STEPS.get(action, action)
+    if action == "answer_meeting" and not r.get("ok"):
+        step = "not_answered"
+    out = {"step": step, "action": {"type": action},
+           "result": {k: r[k] for k in _KEEP if k in r and isinstance(r[k], (str, int, float, bool, type(None)))}}
+    if "ok" not in out["result"]:
+        out["result"]["ok"] = bool(r.get("ok"))
+    if isinstance(held_s, (int, float)):
+        out["held_s"] = int(held_s)
+    return out
+
+
+def meeting_report_lines(events) -> list:
+    """DF's announcements about meetings this cycle (topic `meeting`), as
+    journal lines: step "diplomats_left" when the text says they left,
+    else "said" (an arrival, a request)."""
+    if not _journal_on():
+        return []
+    out = []
+    for e in events or []:
+        if not (isinstance(e, dict) and e.get("kind") == "report" and e.get("topic") == "meeting"):
+            continue
+        text = " ".join(str(e.get("text") or "").split())
+        low = text.lower()
+        out.append({"step": "diplomats_left" if any(w in low for w in LEFT_WORDS) else "said",
+                    "text": text[:200], "type": e.get("type")})
+    return out

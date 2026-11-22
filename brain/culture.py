@@ -29,6 +29,7 @@ import pickle
 import re
 
 from weights import areas, choose_all, why_text
+from rests import citizen_death  # (r5 p2)
 
 HALLS = ("plain", "rounded", "pillared", "octagonal", "round", "cruciform", "nave")   # (D0) + the Design track's 4
 HALL_TITLES = {"plain": "Plain", "rounded": "Rounded", "pillared": "Pillared", "octagonal": "Octagonal",
@@ -87,7 +88,7 @@ def note_events(history: dict, events: list[dict]) -> list[str]:
             if isinstance(e.get("year"), int):
                 history["last_siege_year"] = e["year"]      # (Grudge-keepers fade 3 years after)
             changed.append("a siege hardened the fort")
-        elif kind == "death" and e.get("own_civ") and not e.get("animal") and not e.get("again"):
+        elif citizen_death(e):        # (r5 p2) no ghost laid to rest
             history["citizen_deaths"] = history.get("citizen_deaths", 0) + 1
         elif kind == "death" and e.get("hostile") and is_great_beast(e) and '"' in name:
             # only named beasts (forgotten beasts, titans, megabeasts): not

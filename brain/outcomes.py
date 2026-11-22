@@ -59,6 +59,32 @@ METRICS = {
 }
 
 
+def idle_free_pct(dw: dict):
+    """(r5 p2, A3 item 2 / stale 13) The truly idle share, in %: the bridge's
+    `idle_free` (no job, no social activity, not in a squad) over the adults
+    outside the squads, the measure Phase 12's exit ("truly idle non-soldiers
+    under 25%") and the idle rules use (planner_core._idle_share). `idle_pct`
+    is the old one (idle_adults over all adults: prayer, the tavern, soldiers
+    off duty counted idle; F read 45-59% against a true 3.5%). None when the
+    report has no idle_free (an older bridge) or r5p2_idle_free is off."""
+    try:
+        from planner_config import PLANNER_CONFIG
+        if PLANNER_CONFIG.get("r5p2_idle_free", True) is False:
+            return None
+    except Exception:  # noqa: BLE001
+        pass
+    dw = _d(dw)
+    free = dw.get("idle_free")
+    if not isinstance(free, int) or isinstance(free, bool):
+        return None
+    squads = dw.get("in_squads")
+    squads = squads if isinstance(squads, int) and not isinstance(squads, bool) else 0
+    base = int(dw.get("adults") or 0) - max(0, squads)
+    if base <= 0:
+        return None
+    return round(100 * max(0, free) / base, 1)
+
+
 def measure(state: dict) -> dict:
     """Today's numbers (only those that could be read)."""
     s = normalize(state)
@@ -81,6 +107,9 @@ def measure(state: dict) -> dict:
         adults = dw.get("adults") or 0
         if adults:
             out["idle_pct"] = round(100 * (dw.get("idle_adults") or 0) / adults, 1)
+        free = idle_free_pct(dw)
+        if free is not None:
+            out["idle_free_pct"] = free
         out["needs_care"] = dw.get("needs_medical_care") or 0
     if "society" not in err:
         so = _d(s.get("society"))

@@ -25,6 +25,7 @@ and the located events are what will judge a gate or a farm.
 from __future__ import annotations
 
 from digest import _d, _l, normalize
+from rests import is_rest  # (r5 p2)
 from util import YEAR_TICKS
 from util import state_tick as _now
 
@@ -504,7 +505,7 @@ def note_events(state: dict, memory, events: list[dict]) -> int:
         if not isinstance(e, dict):
             continue
         k = e.get("kind")
-        if k == "death" and e.get("again"):
+        if (k == "death" and e.get("again")) or is_rest(e):    # (r5 p2) a rest announcement is no ghost risen
             continue                    # (0.104.100) a ghost laid to rest: its death was told already
         if k == "death":
             if e.get("own_civ") and not e.get("animal"):
