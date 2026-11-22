@@ -294,7 +294,8 @@ def _():
     import hold_classes
     for name in ("thirst_way", "thirst_patient", "thirst_probe"):
         assert name in overseer.SHORT_WORDS and name in hold_classes._SURVIVAL_ACTIONS, name
-    src = (ROOT / "brain" / "planner.py").read_text(encoding="utf-8")
+    from py_parts import py_family_src
+    src = py_family_src("planner")     # (r7 d2) planner.py and its parts
     assert '_hook("note_thirst", note_thirst' in src and '"note_thirst"' in src
 
 

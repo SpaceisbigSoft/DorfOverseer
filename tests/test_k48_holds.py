@@ -78,7 +78,7 @@ def planner_rules() -> set:
     names.add("strategist")
     known_dynamic = {("planner_cleanup.py", "f'cleanup_{kind}_dry'"), ("planner_cleanup.py", "f'cleanup_{kind}'"),
                      ("planner_locations.py", "'quick_' + kind"), ("planner_water.py", "f'waterworks_{kind}'"),
-                     ("planner.py", "p.rule"), ("planner_holdfast.py", "first.rule"),
+                     ("planner_select.py", "p.rule"), ("planner_holdfast.py", "first.rule"),
                      ("planner_industry.py", "p.rule"), ("review.py", "rule")}
     new = sorted(set(dynamic) - known_dynamic)
     assert not new, f"a rule name made at run time this test doesn't know: {new}"

@@ -386,7 +386,8 @@ def _():
         assert not CALLS, "plan() asked for a floor hint"
         outs.append([(p.rule, p.action) for p in props])
     assert outs[0] == outs[1]
-    assert "planner_floors" not in (ROOT / "brain" / "planner.py").read_text(encoding="utf-8")
+    from py_parts import py_family_src
+    assert "planner_floors" not in py_family_src("planner")     # (r7 d2) planner.py and its parts
 
 
 @test("the overseer: floor_action wraps shop_level_action at the one send; p.action goes on as proposed")
