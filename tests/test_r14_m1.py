@@ -509,5 +509,41 @@ def _():
     assert "held (22 Nov)" not in str(m.error or ""), dict(m)
 
 
+# ---- (r15, live 22 Nov 21:52) the slot's army link: DF's own slots hold -1 ------------------------
+
+@test("r15: a slot the AI makes holds -1 in assigned_army_controller_id (and ab, st, vassal), as DF's own")
+def _():
+    env = world()
+    a, idx, p = env.add_slot(env.W.FORT, "MESSENGER")
+    assert a is not None, (a, idx, p)
+    for f in ("assigned_army_controller_id", "ab_id", "st_id", "vassal_of_entity_id", "vassal_of_position_profile_id"):
+        assert a[f] == -1, (f, a[f])
+
+
+@test("r15: an old AI slot's army controller 0 is cleared as a holder is written into it")
+def _():
+    env = world(GONE_CAMP)
+    a = env.W.FORT.positions.assignments
+    a[7].assigned_army_controller_id = 0             # the AI's slot before 0.105.72
+    r = free_stale(env)
+    assert r.ok is True and a[7].histfig == 909, dict(r)
+    assert a[7].assigned_army_controller_id == -1, a[7].assigned_army_controller_id
+
+
+@test("r15: a slot on one of the fort's own missions keeps its army controller; a camp's or another entity's is cleared")
+def _():
+    env = world()
+    fort = env.W.FORT
+    for ctl, keep in (({"id": 5, "entity_id": 50, "goal": 25}, True),     # the fort's own DIPLOMACY
+                      ({"id": 5, "entity_id": 40, "goal": 25}, True),     # the civ's DIPLOMACY
+                      ({"id": 5, "entity_id": 50, "goal": 1}, False),     # a CAMP
+                      ({"id": 5, "entity_id": 60, "goal": 25}, False),    # another entity's
+                      (None, False)):                                     # no such controller
+        env.W.CTLS[5] = _table(env, ctl) if ctl else None
+        a = _table(env, {"assigned_army_controller_id": 5, "ab_id": 3})
+        env.clear_slot_links(a, env.own_mission_controller(a, fort))
+        assert (a.assigned_army_controller_id == 5) is keep and a.ab_id == -1, (ctl, a.assigned_army_controller_id)
+
+
 if __name__ == "__main__":
     finish()

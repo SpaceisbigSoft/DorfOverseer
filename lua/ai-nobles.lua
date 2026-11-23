@@ -417,6 +417,33 @@ end
 -- DF's nobles screen does: a new assignment with the next id, nobody in it
 -- (DF's duty lists take it once it is held: sync_held). Returns it and its
 -- index, or nil and why.
+-- (r15) a slot's links to an army, a vassal or a site as DF's own slots hold
+-- them when nobody sent its holder anywhere (-1); `keep` the army controller
+-- when it is one of the fort's own missions (the holder sent on it)
+function clear_slot_links(a, keep)
+    for _, f in ipairs({'ab_id', 'st_id', 'vassal_of_entity_id', 'vassal_of_position_profile_id'}) do
+        pcall(function() if a[f] ~= -1 then a[f] = -1 end end)
+    end
+    if not keep then pcall(function() a.assigned_army_controller_id = -1 end) end
+end
+
+-- (r15) the slot's army controller is one of the fort's own live missions
+-- (the fort's government or civilisation, a mission goal): the holder was sent
+function own_mission_controller(a, ent)
+    local yes = false
+    pcall(function()
+        local cid = a.assigned_army_controller_id
+        if not cid or cid < 0 then return end
+        local c = df.army_controller.find(cid)
+        if not c then return end
+        local pi = df.global.plotinfo
+        local goal = df.army_controller_goal_type[c.goal]
+        yes = (c.entity_id == ent.id or c.entity_id == pi.group_id or c.entity_id == pi.civ_id)
+              and goal ~= nil and goal ~= 'CAMP'
+    end)
+    return yes
+end
+
 function add_slot(ent, code)
     local p, pidx = position_by_code(ent, code)
     if not p then return nil, 'this civilisation gives the fort no ' .. code .. ' position' end
@@ -435,6 +462,11 @@ function add_slot(ent, code)
     a.position_id = p.id
     pcall(function() a.position_vector_idx = pidx end)
     a.squad_id = -1
+    -- (r15, live 22 Nov) DF's own slots hold -1 in these; a new record starts
+    -- them at 0, and DF reads assigned_army_controller_id 0 as "assigned to
+    -- army controller 0": every AI-made messenger was sent off to join an army
+    -- (a nomadic camp) and walked off the map. Set as DF's Nobles screen sets them.
+    clear_slot_links(a)
     -- the flags of another slot of the fort's government (DF's 'active')
     local like
     pcall(function() like = #ent.positions.assignments > 0 and ent.positions.assignments[0] or nil end)
@@ -740,7 +772,9 @@ function choose_holder(code, interim) return choose(code, interim) end   -- (r14
 -- walks off the map: A lost three, E three, each freed post refilled within
 -- minutes. Until it's understood, the AI appoints no messenger and frees no
 -- messenger post (MESSENGER_HOLD). A dwarf already holding it is left alone.
-MESSENGER_HOLD = (MESSENGER_HOLD == nil) and true or MESSENGER_HOLD
+-- (r15, 22 Nov 21:52) the cause found (a new slot's assigned_army_controller_id
+-- left 0; clear_slot_links): the hold is lifted; it stays as a switch
+MESSENGER_HOLD = false
 MESSENGER_HOLD_WHY = 'held (22 Nov): every new messenger joins the nomadic camp army near the fort and walks off the map; no messenger is appointed until this is understood'
 
 function appoint(code, dry_run, txt, opts)
@@ -933,6 +967,9 @@ end
 function write_appointment(ent, assignment, a_idx, pos, u)
     local hf = df.historical_figure.find(u.hist_figure_id)
     if not hf then return false end
+    -- (r15) a slot the AI made before 0.105.72 holds army controller 0: cleared
+    -- as a new holder is written (kept only for one of the fort's own missions)
+    clear_slot_links(assignment, own_mission_controller(assignment, ent))
     assignment.histfig = hf.id
     hf.entity_links:insert('#', {new = df.histfig_entity_link_positionst, entity_id = ent.id,
                                  link_strength = 100, assignment_id = assignment.id,
