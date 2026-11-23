@@ -290,7 +290,13 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     rotating = set()
     # (0.83) with many idle hands every squad trains: the rotation exists to
     # keep hands at work, and they would sit idle anyway
-    many_idle = idle_hands(s, memory, cfg)
+    # (0.105.82) not while the soldiers badly miss what only time off gives (B,
+    # 23 Nov: 20-34% truly idle civilians kept all 4 squads on constant
+    # training; 20 of 20 dwarves missing drink and 13 of 13 merriment were
+    # soldiers, 28 miserable, dwarves strangling dwarves): idle civilians gain
+    # nothing from more training, the soldiers lose every hour off
+    from planner_leisure import soldiers_short_of_leisure
+    many_idle = idle_hands(s, memory, cfg) and not soldiers_short_of_leisure(s, cfg)
     if (rules_["train_squads"] and not any_reach and train_to and off and not small and not many_idle
             and traits.get("militarism", 0) < cfg["train_rotate_below_militarism"]):
         # (0.100) the rotation trains on "Constant training": "Staggered" has
@@ -303,7 +309,10 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # staggered while the idle-hands path skipped the rotation)
     constant = next((r for r in routines if "constant" in r.lower() and "training" in r.lower()), None)
     cit_n = max(1, int(_d(s.get("dwarves")).get("total") or 0))
-    mt_badly = int(_d(_d(_d(s.get("needs")).get("needs")).get("MartialTraining")).get("badly") or 0)
+    # (0.105.82) the soldiers' own longing when the report counts it (as the rotation, 0.105.81)
+    mtd = _d(_d(_d(s.get("needs")).get("needs")).get("MartialTraining"))
+    mts = mtd.get("badly_soldiers")
+    mt_badly = int(mts if isinstance(mts, int) and not isinstance(mts, bool) else (mtd.get("badly") or 0))
     train_all = mt_badly >= max(5, cit_n * cfg["train_all_share"])
     if train_all and constant:
         train_to = constant

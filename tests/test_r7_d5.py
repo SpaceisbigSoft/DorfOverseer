@@ -157,7 +157,8 @@ ALL = {
 # the top-level statements of both originals at 6298b4a (imports, __all__ and
 # the module docstrings left out): how many, and the md5 of their sorted AST md5s
 # (0.105.81) _training_rotation reads the soldiers' own MartialTraining (B): the one changed statement
-BASE_NODES = (123, "e61c24c4ceb3d83bf981cb6165cd1f93")
+# (0.105.82) _military_rules: no "many idle, all train" while soldiers are short of leisure; its train_all by soldiers
+BASE_NODES = (123, "afe107bbb908d9d0aaacea73e7261728")
 
 
 def _defined(name: str) -> list[str]:
