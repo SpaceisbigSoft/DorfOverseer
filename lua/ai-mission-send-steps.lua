@@ -7,7 +7,7 @@
 -- reqscript('ai-mission-send').name and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-mission-send-steps is a part of ai-mission-send; run ai-mission-send') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.73'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.74'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local id_of, click, press = PART_LOCALS.id_of, PART_LOCALS.click, PART_LOCALS.press   -- (r9) the hub's and earlier parts' locals
 
@@ -48,6 +48,47 @@ function screen_rows()
         rows[y] = table.concat(chars)
     end
     return any and rows or nil
+end
+
+-- (0.105.74) What the screen held when a word wasn't found (live 22 Nov: A's
+-- raid "none of Attack is on New mission", E's Make contact "none of
+-- Diplomacy"; reading words off New mission never seen working): the rows
+-- with any letter (trimmed, at most SCREEN_DUMP_ROWS), and how its tiles read
+-- (letters, texture tiles with no letter, top_of_text), for mission-send.json.
+SCREEN_DUMP_ROWS = 70
+function screen_dump(rows)
+    local out = {rows = {}, letters = 0, glyphless = 0, top_of_text = 0, blank = 0}
+    for y = 0, SCREEN_DUMP_ROWS * 2 do
+        local r = type(rows) == 'table' and rows[y] or nil
+        if type(r) == 'string' and r:find('%a') and #out.rows < SCREEN_DUMP_ROWS then
+            table.insert(out.rows, ('%02d|'):format(y) .. (r:gsub('%s+$', '')))
+        end
+    end
+    pcall(function()
+        local gps = df.global.gps
+        for y = 0, gps.dimy - 1 do
+            for x = 0, gps.dimx - 1 do
+                local ok, t = pcall(function() return dfhack.screen.readTile(x, y) end)
+                if ok and t then
+                    local ch = tonumber(t.ch) or 0
+                    if ch > 32 and ch < 127 then out.letters = out.letters + 1
+                    elseif (tonumber(t.tile) or 0) > 0 then out.glyphless = out.glyphless + 1
+                    else out.blank = out.blank + 1 end
+                    if t.top_of_text then out.top_of_text = out.top_of_text + 1 end
+                end
+            end
+        end
+    end)
+    return out
+end
+
+-- Pure: `word` found as in find_words, the case ignored (rows and word
+-- lowered: the matches' places are the same)
+function find_words_ci(rows, word, area)
+    if type(rows) ~= 'table' or type(word) ~= 'string' then return {} end
+    local low = {}
+    for k, r in pairs(rows) do low[k] = type(r) == 'string' and r:lower() or r end
+    return find_words(low, word:lower(), area)
 end
 
 -- Pure: where `word` stands as a label in the rows (a whole word: no letter
@@ -306,6 +347,18 @@ STEP_DEFS = {
              if ok then run.pressed = w; return true end
              if m ~= 'not_found' then return false, m, why end
          end
+         -- (0.105.74) the case ignored (DIPLOMACY, ATTACK), then the screen kept
+         for _, w in ipairs(G.words) do
+             local m = pick_word(find_words_ci(rows, w))
+             if m then
+                 local okc, err = pcall(click, m.cx, m.y)
+                 if not okc then return false, 'click_failed', 'the click failed: ' .. tostring(err):sub(1, 160) end
+                 run.pressed = w .. ' (case ignored)'
+                 return true
+             end
+         end
+         run.screen = screen_dump(rows)
+         run.goal_unread = true
          return false, 'not_found', 'none of ' .. table.concat(G.words, ' / ') .. ' is on New mission'
      end,
      check = function(st, run)

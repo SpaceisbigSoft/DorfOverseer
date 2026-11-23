@@ -7,7 +7,7 @@
 -- reqscript('ai-mission-send').name and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-mission-send-run is a part of ai-mission-send; run ai-mission-send') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-run'] = '0.105.73'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-run'] = '0.105.74'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, now_tick, log_path, focus_string, id_of, seen, click, first_name, contains = PART_LOCALS.U, PART_LOCALS.now_tick, PART_LOCALS.log_path, PART_LOCALS.focus_string, PART_LOCALS.id_of, PART_LOCALS.seen, PART_LOCALS.click, PART_LOCALS.first_name, PART_LOCALS.contains   -- (r9) the hub's and earlier parts' locals
 
@@ -39,7 +39,8 @@ local function save_log(run)
                             intent_before = run.intent_before, intent_mismatch = run.intent_mismatch,
                             messenger_unverified = run.messenger_unverified,
                             messenger_flag_before = run.messenger_flag_before,
-                            order_unverified = run.order_unverified})
+                            order_unverified = run.order_unverified,
+                            screen = run.screen, pressed = run.pressed})     -- (0.105.74)
         while #runs > LOG_KEEP do table.remove(runs, 1) end
         pcall(function() dfhack.filesystem.mkdir_recursive(dfhack.getDFPath() .. '/dfhack-config/ai-overseer') end)
         json.encode_file({runs = runs}, log_path())
@@ -274,6 +275,14 @@ function stop(run, result, reason)
         SITE_MISSES = (SITE_MISSES or 0) + 1
         if SITE_MISSES <= 3 then run.reason = 'click_missed' end
         run.why = run.why .. ' (miss ' .. SITE_MISSES .. ' this DF session)'
+    end
+    -- (0.105.74) the goal's word not read on New mission (live 22 Nov, A and
+    -- E): 'goal_unread', tried again the next day (the screen kept in the
+    -- log each time), up to 3 times a DF session; then a step nobody recorded
+    if run.step_name == 'goal' and run.reason == 'not_found' and run.goal_unread then
+        GOAL_MISSES = (GOAL_MISSES or 0) + 1
+        if GOAL_MISSES <= 3 then run.reason = 'goal_unread' end
+        run.why = run.why .. ' (unread ' .. GOAL_MISSES .. ' this DF session)'
     end
     local ok, err = pcall(function()
         local st = read_state(run)

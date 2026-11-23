@@ -191,7 +191,8 @@ def click_missed(last: dict) -> bool:
     World screen (the bridge's 'click_missed'; or 0.105.68's surprise with
     the same words): tried again the next day, not in a year."""
     last = _d(last)
-    if last.get("reason") == "click_missed":
+    # (0.105.74) the goal's word not read on New mission: the next day too
+    if last.get("reason") in ("click_missed", "goal_unread"):
         return True
     return (last.get("reason") == "unexpected" and last.get("step") == "site"
             and "still on world/NORMAL after the click (" in str(last.get("why") or "")

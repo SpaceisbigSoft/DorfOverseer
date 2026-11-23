@@ -410,6 +410,52 @@ def _():
     assert last.step == "goal" and last.reason == "needs_button", dict(last)
 
 
+@test("(0.105.74) the goal's word in capitals (ATTACK) found with the case ignored and pressed at its place; "
+      "the press booked as such")
+def _():
+    env, G = world("""local old = G.labels
+G.labels = function()
+  local out = old()
+  for _, l in ipairs(out) do if l[3] == 'Attack' then l[3] = 'ATTACK' end end
+  return out
+end""")
+    r, last = send(env, G, goal="raid", site_id=73, squad_ids=[4])
+    assert clicks(G)[:3] == [(3, 38), (75, 33), (100, 5)], clicks(G)
+    run = G.files["/df/dfhack-config/ai-overseer/mission-send.json"].runs[1]
+    assert run.pressed == "Attack (case ignored)", run.pressed
+
+
+@test("(0.105.74) the goal's word not on New mission (live 22 Nov, A and E): stopped 'goal_unread' with the "
+      "screen kept in the log (its rows, how its tiles read), nothing pressed; the 4th time this DF session a "
+      "step nobody recorded (not_found)")
+def _():
+    env, G = world("""local old = G.labels
+G.labels = function()
+  local out = {}
+  for _, l in ipairs(old()) do if l[3] ~= 'Attack' then table.insert(out, l) end end
+  return out
+end""")
+    for i in range(1, 5):
+        r, last = send(env, G, goal="raid", site_id=73, squad_ids=[4])
+        assert last.step == "goal", dict(last)
+        assert last.reason == ("goal_unread" if i <= 3 else "not_found"), (i, last.reason)
+        assert f"(unread {i} this DF session)" in last.why, last.why
+    assert clicks(G)[:2] == [(3, 38), (75, 33)] and (100, 5) not in clicks(G)
+    run = G.files["/df/dfhack-config/ai-overseer/mission-send.json"].runs[1]
+    rows = lst(run.screen.rows)
+    assert any("Diplomacy" in r_ and r_.startswith("12|") for r_ in rows), rows
+    assert run.screen.letters > 0 and run.screen.glyphless == 0
+
+
+@test("(0.105.74) planner: a goal_unread stop is tried again the next day (like a missed click), no Needs you")
+def _():
+    import planner_missions as pm
+    from planner_core import TICKS_PER_DAY
+    last = {"reason": "goal_unread", "step": "goal", "why": "none of Attack is on New mission (unread 1 this DF session)"}
+    assert pm.click_missed(last) and pm.retry_ticks(last, 403200) == TICKS_PER_DAY
+    assert pm.retry_ticks({"reason": "not_found", "step": "goal"}, 403200) == 403200
+
+
 @test("a squad row reading something else (another order): stopped before any box is pressed; "
       "a tick that changes nothing on the controller: waited for, then stopped")
 def _():
