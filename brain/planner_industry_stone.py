@@ -480,18 +480,20 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     # first, and a pause when quarries bring no stone the masons may use (B,
     # 13 Nov: seven quarries of 4-7 tiles in three minutes, the stone at 8-9)
     wait = quarry_wait(s, memory, cfg)
+    # (0.105.88) for the dead (ghosts with no slab, bodies with no tomb):
+    # the quarry is survival, not expansion, so a crisis doesn't hold it
+    # (E, 23 Nov: 5 ghosts haunting 57, 19 slab orders with no stone,
+    # "crisis: ore, quarry wait": the crisis held its own way out);
+    # (0.105.89) nor does other digging (E: 295 tiles queued, 2 usable boulders)
+    dd = _d(s.get("dead"))
+    for_dead = ((int(dd.get("ghosts") or 0) > 0
+                 or (int(dd.get("unburied") or 0) >= cfg["stone_crisis_unburied"]
+                     and int(dd.get("free_tombs") or 0) == 0))
+                and int(su.get("usable") or 0) < cfg["stone_low"])
     if wait:
         notes.append(f"quarry: {wait}")
-    elif dig_now < cfg["quarry_when_dig_below"] or dry:
+    elif dig_now < cfg["quarry_when_dig_below"] or dry or for_dead:
         n = quarry_size(s, cfg)
-        # (0.105.88) for the dead (ghosts with no slab, bodies with no tomb):
-        # the quarry is survival, not expansion, so a crisis doesn't hold it
-        # (E, 23 Nov: 5 ghosts haunting 57, 19 slab orders with no stone,
-        # "crisis: ore, quarry wait": the crisis held its own way out)
-        dd = _d(s.get("dead"))
-        for_dead = (int(dd.get("ghosts") or 0) > 0
-                    or (int(dd.get("unburied") or 0) >= cfg["stone_crisis_unburied"]
-                        and int(dd.get("free_tombs") or 0) == 0))
         act = {"type": "quarry", "count": n}
         if for_dead:
             act["for_dead"] = True

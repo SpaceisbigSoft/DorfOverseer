@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.88'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.89'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
 
@@ -728,7 +728,7 @@ function get_dead()
         end
         return bodies[id]
     end
-    -- (0.105.88) every ghostly unit, not only the active list's: a ghost
+    -- (0.105.89) every ghostly unit, not only the active list's: a ghost
     -- drops off the active list between its appearances (F, 23 Nov: Urvad's
     -- ghost in units.all only, dead.ghosts 0, so no slab rule ever ran)
     local ghostly = {}

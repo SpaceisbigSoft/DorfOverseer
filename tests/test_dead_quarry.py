@@ -37,5 +37,11 @@ def _():
     assert 'act["for_dead"] = True' in src and 'int(dd.get("ghosts") or 0) > 0' in src
 
 
+@test("(0.105.89) E: queued digging doesn't hold a quarry for the dead while the masons' stone is low")
+def _():
+    src = (ROOT / "brain" / "planner_industry_stone.py").read_text(encoding="utf-8")
+    assert "or dry or for_dead:" in src and 'int(su.get("usable") or 0) < cfg["stone_low"]' in src
+
+
 if __name__ == "__main__":
     finish()
