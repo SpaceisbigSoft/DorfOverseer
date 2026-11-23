@@ -329,3 +329,26 @@ same id is left alone (`undo_appointment` too). DFHack's `getNoblePositions` (Un
 check the slot's holder, only the link, the entity, the assignment by id and the post. A failed or
 raising write re-inserts the very link objects at their old indexes. The captain of the guard's
 post leads the fortress guard squad (`assignment.squad_id`), so it and the sheriff are not swapped.
+
+## A holder who left the fort (r14 m1)
+
+Live (22 Nov 20:58, `lua/probes/probe-messenger-where.lua`, `probe-citizen-armies.lua`): in A, C and F the
+messenger's one slot named a figure with no unit in `world.units.all` (neither `df.unit.find(hf.unit_id)` nor
+any unit with that `hist_figure_id`), `hf.info.whereabouts` `{state = army_died (DFHack's name), army_id = N}`,
+and that army's controller goal `CAMP`, `entity_id` 3160 ("The Torments of Tattooing", a NomadicGroup of the
+fort's civ 300; the fort's government 3169), controller year 250. No mission of the fort's was out and no citizen
+was tied to an army. How the figure got there is not known (DF's nomad camps take figures of the civ; the AI's
+earlier repeated appointments on 0.105.66-67 may have picked one): each messenger appointment now logs the
+figure and its whereabouts.
+
+**The rule** (`lua/ai-nobles-swap.lua` `stale_holder`): a holder is stale when the figure has no living unit
+(none in `world.units.all`, `flags2.killed`, `isDead`, or `hf.died_year` >= 0) and is not on an army whose
+controller's `entity_id` is the fort's government or civilisation with a mission goal (`DIPLOMACY`,
+`SITE_INVASION`, `RECOVER_ARTIFACT`, `RESCUE_HF`, `MAKE_REQUEST`). Another entity's army, a `CAMP`, a missing
+army or controller, or no army at all: stale. Not judged while a Make contact run is under way (except by the
+sender's own check). **Freeing** (`free_stale`, `appoint` with `replace_stale`) is the r11 n1 removal (the slot's
+holder cleared, this entity's position link erased; then the former-position link and
+`history_event_remove_hf_entity_linkst`) and `write_appointment` for the new holder, all-or-nothing. Never the
+expedition leader, the mayor, the militia, an elected/inherited/replaced post, or a slot leading a squad.
+**Open:** whether DF itself ever clears such a slot, and whether a fort's own Diplomacy messenger's
+whereabouts is always its army (assumed: the controller the fort made is of `plotinfo.group_id`).

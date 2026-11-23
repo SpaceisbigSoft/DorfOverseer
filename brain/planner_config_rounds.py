@@ -403,3 +403,13 @@ PART.update({
     "office_swap_cooldown_ticks": 84 * 1200,   # one swap a season per office (cooldown_key office_swap:<CODE>)
     "n1_swap_gap_days": 1,                # one swap a day, fort-wide
 })
+
+# (r14 m1, live 22 Nov 20:58) a messenger (or any office the AI fills) whose
+# holder left the fort (no unit on the map, on no mission of the fort's: in A,
+# C and F with a nomadic group's CAMP army): the post freed and filled again
+# (brain/planner_world.py _stale_rule, lua/ai-nobles-swap.lua free_stale); and
+# never a second messenger appointed right after one
+PART.update({
+    "m1_free_stale": True,                # a stale holder taken off and the post refilled (one action)
+    "m1_messenger_reappoint_days": 28,    # a messenger appointed: no new appointment for this long
+})

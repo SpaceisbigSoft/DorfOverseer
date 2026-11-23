@@ -311,16 +311,95 @@ def _export_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
 
 # --- 13b: the messenger and Make contact ----------------------------------------------
 
-def _messenger_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+def _left_words(st: dict, office: str = "messenger") -> str:
+    """(r14 m1) Who left the fort and with whom, for the journal: "the
+    messenger Urist left the fort with The Torments of Tattooing (CAMP, a
+    NomadicGroup, since year 250)"."""
+    who = st.get("name") or "the holder"
+    if st.get("dead"):
+        return f"the {office} {who} is dead"
+    if st.get("entity_name") or st.get("entity") is not None:
+        bits = [str(st.get("goal") or "no goal")]
+        if st.get("entity_type"):
+            bits.append(f"a {st['entity_type']}")
+        if st.get("year") is not None:
+            bits.append(f"since year {st['year']}")
+        return (f"the {office} {who} left the fort with {st.get('entity_name') or 'entity ' + str(st.get('entity'))} "
+                f"({', '.join(bits)})")
+    return f"the {office} {who} left the fort (no unit on the map, on no mission of the fort's)"
+
+
+def _stale_rule(s: dict, cfg: dict, proposals: list, notes: list) -> bool:
+    """(r14 m1, live 22 Nov 20:58) An office the AI fills whose holder left
+    the fort (no unit on the map, on no mission of the fort's: lua/ai-nobles-swap.lua
+    stale_holder; in A, C and F the messenger had gone with a nomadic group's
+    CAMP army and Make contact was refused "the messenger is away" for good):
+    the holder taken off and the post filled again, in one action (appoint
+    with replace_stale, all-or-nothing). The messenger first; never while a
+    Make contact run is going or a Diplomacy mission is out. True when the
+    messenger is stale (nothing else of the messenger rule then)."""
+    if not cfg.get("m1_free_stale", True):
+        return False
+    offices = _d(s.get("offices"))
+    ms = _d(offices.get("messenger"))
+    stale = dict(_d(offices.get("stale")))
+    if _d(ms.get("stale")):
+        stale["MESSENGER"] = dict(_d(ms["stale"]), **_d(stale.get("MESSENGER")))
+    if not stale:
+        return False
+    missions = _d(s.get("missions"))
+    busy = None
+    if _d(_d(missions.get("send")).get("running")):
+        busy = "a Make contact run is going"
+    elif _messenger_out(missions):
+        busy = "a Diplomacy mission is out"
+    order = ["MESSENGER"] + sorted(k for k in stale if k != "MESSENGER")
+    for code in order:
+        st = _d(stale.get(code))
+        if not st:
+            continue
+        word = str(code).lower().replace("_", " ")
+        left = _left_words(st, word)
+        if st.get("fixed"):
+            notes.append(f"{left}; the post is not the fort's to fill ({st['fixed']}): left to DF")
+            continue
+        if code == "MESSENGER" and busy:
+            notes.append(f"{left}; the post is freed once {busy[2:] if busy.startswith('a ') else busy} is over")
+            continue
+        action = {"type": "appoint", "office": code, "replace_stale": True}
+        if code == "MESSENGER" and cfg.get("n1_messenger_interim", True):
+            action["interim"] = True
+        proposals.append(Proposal("office_free", action,
+                                  f"{left}: they are not coming back to the post, so it is freed and given to "
+                                  f"a suitable dwarf at home" + (" (Make contact needs a messenger)"
+                                                                 if code == "MESSENGER" else ""), 5))
+        break
+    return bool(_d(stale.get("MESSENGER")))
+
+
+def _messenger_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """The fort has a messenger's post and nobody holds it: appoint a
     talker who isn't a soldier, staff, a patient or another office's holder
-    (lua/ai-nobles.lua). Not in a young fort."""
+    (lua/ai-nobles.lua). Not in a young fort. (r14 m1) A holder who left the
+    fort: the post freed and filled again (_stale_rule); a holder in the
+    report (even away), or a messenger appointed within
+    m1_messenger_reappoint_days: no new appointment."""
     rules = player_rules(s)
     # (0.105.47) with the messenger sent by the World screen (send_messenger),
     # a young fort appoints one too: Make contact waits for nobody else
     if not rules["make_contact"] or not rules["appoint_nobles"] or (young_fort(s, cfg) and not rules["send_messenger"]):
         return
     offices = _d(s.get("offices"))
+    if _stale_rule(s, cfg, proposals, notes):
+        return
+    ms0 = _d(offices.get("messenger"))
+    if ms0.get("held_by") or ms0.get("holder_unit") is not None or ms0.get("away"):
+        return                       # (r14 m1) somebody holds the post, home or away: never a second messenger
+    fired = _d(getattr(memory, "last_fired", None)) if memory is not None else {}
+    last, now = fired.get("messenger"), abs_tick(s)
+    gap = int(cfg.get("m1_messenger_reappoint_days", 28)) * TICKS_PER_DAY
+    if isinstance(last, int) and isinstance(now, int) and 0 <= now - last < gap:
+        return                       # (r14 m1) one was appointed lately: the report may not show them yet
     o = _d(_d(offices.get("offices")).get("MESSENGER"))
     # (r10 p2) why nobody carries the fort's word, as the bridge read it (lua/ai-nobles.lua
     # messenger_status: "no post until population N (now M)", "post exists, nobody appointed", ...)
@@ -392,7 +471,7 @@ def _contact_site(s: dict, memory) -> dict | None:
     if _messenger_out(ms):
         return None
     o = _d(_d(_d(s.get("offices")).get("offices")).get("MESSENGER"))
-    if not _l(o.get("held")):
+    if not _l(o.get("held")) or _d(_d(_d(s.get("offices")).get("messenger")).get("stale")):
         return None
     from planner_contact import contact_hold, contact_plan
     if reachable_threats(s, _traits(s), PLANNER_CONFIG) or contact_hold(s, memory, PLANNER_CONFIG):
@@ -459,6 +538,8 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     o = _d(_d(_d(s.get("offices")).get("offices")).get("MESSENGER"))
     if not _l(o.get("held")):
         return
+    if _d(_d(_d(s.get("offices")).get("messenger")).get("stale")):
+        return                       # (r14 m1) the messenger left the fort: the post is freed first (_stale_rule)
     from planner_contact import contact_book, contact_hold, contact_plan
     book = contact_book(memory)
     if book.get("initial_done") is not None and book.get("initial_done") == abs_tick(s) and book.get("initial_words"):

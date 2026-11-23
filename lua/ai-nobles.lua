@@ -323,7 +323,7 @@ function survey(txt)
         out.messenger = out.messenger or {position = false}
         for _, k in ipairs({'post', 'code', 'why', 'requires_population', 'population', 'pop_met', 'interim',
                             'interim_possible', 'interim_unit', 'interim_name', 'interim_office', 'holder_unit',
-                            'free_unit', 'free_name', 'away'}) do
+                            'free_unit', 'free_name', 'away', 'stale', 'left', 'holders'}) do
             out.messenger[k] = st[k]
         end
         local o = out.offices.MESSENGER
@@ -334,6 +334,8 @@ function survey(txt)
     -- (r11 n1) each civilian office's holder against the best free candidate
     -- (lua/ai-nobles-swap.lua): the planner's swaps
     pcall(function() out.swap = reqscript('ai-nobles-swap').swap_survey(ent, txt) end)
+    -- (r14 m1) the AI's offices whose holder left the fort (no unit, on no mission of the fort's)
+    pcall(function() out.stale = reqscript('ai-nobles-swap').stale_survey(ent, txt) end)
     return out
 end
 
@@ -602,20 +604,35 @@ function messenger_status(txt, ent, pop)
             end
         end)
         out.appointed_by = by
-        local slots, vacant = 0, 0
+        local slots, vacant, held = 0, 0, {}
         for _, a in ipairs(ent.positions.assignments) do
             if a.position_id == p.id then
                 slots = slots + 1
-                if a.histfig == -1 then
-                    vacant = vacant + 1
-                elseif not out.held_by then
-                    local hf = df.historical_figure.find(a.histfig)
-                    out.holder_hf = a.histfig
-                    out.held_by = hf and (txt or tostring)(translate(hf.name)) or tostring(a.histfig)
-                end
+                if a.histfig == -1 then vacant = vacant + 1 else table.insert(held, a.histfig) end
             end
         end
-        out.slots, out.vacant = slots, vacant
+        out.slots, out.vacant, out.holders = slots, vacant, #held
+        -- (r14 m1) the holder at home first, then one away on the fort's own
+        -- mission, one who left the fort (stale: ai-nobles-swap) last
+        local best, rank, st0
+        for _, id in ipairs(held) do
+            local hf = df.historical_figure.find(id)
+            local okS, st = pcall(function() return reqscript('ai-nobles-swap').stale_holder(hf, ent, txt) end)
+            st = okS and st or nil
+            local r = st and 3 or (holder_away(hf, true) and 2 or 1)
+            if not rank or r < rank then best, rank, st0 = id, r, st end
+        end
+        if best then
+            local hf = df.historical_figure.find(best)
+            out.holder_hf = best
+            out.held_by = hf and (txt or tostring)(translate(hf.name)) or tostring(best)
+        end
+        if st0 then          -- (r14 m1) never "away": the post is free to fill again
+            out.stale = st0
+            out.why = reqscript('ai-nobles-swap').stale_why('MESSENGER', st0)
+            out.left = out.why
+            return out
+        end
         if out.held_by then
             -- (r11 n1) an interim messenger (one holding another office too):
             -- the free suitable citizen who'd take over, and whether they're away
@@ -712,6 +729,7 @@ local function choose(code, interim)
     if c or not (interim and code == 'MESSENGER') then return c end
     return pick_interim(cands)
 end
+function choose_holder(code, interim) return choose(code, interim) end   -- (r14 m1) for ai-nobles-swap
 
 -- Appoint the best-suited citizen to a vacant `code` office. (r11 n1) opts:
 -- `interim` (the messenger: an office holder when nobody free is suitable);
@@ -722,6 +740,8 @@ function appoint(code, dry_run, txt, opts)
         return {ok = false, rejected = true, error = 'the AI only appoints ' .. table.concat(OFFICE_ORDER, ', ')}
     end
     if opts.replace then return reqscript('ai-nobles-swap').replace(code, dry_run, txt, opts) end
+    -- (r14 m1) a holder who left the fort taken off, the post filled again
+    if opts.replace_stale then return reqscript('ai-nobles-swap').free_stale(code, dry_run, txt, opts) end
     local interim = opts.interim == true
     local ent = U.fort_entity()
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
@@ -744,6 +764,10 @@ function appoint(code, dry_run, txt, opts)
                     error = "the messenger is not the fort's to fill (" .. tostring(st.why) .. ')'}
         end
         msg_pos_id = st.position_id
+        if st.held_by then                     -- (r14 m1) never a second messenger
+            return {ok = false, rejected = true, held_by = st.held_by, error = 'MESSENGER is already held (' .. tostring(st.held_by) .. ')'
+                    .. (st.stale and (' (' .. tostring(st.why) .. ': replace_stale)') or '')}
+        end
     end
     if MILITARY_OFFICES[code] then              -- (0.104.168)
         local r = military_slot(ent, code)
@@ -783,9 +807,11 @@ function appoint(code, dry_run, txt, opts)
             end
             if dry_run then
                 local u0 = df.unit.find(c0.id)
-                return {ok = true, dry_run = true, office = code, slot_added = true, unit_id = c0.id,
+                local r0 = {ok = true, dry_run = true, office = code, slot_added = true, unit_id = c0.id,
                         interim = keeps0 and true or nil, keeps = keeps0,
                         name = u0 and (txt or tostring)(dfhack.units.getReadableName(u0)) or nil}
+                pcall(function() r0.figure, r0.whereabouts = reqscript('ai-nobles-swap').figure_where(u0) end)
+                return r0
             end
             local why2
             assignment, a_idx, why2 = add_slot(ent, code)
@@ -817,6 +843,9 @@ function appoint(code, dry_run, txt, opts)
     local name = (txt or tostring)(dfhack.units.getReadableName(u))
     local out = {ok = true, office = code, name = name, unit_id = u.id, skills = c.skills, dry_run = dry_run or nil,
                  slot_added = added_slot or nil, interim = keeps and true or nil, keeps = keeps}
+    if code == 'MESSENGER' then   -- (r14 m1) the figure and where DF says it is, in the log
+        pcall(function() out.figure, out.whereabouts = reqscript('ai-nobles-swap').figure_where(u) end)
+    end
     if dry_run then return out end
     local ok = write_appointment(ent, assignment, a_idx, pos, u)
     if not ok and added_slot then drop_slot(ent, assignment) end

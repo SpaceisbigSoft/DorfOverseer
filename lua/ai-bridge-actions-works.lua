@@ -790,6 +790,7 @@ function act_appoint(a)
     -- (r11 n1) interim (the messenger doubled by an office holder), replace (a better holder)
     return reqscript('ai-nobles').appoint(a.office, a.dry_run == true, txt,
         {interim = a.interim == true, replace = a.replace == true, interim_out = a.interim_out == true,
+         replace_stale = a.replace_stale == true,   -- (r14 m1) a holder who left the fort: freed and refilled
          margin_add = tonumber(a.margin_add), margin_factor = tonumber(a.margin_factor)})
 end
 

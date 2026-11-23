@@ -283,3 +283,200 @@ function replace(code, dry_run, txt, opts)
     note_former(ent, hf, a, p, saved)
     return out
 end
+
+-- --- (r14 m1) a holder who left the fort --------------------------------------
+-- Live (22 Nov 20:58, probe-messenger-where): in A, C and F the messenger's
+-- one slot named a figure with no unit anywhere in world.units.all, whose
+-- whereabouts was an army of a nomadic group of the fort's own civilisation
+-- (goal CAMP, "The Torments of Tattooing"), with no mission of the fort's out.
+-- Every Make contact was refused "the messenger is away" and the post could
+-- never be refilled. A holder is STALE when their figure has no living unit
+-- on the map (none in world.units.all, or dead) and they are not away on one
+-- of this fort's own missions (an army whose controller is the fort's
+-- government's or civilisation's, with a mission goal; another entity's, a
+-- CAMP, or no army at all: stale). Never judged while a Make contact run is
+-- under way (the sender holds the messenger then). Elected and inherited
+-- posts, the expedition leader, the mayor and the militia are never freed.
+
+-- the army controller goals of a mission the fort sends (lua/ai-mission-send.lua GOALS)
+MISSION_GOALS = {DIPLOMACY = true, SITE_INVASION = true, RECOVER_ARTIFACT = true, RESCUE_HF = true,
+                 MAKE_REQUEST = true}
+NEVER_FREED = {EXPEDITION_LEADER = true, MAYOR = true}
+
+local function rd(f) local ok, v = pcall(f); if ok then return v end end
+
+local function enum_word(enum, v)
+    local s = rd(function() return enum[v] end)
+    if s ~= nil then return tostring(s) end
+    return v ~= nil and tostring(v) or nil
+end
+
+-- the figure's unit in world.units.all (by unit_id first, then by figure), or nil
+local function unit_of(hf)
+    local u = rd(function() return df.unit.find(hf.unit_id) end)
+    if u and rd(function() return u.hist_figure_id end) == hf.id then return u end
+    local found
+    pcall(function()
+        for _, x in ipairs(df.global.world.units.all) do
+            if x.hist_figure_id == hf.id then found = x; break end
+        end
+    end)
+    return found
+end
+
+local function dead_unit(u)
+    return rd(function() return u.flags2.killed end) == true or rd(function() return dfhack.units.isDead(u) end) == true
+end
+
+-- Why `hf`, holding one of `ent`'s posts, is stale ({name, entity, entity_name,
+-- entity_type, goal, year, state, army_id, dead}), or nil when they are home
+-- or away on the fort's own mission. `during_run`: judged during a Make
+-- contact run too (the sender's own check).
+function stale_holder(hf, ent, txt, during_run)
+    if not hf then return nil end
+    if not during_run then
+        local run = rd(function() return reqscript('ai-mission-send').RUN end)
+        if run then return nil end
+    end
+    local dead = (tonumber(rd(function() return hf.died_year end)) or -1) >= 0
+    local u = unit_of(hf)
+    if u and not dead and not dead_unit(u) then return nil end
+    local out = {holder_hf = hf.id, dead = (dead or (u and dead_unit(u))) and true or nil,
+                 name = (txt or tostring)(N.translate_name(hf.name)) or tostring(hf.id)}
+    local w = rd(function() return hf.info.whereabouts end)
+    if w then
+        out.state = enum_word(df.whereabouts_type, rd(function() return w.state end))
+        out.army_id = tonumber(rd(function() return w.army_id end))
+    end
+    if out.dead then return out end
+    if out.army_id and out.army_id >= 0 then
+        local army = rd(function() return df.army.find(out.army_id) end)
+        local ctl = army and rd(function() return df.army_controller.find(army.controller_id) end)
+        if ctl then
+            out.entity = tonumber(rd(function() return ctl.entity_id end))
+            out.goal = enum_word(df.army_controller_goal_type, rd(function() return ctl.goal end))
+            out.year = tonumber(rd(function() return ctl.year end))
+            local e = out.entity and rd(function() return df.historical_entity.find(out.entity) end)
+            if e then
+                out.entity_name = rd(function() return (txt or tostring)(N.translate_name(e.name, true)) end)
+                out.entity_type = enum_word(df.historical_entity_type, rd(function() return e.type end))
+            end
+            local pi = df.global.plotinfo
+            local ours = out.entity ~= nil and (out.entity == ent.id or out.entity == rd(function() return pi.group_id end)
+                                                or out.entity == rd(function() return pi.civ_id end))
+            if ours and MISSION_GOALS[out.goal or ''] then return nil end   -- away on the fort's own mission
+        else
+            out.army_missing = true
+        end
+    end
+    return out
+end
+
+-- the words for a stale holder: "the messenger X left the fort with Y (CAMP): the post is free"
+function stale_why(code, st)
+    local word = 'the ' .. tostring(code):lower():gsub('_', ' ')
+    if st.dead then return word .. ' ' .. tostring(st.name) .. ' is dead: the post is free' end
+    if st.entity_name or st.entity then
+        return word .. ' ' .. tostring(st.name) .. ' left the fort with ' .. tostring(st.entity_name or ('entity ' .. st.entity))
+               .. ' (' .. tostring(st.goal or 'no goal') .. '): the post is free'
+    end
+    return word .. ' ' .. tostring(st.name) .. ' left the fort (no unit on the map, on no mission of the fort\'s): the post is free'
+end
+
+-- the code the AI fills a post under (MESSENGER by its duty too), or nil
+local function ai_code(p)
+    if N.is_messenger(p) then return 'MESSENGER' end
+    if N.OFFICES[p.code] then return p.code end
+end
+
+-- each stale slot the AI may free: idx, assignment, post, figure, stale, code
+local function stale_slots(ent, txt, want)
+    local out = {}
+    for idx, a in ipairs(ent.positions.assignments) do
+        if a.histfig ~= -1 then
+            local p = position_of(ent, a.position_id)
+            local code = p and ai_code(p)
+            if code and (want == nil or code == want) and not NEVER_FREED[code] and not N.MILITARY_OFFICES[code] then
+                local hf = df.historical_figure.find(a.histfig)
+                local st = hf and stale_holder(hf, ent, txt)
+                if st then table.insert(out, {idx = idx, a = a, p = p, hf = hf, st = st, code = code}) end
+            end
+        end
+    end
+    return out
+end
+
+-- Read only: {code = stale} for each AI-filled office whose holder left the
+-- fort (the first such slot each), with `why` and `fixed` (not the fort's to fill).
+function stale_survey(ent, txt)
+    local out = {}
+    for _, s in ipairs(stale_slots(ent, txt)) do
+        if not out[s.code] then
+            local st = s.st
+            st.why = stale_why(s.code, st)
+            local can, why = N.appointable(ent, s.p)
+            if not can then st.fixed = why or true end
+            if (tonumber(s.a.squad_id) or -1) ~= -1 then st.fixed = 'leads a squad' end
+            out[s.code] = st
+        end
+    end
+    return out
+end
+
+-- (r14 m1) a figure's id and whereabouts, for an appointment's result (how
+-- does a messenger end up with a nomadic camp?)
+function figure_where(u)
+    local hf = u and rd(function() return df.historical_figure.find(u.hist_figure_id) end)
+    if not hf then return nil, nil end
+    local w = rd(function() return hf.info.whereabouts end)
+    return hf.id, w and {state = enum_word(df.whereabouts_type, rd(function() return w.state end)),
+                         army_id = tonumber(rd(function() return w.army_id end))} or nil
+end
+
+-- Free a post whose holder left the fort and fill it at once (the best
+-- suitable citizen; with opts.interim, an office holder when none is free),
+-- all-or-nothing: the stale holder taken off as take_off does, the new one
+-- written and read back; if that fails the old holder is put back. Only
+-- after both stand: the former-position link and the history event.
+function free_stale(code, dry_run, txt, opts)
+    opts = opts or {}
+    local word = tostring(code):lower():gsub('_', ' ')
+    if NEVER_FREED[code] or N.MILITARY_OFFICES[code] or not N.OFFICES[code] then
+        return no('the AI frees only the civilian offices it fills, not the ' .. word)
+    end
+    local ent = U.fort_entity()
+    if not ent then return {ok = false, error = 'no fort government (entity) found'} end
+    local s = stale_slots(ent, txt, code)[1]
+    if not s then return no('no ' .. word .. ' has left the fort: nothing to free') end
+    local a, a_idx, p, hf, st = s.a, s.idx, s.p, s.hf, s.st
+    st.why = stale_why(code, st)
+    local can, why = N.appointable(ent, p)
+    if not can then return no(word .. " is not the fort's to fill (" .. tostring(why) .. ')', {stale = st}) end
+    if (tonumber(a.squad_id) or -1) ~= -1 then return no('the ' .. word .. "'s post leads a squad: never freed") end
+    local c, keeps = N.choose_holder(code, opts.interim == true)
+    if not c then
+        return no('nobody suitable to take the ' .. word .. "'s post: left as it is", {stale = st})
+    end
+    local new = df.unit.find(c.id)
+    local out = {ok = true, office = code, freed = st.name, freed_hf = hf.id, left_with = st.entity_name,
+                 goal = st.goal, why = st.why, stale = st, name = name_of(new, txt), unit_id = c.id,
+                 interim = keeps and true or nil, keeps = keeps, dry_run = dry_run or nil}
+    out.figure, out.whereabouts = figure_where(new)
+    if dry_run then return out end
+    local saved = take_off(ent, a, hf)
+    local okw, wrote = pcall(N.write_appointment, ent, a, a_idx, p, new)
+    if not okw or not wrote then
+        if not okw then
+            a.histfig = -1
+            pcall(drop_new, ent, a, df.historical_figure.find(new.hist_figure_id))
+        end
+        put_back(a, hf, saved)
+        pcall(N.sync_held, ent, true)
+        return {ok = false, office = code, restored = a.histfig == hf.id,
+                error = (okw and ('DFHack did not see ' .. tostring(out.name) .. ' appointed')
+                         or ('the appointment failed (' .. tostring(wrote):sub(1, 120) .. ')'))
+                        .. ', so ' .. tostring(st.name) .. ' was put back'}
+    end
+    note_former(ent, hf, a, p, saved)
+    return out
+end

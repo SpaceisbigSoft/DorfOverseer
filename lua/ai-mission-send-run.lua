@@ -459,17 +459,34 @@ function messenger_home()
             local why = okw and type(st) == 'table' and st.why
             return nil, 'the fort has no messenger\'s post' .. (why and (': ' .. tostring(why)) or '')
         end
+        -- (r14 m1) every holder of the post looked at: one at home is sent; "away"
+        -- only when none is; one who left the fort (no unit, on no mission of
+        -- the fort's: ai-nobles-swap stale_holder) is never "away"
+        local S
+        pcall(function() S = reqscript('ai-nobles-swap') end)
+        local away, left
         for _, a in ipairs(ent.positions.assignments) do
             if a.position_id == pos_id and a.histfig ~= -1 then
                 local hf = df.historical_figure.find(a.histfig)
-                local u = hf and df.unit.find(hf.unit_id)
-                if not u then return nil, 'the messenger is away' end
-                if u.flags1.inactive or u.flags2.killed then return nil, 'the messenger is away or dead' end
-                -- (0.105.47) the figure too: their row on Mission details
-                MESSENGER_HF, MESSENGER_NAME = a.histfig, first_name(hf)
-                return u.id
+                local okS, st = pcall(function() return S and hf and S.stale_holder(hf, ent, nil, true) end)
+                if okS and type(st) == 'table' then
+                    left = left or S.stale_why('MESSENGER', st)
+                else
+                    local u = hf and df.unit.find(hf.unit_id)
+                    if not u then
+                        away = away or 'the messenger is away'
+                    elseif u.flags1.inactive or u.flags2.killed then
+                        away = away or 'the messenger is away or dead'
+                    else
+                        -- (0.105.47) the figure too: their row on Mission details
+                        MESSENGER_HF, MESSENGER_NAME = a.histfig, first_name(hf)
+                        return u.id
+                    end
+                end
             end
         end
+        if away then return nil, away end
+        if left then return nil, left end
         return nil, 'nobody holds the messenger\'s post'
     end)
     if not ok then return nil, 'the messenger could not be read: ' .. tostring(r1):sub(1, 120) end

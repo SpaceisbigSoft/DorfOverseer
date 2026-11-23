@@ -1000,7 +1000,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             _guard(_peace_notes, s, cfg, notes, memory)               # (0.105.41, item 8) war and peace
             _guard(_export_rule, s, cfg, proposals, notes, memory)
         if can_use("offices"):
-            _guard(_messenger_rule, s, cfg, proposals, notes)
+            _guard(_messenger_rule, s, cfg, proposals, notes, memory)   # (r14 m1) memory: no second messenger lately
             _guard(_office_swap_rule, s, cfg, proposals, notes, memory)   # (r11 n1) the interim out, a far better holder
             if can_use("missions"):
                 _guard(_contact_rule, s, cfg, proposals, notes, memory)   # (0.105.24) proposals: send_mission

@@ -446,6 +446,8 @@ def short(a: dict) -> str:
         return f"mine a vein of {str(a.get('metal')).lower()} ore"
     if t == "appoint":
         office = str(a.get('office')).lower().replace('_', ' ')
+        if a.get("replace_stale"):   # (r14 m1)
+            return f"give the {office}'s post, whose holder left the fort, to a dwarf at home"
         if a.get("interim_out"):     # (r11 n1)
             return "give the messenger's post to a free, suitable dwarf (the office holder doubling as messenger steps down)"
         if a.get("replace"):
