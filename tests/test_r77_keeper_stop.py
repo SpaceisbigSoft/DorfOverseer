@@ -100,5 +100,34 @@ def _():
     assert issubclass(keeper.StopAsked, KeyboardInterrupt)
 
 
+@test("(verifier) the log rotation with a viewer holding the live log (rename refused): the old copies stay "
+      "as they were, the line still appended; once free, the usual shift")
+def _():
+    keeper.LOG.write_text("x" * 50, encoding="utf-8")
+    olds = {i: keeper.LOG.with_suffix(".old.log" if i == 1 else f".old{i}.log") for i in range(1, 6)}
+    for i, p in olds.items():
+        p.write_text(f"P{i}", encoding="utf-8")
+    real_max, real_replace = keeper.LOG_MAX, type(keeper.LOG).replace
+    keeper.LOG_MAX = 10
+
+    def refuse(self, target):
+        if self == keeper.LOG:
+            raise PermissionError("held by a viewer")
+        return real_replace(self, target)
+    try:
+        type(keeper.LOG).replace = refuse
+        for _ in range(4):
+            keeper.log("a line")
+        assert {i: p.read_text(encoding="utf-8") for i, p in olds.items()} == {i: f"P{i}" for i in olds}
+        assert keeper.LOG.read_text(encoding="utf-8").count("a line") == 4
+        type(keeper.LOG).replace = real_replace
+        keeper.log("free now")
+        assert olds[2].read_text(encoding="utf-8") == "P1" and "a line" in olds[1].read_text(encoding="utf-8")
+        assert keeper.LOG.read_text(encoding="utf-8").count("free now") == 1
+    finally:
+        type(keeper.LOG).replace = real_replace
+        keeper.LOG_MAX = real_max
+
+
 if __name__ == "__main__":
     finish()

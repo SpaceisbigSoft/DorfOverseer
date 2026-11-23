@@ -7,6 +7,7 @@
 #      Ctrl-C stops it, the fort left open)
 #   R  start the keepers that aren't running
 #   1-6  a fort's live log (A-F) in a window of its own
+#   K  force-stop a keeper that won't stop (asks first; its fort isn't left open)
 #   Q  close this window; the keepers keep running
 # A keeper still running in an old console window is left alone (its lock).
 # The old start-keepers.bat (six windows) still works.
@@ -49,8 +50,12 @@ function Test-Running($f) {
 function Start-Keeper($f) {
     $dir = Get-Folder $f
     if (-not (Test-Path $dir)) { Write-Host "  $($f.L): no folder $dir" -ForegroundColor Red; return }
-    Start-Process -FilePath 'python' -WorkingDirectory $dir -WindowStyle Hidden `
-        -ArgumentList @('brain\keeper.py', '--revive', '--preset', "`"$($f.Preset)`"") | Out-Null
+    # (verifier) through a hidden cmd, so an error before the keeper's own log
+    # (a bad delivery, a crash at start) lands in logs\keeper-console.txt
+    New-Item -ItemType Directory -Force -Path (Join-Path $dir 'logs') | Out-Null
+    $line = "python brain\keeper.py --revive --preset `"$($f.Preset)`" 2>> logs\keeper-console.txt"
+    Start-Process -FilePath 'cmd.exe' -WorkingDirectory $dir -WindowStyle Hidden `
+        -ArgumentList @('/d', '/c', $line) | Out-Null
     Write-Host "  $($f.L) $($f.Preset): started" -ForegroundColor Green
 }
 
@@ -82,7 +87,28 @@ function Stop-All {
     $left = @($Forts | Where-Object { Test-Running $_ })
     if ($left.Count -eq 0) { Write-Host 'Every keeper has stopped.' -ForegroundColor Green }
     else { Write-Host ("Still running: " + (($left | ForEach-Object { $_.L }) -join ' ') +
-                       " (an old console keeper? close its window)") -ForegroundColor Red }
+                       " (an old console keeper: close its window; a stuck hidden one: press K)") -ForegroundColor Red }
+    Start-Sleep -Seconds 3
+}
+
+# (verifier) a stuck hidden keeper has no window to close: its python process
+# found by its command line (keeper.py and its fort's preset) and ended. The
+# fort isn't left open this way (S does that); only for one that won't stop.
+function Kill-Stuck {
+    $left = @($Forts | Where-Object { Test-Running $_ })
+    if ($left.Count -eq 0) { Write-Host 'No keeper is running.' -ForegroundColor Green; Start-Sleep 2; return }
+    Write-Host ("Force-stop the keepers still running (" + (($left | ForEach-Object { $_.L }) -join ' ') +
+                ")? Their forts aren't left open this way. Y to go on: ") -ForegroundColor Yellow -NoNewline
+    if ([Console]::ReadKey($true).KeyChar.ToString().ToUpper() -ne 'Y') { return }
+    $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe'"
+    foreach ($f in $left) {
+        foreach ($p in $procs) {
+            if ($p.CommandLine -like '*keeper.py*' -and $p.CommandLine -like "*$($f.Preset)*") {
+                Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+                Write-Host "  $($f.L) $($f.Preset): ended (process $($p.ProcessId))" -ForegroundColor Yellow
+            }
+        }
+    }
     Start-Sleep -Seconds 3
 }
 
@@ -90,7 +116,7 @@ function Show-Log($i) {
     $f = $Forts[$i]
     $log = Join-Path (Get-Folder $f) 'logs\unattended.log'
     $cmd = "`$Host.UI.RawUI.WindowTitle = 'Keeper $($f.L) $($f.Preset): live log'; " +
-           "Get-Content -Path '$log' -Tail 40 -Wait"
+           "Get-Content -Path '$log' -Encoding UTF8 -Tail 40 -Wait"
     Start-Process -FilePath 'powershell' -ArgumentList @('-NoLogo', '-NoProfile', '-Command', $cmd) | Out-Null
 }
 
@@ -100,7 +126,7 @@ function Show-View {
     $run = ($Forts | ForEach-Object { if (Test-Running $_) { "$($_.L) on" } else { "$($_.L) off" } }) -join '   '
     Write-Host ''
     Write-Host "Keepers:  $run" -ForegroundColor Cyan
-    Write-Host '[S] stop all   [R] start stopped ones   [1-6] a fort''s live log (A-F)   [Q] close this window (keepers keep running)' -ForegroundColor DarkGray
+    Write-Host '[S] stop all   [R] start stopped ones   [1-6] a fort''s live log (A-F)   [K] force-stop a stuck one   [Q] close (keepers run on)' -ForegroundColor DarkGray
 }
 
 Clear-Host
@@ -118,6 +144,7 @@ while ($true) {
     }
     switch ($key) {
         'S' { Stop-All }
+        'K' { Kill-Stuck }
         'R' { Clear-Host; Write-Host 'Starting the stopped keepers...' -ForegroundColor Cyan; Start-Missing; Start-Sleep 2 }
         'Q' { exit }
         { $_ -in '1', '2', '3', '4', '5', '6' } { Show-Log ([int]$_ - 1) }

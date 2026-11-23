@@ -28,6 +28,7 @@ import keeper  # noqa: E402
 backup.BACKUP_DIR = TMP / "backups"
 backup.STATE = TMP / "backups" / "last.json"
 keeper.LOG_DIR = TMP / "keeper"
+keeper.STOP_FILE = keeper.LOG_DIR / "keeper-stop"   # (0.105.77) never a real fort's stop file
 keeper.LOG = TMP / "keeper" / "unattended.log"
 
 

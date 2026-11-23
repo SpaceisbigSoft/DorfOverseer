@@ -61,12 +61,17 @@ def log(line: str) -> None:
                 try:
                     # (0.100.1) five old copies (unattended.old.log, .old2 ... .old5):
                     # a whole night stays for the morning's review
+                    # (0.105.77, verifier) the live log renamed first: a viewer
+                    # holding it (the keepers' window's live log) then shifts
+                    # nothing, so the old copies aren't run together line by line
+                    tmp = LOG.with_suffix(".rotating.log")
+                    LOG.replace(tmp)
                     for i in range(LOG_OLD_KEPT, 1, -1):
                         older = LOG.with_suffix(f".old{i}.log")
                         newer = LOG.with_suffix(".old.log" if i == 2 else f".old{i - 1}.log")
                         if newer.exists():
                             newer.replace(older)
-                    LOG.replace(LOG.with_suffix(".old.log"))
+                    tmp.replace(LOG.with_suffix(".old.log"))
                 except OSError:
                     pass                      # (open in a viewer: rotate later, keep appending)
             with LOG.open("a", encoding="utf-8") as f:
@@ -409,6 +414,10 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
     if lock is None:
         log("Another keeper is already running for this folder: not starting a second one.")
         return 1
+    try:
+        STOP_FILE.unlink(missing_ok=True)       # (0.105.77) an old ask never stops a new run (at once: verifier)
+    except OSError:
+        pass
     quick_edit_off()
     started = stamp()
     close_handler(started)
@@ -435,10 +444,6 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
         except Exception as e:  # noqa: BLE001
             log(f"Revive couldn't start ({e}); running without it.")
     restarts, streak, runs = 0, 0, 0
-    try:
-        STOP_FILE.unlink(missing_ok=True)       # (0.105.77) an old ask never stops a new run
-    except OSError:
-        pass
     write_status(started, restarts, "running")      # (0.105.48, K8) health_check reads how it ended
     try:
         while max_runs is None or runs < max_runs:

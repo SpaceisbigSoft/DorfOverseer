@@ -26,6 +26,7 @@ from planner import Memory, plan  # noqa: E402
 
 TMP = Path(tempfile.mkdtemp())
 keeper.LOG_DIR = TMP
+keeper.STOP_FILE = keeper.LOG_DIR / "keeper-stop"   # (0.105.77) never a real fort's stop file
 keeper.LOG = TMP / "unattended.log"
 keeper.STATUS = TMP / "status.txt"
 keeper.HEARTBEAT = TMP / "heartbeat"
