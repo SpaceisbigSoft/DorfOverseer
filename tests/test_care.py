@@ -147,6 +147,7 @@ env.reqscript = function(name)
 end
 env.ipairs = zipairs
 assert(load(src, 'ai-nobles', 't', env))()
+env.MESSENGER_HOLD = false   -- (r14 hold) these tests check the appointment itself
 return env, ent, seated
 """
 

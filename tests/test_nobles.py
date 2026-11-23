@@ -110,6 +110,7 @@ env.ipairs = function(t)
     return ipairs(t)
 end
 assert(load(src, 'ai-nobles', 't', env))()
+env.MESSENGER_HOLD = false   -- (r14 hold) these tests check the appointment itself
 return env, ent, figs
 """
 
@@ -204,6 +205,7 @@ env.dfhack = {
         zone.assigned_unit_id = u.id; table.insert(u.owned_buildings, zone); return true end},
 }
 assert(load(src, 'ai-nobles', 't', env))()
+env.MESSENGER_HOLD = false   -- (r14 hold) these tests check the appointment itself
 return env, manager
 """
 

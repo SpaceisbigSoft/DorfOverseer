@@ -496,5 +496,18 @@ def _():
     assert "replace_stale = a.replace_stale == true" in works
 
 
+@test("r14 hold: with MESSENGER_HOLD on, no messenger is appointed and no messenger post freed; other offices go on")
+def _():
+    env = world()
+    env.MESSENGER_HOLD = True
+    a = env.appoint("MESSENGER", False, None)
+    assert a.ok is False and "held (22 Nov)" in str(a.error), dict(a)
+    S = env.reqscript("ai-nobles-swap")
+    f = S.free_stale("MESSENGER", False, None, None)
+    assert f.ok is False and "held (22 Nov)" in str(f.error), dict(f)
+    m = env.appoint("MANAGER", True, None)
+    assert "held (22 Nov)" not in str(m.error or ""), dict(m)
+
+
 if __name__ == "__main__":
     finish()

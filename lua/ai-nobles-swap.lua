@@ -22,7 +22,7 @@
 local N = reqscript('ai-nobles')
 local U = reqscript('ai-util')      -- (r11) the shared helpers
 
-PART_VERSIONS = {['ai-nobles-swap'] = '0.105.70'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-nobles-swap'] = '0.105.71'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
 
 -- the civilian offices the AI may give to a better holder. (r11 n1 fixes)
 -- Not the sheriff nor the captain of the guard: their posts lead the fortress
@@ -468,6 +468,9 @@ end
 -- after both stand: the former-position link and the history event.
 function free_stale(code, dry_run, txt, opts)
     opts = opts or {}
+    if N.MESSENGER_HOLD and code == 'MESSENGER' then     -- (r14 hold) see ai-nobles
+        return {ok = false, rejected = true, error = N.MESSENGER_HOLD_WHY, why = N.MESSENGER_HOLD_WHY}
+    end
     local word = tostring(code):lower():gsub('_', ' ')
     if NEVER_FREED[code] or N.MILITARY_OFFICES[code] or not N.OFFICES[code] then
         return no('the AI frees only the civilian offices it fills, not the ' .. word)

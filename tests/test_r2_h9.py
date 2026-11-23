@@ -549,6 +549,7 @@ env.reqscript = function(name)
   error('no module ' .. name)
 end
 assert(load(src, 'ai-nobles', 't', env))()
+env.MESSENGER_HOLD = false   -- (r14 hold) these tests check the appointment itself
 return env
 """
 

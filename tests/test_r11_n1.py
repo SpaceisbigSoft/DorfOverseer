@@ -158,6 +158,7 @@ env.dfhack = {units = {getNoblePositions = function(u)
               translation = {translateName = function(n) return n end}}
 assert(load(setup or '', 'setup', 't', env))()
 assert(load(src, 'ai-nobles', 't', env))()
+env.MESSENGER_HOLD = false   -- (r14 hold) these tests check the appointment itself
 W.RUN = nil
 local real_req = env.reqscript
 env.reqscript = function(n, ...)

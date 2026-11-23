@@ -735,8 +735,19 @@ function choose_holder(code, interim) return choose(code, interim) end   -- (r14
 -- Appoint the best-suited citizen to a vacant `code` office. (r11 n1) opts:
 -- `interim` (the messenger: an office holder when nobody free is suitable);
 -- `replace` (a held civilian office's holder replaced: lua/ai-nobles-swap.lua).
+-- (r14 hold, live 22 Nov 21:40) every dwarf made messenger is taken at once
+-- into the nomadic group's camp army near the fort (entity 3160, CAMP) and
+-- walks off the map: A lost three, E three, each freed post refilled within
+-- minutes. Until it's understood, the AI appoints no messenger and frees no
+-- messenger post (MESSENGER_HOLD). A dwarf already holding it is left alone.
+MESSENGER_HOLD = (MESSENGER_HOLD == nil) and true or MESSENGER_HOLD
+MESSENGER_HOLD_WHY = 'held (22 Nov): every new messenger joins the nomadic camp army near the fort and walks off the map; no messenger is appointed until this is understood'
+
 function appoint(code, dry_run, txt, opts)
     opts = type(opts) == 'table' and opts or {}
+    if MESSENGER_HOLD and (code == 'MESSENGER' or (opts.interim_out)) then
+        return {ok = false, rejected = true, error = MESSENGER_HOLD_WHY, why = MESSENGER_HOLD_WHY}
+    end
     if not OFFICES[code] then
         return {ok = false, rejected = true, error = 'the AI only appoints ' .. table.concat(OFFICE_ORDER, ', ')}
     end

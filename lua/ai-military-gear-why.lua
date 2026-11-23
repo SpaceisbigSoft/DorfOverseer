@@ -8,7 +8,7 @@
 -- and a name swapped there reaches this file.
 
 if not GEAR_PART_LOCALS then qerror('ai-military-gear-why is a part of ai-military-gear; run ai-military-gear') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear-why'] = '0.105.70'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear-why'] = '0.105.71'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, fort_squads, memo, eq_ids, gear_items, free_gear = GEAR_PART_LOCALS.U, GEAR_PART_LOCALS.fort_squads, GEAR_PART_LOCALS.memo, GEAR_PART_LOCALS.eq_ids, GEAR_PART_LOCALS.gear_items, GEAR_PART_LOCALS.free_gear   -- (r8) handed on by the files before
 
