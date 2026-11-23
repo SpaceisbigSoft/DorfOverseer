@@ -464,13 +464,13 @@ function messenger_home()
         -- the fort's: ai-nobles-swap stale_holder) is never "away"
         local S
         pcall(function() S = reqscript('ai-nobles-swap') end)
-        local away, left
+        local away, gone
         for _, a in ipairs(ent.positions.assignments) do
             if a.position_id == pos_id and a.histfig ~= -1 then
                 local hf = df.historical_figure.find(a.histfig)
                 local okS, st = pcall(function() return S and hf and S.stale_holder(hf, ent, nil, true) end)
                 if okS and type(st) == 'table' then
-                    left = left or S.stale_why('MESSENGER', st)
+                    gone = gone or S.stale_why('MESSENGER', st)
                 else
                     local u = hf and df.unit.find(hf.unit_id)
                     if not u then
@@ -486,7 +486,7 @@ function messenger_home()
             end
         end
         if away then return nil, away end
-        if left then return nil, left end
+        if gone then return nil, gone end
         return nil, 'nobody holds the messenger\'s post'
     end)
     if not ok then return nil, 'the messenger could not be read: ' .. tostring(r1):sub(1, 120) end
