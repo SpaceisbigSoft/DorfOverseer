@@ -108,6 +108,12 @@ local function map_key(W, H, Z)
     return ('%s:%d:%d:%d'):format(tostring(ok and site or '?'), W, H, Z)
 end
 
+-- the game tick (nil unread): an edge read twice in one tick is the same read
+function now_tick()
+    local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+    return ok and type(t) == 'number' and t or nil
+end
+
 -- The edge groups, cached ({group = true}, or nil when the map can't be read).
 function edge_groups(force)
     local W, H, Z = map_dims()
@@ -131,7 +137,21 @@ function edge_groups(force)
     if not okr then groups, n = edge_groups_of(W, H, lo, hi, group_at) end
     EDGE.key, EDGE.groups, EDGE.tiles, EDGE.report, EDGE.repath_n = k, groups, n, WAY.reports, rp
     EDGE.z = {lo, hi}
+    EDGE.tick = now_tick()
     return groups
+end
+
+-- (0.105.73) The edge groups read again for a "can't walk out" verdict (the
+-- mission travellers', a caravan's), unless already read this game tick.
+-- Live 22 Nov 21:42 on A: the `missions` report (rebuilt once a day) said the
+-- messenger and all 42 soldiers of five squads couldn't walk off the map,
+-- while the `way_out` report of the same state read all 68 citizens in walk
+-- group 5287, open and fresh: DF had renumbered its walk groups since the
+-- cached read (0.105.51's case, here on the travellers' side).
+function edge_groups_fresh()
+    local t = now_tick()
+    if t ~= nil and EDGE.tick == t and EDGE.groups then return EDGE.groups end
+    return edge_groups(true)
 end
 
 -- --- the citizens' group -------------------------------------------------------------

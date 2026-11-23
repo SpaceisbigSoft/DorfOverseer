@@ -86,8 +86,14 @@ end
 
 -- (0.105.47, J16) the map's edge groups (lua/ai-way-out.lua: the one
 -- way-out check, cached per map), else the entrances' outside tiles as before
-function out_groups()
-    local ok, g = pcall(function() return reqscript('ai-way-out').edge_groups() end)
+-- (0.105.73) fresh: read again unless read this tick (ai-way-out
+-- edge_groups_fresh): a "can't walk out" verdict is never given from the cache
+function out_groups(fresh)
+    local ok, g = pcall(function()
+        local W = reqscript('ai-way-out')
+        if fresh and W.edge_groups_fresh then return W.edge_groups_fresh() end
+        return W.edge_groups()
+    end)
     if ok and type(g) == 'table' and next(g) ~= nil then return g end
     return out_groups_of(gates(), wgroup)
 end
@@ -114,13 +120,30 @@ local function unit_pos(uid)
     return {id = uid, x = x, y = y, z = z}
 end
 
+-- (0.105.73) The groups to judge these travellers by: the cached edges, read
+-- again first when any of them would be judged blocked (live 22 Nov: DF's
+-- renumbered walk groups held A's messenger and five squads home).
+function groups_for(units, cached, fresh_read, group_at)
+    local groups = cached
+    if groups == nil then return fresh_read() end
+    for _, u in ipairs(units or {}) do
+        local g = group_at(u.x, u.y, u.z)
+        if g == 0 or not groups[g] then return fresh_read() or groups end
+    end
+    return groups
+end
+
+local function travellers_groups(units)
+    return groups_for(units, out_groups(), function() return out_groups(true) end, wgroup)
+end
+
 function way(unit_ids)
     local units = {}
     for _, id in ipairs(unit_ids or {}) do
         local p = unit_pos(id)
         if p then table.insert(units, p) end
     end
-    return judge(units, out_groups(), wgroup)
+    return judge(units, travellers_groups(units), wgroup)
 end
 
 -- Pure: the surface entrances the AI's own gates hold shut (GATES.closed),
@@ -220,21 +243,23 @@ end
 -- no messenger home), squads = {["<id>"] = blocked members}, shut = the
 -- AI's shut surface entrances, holds}
 function report(squads, messenger_uid)
-    local groups = out_groups()
-    local out = {known = groups ~= nil, squads = {}}
-    if groups == nil then return out end
-    if messenger_uid then
-        local p = unit_pos(messenger_uid)
-        if p then out.messenger_blocked = #judge({p}, groups, wgroup).blocked > 0 end
-    end
+    local mp = messenger_uid and unit_pos(messenger_uid) or nil
+    local by_squad, all = {}, {}
+    if mp then table.insert(all, mp) end
     for _, s in ipairs(squads or {}) do
         local units = {}
         for _, uid in ipairs(s.units or {}) do
             local p = unit_pos(uid)
-            if p then table.insert(units, p) end
+            if p then table.insert(units, p); table.insert(all, p) end
         end
-        if #units > 0 then out.squads[tostring(s.id)] = #judge(units, groups, wgroup).blocked end
+        if #units > 0 then table.insert(by_squad, {id = s.id, units = units}) end
     end
+    -- (0.105.73) one fresh read when anyone would read blocked
+    local groups = travellers_groups(all)
+    local out = {known = groups ~= nil, squads = {}}
+    if groups == nil then return out end
+    if mp then out.messenger_blocked = #judge({mp}, groups, wgroup).blocked > 0 end
+    for _, s in ipairs(by_squad) do out.squads[tostring(s.id)] = #judge(s.units, groups, wgroup).blocked end
     out.shut = shut_ai()
     local h = holds()
     if #h > 0 then out.holds = h end

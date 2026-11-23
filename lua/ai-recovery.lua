@@ -102,9 +102,15 @@ local function merchants_by_civ()
     return by
 end
 
--- the map's edge groups (ai-way-out), or nil
-local function edges()
-    local ok, g = pcall(function() return reqscript('ai-way-out').edge_groups() end)
+-- the map's edge groups (ai-way-out), or nil; (0.105.73) fresh: read again
+-- unless read this tick, for a "can't leave" verdict (DF renumbers its walk
+-- groups: the cache missed them, live 22 Nov)
+local function edges(fresh)
+    local ok, g = pcall(function()
+        local W = reqscript('ai-way-out')
+        if fresh and W.edge_groups_fresh then return W.edge_groups_fresh() end
+        return W.edge_groups()
+    end)
     if ok and type(g) == 'table' then return g end
     return nil
 end
@@ -114,6 +120,17 @@ local function can_leave(u, eg)
     local ok, g = pcall(function() return dfhack.maps.getWalkableGroup(u.pos) end)
     if not ok or type(g) ~= 'number' or g == 0 then return false end
     return eg[g] == true
+end
+
+-- (0.105.73) the edges for these merchants: the cache, read again first when
+-- any would read "can't leave"
+local function edges_for(list)
+    local eg = edges()
+    if not eg then return edges(true) end
+    for _, u in ipairs(list) do
+        if can_leave(u, eg) == false then return edges(true) or eg end
+    end
+    return eg
 end
 
 -- is this caravan done trading (DF's Leaving, or out of time and not coming)?
@@ -126,7 +143,6 @@ end
 function caravans()
     local out = {}
     local by = merchants_by_civ()
-    local eg = nil
     local okc, civ = pcall(function() return df.global.plotinfo.civ_id end)
     pcall(function()
         for _, c in ipairs(df.global.plotinfo.caravans) do
@@ -137,9 +153,9 @@ function caravans()
             local list = by[c.entity] or {}
             e.merchants = #list
             if #list > 0 and leaving(c, state) then
-                eg = eg or edges()
-                local n, known = 0, eg ~= nil
-                for _, u in ipairs(list) do if can_leave(u, eg) then n = n + 1 end end
+                local leg = edges_for(list)
+                local n, known = 0, leg ~= nil
+                for _, u in ipairs(list) do if can_leave(u, leg) then n = n + 1 end end
                 e.can_leave = known and n or nil
                 e.leaving = true
             elseif leaving(c, state) then
@@ -165,7 +181,7 @@ function free_caravan(entity, dry)
     end
     local list = merchants_by_civ()[entity] or {}
     if #list == 0 then return {ok = false, rejected = true, error = 'none of its merchants is on the map'} end
-    local eg = edges()
+    local eg = edges_for(list)
     local told, shut = 0, 0
     for _, u in ipairs(list) do
         if told >= CARAVAN_UNITS_MAX then break end

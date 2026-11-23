@@ -9,7 +9,7 @@
 -- with ai-builder-deepdepot come from DEPOT_PART_LOCALS.
 
 if not PARTS then qerror('ai-builder-wagonroad is a part of ai-builder; run ai-builder') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wagonroad'] = '0.105.72'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wagonroad'] = '0.105.73'   -- bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 local save_deep_depot, deep_now, wagon_ground, building_blocks = DEPOT_PART_LOCALS.save_deep_depot, DEPOT_PART_LOCALS.deep_now, DEPOT_PART_LOCALS.wagon_ground, DEPOT_PART_LOCALS.building_blocks
