@@ -101,6 +101,7 @@ env.df = {
     building = {find = find},
     workshop_type = setmetatable({}, {__index = function(_, k) return k end}),
     item_type = setmetatable({}, {__index = function(_, k) return k end}),
+    building_type = {Workshop = 'Workshop'},
 }
 env.dfhack = {
     maps = {getTileFlags = function(x, y, z)
@@ -108,7 +109,8 @@ env.dfhack = {
         return {pile = p ~= nil, outside = W.outside[key(x, y, z)] == true}, {item = W.used[key(x, y, z)] == true}
     end},
     items = {getPosition = function(it) return it.pos.x, it.pos.y, it.pos.z end,
-             getContainer = function(it) return it.container end},
+             getContainer = function(it) return it.container end,
+             getHolderBuilding = function(it) return it.holder end},
     buildings = {findAtTile = function(p) return in_pile(p.x, p.y, p.z) end},
     persistent = {getSiteData = function(k, d) local v = W.site[k]; if v == nil then return d end return v end,
                   saveSiteData = function(k, v) W.site[k] = v end},
@@ -216,8 +218,16 @@ def _():
     w.item(T(lua, {"kind": "DRINK", "flags": {"in_inventory": True}, "container": barrel}))                       # in a barrel
     w.item(T(lua, {"kind": "PLANT", "flags": {"on_ground": True, "forbid": True}, "pos": {"x": 7, "y": 5, "z": 100}}))
     w.item(T(lua, {"kind": "FISH", "flags": {"removed": True}}))
+    # (0.105.85) a workshop's finished meat nobody hauls off; one in a job there doesn't count
+    shop = lua.eval("{getType = function() return 'Workshop' end}")
+    m1 = T(lua, {"kind": "MEAT", "flags": {}})
+    m1.holder = shop
+    w.item(m1)
+    m2 = T(lua, {"kind": "MEAT", "flags": {"in_job": True}})
+    m2.holder = shop
+    w.item(m2)
     it = py(env.report())["items"]
-    assert it == {"loose": 2, "exposed": 1, "in_containers": 1, "rotten": 1, "total": 5}, it
+    assert it == {"loose": 2, "exposed": 1, "in_containers": 1, "rotten": 1, "total": 7, "in_shops": 1}, it
 
 
 # --- 2. the actions ----------------------------------------------------------------------
@@ -386,6 +396,21 @@ def _():
     assert not props                                     # a handful of dwarves: not yet
     props, _ = mine(fort(section(shops=()), citizens=40))
     assert not props                                     # no kitchen nor still yet
+
+
+@test("brain (0.105.85, F): the near piles full, no food loose but 110 rotting in the workshops: another pile, "
+      "past the size cap up to twice it")
+def _():
+    full = [pile(1, 30, 20, w=7, h=7, used=49), pile(2, 30, 30, w=7, h=7, used=49),
+            pile(3, 21, 30, w=7, h=7, used=49)]                     # 147 AI tiles near, all used
+    props, _ = mine(fort(section(full), citizens=95))
+    assert not [x for x in props if x.rule == "food_store"], props   # nothing loose: nothing, as before
+    props, _ = mine(fort(section(full, in_shops=110), citizens=95))
+    p = [x for x in props if x.rule == "food_store"]
+    assert p and p[0].action.get("more") is True and "left in the workshops" in p[0].reason, props
+    big = [pile(i, 30, 20 + i, w=7, h=7, used=49) for i in range(1, 7)]   # 294 tiles: past twice the cap
+    props, _ = mine(fort(section(big, in_shops=110), citizens=95))
+    assert not [x for x in props if x.rule == "food_store"], props
 
 
 @test("brain: a pile near but open to the sky doesn't count: a roofed one beside it (more); far piles don't count")

@@ -220,9 +220,16 @@ def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
         tiles = sum(_int(p.get("tiles")) for p in near_all.values())
         used = sum(_int(p.get("used")) for p in near_all.values())
         ai_tiles = sum(_int(p.get("tiles")) for p in near_all.values() if p.get("ai"))
-        loose = _int(items.get("loose"))
+        # (0.105.85) the food left in the workshops for want of a pile with
+        # room counts as lying about (F: 110 meat rotting in the butcher's,
+        # 0 loose, all 282 pile tiles full, miasma for 82 citizens)
+        in_shops = _int(items.get("in_shops"))
+        loose = _int(items.get("loose")) + in_shops
         if (tiles and used / tiles >= cfg["food_store_full_share"] and loose >= cfg["food_store_loose_min"]
-                and ai_tiles < want * cfg["food_store_tiles_cap_factor"]):
+                and (ai_tiles < want * cfg["food_store_tiles_cap_factor"]
+                     # (0.105.85) food rotting in the shops: room past the cap, to twice it
+                     or (in_shops >= cfg["food_store_loose_min"]
+                         and ai_tiles < 2 * want * cfg["food_store_tiles_cap_factor"]))):
             fullest = max(near_all.values(), key=lambda p: (_int(p.get("used")) / max(1, _int(p.get("tiles"))), -p["id"]))
             shop = next((r for r in shops if r["id"] == fullest.get("shop_id")), None) or next(
                 r for r in shops if fullest in near(r, good))
@@ -235,7 +242,9 @@ def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
                 "food_store", {"type": "food_pile", "building_id": shop["id"], "tiles": want,
                                "barrels": food_barrels_for(want, cfg), "reach": reach, "more": True},
                 f"the food stockpiles near the {shop.get('kind')} are full ({used} of {tiles} tiles used) and "
-                f"{loose} food items lie outside a pile (they rot): put another of about {want} tiles beside it", 5))
+                f"{loose} food items lie outside a pile"
+                + (f" ({in_shops} of them left in the workshops)" if in_shops else "")
+                + f" (they rot): put another of about {want} tiles beside it", 5))
     # 4. spoilage risen lately: the cats kept to hunt the vermin
     seen = _d(getattr(memory, "food_store_seen", None)) if memory is not None else {}
     rise_tick = seen.get("rise_tick")

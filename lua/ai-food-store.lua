@@ -365,7 +365,7 @@ end
 -- The walk stops at ITEMS_MAX items or ITEMS_SECONDS: the counts then carry
 -- partial = true (capped too, for the item cap).
 function item_counts(seconds)
-    local out = {loose = 0, exposed = 0, in_containers = 0, rotten = 0, total = 0}
+    local out = {loose = 0, exposed = 0, in_containers = 0, rotten = 0, total = 0, in_shops = 0}
     local seen = 0
     local other = df.global.world.items.other
     local deadline = os.clock() + (seconds or ITEMS_SECONDS)
@@ -387,6 +387,16 @@ function item_counts(seconds)
                         local des = x and dfhack.maps.getTileFlags(x, y, z)
                         if des and des.pile then out.exposed = out.exposed + 1
                         elseif des and not des.outside then out.loose = out.loose + 1 end
+                    elseif not f.on_ground and not f.in_job and not f.forbid then
+                        -- (0.105.85) a workshop's finished food nobody hauls
+                        -- off (no pile with room): F, 23 Nov: 110 meat, 15 fish,
+                        -- cheese left in the shops, rotting into miasma for 82
+                        -- citizens while all 282 food pile tiles stood full
+                        local okh, hb = pcall(dfhack.items.getHolderBuilding, it)
+                        if okh and hb then
+                            local okt, wk = pcall(function() return hb:getType() == df.building_type.Workshop end)
+                            if okt and wk then out.in_shops = out.in_shops + 1 end
+                        end
                     end
                 end
             end

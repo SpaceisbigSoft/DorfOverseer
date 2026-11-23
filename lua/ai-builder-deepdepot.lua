@@ -9,7 +9,7 @@
 -- uses too are handed on through DEPOT_PART_LOCALS.
 
 if not PARTS then qerror('ai-builder-deepdepot is a part of ai-builder; run ai-builder') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-deepdepot'] = '0.105.84'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-deepdepot'] = '0.105.85'   -- bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
