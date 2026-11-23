@@ -33,8 +33,9 @@ PARTS = {planner_select: ("SHOPS_RETRY_DAYS", "SHOPS_RETRY_MAX", "SQUAD_ORDER_KE
 LATE = {planner_select: ("mood_blocked", "order_gate", "reserve_room"),
         planner_record: ("note_gate_stuck", "note_holdfast", "note_way_out")}
 
-# dir(planner) at main 6298b4a (0.105.62), before the split; (r11 n1) + _office_swap_rule
+# dir(planner) at main 6298b4a (0.105.62), before the split; (r11 n1) + _office_swap_rule; (0.105.78) + meal_glut_filter
 NAMES_6298B4A = (
+    'meal_glut_filter',
     'ACTION_LOG_MAX', 'ADJUST_BOUNDS', 'AGENDA_THEMES', 'AI_OFFICES', 'ALERT_DANGERS', 'ALL_FOOD',
     'ASKED_TICKS', 'BASIC_STOCKPILES', 'BASIC_WORKSHOPS', 'BREW_RECIPES', 'BUILDABLE_SHOPS', 'CHARACTER_KINDS',
     'CISTERN_WORDS', 'COAL_STONES', 'COMPLAINT_WORDS', 'CONTAINER_RECIPES', 'COOLDOWN_KEYS', 'CROWD_LOCATIONS',

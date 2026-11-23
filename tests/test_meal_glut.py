@@ -40,6 +40,13 @@ def _():
     assert len(notes) == 1 and "meal_variety" in notes[0] and "stress_care" in notes[0] and "2532" in notes[0], notes
 
 
+@test("needs_meal's lavish order (good meals short) is kept past the cap; stress_care's is held")
+def _():
+    ps = props() + [Proposal("needs_meal", {"type": "work_order", "recipe": "prepare_lavish_meal", "amount": 20}, "n", 5)]
+    kept = G.meal_glut_filter(state(2532), CFG, ps, [])
+    assert [p.rule for p in kept] == ["drink", "bolts", "needs_meal"], kept
+
+
 @test("under three times the target: nothing held")
 def _():
     cap = 17 * CFG["meals_per_dwarf"] * CFG["kitchen_ban_meals_factor"]

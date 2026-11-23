@@ -18,7 +18,9 @@
   2,532 servings for 17 dwarves, 150 a dwarf, from meal_variety's biscuits
   and stress_care's lavish meals, none capped; the stock rotted in its
   barrels, 10-25 items at a time, and the rot's miasma beside the kitchen
-  left 14 of 17 dwarves disgusted).
+  left 14 of 17 dwarves disgusted). needs_meal's lavish order is kept: it
+  weighs the good meals (worth over 20) and has its own ceiling (0.105.47,
+  I7b: plain meals never stand in for a good one).
 """
 
 from __future__ import annotations
@@ -111,12 +113,14 @@ def unknown_filter(s: dict, proposals: list, notes: list) -> list:
 # --- meals past any use -------------------------------------------------------
 
 MEAL_ORDER_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
+MEAL_GLUT_KEEP = {"needs_meal"}      # good meals short: its own ceiling (meals_hard_max_pd) and lavish_due
 
 
 def meal_glut_filter(s: dict, cfg: dict, proposals: list, notes: list) -> list:
     """Meal orders held while the prepared meals are `kitchen_ban_meals_factor`
     times their target (`meals_per_dwarf` a citizen): more only rots. An
-    unread stock or no citizens holds nothing."""
+    unread stock or no citizens holds nothing; needs_meal's order (good meals
+    short, by planner_society.lavish_due) is never held."""
     st = _d(s.get("stocks"))
     have = st.get("prepared_meals")
     citizens = _d(s.get("dwarves")).get("total")
@@ -130,7 +134,8 @@ def meal_glut_filter(s: dict, cfg: dict, proposals: list, notes: list) -> list:
     kept, held = [], []
     for p in proposals:
         a = _d(p.action)
-        if a.get("type") == "work_order" and a.get("recipe") in MEAL_ORDER_RECIPES:
+        if (a.get("type") == "work_order" and a.get("recipe") in MEAL_ORDER_RECIPES
+                and p.rule not in MEAL_GLUT_KEEP):
             held.append(p.rule)
             continue
         kept.append(p)
