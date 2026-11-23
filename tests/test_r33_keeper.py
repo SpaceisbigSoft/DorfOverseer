@@ -189,8 +189,10 @@ def _():
     src = root / "autosave 1"
     src.mkdir(parents=True, exist_ok=True)
     (src / "f").write_text("x")
+    (src / "world.sav").write_text("x")                 # (r14 k1) a save has a world.sav
     old = time.time() - 4000
     os.utime(src / "f", (old, old))
+    os.utime(src / "world.sav", (old, old))
     os.utime(src, (old, old))
     backup.SESSION.clear()
     backup.SESSION["Other#7"] = old - 10

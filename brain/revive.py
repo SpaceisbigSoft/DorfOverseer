@@ -113,11 +113,27 @@ def load_candidates() -> tuple[list[str], str | None]:
         return [], d.get("world")
     root = save_root(d["df_path"], d["save_dir"]) or Path(d["df_path"]) / "save"   # (0.99.13)
     from backup import save_mtime
+    import save_check
     # (0.105.0 review) a backup restored earlier ("AI restore <date>") is a candidate too
     cands = [root / d["save_dir"]] + sorted(root.glob("autosave*")) + sorted(root.glob(RESTORE_PREFIX + "*"))
     cands = [c for i, c in enumerate(cands) if c.is_dir() and c not in cands[:i]]
     cands.sort(key=save_mtime, reverse=True)
-    return [c.name for c in cands], d.get("world")
+    # (r14 k1) never a damaged save (brain/save_check.py: a world.sav torn when
+    # the PC went down; E's 'autosave 3' hung DF on load twice), the pinned
+    # folder too; the reviver says which were passed over (LAST_DAMAGED)
+    LAST_DAMAGED.clear()
+    keep = []
+    for c in cands:
+        why = save_check.damage(c)
+        if why:
+            LAST_DAMAGED.append((c.name, why))
+        else:
+            keep.append(c)
+    return [c.name for c in keep], d.get("world")
+
+
+# (r14 k1) the damaged folders the last load_candidates() passed over: (name, why)
+LAST_DAMAGED: list[tuple[str, str]] = []
 
 
 RESTORE_PREFIX = "AI restore"
@@ -140,8 +156,16 @@ def restore_from_backup(log=None) -> str | None:
     # of the same embark has the same world and site), newest save first
     copies = backup.copies_of(p.get("world"), p.get("site"), p.get("save_dir"), run=pin.run_id())
     root = save_root(p["df_path"], p["save_dir"]) or Path(p["df_path"]) / "save"
+    import save_check
     for c in copies:
         name = f"{RESTORE_PREFIX} {c.name}"
+        why = save_check.damage(c)
+        if why:
+            # (r14 k1) a copy of a torn save would only fail again: the next older one
+            if log and (str(c), why) not in _COPY_SAID:
+                _COPY_SAID.add((str(c), why))
+                log(f"Revive: the backup copy {c} is damaged ({why}): not restored.")
+            continue
         dest = root / name
         if dest.exists() or (root.parent / OLD_FOLDER / name).exists():
             continue                      # restored before (and failed, or it'd be loaded): an older one
@@ -165,6 +189,9 @@ def restore_from_backup(log=None) -> str | None:
         prune_restores(root, keep=name, log=log)
         return name
     return None
+
+
+_COPY_SAID: set = set()
 
 
 def _move_aside(folder: Path, into: Path, log=None) -> bool:
@@ -437,14 +464,29 @@ def save_stamp(folder: str) -> float | None:
     when it isn't there. DF reuses "autosave N" every season: a count of
     failed loads holds only for the save as it was when it failed."""
     try:
-        import pin
-        p = pin.current() or json.loads(LAST_FORT.read_text(encoding="utf-8"))
-        root = save_root(p["df_path"], p["save_dir"]) or Path(p["df_path"]) / "save"
+        root = _fort_root()
         d = root / folder
         if not d.is_dir():
             return None
         from backup import save_mtime
         return save_mtime(d)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def _fort_root() -> Path:
+    """The pinned (or last) fort's save root. Raises when unknown."""
+    import pin
+    p = pin.current() or json.loads(LAST_FORT.read_text(encoding="utf-8"))
+    return save_root(p["df_path"], p["save_dir"]) or Path(p["df_path"]) / "save"
+
+
+def damaged_folder(folder: str) -> str | None:
+    """(r14 k1) Why the save `folder` in the pinned (or last) fort's save root
+    is damaged (brain/save_check.py), or None (whole, absent, unknown)."""
+    try:
+        import save_check
+        return save_check.damage(_fort_root() / folder)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
 
@@ -468,6 +510,10 @@ class Reviver:
         # world.sav's time): a folder DF has written again since is tried again
         self.fail_stamp: dict[str, float | None] = {}
         self.save_stamp = save_stamp
+        # (r14 k1) a damaged save (a world.sav torn by a sudden shutdown) is
+        # never loaded; said once per folder as written (folder, its stamp)
+        self.damaged = damaged_folder
+        self.damaged_said: set = set()
         self.loading: tuple[str, float] | None = None
         self.restore = restore_from_backup
         self.restored: list[str] = []
@@ -660,8 +706,10 @@ class Reviver:
             return 0
         return self.load_fails[folder]
 
-    def _count_fail(self, folder: str, why: str) -> None:
-        n = self.load_fails[folder] = self._fails(folder) + 1
+    def _count_fail(self, folder: str, why: str, full: bool = False) -> None:
+        """(r14 k1) `full`: a lasting fault, counted as LOAD_FAILS_MAX at once."""
+        n = self._fails(folder) + 1
+        n = self.load_fails[folder] = max(n, LOAD_FAILS_MAX) if full else n
         try:
             self.fail_stamp[folder] = self.save_stamp(folder)
         except Exception:  # noqa: BLE001
@@ -712,8 +760,57 @@ class Reviver:
                          f"counted against the save ({n} stall(s) in a row).")
             elif now - since >= LOAD_TIMEOUT_S:
                 self._load_failed(f"no fort {LOAD_TIMEOUT_S // 60} minutes after")
+        elif state == "unknown" and now - since >= LOAD_TIMEOUT_S:
+            # (r14 k1) DF stopped answering while it loaded the save and never
+            # came back (E's torn 'autosave 3' hung it): counted in full, so the
+            # next try (after the hung game is closed) takes the next save
+            self.loading = None
+            self._count_fail(folder, f"Dwarf Fortress stopped answering during the load, {LOAD_TIMEOUT_S // 60} "
+                                     "minutes after it began: hung", full=True)
         elif now - since >= LOAD_TIMEOUT_S:
             self._load_failed(f"no fort {LOAD_TIMEOUT_S // 60} minutes after")
+
+    def _skip_damaged(self, folders: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
+        """(r14 k1) The candidates without the damaged ones, and those passed
+        over (load_candidates' own, and any the check here finds: a pinned
+        folder, a candidates list from elsewhere): never loaded."""
+        skipped = list(LAST_DAMAGED)
+        keep = []
+        for f in folders:
+            try:
+                why = self.damaged(f)
+            except Exception:  # noqa: BLE001  (can't tell: not skipped)
+                why = None
+            if why:
+                skipped.append((f, why))
+            else:
+                keep.append(f)
+        return keep, skipped
+
+    def _say_damaged(self, skipped: list[tuple[str, str]], nxt: str | None) -> None:
+        """(r14 k1) Each damaged folder said once per save as written (its
+        stamp), with a Needs you line: the AI never moves, deletes or
+        rewrites a save."""
+        import save_check
+        for f, why in skipped:
+            try:
+                stamp = self.save_stamp(f)
+            except Exception:  # noqa: BLE001
+                stamp = None
+            if (f, stamp) in self.damaged_said:
+                continue
+            self.damaged_said.add((f, stamp))
+            guess = ", written as the PC went down?" if save_check.torn(why) else ""
+            then = f"loading '{nxt}'" if nxt else "no other save of the fort is left to load"
+            self.log(f"Revive: '{f}' is damaged ({why}{guess}): skipped, {then}.")
+            try:
+                root = _fort_root()
+                where, aside = f" in {root}", f" into {root.parent / 'old-saves'}"
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                where, aside = "", " out of the game's save folder"
+            self.log(f"Revive: Needs you: the save '{f}'{where} is damaged and is never loaded; move it{aside} "
+                     "when you like (the AI never moves, deletes or rewrites a save; DF writes over it at a "
+                     "later autosave anyway).")
 
     def _title_progress(self, folder: str) -> tuple[str, str]:
         """(0.105.48, K17) How the load of `folder` goes, from lua/ai-title.lua's
@@ -835,8 +932,11 @@ class Reviver:
             if now - self.title_since >= TITLE_S and len(self.loads) < LOADS_PER_HOUR:
                 if self.loading is not None:
                     return                    # (0.105.0) the last load still has time to come up
+                LAST_DAMAGED.clear()
                 folders, world = self.candidates()
+                folders, skipped = self._skip_damaged(folders)
                 folders = [f for f in folders if self._fails(f) < LOAD_FAILS_MAX]
+                self._say_damaged(skipped, folders[0] if folders else None)
                 if not folders:
                     # (0.105.0) every save failed: the newest copy in backups/
                     restored = self.restore(self.log) if self.restore else None
