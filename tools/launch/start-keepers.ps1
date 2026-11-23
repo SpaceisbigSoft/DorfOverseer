@@ -131,7 +131,8 @@ function Write-Status {
 }
 
 function Show-View {
-    Clear-Host
+    # the view clears the window and its scrollback itself (a taller-than-window
+    # screen scrolled and left the Keepers line twice)
     & python $Dashboard --keepers
     $run = ($Forts | ForEach-Object { if (Test-Running $_) { "$($_.L) on" } else { "$($_.L) off" } }) -join '   '
     Write-Host ''
