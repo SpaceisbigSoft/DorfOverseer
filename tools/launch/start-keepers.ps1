@@ -2,7 +2,9 @@
 #
 # Starts each fort's keeper (brain\keeper.py --revive --preset ...) with no
 # window of its own, 10 s apart, and shows the six forts in one view (the test
-# runner's dashboard.py), refreshed every 30 s. Keys:
+# runner's dashboard.py), refreshed every 30 s. It also writes the hourly status
+# (watch_tests.py --status-once: results\status, what Claude Helper's status
+# reads), so the test runner's window isn't needed beside it. Keys:
 #   S  stop every keeper cleanly (each gets logs\keeper-stop: it stops as
 #      Ctrl-C stops it, the fort left open)
 #   R  start the keepers that aren't running
@@ -16,6 +18,8 @@ $ErrorActionPreference = 'Continue'
 $Docs = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Host.UI.RawUI.WindowTitle = 'DF AI Overseer: keepers'
 $Dashboard = Join-Path $Docs 'DF-AI\_stage\testrunner\dashboard.py'
+$Runner = Join-Path $Docs 'DF-AI\_stage\testrunner\watch_tests.py'
+$NextStatus = (Get-Date).AddMinutes(5)      # the first a few minutes in, once the keepers run
 $Refresh = 30
 $Forts = @(
     @{ L = 'A'; Dir = 'DF-AI';   Preset = 'War-hold' },
@@ -120,12 +124,19 @@ function Show-Log($i) {
     Start-Process -FilePath 'powershell' -ArgumentList @('-NoLogo', '-NoProfile', '-Command', $cmd) | Out-Null
 }
 
+# the hourly status, hidden, in the background (it takes a few seconds)
+function Write-Status {
+    Start-Process -FilePath 'python' -ArgumentList @("`"$Runner`"", '--status-once') `
+        -WorkingDirectory (Split-Path $Runner) -WindowStyle Hidden | Out-Null
+}
+
 function Show-View {
     Clear-Host
-    & python $Dashboard
+    & python $Dashboard --keepers
     $run = ($Forts | ForEach-Object { if (Test-Running $_) { "$($_.L) on" } else { "$($_.L) off" } }) -join '   '
     Write-Host ''
     Write-Host "Keepers:  $run" -ForegroundColor Cyan
+    Write-Host ("Hourly status (alerts, Claude Helper's status): next " + $NextStatus.ToString('HH:mm')) -ForegroundColor DarkGray
     Write-Host '[S] stop all   [R] start stopped ones   [1-6] a fort''s live log (A-F)   [K] force-stop a stuck one   [Q] close (keepers run on)' -ForegroundColor DarkGray
 }
 
@@ -135,6 +146,10 @@ Start-Missing
 Start-Sleep -Seconds 2
 
 while ($true) {
+    if ((Get-Date) -ge $NextStatus) {
+        Write-Status
+        $NextStatus = (Get-Date).AddHours(1)
+    }
     Show-View
     $until = (Get-Date).AddSeconds($Refresh)
     $key = $null
