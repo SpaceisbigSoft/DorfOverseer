@@ -36,6 +36,7 @@ EDGE_EVERY = 10          -- reports between two reads of the edge groups
 EDGE_Z_SPAN = 25         -- levels above and below the surface entrances read
 EDGE_Z_FALLBACK = 60     -- no entrance mapped: this many levels down from the top
 SHUT_MAX = 12            -- pieces listed in shut_by at most
+FRESH_TICKS = 100        -- (0.105.73) a "can't walk out" verdict's edges: read again at most this often
 
 EDGE = EDGE or {}        -- {key, groups, tiles, report, repath_n, z = {lo, hi}}
 WAY = WAY or {reports = 0}
@@ -108,9 +109,9 @@ local function map_key(W, H, Z)
     return ('%s:%d:%d:%d'):format(tostring(ok and site or '?'), W, H, Z)
 end
 
--- the game tick (nil unread): an edge read twice in one tick is the same read
-function now_tick()
-    local ok, t = pcall(function() return df.global.cur_year * 403200 + df.global.cur_year_tick end)
+-- the game tick (nil unread)
+local function edge_tick()
+    local ok, t = pcall(function() return U.abs_tick() end)
     return ok and type(t) == 'number' and t or nil
 end
 
@@ -137,7 +138,7 @@ function edge_groups(force)
     if not okr then groups, n = edge_groups_of(W, H, lo, hi, group_at) end
     EDGE.key, EDGE.groups, EDGE.tiles, EDGE.report, EDGE.repath_n = k, groups, n, WAY.reports, rp
     EDGE.z = {lo, hi}
-    EDGE.tick = now_tick()
+    EDGE.tick = edge_tick()
     return groups
 end
 
@@ -148,9 +149,16 @@ end
 -- while the `way_out` report of the same state read all 68 citizens in walk
 -- group 5287, open and fresh: DF had renumbered its walk groups since the
 -- cached read (0.105.51's case, here on the travellers' side).
+-- (verifier) the same read only while nothing redid the walk map since (open_way
+-- clears EDGE.report; ai-util repath counts: a paused game keeps its tick), and
+-- at most once every FRESH_TICKS (a caravan truly stuck is checked each cycle)
 function edge_groups_fresh()
-    local t = now_tick()
-    if t ~= nil and EDGE.tick == t and EDGE.groups then return EDGE.groups end
+    local t = edge_tick()
+    local rp = U.REPATH and U.REPATH.n or 0
+    if t ~= nil and type(EDGE.tick) == 'number' and t >= EDGE.tick and t - EDGE.tick < FRESH_TICKS
+            and EDGE.groups and EDGE.report ~= nil and EDGE.repath_n == rp then
+        return EDGE.groups
+    end
     return edge_groups(true)
 end
 

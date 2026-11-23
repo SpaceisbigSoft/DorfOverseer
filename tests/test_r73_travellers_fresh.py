@@ -50,7 +50,8 @@ EDGE_G, INSIDE, READS = 5100, 5100, 0
 G = {IMMINENT = 12, WIDE = 60}
 G.GATES = {scanned = true, closed = {}, entrances = {{id = 1, kind = 'surface', x = 5, y = 1, z = 2,
                                                        equipment = {}, outer = {}}}}
-U = {REPATH = {n = 0}, repath_summary = function() return {n = 0} end, citizens = function() return {} end}
+U = {REPATH = {n = 0}, repath_summary = function() return {n = 0} end, citizens = function() return {} end,
+     abs_tick = function() return df.global.cur_year * 403200 + df.global.cur_year_tick end}
 reqscript = function(n)
   if n == 'ai-gates' then return G end
   if n == 'ai-util' then return U end
@@ -85,9 +86,25 @@ def _():
     assert env.edge_groups()[5100] is True and L.eval("READS") == 1      # the cache
     g = env.edge_groups_fresh()                                          # same tick: the same read
     assert L.eval("READS") == 1
-    L.execute("df.global.cur_year_tick = 101; EDGE_G = 5287")
+    L.execute("df.global.cur_year_tick = 150; EDGE_G = 5287")      # within FRESH_TICKS: the same read
+    assert env.edge_groups_fresh()[5100] is True and L.eval("READS") == 1
+    L.execute("df.global.cur_year_tick = 250")
     g = env.edge_groups_fresh()
     assert L.eval("READS") == 2 and g[5287] is True and g[5100] is None
+
+
+@test("ai-way-out: edge_groups_fresh re-reads in the same tick once the walk map was redone (a paused game: "
+      "a gate opened by the AI, ai-util repath counted) or open_way cleared the cache's report")
+def _():
+    L, env = wayout()
+    env.edge_groups()
+    L.execute("EDGE_G = 5287")
+    env.EDGE.repath_n = -1                         # the walk map redone since that read (ai-util repath counted)
+    assert env.edge_groups_fresh()[5287] is True and L.eval("READS") == 2
+    assert env.edge_groups_fresh()[5287] is True and L.eval("READS") == 2
+    L.execute("EDGE_G = 5300")
+    env.EDGE.report = None
+    assert env.edge_groups_fresh()[5300] is True and L.eval("READS") == 3
 
 
 # ai-mission-way over a fake ai-way-out whose cache can be stale
