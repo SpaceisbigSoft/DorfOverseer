@@ -707,10 +707,25 @@ function quarry_status()
     local list = quarry_tried()
     local e = list[#list]
     if not e or type(e.tiles) ~= 'table' then return nil end
+    -- (0.105.90) a tile whose mark became a dig job is still to dig, not
+    -- dropped (E, 23 Nov: 8 Dig jobs on the quarry, every mark gone: read as
+    -- "never dug, the marks dropped", two strikes, no quarry for 28 days
+    -- while 5 ghosts waited for the slabs its stone makes)
+    local jobs = {}
+    pcall(function()
+        local link = df.global.world.jobs.list.next
+        while link do
+            local j = link.item
+            if j and j.pos and j.pos.z == e.z and j.job_type == df.job_type.Dig then
+                jobs[j.pos.x .. ',' .. j.pos.y] = true
+            end
+            link = link.next
+        end
+    end)
     local st = quarry_tiles_state(e, function(x, y, z)
         local d = dfhack.maps.getTileFlags(x, y, z)
         if not d then return false, false end
-        return is_wall(x, y, z), d.dig ~= df.tile_dig_designation.No
+        return is_wall(x, y, z), d.dig ~= df.tile_dig_designation.No or jobs[x .. ',' .. y] == true
     end)
     st.tick, st.tiles, st.x, st.y, st.z = e.tick, #e.tiles, e.x, e.y, e.z
     return st

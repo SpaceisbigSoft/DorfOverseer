@@ -416,7 +416,7 @@ end
 -- are added to it, so one rough gem doesn't meet four requests (F's Asen,
 -- y264: four rough-gem requests all "on hand" from one gem). `spots`: where
 -- the first few free or forbidden items lie (I7a 7).
--- (0.105.89) a cloth request (DF asks in dimension units) counts only whole
+-- (0.105.90) a cloth request (DF asks in dimension units) counts only whole
 -- cloths: a partial piece (E, 22 Nov: Nish's Secretive mood stalled 41 days
 -- "on hand" with a 60% silk and a 20% wool cloth free, then went mad and
 -- died of thirst) is tallied in `partial`, never toward what the mood lacks.

@@ -8,7 +8,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-layouts-kinds is a part of ai-layouts; run ai-layouts') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-layouts-kinds'] = '0.105.89'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-layouts-kinds'] = '0.105.90'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local clamp, new_layout, dig_rect, dig_rect_except, mark, corners_of, add, rot_rect, virtual_slot, hall_open, own_pillar, hall_statues, hall_close, finish = PART_LOCALS.clamp, PART_LOCALS.new_layout, PART_LOCALS.dig_rect, PART_LOCALS.dig_rect_except, PART_LOCALS.mark, PART_LOCALS.corners_of, PART_LOCALS.add, PART_LOCALS.rot_rect, PART_LOCALS.virtual_slot, PART_LOCALS.hall_open, PART_LOCALS.own_pillar, PART_LOCALS.hall_statues, PART_LOCALS.hall_close, PART_LOCALS.finish   -- (r9) the hub's and earlier parts' locals
 
