@@ -68,6 +68,8 @@ df.global.world.units = setmetatable({}, {__index = function(_, k)
   if k == 'all' then local l = {}; for _, u in pairs(W.UNITS) do table.insert(l, u) end; return W.ivec(l) end end})
 df.army = {find = function(id) return W.ARMIES[id] end}
 df.army_controller = {find = function(id) return W.CTLS[id] end}
+df.global.world.army_controllers = setmetatable({}, {__index = function(_, k)
+  if k == 'all' then local l = {}; for _, c in pairs(W.CTLS) do table.insert(l, c) end; return W.ivec(l) end end})
 df.army_controller_goal_type = {[1] = 'CAMP', [25] = 'DIPLOMACY', [2] = 'SITE_INVASION', CAMP = 1, DIPLOMACY = 25,
                                 SITE_INVASION = 2}
 df.whereabouts_type = {[0] = 'alive_settled', [3] = 'army_died', [4] = 'army_alive'}
@@ -147,11 +149,7 @@ def _():
     sv = env.survey(None)
     assert sv.stale.MESSENGER.entity_name == "The Torments of Tattooing" and sv.stale.MESSENGER.fixed is None
     assert sv.messenger.stale.goal == "CAMP" and "left the fort" in sv.messenger.left
-    # no army at all, or an army whose controller is missing: stale too
-    for extra in ("W.HFS[908].info = nil", "W.CTLS[78] = nil"):
-        env = world(GONE_CAMP + "; " + extra)
-        st = env.messenger_status(None)
-        assert st.stale is not None and "left the fort" in st.why, (extra, dict(st))
+    # (r14 m1 fixes) no army at all, or an army whose controller is missing: unknown, kept (below)
 
 
 @test("stale: freed and refilled in one action: the free citizen appointed, the gone one's former link and event")
@@ -229,7 +227,7 @@ def _():
     env = world("W.unit(18, 6); W.hold(18, 7); W.unit(19, 4)")
     assert env.messenger_status(None).stale is None and env.survey(None).stale.MESSENGER is None
     # a manager gone too: freed the same way (every civilian office the AI fills)
-    env = world("W.unit(18, 6); W.gone(12)")
+    env = world("W.unit(18, 6); W.gone(12); W.away(12, 60, 1)")
     assert env.survey(None).stale.MANAGER.name == "Dwarf12"
     r = free_stale(env, code="MANAGER")
     assert r.ok is True and r.unit_id == 18 and holders(env)["MANAGER"] == [18], dict(r)
@@ -331,7 +329,7 @@ def _():
     ms = dict(NOBODY, held_by="Urist", stale=STALE, why="the messenger Urist left the fort with The Torments of "
               "Tattooing (CAMP): the post is free")
     props, notes = [], []
-    planner_world._messenger_rule(state(ms, HELD, {"MESSENGER": dict(STALE, why="x")}), CFG, props, notes, Memory())
+    planner_world._messenger_rule(state(ms, HELD, {"MESSENGER": dict(STALE, why="x")}), CFG, props, notes, None)
     assert len(props) == 1 and props[0].rule == "office_free", props
     assert props[0].action == {"type": "appoint", "office": "MESSENGER", "replace_stale": True, "interim": True}
     assert "Urist left the fort with The Torments of Tattooing (CAMP, a NomadicGroup, since year 250)" in props[0].reason
@@ -350,11 +348,97 @@ def _():
     # a stale manager (no messenger matter): freed too; its refusal is its own
     props = []
     planner_world._messenger_rule(state(dict(NOBODY, held_by="Kib"), HELD, {"MANAGER": dict(STALE, name="Kib")}),
-                                  CFG, props, [], Memory())
+                                  CFG, props, [], None)
     assert props and props[0].action == {"type": "appoint", "office": "MANAGER", "replace_stale": True}, props
     pa = Proposal("office_free", {"type": "appoint", "office": "MANAGER", "replace_stale": True}, "", 5)
     pb = Proposal("office_free", {"type": "appoint", "office": "MESSENGER", "replace_stale": True}, "", 5)
     assert refusal_key(pa) != refusal_key(pb)
+
+
+# ---- (r14 m1 fixes) the verifier's findings -------------------------------------------------------
+
+@test("M1: stale only on evidence: an army or controller missing, the fort's own controller with another goal, no army: unknown, never freed")
+def _():
+    base = "W.unit(18, 6); W.hold(18, 7); W.unit(19, 4); W.gone(18); "
+    for setup in ("W.away(18, 50, 25); W.CTLS[78] = nil",                     # controller dropped
+                  "W.away(18, 50, 25); W.ARMIES[77] = nil",                   # army record gone
+                  "W.HFS[908].info = {whereabouts = {state = 5, army_id = -1, site_id = 9}}",   # arrived, a visitor
+                  "W.HFS[908].info = nil",                                    # nothing read
+                  "W.away(18, 50, 12)",                                       # the fort's controller, another goal
+                  "W.away(18, 40, 12)"):                                      # the civilisation's, another goal
+        env = world(base + setup)
+        st = env.messenger_status(None)
+        assert st.stale is None and st.unknown is not None and st.unknown.reason, (setup, dict(st))
+        assert env.survey(None).stale.MESSENGER is None, setup
+        before = snapshot(env)
+        for dry in (True, False):
+            r = free_stale(env, dry)
+            assert r.ok is False and r.rejected and "nothing to free" in r.error, (setup, dry, dict(r))
+        assert snapshot(env) == before
+    # the live case still caught: the nomads' CAMP army; and any other entity's army
+    for setup in ("W.away(18, 60, 1)", "W.away(18, 60, 25)"):
+        assert world(base + setup).messenger_status(None).stale is not None, setup
+
+
+@test("M1: free_stale itself refuses the messenger while a Diplomacy mission of the fort or its civilisation is out")
+def _():
+    for entity in (50, 40):
+        env = world(GONE_CAMP + "; W.CTLS[500] = {id = 500, entity_id = %d, goal = 25, year = 256}" % entity)
+        before = snapshot(env)
+        for dry in (True, False):
+            r = free_stale(env, dry)
+            assert r.ok is False and r.rejected and "Diplomacy mission" in r.error, (entity, dry, dict(r))
+        assert snapshot(env) == before
+    env = world(GONE_CAMP + "; W.CTLS[500] = {id = 500, entity_id = 60, goal = 25, year = 256}")   # another's: no matter
+    assert free_stale(env).ok is True
+
+
+@test("M1: the planner frees only after the stale reading held m1_stale_confirm_days (same holder; kept by note_world, plan writes nothing)")
+def _():
+    import json
+    ms = dict(NOBODY, held_by="Urist", stale=STALE)
+    m = Memory()
+    m.world_seen = {}
+    seen = []
+    for day in (10, 10.5, 12, 13):
+        st = state(ms, HELD, tick=int(day * DAY))
+        planner_world.note_stale(st, m)                  # the bookkeeping (note_world, note_cycle) before planning
+        before = json.dumps(m.to_dict(), sort_keys=True, default=str)
+        props, notes = [], []
+        planner_world._messenger_rule(st, CFG, props, notes, m)
+        assert json.dumps(m.to_dict(), sort_keys=True, default=str) == before   # the rule never writes memory
+        seen.append((len(props), sum("after 3 day(s)" in n for n in notes)))
+    assert seen == [(0, 1), (0, 1), (0, 1), (1, 0)], seen
+    # another holder stale: the clock starts again; not stale any more: forgotten
+    st = state(dict(ms, stale=dict(STALE, holder_hf=999)), HELD, tick=14 * DAY)
+    planner_world.note_stale(st, m)
+    props = []
+    planner_world._messenger_rule(st, CFG, props, [], m)
+    assert not props
+    planner_world.note_stale(state(dict(NOBODY, held_by="Urist"), HELD, tick=15 * DAY), m)
+    assert "MESSENGER" not in m.world_seen["stale_seen"]
+    import inspect
+    assert "note_stale(s, memory)" in inspect.getsource(planner_world.note_world)
+
+
+@test("L4: with m1_free_stale off, a stale-held post is said (no proposal, no plain appointment)")
+def _():
+    props, notes = [], []
+    planner_world._messenger_rule(state(dict(NOBODY, held_by="Urist", stale=STALE), HELD), dict(CFG, m1_free_stale=False),
+                                  props, notes, Memory())
+    assert not props and any("left the fort" in n and "m1_free_stale" in n and "no messenger can make contact" in n
+                             for n in notes), notes
+
+
+@test("L6: the waiting notes read right while a Diplomacy mission is out or a run is going")
+def _():
+    ms = dict(NOBODY, held_by="Urist", stale=STALE)
+    for missions, words in (({"controllers": [{"id": 4, "goal": "DIPLOMACY"}], "send": {}}, "once the Diplomacy mission is back"),
+                            ({"controllers": [], "send": {"running": {"goal": "make_contact"}}}, "once the Make contact run is over")):
+        notes = []
+        planner_world._messenger_rule(state(ms, HELD, missions=missions), CFG, [], notes, None)
+        assert any(n.endswith(words) for n in notes), notes
+        assert not any("is out is over" in n for n in notes), notes
 
 
 # ---- 5. dry runs and posts the fort doesn't fill -----------------------------------------------------
@@ -387,7 +471,7 @@ def _():
         assert r.ok is False and r.rejected, (code, dict(r))
     assert snapshot(env) == before
     # a manager's slot that leads a squad: reported fixed, never freed
-    env = world("W.unit(18, 6); W.gone(12); W.FORT.positions.assignments[1].squad_id = 3")
+    env = world("W.unit(18, 6); W.gone(12); W.away(12, 60, 1); W.FORT.positions.assignments[1].squad_id = 3")
     assert env.survey(None).stale.MANAGER.fixed == "leads a squad"
     before = snapshot(env)
     assert free_stale(env, code="MANAGER").ok is False and snapshot(env) == before

@@ -331,7 +331,15 @@ end
 -- Why `hf`, holding one of `ent`'s posts, is stale ({name, entity, entity_name,
 -- entity_type, goal, year, state, army_id, dead}), or nil when they are home
 -- or away on the fort's own mission. `during_run`: judged during a Make
--- contact run too (the sender's own check).
+-- contact run too (the sender's own check). (r14 m1 fixes) Stale only on
+-- positive evidence: dead, or no living unit and the whereabouts army's
+-- controller is another entity's (not the fort's government or civilisation)
+-- or a CAMP. Everything else with no unit (army or controller missing, the
+-- fort's own controller with another goal, no army at all) can't be told
+-- from a messenger still on the fort's mission: nil, and the reading as the
+-- second value (`unknown`, with `reason`), never freed. (DF's whereabouts
+-- state army_died is its IN_ARMY: a messenger on the fort's own mission
+-- reads the same, so the controller decides.)
 function stale_holder(hf, ent, txt, during_run)
     if not hf then return nil end
     if not during_run then
@@ -349,27 +357,47 @@ function stale_holder(hf, ent, txt, during_run)
         out.army_id = tonumber(rd(function() return w.army_id end))
     end
     if out.dead then return out end
-    if out.army_id and out.army_id >= 0 then
-        local army = rd(function() return df.army.find(out.army_id) end)
-        local ctl = army and rd(function() return df.army_controller.find(army.controller_id) end)
-        if ctl then
-            out.entity = tonumber(rd(function() return ctl.entity_id end))
-            out.goal = enum_word(df.army_controller_goal_type, rd(function() return ctl.goal end))
-            out.year = tonumber(rd(function() return ctl.year end))
-            local e = out.entity and rd(function() return df.historical_entity.find(out.entity) end)
-            if e then
-                out.entity_name = rd(function() return (txt or tostring)(N.translate_name(e.name, true)) end)
-                out.entity_type = enum_word(df.historical_entity_type, rd(function() return e.type end))
-            end
-            local pi = df.global.plotinfo
-            local ours = out.entity ~= nil and (out.entity == ent.id or out.entity == rd(function() return pi.group_id end)
-                                                or out.entity == rd(function() return pi.civ_id end))
-            if ours and MISSION_GOALS[out.goal or ''] then return nil end   -- away on the fort's own mission
-        else
-            out.army_missing = true
-        end
+    local function unknown(reason) out.reason = reason; out.unknown = true; return nil, out end
+    if not (out.army_id and out.army_id >= 0) then
+        return unknown('no unit on the map and on no army (whereabouts ' .. tostring(out.state or 'unread') .. ')')
     end
-    return out
+    local army = rd(function() return df.army.find(out.army_id) end)
+    if not army then return unknown('no unit on the map; its army ' .. out.army_id .. ' is not found') end
+    local ctl = rd(function() return df.army_controller.find(army.controller_id) end)
+    if not ctl then return unknown('no unit on the map; its army has no controller') end
+    out.entity = tonumber(rd(function() return ctl.entity_id end))
+    out.goal = enum_word(df.army_controller_goal_type, rd(function() return ctl.goal end))
+    out.year = tonumber(rd(function() return ctl.year end))
+    local e = out.entity and rd(function() return df.historical_entity.find(out.entity) end)
+    if e then
+        out.entity_name = rd(function() return (txt or tostring)(N.translate_name(e.name, true)) end)
+        out.entity_type = enum_word(df.historical_entity_type, rd(function() return e.type end))
+    end
+    local pi = df.global.plotinfo
+    local ours = out.entity == ent.id or out.entity == rd(function() return pi.group_id end)
+                 or out.entity == rd(function() return pi.civ_id end)
+    if out.entity ~= nil and not ours then return out end      -- with another entity's army: gone
+    if out.goal == 'CAMP' then return out end                   -- a camp: no mission
+    if ours and MISSION_GOALS[out.goal or ''] then return nil end   -- away on the fort's own mission
+    return unknown('no unit on the map; on an army of ' .. (out.entity and ('entity ' .. out.entity) or 'no entity')
+                   .. ' (' .. tostring(out.goal or 'no goal') .. ')')
+end
+
+-- (r14 m1 fixes) a Diplomacy mission of the fort's or its civilisation's out
+-- (world.army_controllers.all), or nil: no messenger is freed meanwhile
+function diplomacy_out(ent)
+    local found
+    pcall(function()
+        local pi = df.global.plotinfo
+        for _, c in ipairs(df.global.world.army_controllers.all) do
+            local eid = c.entity_id
+            if (eid == ent.id or eid == pi.group_id or eid == pi.civ_id)
+                    and enum_word(df.army_controller_goal_type, c.goal) == 'DIPLOMACY' then
+                found = c.id; break
+            end
+        end
+    end)
+    return found
 end
 
 -- the words for a stale holder: "the messenger X left the fort with Y (CAMP): the post is free"
@@ -453,6 +481,10 @@ function free_stale(code, dry_run, txt, opts)
     local can, why = N.appointable(ent, p)
     if not can then return no(word .. " is not the fort's to fill (" .. tostring(why) .. ')', {stale = st}) end
     if (tonumber(a.squad_id) or -1) ~= -1 then return no('the ' .. word .. "'s post leads a squad: never freed") end
+    if code == 'MESSENGER' then        -- (r14 m1 fixes) the Lua side too: not while a Diplomacy mission is out
+        local dip = diplomacy_out(ent)
+        if dip then return no('a Diplomacy mission (controller ' .. tostring(dip) .. ') is out: not now', {stale = st}) end
+    end
     local c, keeps = N.choose_holder(code, opts.interim == true)
     if not c then
         return no('nobody suitable to take the ' .. word .. "'s post: left as it is", {stale = st})

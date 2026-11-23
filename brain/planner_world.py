@@ -86,6 +86,7 @@ def note_world(s: dict, memory) -> None:
     note_contacts(s, memory)
     from planner_peace import note_attacks          # (0.105.41, item 8) the civs the fort attacked
     note_attacks(s, memory)
+    note_stale(s, memory)                           # (r14 m1 fixes) since when a post reads stale
     memory.world_seen["export"] = export_wishes(s, memory)
     # (0.105.48, K9) stamped here only when the rule merely names the site (the
     # AI doesn't send it: the switch off, or the World button never shown);
@@ -329,7 +330,53 @@ def _left_words(st: dict, office: str = "messenger") -> str:
     return f"the {office} {who} left the fort (no unit on the map, on no mission of the fort's)"
 
 
-def _stale_rule(s: dict, cfg: dict, proposals: list, notes: list) -> bool:
+def _stale_readings(s: dict) -> dict:
+    """(r14 m1) {code: stale reading}: the survey's offices.stale, the messenger's own reading over it."""
+    offices = _d(s.get("offices"))
+    ms = _d(offices.get("messenger"))
+    stale = dict(_d(offices.get("stale")))
+    if _d(ms.get("stale")):
+        stale["MESSENGER"] = dict(_d(ms["stale"]), **_d(stale.get("MESSENGER")))
+    return {k: v for k, v in stale.items() if _d(v)}
+
+
+def note_stale(s: dict, memory) -> None:
+    """(r14 m1 fixes) Bookkeeping before planning (note_world): since when each
+    office has read stale with the same holder (memory.world_seen["stale_seen"]:
+    {code: {"hf", "since"}}); one no longer stale is forgotten. Not with the
+    offices report unread (the readings are kept as they were)."""
+    offices = s.get("offices")
+    now = abs_tick(s)
+    if memory is None or not isinstance(now, int) or not isinstance(offices, dict) or "error" in offices \
+            or "offices" in _d(s.get("_errors")):
+        return
+    stale = _stale_readings(s)
+    if not isinstance(getattr(memory, "world_seen", None), dict):
+        memory.world_seen = {}
+    seen = memory.world_seen.setdefault("stale_seen", {})
+    for code in [c for c in seen if c not in stale]:
+        del seen[code]
+    for code, st in stale.items():
+        row = _d(seen.get(code))
+        if row.get("hf") != st.get("holder_hf") or not isinstance(row.get("since"), int) or row["since"] > now:
+            seen[code] = {"hf": st.get("holder_hf"), "since": now}
+
+
+def _stale_held(memory, stale: dict, now) -> dict:
+    """{code: ticks the same stale reading has held} (memory read only; no
+    memory, as in a test or a dry plan: taken as held long enough)."""
+    if memory is None or not isinstance(now, int):
+        return {c: 10 ** 9 for c in stale}
+    seen = _d(_d(getattr(memory, "world_seen", None)).get("stale_seen"))
+    out = {}
+    for code, st in stale.items():
+        row = _d(seen.get(code))
+        ok = row.get("hf") == st.get("holder_hf") and isinstance(row.get("since"), int)
+        out[code] = now - row["since"] if ok else 0
+    return out
+
+
+def _stale_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> bool:
     """(r14 m1, live 22 Nov 20:58) An office the AI fills whose holder left
     the fort (no unit on the map, on no mission of the fort's: lua/ai-nobles-swap.lua
     stale_holder; in A, C and F the messenger had gone with a nomadic group's
@@ -337,22 +384,28 @@ def _stale_rule(s: dict, cfg: dict, proposals: list, notes: list) -> bool:
     the holder taken off and the post filled again, in one action (appoint
     with replace_stale, all-or-nothing). The messenger first; never while a
     Make contact run is going or a Diplomacy mission is out. True when the
-    messenger is stale (nothing else of the messenger rule then)."""
-    if not cfg.get("m1_free_stale", True):
-        return False
-    offices = _d(s.get("offices"))
-    ms = _d(offices.get("messenger"))
-    stale = dict(_d(offices.get("stale")))
-    if _d(ms.get("stale")):
-        stale["MESSENGER"] = dict(_d(ms["stale"]), **_d(stale.get("MESSENGER")))
+    messenger is stale (nothing else of the messenger rule then).
+    (r14 m1 fixes) Only after the reading has held m1_stale_confirm_days
+    (a mission's army briefly unreadable never frees the post); with
+    m1_free_stale off, a note says the post stays held by one who left."""
+    stale = _stale_readings(s)
     if not stale:
         return False
+    if not cfg.get("m1_free_stale", True):
+        for code in ["MESSENGER"] + sorted(k for k in stale if k != "MESSENGER"):
+            if _d(stale.get(code)):
+                word = str(code).lower().replace("_", " ")
+                notes.append(f"{_left_words(_d(stale[code]), word)}; the post stays theirs: freeing such posts is "
+                             "off (m1_free_stale)" + (", so no messenger can make contact" if code == "MESSENGER" else ""))
+        return bool(_d(stale.get("MESSENGER")))
+    held_for = _stale_held(memory, stale, abs_tick(s))
+    confirm = int(cfg.get("m1_stale_confirm_days", 3)) * TICKS_PER_DAY
     missions = _d(s.get("missions"))
     busy = None
     if _d(_d(missions.get("send")).get("running")):
-        busy = "a Make contact run is going"
+        busy = "the Make contact run is over"
     elif _messenger_out(missions):
-        busy = "a Diplomacy mission is out"
+        busy = "the Diplomacy mission is back"
     order = ["MESSENGER"] + sorted(k for k in stale if k != "MESSENGER")
     for code in order:
         st = _d(stale.get(code))
@@ -364,7 +417,11 @@ def _stale_rule(s: dict, cfg: dict, proposals: list, notes: list) -> bool:
             notes.append(f"{left}; the post is not the fort's to fill ({st['fixed']}): left to DF")
             continue
         if code == "MESSENGER" and busy:
-            notes.append(f"{left}; the post is freed once {busy[2:] if busy.startswith('a ') else busy} is over")
+            notes.append(f"{left}; the post is freed once {busy}")
+            continue
+        if held_for.get(code, 0) < confirm:
+            days = int(cfg.get("m1_stale_confirm_days", 3))
+            notes.append(f"{left}; the post is freed if it still reads so after {days} day(s)")
             continue
         action = {"type": "appoint", "office": code, "replace_stale": True}
         if code == "MESSENGER" and cfg.get("n1_messenger_interim", True):
@@ -390,7 +447,7 @@ def _messenger_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
     if not rules["make_contact"] or not rules["appoint_nobles"] or (young_fort(s, cfg) and not rules["send_messenger"]):
         return
     offices = _d(s.get("offices"))
-    if _stale_rule(s, cfg, proposals, notes):
+    if _stale_rule(s, cfg, proposals, notes, memory):
         return
     ms0 = _d(offices.get("messenger"))
     if ms0.get("held_by") or ms0.get("holder_unit") is not None or ms0.get("away"):

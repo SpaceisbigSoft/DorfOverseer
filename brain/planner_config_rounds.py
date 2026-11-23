@@ -413,3 +413,8 @@ PART.update({
     "m1_free_stale": True,                # a stale holder taken off and the post refilled (one action)
     "m1_messenger_reappoint_days": 28,    # a messenger appointed: no new appointment for this long
 })
+
+# (r14 m1 fixes, the verifier) a stale reading must hold this long before the post is freed
+PART.update({
+    "m1_stale_confirm_days": 3,
+})

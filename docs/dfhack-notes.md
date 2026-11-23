@@ -352,3 +352,12 @@ holder cleared, this entity's position link erased; then the former-position lin
 expedition leader, the mayor, the militia, an elected/inherited/replaced post, or a slot leading a squad.
 **Open:** whether DF itself ever clears such a slot, and whether a fort's own Diplomacy messenger's
 whereabouts is always its army (assumed: the controller the fort made is of `plotinfo.group_id`).
+
+**(r14 m1 fixes, the verifier).** `army_died` is DF's IN_ARMY (df-structures 53.17-r1): a messenger truly on the
+fort's own mission reads the same, so only the controller decides. Stale now needs positive evidence: dead, or no
+living unit and the army's controller is another entity's (not the fort's government or civilisation) or a CAMP.
+An army or controller not found, the fort's own controller with another goal, or no army at all (a visitor at a
+site, `army_id` -1) is `unknown` (`offices.messenger.unknown`, with `reason`): kept, never freed. `free_stale`
+also refuses the messenger while any DIPLOMACY controller of the fort or its civilisation is in
+`world.army_controllers.all`, and the planner frees only once the same reading has held `m1_stale_confirm_days`
+(3; `memory.world_seen.stale_seen`, kept by `note_world`).

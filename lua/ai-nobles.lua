@@ -323,7 +323,7 @@ function survey(txt)
         out.messenger = out.messenger or {position = false}
         for _, k in ipairs({'post', 'code', 'why', 'requires_population', 'population', 'pop_met', 'interim',
                             'interim_possible', 'interim_unit', 'interim_name', 'interim_office', 'holder_unit',
-                            'free_unit', 'free_name', 'away', 'stale', 'left', 'holders'}) do
+                            'free_unit', 'free_name', 'away', 'stale', 'left', 'holders', 'unknown'}) do
             out.messenger[k] = st[k]
         end
         local o = out.offices.MESSENGER
@@ -614,14 +614,15 @@ function messenger_status(txt, ent, pop)
         out.slots, out.vacant, out.holders = slots, vacant, #held
         -- (r14 m1) the holder at home first, then one away on the fort's own
         -- mission, one who left the fort (stale: ai-nobles-swap) last
-        local best, rank, st0
+        local best, rank, st0, unk0
         for _, id in ipairs(held) do
             local hf = df.historical_figure.find(id)
-            local okS, st = pcall(function() return reqscript('ai-nobles-swap').stale_holder(hf, ent, txt) end)
-            st = okS and st or nil
+            local okS, st, unk = pcall(function() return reqscript('ai-nobles-swap').stale_holder(hf, ent, txt) end)
+            st, unk = okS and st or nil, okS and unk or nil
             local r = st and 3 or (holder_away(hf, true) and 2 or 1)
-            if not rank or r < rank then best, rank, st0 = id, r, st end
+            if not rank or r < rank then best, rank, st0, unk0 = id, r, st, unk end
         end
+        out.unknown = unk0     -- (r14 m1 fixes) no unit, and where they are can't be told: kept, never freed
         if best then
             local hf = df.historical_figure.find(best)
             out.holder_hf = best
