@@ -6,7 +6,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.83'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.84'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, ez = info, has, ez
 -- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
@@ -986,6 +986,14 @@ function memorial_slabs()
     pcall(function()
         for _, it in ipairs(df.global.world.items.other.SLAB) do
             local okh, hb = pcall(dfhack.items.getHolderBuilding, it)
+            -- (0.105.84) a finished slab left in the workshop that made it
+            -- (not in a job there) is free to put up: B, 23 Nov: both of the
+            -- one ghost's slabs lay in mason's workshops, the count read 0,
+            -- nothing was put up and the ghost haunted 55 citizens
+            if okh and hb then
+                local okt, wk = pcall(function() return hb:getType() == df.building_type.Workshop end)
+                if okt and wk and not it.flags.in_job then hb = nil end
+            end
             if not (item_held(it) or it.flags.in_job or it.flags.in_building or held[it.id] or (okh and hb))
                     and it.engraving_type == df.slab_engraving_type.Memorial then
                 table.insert(out, it)
@@ -1099,7 +1107,7 @@ QUICK_LOCATIONS = {temple = 'location=temple', tavern = 'location=tavern'}
 function quick_location(kind, dry_run)
     local loc = QUICK_LOCATIONS[kind]
     if not loc then return {ok = false, rejected = true, error = 'quick_location makes a temple or tavern'} end
-    -- (0.105.83) the largest dining hall; with none, the largest meeting hall
+    -- (0.105.84) the largest dining hall; with none, the largest meeting hall
     -- (D, 23 Nov: no dining hall, one meeting hall, no tavern; 16 of 16
     -- missed MakeMerry, 62% unhappy, while every new level was refused for water)
     local best, best_a

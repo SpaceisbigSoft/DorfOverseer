@@ -314,7 +314,7 @@ env.df = {
                        buildings = {other = {SLAB = W.sbld, ZONE_TOMB = W.tombs, ZONE_MEETING_HALL = {},
                                              ZONE_DINING_HALL = {}}}}},
     slab_engraving_type = {Memorial = 'Memorial'},
-    building_type = {Slab = 'Slab'},
+    building_type = {Slab = 'Slab', Workshop = 'Workshop'},
 }
 local function key(p) return p.x .. ',' .. p.y .. ',' .. p.z end
 env.dfhack = {
@@ -389,6 +389,26 @@ def py(v):
 
 
 UDIL_HF = 41276        # F's ghost (state-last dead.ghost_list)
+
+
+@test("memorial_slabs (0.105.84, B): a finished slab left in its workshop counts; one in a job there, or another building's, doesn't")
+def _():
+    if not need_lua():
+        return
+    lua, env, w = rooms_world()
+    w.units[1] = T(lua, {"ghost": True, "race": 1, "civ_id": 10, "hist_figure_id": 42066})
+    shop = lua.eval("{getType = function() return 'Workshop' end}")
+    other = lua.eval("{getType = function() return 'Coffin' end}")
+    a = w.slab(21, 42066, 125, 174, 160)                  # Litast's, in the mason's workshop (B)
+    a.holder = shop
+    b = w.slab(22, 703, 114, 154, 169, T(lua, {"in_job": True}))
+    b.holder = shop                                       # still the workshop's job
+    c = w.slab(23, 704, 110, 150, 169)
+    c.holder = other
+    got = [it["id"] for it in py(env.memorial_slabs())]
+    assert got == [21], got
+    waiting, none = env.ghost_slab_counts()
+    assert waiting == 1, waiting
 
 
 @test("memorial_slabs (F): a slab a Slab building already holds isn't counted again; the walking ghost's own first")
