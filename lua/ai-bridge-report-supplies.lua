@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.87'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.88'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
 
@@ -728,7 +728,18 @@ function get_dead()
         end
         return bodies[id]
     end
-    for _, u in ipairs(report_units()) do
+    -- (0.105.88) every ghostly unit, not only the active list's: a ghost
+    -- drops off the active list between its appearances (F, 23 Nov: Urvad's
+    -- ghost in units.all only, dead.ghosts 0, so no slab rule ever ran)
+    local ghostly = {}
+    pcall(function()
+        for _, u in ipairs(df.global.world.units.all) do
+            local okg, g = pcall(function() return u.flags3.ghostly end)
+            if okg and g then table.insert(ghostly, u) end
+        end
+    end)
+    if #ghostly == 0 then ghostly = report_units() end
+    for _, u in ipairs(ghostly) do
         if dfhack.units.isGhost(u) and u.race == race and u.civ_id == civ then
             out.ghosts = out.ghosts + 1
             if #out.ghost_names < 5 then

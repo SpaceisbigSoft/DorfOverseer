@@ -484,9 +484,21 @@ def _stone_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         notes.append(f"quarry: {wait}")
     elif dig_now < cfg["quarry_when_dig_below"] or dry:
         n = quarry_size(s, cfg)
-        proposals.append(Proposal("quarry", {"type": "quarry", "count": n},
-                                  f"only {su.get('usable')} boulders of stone the masons may use: dig a small "
-                                  "quarry in ordinary stone near the fort", 4))
+        # (0.105.88) for the dead (ghosts with no slab, bodies with no tomb):
+        # the quarry is survival, not expansion, so a crisis doesn't hold it
+        # (E, 23 Nov: 5 ghosts haunting 57, 19 slab orders with no stone,
+        # "crisis: ore, quarry wait": the crisis held its own way out)
+        dd = _d(s.get("dead"))
+        for_dead = (int(dd.get("ghosts") or 0) > 0
+                    or (int(dd.get("unburied") or 0) >= cfg["stone_crisis_unburied"]
+                        and int(dd.get("free_tombs") or 0) == 0))
+        act = {"type": "quarry", "count": n}
+        if for_dead:
+            act["for_dead"] = True
+        proposals.append(Proposal("quarry", act,
+                                  f"only {su.get('usable')} boulders of stone the masons may use"
+                                  + (" and the dead wait for slabs or coffins" if for_dead else "")
+                                  + ": dig a small quarry in ordinary stone near the fort", 4))
     _picks_order(s, cfg, proposals)
     now = abs_tick(s)
     # (0.105.22) never the dead's slabs and coffins while ghosts walk or bodies

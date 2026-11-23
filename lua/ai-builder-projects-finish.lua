@@ -8,7 +8,7 @@
 -- The top-level locals the ai-builder-projects files share come through
 -- PROJECTS_PART_LOCALS (the same functions).
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-finish'] = '0.105.87'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-finish'] = '0.105.88'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 

@@ -167,6 +167,18 @@ def _butchery_rule(s, pv, cfg, citizens, proposals, notes, memory) -> None:
             proposals.append(Proposal("butchery_labor", {"type": "assign_labor", "job": "BUTCHER", "count": 1},
                                       f"{corpses} bodies wait at the butcher's and nobody butchers: put a "
                                       "dwarf on it", 4))
+        else:
+            # (0.105.88) one shop for a big cull: another (F, 23 Nov: 292 tame
+            # animals culled to 6+2 a kind, one butcher's for 58 butchers, 30-37
+            # bodies always waiting, its meat and leftovers rotting in the shop
+            # into miasma for 82 citizens)
+            shops = _int(_d(blds.get("workshops")).get("Butchers"))
+            if (corpses >= cfg.get("butcher_more_corpses", 25) and 0 < shops < cfg.get("butcher_shops_max", 3)
+                    and not _workshops_busy(open_)):
+                proposals.append(Proposal("butchery_shop", {"type": "start_project", "kind": "workshops",
+                                                            "shops": ["Butchers"]},
+                                          f"{corpses} bodies wait at the {shops} butcher's shop(s) (they rot in "
+                                          "the shop meanwhile): build another", 5))
     if hides >= cfg["tan_hides_min"]:
         if not _has_shop(blds, "Tanners"):
             if not _workshops_busy(open_) and not any(p.rule == "butchery_shop" for p in proposals):

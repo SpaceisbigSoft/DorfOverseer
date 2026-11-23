@@ -690,6 +690,17 @@ def _():
     assert not by(props, "food_standing")
 
 
+@test("(0.105.88, F) butchery: 37 bodies wait at the one butcher's: another; never past three, nor for a few")
+def _():
+    props, _ = run(fort(section(butchery={"corpses": 37, "butchers": 58}), shops={"Butchers": 1, "Tanners": 1}))
+    p = by(props, "butchery_shop")
+    assert p and p[0].action == {"type": "start_project", "kind": "workshops", "shops": ["Butchers"]}, props
+    props, _ = run(fort(section(butchery={"corpses": 37, "butchers": 58}), shops={"Butchers": 3}))
+    assert not by(props, "butchery_shop")
+    props, _ = run(fort(section(butchery={"corpses": 10, "butchers": 58}), shops={"Butchers": 1}))
+    assert not by(props, "butchery_shop")
+
+
 @test("butchery: a butcher's shop for bodies waiting, a butcher when nobody butchers; a tanner's, a tanner and "
       "a tan order for hides; no second tan order while one is queued")
 def _():

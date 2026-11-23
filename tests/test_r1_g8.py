@@ -310,7 +310,7 @@ env.elevation_offset = function() return 0 end
 env.item_held = function(it) return it.flags.forbid == true end
 env.df = {
     global = {plotinfo = {race_id = 1, civ_id = 10},
-              world = {units = {active = W.units}, items = {other = {SLAB = W.slabs}},
+              world = {units = {active = W.units, all = W.units}, items = {other = {SLAB = W.slabs}},
                        buildings = {other = {SLAB = W.sbld, ZONE_TOMB = W.tombs, ZONE_MEETING_HALL = {},
                                              ZONE_DINING_HALL = {}}}}},
     slab_engraving_type = {Memorial = 'Memorial'},

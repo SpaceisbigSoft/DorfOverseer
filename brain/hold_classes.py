@@ -36,7 +36,8 @@ SURVIVAL_KINDS = {"bedrooms", "dining", "hospital", "well", "farms", "storage", 
                   "tavern", "temple", "jail", "suites"}
 
 # a step with one of these set makes a work safe or ends it: always goes
-SAFE_FLAGS = ("shut", "retire", "recheck")
+# (0.105.88) for_dead: a quarry for the dead's slabs and coffins (E's crisis held its own way out)
+SAFE_FLAGS = ("shut", "retire", "recheck", "for_dead")
 
 # rules decided by their action kind (they carry any action)
 BY_ACTION = {"strategist"}
