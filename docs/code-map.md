@@ -19,6 +19,7 @@ Moved out of the handoff at 0.105.64 (its "How it fits together" table). Add a r
 | `lua/ai-nobles.lua` | The fort's offices: appointing the manager, bookkeeper, broker and chief medical dwarf |
 | `lua/ai-nobles-swap.lua`, `brain/planner_office_swap.py` | (r11 n1) The interim messenger swapped out for a free suitable citizen; a civilian office given to a far better-suited free citizen (all-or-nothing) |
 | `brain/backup.py` | A copy of the save once a real day while unattended (backups/) |
+| `brain/save_check.py` | (r14 k1) A save folder torn when the PC went down (world.sav missing, empty or ending in zeros): never loaded, copied or restored |
 | `lua/ai-health.lua`, `ai-homes.lua` | (0.104.168) The infected and their hospital beds; homes: couples, rooms, upgrades |
 | `brain/planner_care.py`, `planner_homes.py` | (0.104.168) Care (infected to bed, doctors, offices refilled); homes rules |
 | `lua/ai-threats.lua`, `brain/planner_threats.py` | (0.105.0) Fire guard, prisoners, thieves, undead, werebeast cells, cavern seals, surface beasts, the wounded |

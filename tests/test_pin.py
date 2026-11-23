@@ -84,6 +84,7 @@ def _():
     root = TMP / "df" / "save"
     for name in ("region2", "region5", "autosave 1"):
         (root / name).mkdir(parents=True, exist_ok=True)
+        (root / name / "world.sav").write_text(name)       # (r14 k1) a save has a world.sav
     last_fort("Enxah", "region2", 7)
     pin.take(started)
     last_fort("Other", "region5", 3)

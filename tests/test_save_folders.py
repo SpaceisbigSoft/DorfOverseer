@@ -80,7 +80,7 @@ def copies(save_dir="region2") -> list[str]:
 
 @test("backup: a copy cut short leaves no partial and no dated copy, and is tried again in an hour")
 def _():
-    src = save(GAME / "save", "region2", 600, files=("a.dat", "b.dat", "c.dat"))
+    src = save(GAME / "save", "region2", 600, files=("a.dat", "b.dat", "c.dat", "world.sav"))   # (r14 k1) a save has a world.sav
     real, n = backup._copy_beating, [0]
 
     def failing(s, d, **kw):
@@ -101,13 +101,13 @@ def _():
     assert line and "a copy of the save (region2)" in line, line
     (got,) = copies()
     assert backup.COPY_NAME.match(got) and sorted(p.name for p in (backup.BACKUP_DIR / "region2" / got).iterdir()) \
-        == ["a.dat", "b.dat", "c.dat"], got
+        == ["a.dat", "b.dat", "c.dat", "world.sav"], got
     assert src.is_dir()
 
 
 @test("backup: the game saving during the copy (the source newer after it) throws the torn copy away")
 def _():
-    src = save(GAME / "save", "region2", 600, files=("a.dat", "b.dat"))
+    src = save(GAME / "save", "region2", 600, files=("a.dat", "b.dat", "world.sav"))
     real = backup._copy_beating
 
     def saving(s, d, **kw):
@@ -144,7 +144,7 @@ def _():
 
 @test("backup: the copy is renamed whole from its .partial name (never seen under its dated name half-done)")
 def _():
-    save(GAME / "save", "region2", 600, files=("a.dat", "b.dat"))
+    save(GAME / "save", "region2", 600, files=("a.dat", "b.dat", "world.sav"))
     seen = []
     real = backup._copy_beating
 

@@ -93,9 +93,11 @@ def save_mtime(p: Path) -> float:
 def newest_folder(save_root: Path, save_dir: str) -> Path | None:
     """The loaded save's folder or one of DF's autosaves, whichever was
     written last (DF saves a season's autosave under "autosave N", not under
-    the save's own name)."""
+    the save's own name). (r14 k1) Never a damaged one (brain/save_check.py:
+    a world.sav torn when the PC went down)."""
+    import save_check
     cands = [save_root / save_dir] + sorted(save_root.glob("autosave*"))
-    cands = [c for c in cands if c.is_dir()]
+    cands = [c for c in cands if c.is_dir() and not save_check.damage(c)]
     if not cands:
         return None
     return max(cands, key=save_mtime)
@@ -264,7 +266,8 @@ def _ours(save_root: Path, save_dir: str, since: float | None) -> Path | None:
     if since is not None:
         cands += [c for c in sorted(save_root.glob("autosave*"))
                   if c.is_dir() and c.name != save_dir and folder_mtime(c) >= since]
-    cands = [c for c in cands if c.is_dir()]
+    import save_check
+    cands = [c for c in cands if c.is_dir() and not save_check.damage(c)]   # (r14 k1) never a torn save
     return max(cands, key=save_mtime) if cands else None
 
 
