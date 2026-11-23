@@ -40,7 +40,7 @@ from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, ask_player,
                           can_fight, crowded_thief, player_rules, reachable_threats, thief_rows, _traits)
 
-__all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "moon_phase_due", "MOON_PHASES", "PRISONER_CHOICES", "THREAT_CONFIG",
+__all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "moon_phase_due", "MOON_PHASES", "WERE_FULL_PHASE", "PRISONER_CHOICES", "THREAT_CONFIG",
            "note_intrusions", "unseen_intrusion", "lone_sneaker", "watch_spots", "thief_watchers"]
 
 PRISONER_CHOICES = ("keep", "release", "kill")
@@ -188,6 +188,7 @@ def threat_alert(s: dict, cfg: dict) -> str:
 
 
 MOON_PHASES = 28        # DF's world_data.moon_phase runs 0..27 (one turn ~25.5 days)
+WERE_FULL_PHASE = 27    # (verifier) vanilla interaction_werebeast: [CE:PERIODIC:MOON_PHASE:27:0]
 
 
 def moon_phase_due(changes: list, phase, cfg: dict) -> bool | None:
@@ -494,6 +495,10 @@ def _were(s, cfg, t, rules, proposals, notes):
     due = moon_phase_due(_l(w.get("changes")), w.get("moon_phase"), cfg)    # (0.105.76) by DF's phase
     if due is None:
         due = moon_due(_l(w.get("changes")), abs_tick(s), cfg)
+    # (0.105.76, verifier) a curse found by its syndrome before any change was
+    # seen: DF's own full moon (phase 27), so the first moon locks them too
+    if due is None and any(x.get("by_syndrome") for x in rows):
+        due = moon_phase_due([{"phase": WERE_FULL_PHASE}], w.get("moon_phase"), cfg)
     if rows and due is None:
         notes.append(f"{len(rows)} werebeast citizen(s): no change seen yet, so the full moon isn't known "
                      f"(moon phase {w.get('moon_phase')}); the first change teaches it")

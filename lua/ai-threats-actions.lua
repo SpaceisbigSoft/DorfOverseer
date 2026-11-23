@@ -226,10 +226,14 @@ end
 
 -- A room for a cell: a jail zone, else a free bedroom; the nearest to pos,
 -- never one another cell holds.
-local function cell_room(pos, taken)
+-- (0.105.76, verifier) only a room with a door to lock (a doorless room was
+-- "locked" with no door: the beast held by its burrow alone); the werebeast's
+-- own bedroom too (a fort without a jail or a free bedroom had no cell)
+local function cell_room(pos, taken, uid)
     local best, bd
     local function try(z)
         if taken[z.id] then return end
+        if next(zone_doors(z)) == nil then return end
         local dd = math.abs(z.x1 - pos.x) + math.abs(z.y1 - pos.y) + 3 * math.abs(z.z - pos.z)
         if not bd or dd < bd then best, bd = z, dd end
     end
@@ -237,7 +241,7 @@ local function cell_room(pos, taken)
     if best then return best, 'jail' end
     pcall(function()
         for _, z in ipairs(df.global.world.buildings.other.ZONE_BEDROOM) do
-            if z.assigned_unit_id == -1 then try(z) end
+            if z.assigned_unit_id == -1 or (uid and z.assigned_unit_id == uid) then try(z) end
         end
     end)
     return best, best and 'bedroom' or nil
@@ -355,7 +359,7 @@ function moon_cell(ids, release, dry_run, txt)
                 local z = c and c.zone and zone_by_id(c.zone)
                 if not z then
                     local kind
-                    z, kind = cell_room(u.pos, taken)
+                    z, kind = cell_room(u.pos, taken, u.id)
                     if not z then
                         out.ok = #out.placed + #out.locked > 0
                         out.error = 'no jail zone or free bedroom for a cell'

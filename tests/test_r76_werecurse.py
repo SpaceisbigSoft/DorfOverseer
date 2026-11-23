@@ -59,6 +59,18 @@ def _():
     assert not [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
 
 
+@test("(verifier) the first moon: a citizen cursed by the syndrome and no change seen yet: DF's full moon "
+      "(phase 27) is taken, locked at phase 24-27 and 0-1, not at 5; a row not by the syndrome still waits for a change")
+def _():
+    rows = [{"id": 7, "name": "Bitten", "by_syndrome": True}]
+    for ph, want in ((24, True), (27, True), (0, True), (5, False)):
+        s = fort({"list": rows, "changes": [], "moon_phase": ph, "cells": []})
+        got = [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
+        assert bool(got) == want, (ph, got)
+    s = fort({"list": [{"id": 8, "name": "Wolfy"}], "changes": [], "moon_phase": 27, "cells": []})
+    assert not [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
+
+
 def _cursed_fn():
     src = (ROOT / "lua" / "ai-threats.lua").read_text(encoding="utf-8")
     m = re.search(r"^function were_cursed\(u\).*?^end\n", src, re.S | re.M)
@@ -97,6 +109,10 @@ def _():
     src = (ROOT / "lua" / "ai-threats.lua").read_text(encoding="utf-8")
     body = src[src.index("local function were_report("):src.index("-- great dangers on the surface")]
     assert "were_cursed(u)" in body and "by_syndrome" in body
+    acts = (ROOT / "lua" / "ai-threats-actions.lua").read_text(encoding="utf-8")
+    cell = acts[acts.index("local function cell_room("):acts.index("-- (0.105.40b fix) The doors ai-insane")]
+    assert "next(zone_doors(z)) == nil" in cell and "z.assigned_unit_id == uid" in cell
+    assert "cell_room(u.pos, taken, u.id)" in acts
 
 
 if __name__ == "__main__":
