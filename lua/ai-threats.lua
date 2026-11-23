@@ -904,6 +904,29 @@ local function changed(u)
     return ok and yes or false
 end
 
+-- (0.105.76) A citizen bitten by a werebeast carries DF's curse as a syndrome
+-- of class WERECURSE (data/vanilla interaction_werebeast.txt: [SYN_CLASS:
+-- WERECURSE]) from the bite on, weeks before the first change; DFHack's
+-- isNightCreature doesn't say so meanwhile. Live 22 Nov, E: the were list
+-- stayed empty while bitten citizens turned at four full moons (20 dead in an
+-- hour), each found only once changed, too late for the moon cells.
+function were_cursed(u)
+    local ok, yes = pcall(function()
+        for _, a in ipairs(u.syndromes.active) do
+            local sd = df.syndrome.find(a.type)
+            if sd then
+                for _, c in ipairs(sd.syn_class) do
+                    local v = c
+                    if type(c) ~= 'string' then pcall(function() v = c.value end) end
+                    if tostring(v) == 'WERECURSE' then return true end
+                end
+            end
+        end
+        return false
+    end)
+    return ok and yes or false
+end
+
 -- werebeast citizens, their cells, and the moon
 local function were_report(d, t, txt)
     local out = {list = {}, cells = {}}
@@ -914,8 +937,11 @@ local function were_report(d, t, txt)
             local own = is(dfhack.units.isCitizen, u)
             if not own then pcall(function() own = u.civ_id == df.global.plotinfo.civ_id and is(dfhack.units.isOwnGroup, u) end) end
             local now_changed = own and changed(u)
-            if own and (now_changed or (is(dfhack.units.isNightCreature, u) and not is(dfhack.units.isBloodsucker, u))) then
-                local row = {id = u.id, name = name_of(u, txt), changed = now_changed or nil}
+            local cursed = own and not now_changed and were_cursed(u)
+            if own and (now_changed or cursed
+                        or (is(dfhack.units.isNightCreature, u) and not is(dfhack.units.isBloodsucker, u))) then
+                local row = {id = u.id, name = name_of(u, txt), changed = now_changed or nil,
+                             by_syndrome = cursed or nil}
                 local c = d.cells[tostring(u.id)]
                 if type(c) == 'table' then row.cell, row.locked = true, c.locked or nil end
                 if #out.list < 10 then table.insert(out.list, row) end
@@ -1003,7 +1029,7 @@ PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = report_u
 PARTS = {'survey', 'actions'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-threats'] = '0.105.75'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-threats'] = '0.105.76'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

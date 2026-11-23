@@ -8,7 +8,7 @@
 -- quickfort_apply, ...) are in reach.
 
 if not PARTS then qerror('ai-builder-keep is a part of ai-builder; run ai-builder') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-keep'] = '0.105.75'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-keep'] = '0.105.76'   -- bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 

@@ -40,7 +40,7 @@ from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, ask_player,
                           can_fight, crowded_thief, player_rules, reachable_threats, thief_rows, _traits)
 
-__all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "PRISONER_CHOICES", "THREAT_CONFIG",
+__all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "moon_phase_due", "MOON_PHASES", "PRISONER_CHOICES", "THREAT_CONFIG",
            "note_intrusions", "unseen_intrusion", "lone_sneaker", "watch_spots", "thief_watchers"]
 
 PRISONER_CHOICES = ("keep", "release", "kill")
@@ -185,6 +185,23 @@ def threat_alert(s: dict, cfg: dict) -> str:
                 and x["distance_outside"] <= near_for(s, cfg, "surface_danger_near", 40)):
             return f"{x.get('name') or 'a great beast'} on the surface near dwarves out there"
     return ""
+
+
+MOON_PHASES = 28        # DF's world_data.moon_phase runs 0..27 (one turn ~25.5 days)
+
+
+def moon_phase_due(changes: list, phase, cfg: dict) -> bool | None:
+    """(0.105.76) Is the change near, by DF's moon phase? The changes seen
+    happen at one phase (E, 22 Nov: four changes, all at phase 27, ~25.5 days
+    apart, so the 28-day count slipped ~2.5 days a moon). Due from
+    `moon_before_days` phases before that phase to `moon_after_days` after.
+    None when no change with a phase was seen or the phase is unread."""
+    phases = [int(c["phase"]) for c in changes if isinstance(c, dict) and _num(c.get("phase"))]
+    if not phases or not _num(phase):
+        return None
+    at = max(set(phases), key=phases.count)
+    d = (int(phase) - at) % MOON_PHASES
+    return d >= MOON_PHASES - _c(cfg, "moon_before_days") or d <= _c(cfg, "moon_after_days")
 
 
 def moon_due(changes: list, now: int, cfg: dict) -> bool | None:
@@ -474,7 +491,9 @@ def _were(s, cfg, t, rules, proposals, notes):
     cells = [x for x in _l(w.get("cells")) if isinstance(x, dict)]
     if not rows and not cells:
         return
-    due = moon_due(_l(w.get("changes")), abs_tick(s), cfg)
+    due = moon_phase_due(_l(w.get("changes")), w.get("moon_phase"), cfg)    # (0.105.76) by DF's phase
+    if due is None:
+        due = moon_due(_l(w.get("changes")), abs_tick(s), cfg)
     if rows and due is None:
         notes.append(f"{len(rows)} werebeast citizen(s): no change seen yet, so the full moon isn't known "
                      f"(moon phase {w.get('moon_phase')}); the first change teaches it")
