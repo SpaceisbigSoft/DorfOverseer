@@ -415,6 +415,10 @@ function add_post(fort, p, pidx)
     a.position_id = p.id
     pcall(function() a.position_vector_idx = pidx end)
     a.squad_id = -1
+    -- (r15) the slot's army link at -1 as DF's own (a new record holds 0: DF
+    -- reads it as an army assignment; ai-nobles clear_slot_links)
+    pcall(function() reqscript('ai-nobles').clear_slot_links(a) end)
+    pcall(function() if a.assigned_army_controller_id ~= -1 then a.assigned_army_controller_id = -1 end end)
     -- the flags of a slot of the same position (or of the commander's): 'active'
     local cmd = find_position(fort, 'MILITIA_COMMANDER')
     local like

@@ -545,5 +545,31 @@ def _():
         assert (a.assigned_army_controller_id == 5) is keep and a.ab_id == -1, (ctl, a.assigned_army_controller_id)
 
 
+@test("r15 v8: once a DF session, the first real appointment clears every slot's stray army link (the fort's own mission kept); a dry run sweeps nothing")
+def _():
+    env = world()
+    a = env.W.FORT.positions.assignments
+    a[0].assigned_army_controller_id = 0                  # an AI slot made before 0.105.72
+    env.W.CTLS[5] = _table(env, {"id": 5, "entity_id": 50, "goal": 25})
+    a[1].assigned_army_controller_id = 5                  # on the fort's own DIPLOMACY
+    env.appoint("MANAGER", True, None)                    # dry: nothing swept
+    assert a[0].assigned_army_controller_id == 0 and env.SLOTS_SWEPT is False
+    env.appoint("MANAGER", False, None)
+    assert a[0].assigned_army_controller_id == -1 and a[1].assigned_army_controller_id == 5, \
+        (a[0].assigned_army_controller_id, a[1].assigned_army_controller_id)
+    assert env.SLOTS_SWEPT is True
+    a[0].assigned_army_controller_id = 0
+    env.appoint("MANAGER", False, None)                   # not again this session
+    assert a[0].assigned_army_controller_id == 0
+
+
+@test("r15 v8: the militia's add_post sets the new slot's army link to -1 too (source)")
+def _():
+    src = (ROOT / "lua" / "ai-military-draft.lua").read_text(encoding="utf-8")
+    body = src[src.index("function add_post("):]
+    body = body[:body.index("\nend\n")]
+    assert "clear_slot_links(a)" in body and "assigned_army_controller_id = -1" in body, body[:400]
+
+
 if __name__ == "__main__":
     finish()

@@ -444,6 +444,26 @@ function own_mission_controller(a, ent)
     return yes
 end
 
+-- (r15 v8) the fort's slots the AI made before 0.105.72 still hold army
+-- controller 0 (only rewritten slots were cleared): once a DF session, at the
+-- first real appointment, every slot's stray army link is cleared (kept for the
+-- fort's own missions). Returns how many were cleared.
+SLOTS_SWEPT = SLOTS_SWEPT or false
+function sweep_slot_links(ent)
+    local n = 0
+    pcall(function()
+        for _, a in ipairs(ent.positions.assignments) do
+            local cid = a.assigned_army_controller_id
+            if cid and cid >= 0 and not own_mission_controller(a, ent) then
+                a.assigned_army_controller_id = -1
+                n = n + 1
+            end
+        end
+    end)
+    SLOTS_SWEPT = true
+    return n
+end
+
 function add_slot(ent, code)
     local p, pidx = position_by_code(ent, code)
     if not p then return nil, 'this civilisation gives the fort no ' .. code .. ' position' end
@@ -781,6 +801,10 @@ function appoint(code, dry_run, txt, opts)
     opts = type(opts) == 'table' and opts or {}
     if MESSENGER_HOLD and (code == 'MESSENGER' or (opts.interim_out)) then
         return {ok = false, rejected = true, error = MESSENGER_HOLD_WHY, why = MESSENGER_HOLD_WHY}
+    end
+    local swept
+    if not dry_run and not SLOTS_SWEPT then              -- (r15 v8) once a DF session
+        pcall(function() swept = sweep_slot_links(U.fort_entity()) end)
     end
     if not OFFICES[code] then
         return {ok = false, rejected = true, error = 'the AI only appoints ' .. table.concat(OFFICE_ORDER, ', ')}
