@@ -961,6 +961,16 @@ local function rotting_near(spots, max_spots)
     return found, false
 end
 
+-- (0.105.86) held by a workshop, not in a job there: a finished product or a
+-- leftover nobody hauls off
+function in_workshop(it)
+    if it.flags.in_job then return false end
+    local okh, hb = pcall(dfhack.items.getHolderBuilding, it)
+    if not (okh and hb) then return false end
+    local okt, wk = pcall(function() return hb:getType() == df.building_type.Workshop end)
+    return okt and wk or false
+end
+
 -- Why a rotting thing is left alone by clear_miasma (nil: it may be marked);
 -- the second value: unforbid it too (another's body the game forbade).
 function keep_rotting(e, ctx, dumps)
@@ -974,7 +984,11 @@ function keep_rotting(e, ctx, dumps)
     if f.owned then return 'owned' end
     if f.trader then return 'trader' end
     if f.in_building or f.construction then return 'in_building' end
-    if not U.on_ground(it) then return 'held' end
+    -- (0.105.86) a workshop's leftovers outside any job (F, 23 Nov: 280
+    -- corpse pieces and rotten meat in the butcher's, the one refuse pile
+    -- full, miasma for 82 citizens) go to the dump like the loose; the
+    -- checks below (danger, reach, a body for the butcher) still hold
+    if not U.on_ground(it) and not in_workshop(it) then return 'held' end
     if in_dump(dumps, e.x, e.y, e.z) then return 'in_dump' end
     -- (fix5) no hauler sent near a danger, into the caverns, or where none can walk
     if U.near_danger(ctx.danger, e.x, e.y, e.z) then return 'danger' end
