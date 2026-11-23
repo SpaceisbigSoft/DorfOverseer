@@ -317,8 +317,9 @@ def _():
     assert wh.unfought(s, m, CFG, [20001])["mode"] == "lift"
     s, m = long_alarm([titan(distance_to_nearest_dwarf=90)], [dict(sq)], days=61, inside=[20001])
     assert wh.unfought(s, m, CFG, [20001])["mode"] == "lift"
-    s, m = long_alarm([titan()], [dict(sq)], days=61, inside=[])       # out in the open, not inside
-    assert wh.unfought(s, m, CFG, [20001])["mode"] == "lift"
+    # (0.105.80) out in the open but 2 tiles from a dwarf: kept too (E's dragon, 23 Nov: lifted, 10 melted)
+    s, m = long_alarm([titan()], [dict(sq)], days=61, inside=[])
+    assert wh.unfought(s, m, CFG, [20001])["mode"] == "keep"
 
 
 # --- S7: drink orders' stalled copies -------------------------------------------------------

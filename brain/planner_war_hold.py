@@ -53,7 +53,7 @@ import dataclasses
 from digest import _d, _l
 from planner_core import TICKS_PER_DAY, GEAR_METALS, GEAR_WEAPONS, Proposal, abs_tick, reachable_threats, _traits
 
-__all__ = ["UNFOUGHT_WHY", "lone_hunted", "unfought", "unfought_raise_held", "book_unfought", "army_danger",
+__all__ = ["UNFOUGHT_WHY", "great_near_dwarves", "lone_hunted", "unfought", "unfought_raise_held", "book_unfought", "army_danger",
            "war_hold_filter", "arm_first", "arm_check", "armed_count", "great_among_civilians", "fight_bar_unfought", "swap_armed_short", "recall_hold", "note_war_hold"]
 
 UNFOUGHT_WHY = "no squad has gone at"
@@ -182,6 +182,29 @@ def great_among_civilians(s: dict, cfg: dict, rows: list) -> str:
     return ""
 
 
+def great_near_dwarves(s: dict, cfg: dict, rows: list) -> str:
+    """(0.105.80) The name of a great danger (titan, forgotten beast, a fire
+    or dragonfire breather...) among these rows within `great_alarm_tiles` (60:
+    a flier crosses 30 tiles before the next cycle) of a dwarf, inside the
+    fort or not ("" if none): a lifted alarm is raised
+    again for it. E, 23 Nov 11:00: the alarm, lifted for a dragon nobody would
+    fight, stayed down while it came at the dwarves on the surface: 10 melted
+    in two minutes."""
+    from planner_core import GREAT_LIKE_KINDS
+    from planner_matchup import fire_breather
+    near = float(_c(cfg, "great_alarm_tiles", 60))
+    for t in rows:
+        if not isinstance(t, dict):
+            continue
+        kinds = set(t.get("kinds") if isinstance(t.get("kinds"), list) else [])
+        great = (t.get("great_danger") is True or fire_breather(t)
+                 or bool(kinds & (GREAT_LIKE_KINDS - {"Undead", "NightCreature"})))
+        d = t.get("distance_to_nearest_dwarf")
+        if great and isinstance(d, (int, float)) and not isinstance(d, bool) and d <= near:
+            return str(t.get("name") or "a great danger").split(",")[0][:40]
+    return ""
+
+
 def fight_bar_unfought(s: dict, cfg: dict, rows: list) -> tuple[float, str]:
     """(x4) The all-out attack's bar: the matchup's own sortie bar
     (planner_matchup.fight_bar: about even odds, a clear win for a fire
@@ -268,6 +291,8 @@ def unfought(s: dict, memory, cfg: dict, ids: list) -> dict:
         return out
     rows = [rows_by[i] for i in listed]
     great = great_among_civilians(s, cfg, rows)          # (x4) never lifted for one of these
+    # (0.105.80) nor for one near the dwarves outside (E's dragon): lifted, it was never raised again
+    great = great or great_near_dwarves(s, cfg, rows)
     age = now - on
     limit = int(float(_c(cfg, "r1g5_unfought_alarm_days", 30)) * TICKS_PER_DAY)
     hard = int(float(_c(cfg, "r1g5_alarm_hard_days", 60)) * TICKS_PER_DAY)
@@ -369,6 +394,8 @@ def unfought_raise_held(s: dict, memory, cfg: dict, fresh: list) -> str:
     lifted = {i for i in _l(rec.get("lifted_ids")) if _int(i)}
     want = [i for i in fresh if i is not None]
     if not lifted or not want or any(i not in lifted for i in want):
+        return ""
+    if great_near_dwarves(s, cfg, [_rows(s).get(i) for i in want]):
         return ""
     return (f"{len(want)} threat(s) can reach the dwarves: the alarm was lifted for them after "
             f"{_c(cfg, 'r1g5_unfought_alarm_days', 30)}+ days nobody fought them; it stays down (the gates "
