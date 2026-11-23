@@ -8099,6 +8099,27 @@ def _():
     assert not p
 
 
+@test("quick locations (0.105.78): a meeting hall serves when there is no dining hall (D: 62% unhappy, no tavern)")
+def _():
+    from planner import _quick_location_rule
+    cfg = dict(PLANNER_CONFIG)
+    s = fort()
+    s["buildings"]["zones"] = {"MeetingHall": 1, "Bedroom": 13}
+    s["locations"] = {"count": {"TEMPLE": 1}, "list": []}
+    s["needs"] = {"needs": {"MakeMerry": {"distracted": 16}}}
+    p = []
+    _quick_location_rule(s, cfg, p, {"levels": {}})
+    assert [x.action for x in p] == [{"type": "quick_location", "kind": "tavern"}], p
+    s["buildings"]["zones"] = {"Bedroom": 13}
+    p = []
+    _quick_location_rule(s, cfg, p, {"levels": {}})
+    assert not p
+    src = (ROOT / "lua" / "ai-builder-rooms.lua").read_text(encoding="utf-8")
+    body = src[src.index("function quick_location"):]
+    body = body[:body.index("\nend\n")]
+    assert "'ZONE_DINING_HALL', 'ZONE_MEETING_HALL'" in body and "if best then break end" in body
+
+
 @test("grandeur (0.102.6): a grand, fed fort puts statues in its plainest hall; made when none is free")
 def _():
     from planner import _grandeur_rule

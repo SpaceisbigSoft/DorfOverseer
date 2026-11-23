@@ -6,7 +6,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.78'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.79'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, ez = info, has, ez
 -- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
@@ -1099,12 +1099,20 @@ QUICK_LOCATIONS = {temple = 'location=temple', tavern = 'location=tavern'}
 function quick_location(kind, dry_run)
     local loc = QUICK_LOCATIONS[kind]
     if not loc then return {ok = false, rejected = true, error = 'quick_location makes a temple or tavern'} end
+    -- (0.105.79) the largest dining hall; with none, the largest meeting hall
+    -- (D, 23 Nov: no dining hall, one meeting hall, no tavern; 16 of 16
+    -- missed MakeMerry, 62% unhappy, while every new level was refused for water)
     local best, best_a
-    for _, z in ipairs(df.global.world.buildings.other.ZONE_DINING_HALL) do
-        local a = (z.x2 - z.x1 + 1) * (z.y2 - z.y1 + 1)
-        if not best or a > best_a then best, best_a = z, a end
+    for _, list in ipairs({'ZONE_DINING_HALL', 'ZONE_MEETING_HALL'}) do
+        pcall(function()
+            for _, z in ipairs(df.global.world.buildings.other[list]) do
+                local a = (z.x2 - z.x1 + 1) * (z.y2 - z.y1 + 1)
+                if not best or a > best_a then best, best_a = z, a end
+            end
+        end)
+        if best then break end
     end
-    if not best then return {ok = false, rejected = true, error = 'no dining hall to put it in'} end
+    if not best then return {ok = false, rejected = true, error = 'no dining or meeting hall to put it in'} end
     local w, h = best.x2 - best.x1 + 1, best.y2 - best.y1 + 1
     local cell = {{x = 0, y = 0, text = ('m{%s}(%dx%d)'):format(loc, w, h)}}
     local good, failed, res = qf_try('zone', cell, best.z, best.x1, best.y1, dry_run)

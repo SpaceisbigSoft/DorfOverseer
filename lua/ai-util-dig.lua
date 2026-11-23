@@ -8,7 +8,7 @@
 -- the helpers defined there and in the parts before it are in reach.
 
 if not PARTS then qerror('ai-util-dig is a part of ai-util; run ai-util') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-dig'] = '0.105.78'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-dig'] = '0.105.79'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- the dig guard (0.105.40b) ----------------------------------------------------
 --

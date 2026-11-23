@@ -502,7 +502,9 @@ def _quick_location_rule(s: dict, cfg: dict, proposals: list, rules_: dict) -> N
     dug. Enxah, y53: 6 miserable, 7 of 8 longing to pray, every slot on food."""
     loc = _d(s.get("locations"))
     have = loc.get("count") if isinstance(loc.get("count"), dict) else {}
-    if "locations" in s.get("_errors", {}) or not _d(_d(s.get("buildings")).get("zones")).get("DiningHall"):
+    zones = _d(_d(s.get("buildings")).get("zones"))
+    # (0.105.78) a meeting hall will do when there is no dining hall (D: one meeting hall, no tavern, 62% unhappy)
+    if "locations" in s.get("_errors", {}) or not (zones.get("DiningHall") or zones.get("MeetingHall")):
         return
     levels = _d(rules_.get("levels"))
     open_ = {p.get("kind") for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict)}
