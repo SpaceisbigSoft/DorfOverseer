@@ -416,6 +416,17 @@ end
 -- are added to it, so one rough gem doesn't meet four requests (F's Asen,
 -- y264: four rough-gem requests all "on hand" from one gem). `spots`: where
 -- the first few free or forbidden items lie (I7a 7).
+-- (0.105.78) a cloth request (DF asks in dimension units) counts only whole
+-- cloths: a partial piece (E, 22 Nov: Nish's Secretive mood stalled 41 days
+-- "on hand" with a 60% silk and a 20% wool cloth free, then went mad and
+-- died of thirst) is tallied in `partial`, never toward what the mood lacks.
+local function partial_cloth(ji, it)
+    local okq, dimq = pcall(function() return ji.item_type == df.item_type.CLOTH and ji.quantity >= 1000 end)
+    if not (okq and dimq) then return false end
+    local ok, d = pcall(function() return it:getTotalDimension() end)
+    return ok and type(d) == 'number' and d > 0 and d < CLOTH_DIM
+end
+
 function request_avail(ji, entry, unit, taken)
     local a = {free = 0, reach = 0, forbidden = 0, forbidden_reach = 0, dump = 0, job = 0, other = 0, held = 0}
     local from = unit and unit.pos or nil
@@ -424,6 +435,10 @@ function request_avail(ji, entry, unit, taken)
     for id in pairs(taken or {}) do skip[id] = true end
     local spots = {}
     local capped = each_suitable(ji, entry, from, function(it, st, r)
+        if partial_cloth(ji, it) then
+            a.partial = (a.partial or 0) + 1
+            return
+        end
         local n = 1
         pcall(function() n = it:getStackSize() end)
         local h = unit and holder_of(it)

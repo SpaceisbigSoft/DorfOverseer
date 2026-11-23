@@ -40,7 +40,7 @@ from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood'
 from planner_moods import reserve_room, note_reserve_swap, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
 from planner_gates import note_gate_stuck, note_gate_stuck_cycle  # noqa: E402  (0.105.32) a gate the game holds shut
 from planner_guards import (guard_fail, guard_lines, guard_ok, outdoor_filter,  # noqa: E402,F401  (0.105.48, K6)
-                            unknown_filter)
+                            unknown_filter, meal_glut_filter)
 from planner_building import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import planner_design  # noqa: E402  (D0) the Design track's loop
 from planner_design import design_rule, note_design  # noqa: E402
@@ -1262,6 +1262,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if kept is not None:
         proposals = kept
     kept = _guard(outdoor_filter, s, memory, traits, cfg, proposals, notes)
+    if kept is not None:
+        proposals = kept
+    # (0.105.78) no meals cooked past three times their target: they rot (D's miasma)
+    kept = _guard(meal_glut_filter, s, cfg, proposals, notes)
     if kept is not None:
         proposals = kept
     # (0.104.137) crisis mode: expansion waits, recovery goes first

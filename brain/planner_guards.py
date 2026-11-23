@@ -13,6 +13,12 @@
   pastures, surface building, traps at the way in, outside farm plots) while
   a threat can reach the dwarves or the alarm is up, or when the threats
   couldn't be read. EMERGENCY rules are never held by it.
+- meal_glut_filter: no meal cooked, by any rule, while the prepared meals
+  are `kitchen_ban_meals_factor` times their target already (D, 22 Nov:
+  2,532 servings for 17 dwarves, 150 a dwarf, from meal_variety's biscuits
+  and stress_care's lavish meals, none capped; the stock rotted in its
+  barrels, 10-25 items at a time, and the rot's miasma beside the kitchen
+  left 14 of 17 dwarves disgusted).
 """
 
 from __future__ import annotations
@@ -20,7 +26,8 @@ from __future__ import annotations
 from planner_core import EMERGENCY, Proposal, _d, abs_tick, reachable_threats  # noqa: F401
 
 __all__ = ["guard_fail", "guard_ok", "guard_lines", "GUARD_KEEP", "SECTION_NEEDS", "unknown_filter",
-           "OUTDOOR_TYPES", "OUTDOOR_LABORS", "is_outdoor", "outdoor_danger", "outdoor_filter"]
+           "OUTDOOR_TYPES", "OUTDOOR_LABORS", "is_outdoor", "outdoor_danger", "outdoor_filter",
+           "MEAL_ORDER_RECIPES", "meal_glut_filter"]
 
 GUARD_KEEP = 200            # cycles a failing step is counted (the count stops growing there)
 
@@ -98,6 +105,38 @@ def unknown_filter(s: dict, proposals: list, notes: list) -> list:
     for secs, rules in held.items():
         notes.append(f"{', '.join(sorted(set(rules)))} wait(s): the report's {secs} couldn't be read this cycle "
                      "(unknown is not none)")
+    return kept
+
+
+# --- meals past any use -------------------------------------------------------
+
+MEAL_ORDER_RECIPES = {"prepare_easy_meal", "prepare_fine_meal", "prepare_lavish_meal"}
+
+
+def meal_glut_filter(s: dict, cfg: dict, proposals: list, notes: list) -> list:
+    """Meal orders held while the prepared meals are `kitchen_ban_meals_factor`
+    times their target (`meals_per_dwarf` a citizen): more only rots. An
+    unread stock or no citizens holds nothing."""
+    st = _d(s.get("stocks"))
+    have = st.get("prepared_meals")
+    citizens = _d(s.get("dwarves")).get("total")
+    if isinstance(have, bool) or not isinstance(have, (int, float)):
+        return proposals
+    if isinstance(citizens, bool) or not isinstance(citizens, (int, float)) or citizens <= 0:
+        return proposals
+    cap = citizens * float(cfg.get("meals_per_dwarf", 8)) * float(cfg.get("kitchen_ban_meals_factor", 3))
+    if have < cap:
+        return proposals
+    kept, held = [], []
+    for p in proposals:
+        a = _d(p.action)
+        if a.get("type") == "work_order" and a.get("recipe") in MEAL_ORDER_RECIPES:
+            held.append(p.rule)
+            continue
+        kept.append(p)
+    if held:
+        notes.append(f"{', '.join(sorted(set(held)))}: no meals cooked: {int(have)} servings for {int(citizens)} "
+                     f"citizen(s), over {int(cap)} already (more would only rot)")
     return kept
 
 

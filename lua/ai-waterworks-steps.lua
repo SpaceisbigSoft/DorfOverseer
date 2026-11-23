@@ -6,7 +6,7 @@
 -- (T, building, designate, load_state, ...) are in reach.
 
 if not WATERWORKS_PART_LOCALS then qerror('ai-waterworks-steps is a part of ai-waterworks; run ai-waterworks') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-waterworks-steps'] = '0.105.77'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-waterworks-steps'] = '0.105.78'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- (r8) the hub's and earlier parts' locals used here
 local seg_cells, dug, designate_all, undug, left_to_dig, leak, depth_at = WATERWORKS_PART_LOCALS.seg_cells, WATERWORKS_PART_LOCALS.dug, WATERWORKS_PART_LOCALS.designate_all, WATERWORKS_PART_LOCALS.undug, WATERWORKS_PART_LOCALS.left_to_dig, WATERWORKS_PART_LOCALS.leak, WATERWORKS_PART_LOCALS.depth_at

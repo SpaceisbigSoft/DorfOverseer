@@ -148,6 +148,25 @@ def _():
     assert list(miss[1].flags.values()) == ["yarn"]
 
 
+@test("(0.105.78) a partial cloth (60%, 20%) is never 'on hand' for a mood's cloth; a whole one is")
+def _():
+    W.reset()
+    W.item(CLOTH, "silk", 4, t({}), 1, 6000)                       # E's Nish: silk cloth (60%)
+    W.item(CLOTH, "yarn", 4, t({}), 1, 2000)                       # llama wool cloth (20%)
+    j = job([{"t": CLOTH, "kind": "silk", "q": 10000, "flags": ["silk"]},
+             {"t": CLOTH, "kind": "yarn", "q": 10000, "flags": ["yarn"]}])
+    u = W.unit(5, j)
+    miss = M.mood_report(j, u)
+    for i in (1, 2):
+        a = miss[i].avail
+        assert a.free == 0 and a.reach == 0 and not a.enough and a.partial == 1, dict(a)
+    W.item(CLOTH, "silk", 4, t({}), 1, 10000)                      # a whole silk cloth
+    M.AVAIL_CACHE = LUA.table_from({})
+    miss = M.mood_report(j, u)
+    a = miss[1].avail
+    assert a.reach == 1 and a.enough and a.partial == 1, dict(a)
+
+
 @test("rough gem, any stone: no 'of rock' material; bars of a metal keep theirs; the order is the mood's")
 def _():
     W.reset()
