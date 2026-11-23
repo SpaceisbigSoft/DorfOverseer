@@ -36,14 +36,24 @@ def _stairwell_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list) -
     (0.105.75) Also, whatever the style and the fort's size, when the levels
     by the staircases are all refused for water or magma (stairs_blocked): a
     new one away from them for the deepest district without one."""
-    if memory is None or young_fort(s, cfg):
+    if memory is None:
         return
     if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return
-    from planner_stairs_blocked import stairs_blocked, STAIRS_BLOCKED_RULES   # (0.105.75)
-    blocked = stairs_blocked(memory, abs_tick(s))
+    from planner_stairs_blocked import stairs_blocked, STAIRS_BLOCKED_RULES, STAIRS_BLOCKED_EVERY   # (0.105.75)
+    now = abs_tick(s)
+    blocked = stairs_blocked(memory, now)
     if len(blocked) < STAIRS_BLOCKED_RULES:
         blocked = []
+    # (verifier) one stairwell for the water a year at most (the homes' own
+    # refusals by the main stair stay; districts are not given one a season)
+    last = _d(getattr(memory, "last_fired", None)).get("stairwell")
+    if blocked and isinstance(last, int) and 0 <= now - last < STAIRS_BLOCKED_EVERY:
+        blocked = []
+    # (verifier) a small fort blocked so may never become established: young
+    # only holds the style's stairwells
+    if not blocked and young_fort(s, cfg):
+        return
     if not blocked and int(_d(s.get("dwarves")).get("total") or 0) < cfg["stairwell_min_citizens"]:
         return
     site = _d(_d(_d(memory.atlas).get("survey")).get("site"))
@@ -66,7 +76,7 @@ def _stairwell_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list) -
         spine = _d(plan.get("spine"))
         dirs = [x for x in d.get("dirs") or [] if x in masterplan.DIRS]
         action = {"type": "dig_stairwell", "dir": dirs[0], "elev_lo": int(d["lo"]), "elev_hi": int(d["hi"]),
-                  "district": d.get("id")}
+                  "district": d.get("id"), "blocked": True}
         if isinstance(spine.get("x"), int) and isinstance(spine.get("y"), int):
             action["spine"] = {"x": spine["x"], "y": spine["y"]}
         proposals.append(Proposal("stairwell", action,

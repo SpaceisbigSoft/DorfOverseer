@@ -50,17 +50,17 @@ def memory(streaks):
         atlas={"plan": {"spine": {"x": 108, "y": 149, "bottom": 40, "top": 42},
                         "districts": [dict(d) for d in DISTRICTS]},
                "survey": {"site": {"stairwells": 1}}},
-        culture={}, refusal_streaks=streaks)
+        culture={}, refusal_streaks=streaks, last_fired={})
 
 
 def streak(rule, at, why=WHY):
     return {f"{rule}:x": {"at": at, "n": 1, "rule": rule, "why": why, "type": "start_project"}}
 
 
-def run(s, m, traits=None):
+def run(s, m, traits=None, young=False):
     props = []
     old = R.young_fort
-    R.young_fort = lambda s_, c_: False
+    R.young_fort = lambda s_, c_: young
     try:
         R._stairwell_rule(s, m, PLANNER_CONFIG, traits or {}, props)
     finally:
@@ -79,7 +79,7 @@ def _():
     assert len(props) == 1, props
     a = props[0].action
     assert a == {"type": "dig_stairwell", "dir": "east", "elev_lo": 37, "elev_hi": 38, "district": "industry",
-                 "spine": {"x": 108, "y": 149}}, a
+                 "spine": {"x": 108, "y": 149}, "blocked": True}, a
     assert "water or magma" in props[0].reason and props[0].rule == "stairwell"
 
 
@@ -105,11 +105,34 @@ def _():
     assert run(s, m) == []
 
 
-@test("stairwell_district: deepest picks the lowest district (plan order on a tie); the default as before")
+@test("stairwell_district: deepest picks the lowest district (plan order on a tie), never one whose bottom is "
+      "within 2 of the main stair's top (defence 41-42, stair to 42); the default as before")
 def _():
     m = memory({})
     assert masterplan.stairwell_district(m, deepest=True)["id"] == "industry"
     assert masterplan.stairwell_district(m)["id"] == "defence"
+    for d in m.atlas["plan"]["districts"]:
+        if d["id"] != "defence":
+            d["stair"] = {"x": 1, "y": 1}
+    assert masterplan.stairwell_district(m, deepest=True) is None
+
+
+@test("(verifier) blocked: a young fort still gets it (young only holds the style's); one a year at most "
+      "(last_fired); the action is survival in a crisis (hold_classes), the style's stairwell expansion")
+def _():
+    import hold_classes
+    s = state()
+    now = abs_tick(s)
+    m = memory({**streak("industry", now), **streak("bags", now)})
+    props = run(s, m, young=True)
+    assert len(props) == 1 and props[0].action["blocked"] is True
+    assert hold_classes.step_class(props[0]) == hold_classes.SURVIVAL
+    m.last_fired = {"stairwell": now - 100 * TICKS_PER_DAY}
+    assert run(s, m) == []
+    m.last_fired = {"stairwell": now - 340 * TICKS_PER_DAY}
+    assert len(run(s, m)) == 1
+    style = R.Proposal("stairwell", {"type": "dig_stairwell", "dir": "east", "elev_lo": 37}, "x", 6)
+    assert hold_classes.step_class(style) == hold_classes.EXPANSION
 
 
 if __name__ == "__main__":

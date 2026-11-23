@@ -7,7 +7,7 @@ from __future__ import annotations
 from digest import _d
 from planner_core import TICKS_PER_DAY
 
-__all__ = ["stairs_blocked", "STAIRS_BLOCKED_RULES", "STAIRS_BLOCKED_DAYS", "STAIRS_BLOCKED_WORDS"]
+__all__ = ["stairs_blocked", "STAIRS_BLOCKED_RULES", "STAIRS_BLOCKED_DAYS", "STAIRS_BLOCKED_WORDS", "STAIRS_BLOCKED_EVERY"]
 
 # the stored reason is cut at 100 characters (planner_refusal_streak.WHY_MAX):
 # D's reads "... (under the surface only) (z#: water " (live 22 Nov), so the
@@ -15,6 +15,7 @@ __all__ = ["stairs_blocked", "STAIRS_BLOCKED_RULES", "STAIRS_BLOCKED_DAYS", "STA
 STAIRS_BLOCKED_WORDS = ("no safe level found near", ": water")
 STAIRS_BLOCKED_RULES = 2                 # different rules refused so, lately
 STAIRS_BLOCKED_DAYS = 30
+STAIRS_BLOCKED_EVERY = 336 * TICKS_PER_DAY      # one such stairwell a year at most
 
 
 def stairs_blocked(memory, now: int) -> list:

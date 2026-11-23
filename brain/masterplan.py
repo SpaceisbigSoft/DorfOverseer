@@ -977,7 +977,12 @@ def stairwell_district(memory, deepest: bool = False) -> dict | None:
         return None
     order = {id(d): i for i, d in enumerate(ds)}
     if deepest:
-        ds = [d for d in ds if isinstance(d.get("lo"), (int, float))]
+        # (verifier) the builder starts a stairwell 2-10 levels above the
+        # district's bottom on the main stair: a district whose bottom is
+        # within 2 of the stair's top can't get one (D's defence, 41-42, stair to 42)
+        top = _d(_peek(memory).get("spine")).get("top")
+        ds = [d for d in ds if isinstance(d.get("lo"), (int, float))
+              and (not isinstance(top, int) or d["lo"] <= top - 2)]
         if not ds:
             return None
         return sorted(ds, key=lambda d: (d["lo"], order[id(d)]))[0]

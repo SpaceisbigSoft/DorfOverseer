@@ -263,6 +263,10 @@ def step_class(p) -> str:
         return EXPANSION
     if any(a.get(k) for k in SAFE_FLAGS):
         return SURVIVAL
+    # (0.105.75, verifier) a stairwell past water that blocks every new level
+    # is the fort's way to grow at all: not held as expansion in a crisis
+    if t == "dig_stairwell" and a.get("blocked"):
+        return SURVIVAL
     c = STEP_CLASS.get((rule, t))
     if c:
         return c
