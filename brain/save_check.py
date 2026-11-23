@@ -7,11 +7,13 @@ newest save by world.sav's time, so the keeper loaded it twice, and DF hung
 on the load. Every intact world.sav on the six forts ends in no zero byte
 at all (it is compressed data).
 
-A save folder is DAMAGED when its world.sav is missing or empty, or ends in
+A save folder is DAMAGED when its world.sav is empty, or ends in
 a long run of zero bytes: at least ZERO_TAIL_MIN (1 MiB), or more than
 ZERO_TAIL_SHARE of the file once the run is at least ZERO_TAIL_FLOOR (4 KiB,
 one NTFS cluster: an unflushed tail is whole clusters, so a few zero bytes
-a real save might end with never count).
+a real save might end with never count). (r14 k1 fixes) A folder that holds
+DF's save files (world.dat, unit-*.dat) but no world.sav is not damaged but
+not loadable either ("has no world.sav"): skipped, never "move it".
 
 Only the file's tail is read: the last TAIL_READ bytes, and further back in
 chunks only while they are all zeros (to say how much was lost). Results are
@@ -83,7 +85,10 @@ def damage(folder: Path, opener=open) -> str | None:
         try:
             st = sav.stat()
         except FileNotFoundError:
-            return "it has no world.sav"
+            # (r14 k1 fixes) not torn: a folder that looks like a save (DF's
+            # world.dat or unit files) but has no world.sav can't be loaded;
+            # any other folder isn't judged
+            return NO_SAV if looks_like_save(folder) else None
         key = (st.st_size, st.st_mtime_ns)
         hit = _CACHE.get(str(sav))
         if hit and hit[0] == key:
@@ -96,6 +101,22 @@ def damage(folder: Path, opener=open) -> str | None:
         return why
     except (OSError, ValueError):
         return None
+
+
+NO_SAV = "has no world.sav"
+
+
+def looks_like_save(folder: Path) -> bool:
+    """A folder holding DF's save files (world.dat, unit-*.dat)."""
+    try:
+        return (folder / "world.dat").is_file() or any(True for _ in folder.glob("unit-*.dat"))
+    except OSError:
+        return False
+
+
+def no_sav(why: str | None) -> bool:
+    """(r14 k1 fixes) The reason is a missing world.sav (not damage: nothing to move)."""
+    return why == NO_SAV
 
 
 def torn(why: str | None) -> bool:

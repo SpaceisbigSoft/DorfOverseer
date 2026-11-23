@@ -49,6 +49,10 @@ HUNG_KILL_EVERY_S = 3600     # at most once an hour
 # night: after LOAD_FAILS_MAX failed loads the next candidate is tried
 LOAD_FAILS_MAX = 2
 LOAD_TIMEOUT_S = 900         # loading, and no fort this long after: a failed load
+# (r14 k1 fixes) a load counts in full as hung only when DF was silent from
+# within this of its start through LOAD_TIMEOUT_S (a busy PC times dfhack-run
+# out now and then mid-load: that is one failure, as before)
+HUNG_LOAD_MARGIN_S = 2 * PROBE_EVERY_S
 DF_EXE = "Dwarf Fortress.exe"
 SAY_AGAIN_S = 3600           # (0.105.48, K17) a lasting trouble (another game, a wrong fort) said hourly
 RESTORES_KEPT = 2            # (0.105.48, K17) "AI restore" folders kept in the game's saves
@@ -164,7 +168,9 @@ def restore_from_backup(log=None) -> str | None:
             # (r14 k1) a copy of a torn save would only fail again: the next older one
             if log and (str(c), why) not in _COPY_SAID:
                 _COPY_SAID.add((str(c), why))
-                log(f"Revive: the backup copy {c} is damaged ({why}): not restored.")
+                log(f"Revive: the backup copy {c} "
+                    + (f"{why}: not a save DF can load" if save_check.no_sav(why) else f"is damaged ({why})")
+                    + ": not restored.")
             continue
         dest = root / name
         if dest.exists() or (root.parent / OLD_FOLDER / name).exists():
@@ -514,6 +520,7 @@ class Reviver:
         # never loaded; said once per folder as written (folder, its stamp)
         self.damaged = damaged_folder
         self.damaged_said: set = set()
+        self.late_load: str | None = None         # (r14 k1 fixes) the last load counted failed, game still up
         self.loading: tuple[str, float] | None = None
         self.restore = restore_from_backup
         self.restored: list[str] = []
@@ -706,8 +713,26 @@ class Reviver:
             return 0
         return self.load_fails[folder]
 
+    def _late_success(self) -> None:
+        """(r14 k1 fixes) A load counted as failed (timed out, hung) whose game
+        then came up with the pinned fort after all: the count is taken back,
+        so a slow but healthy save isn't passed over for an older one."""
+        import pin
+        p = pin.current()
+        site = getattr(self, "site", None)
+        if site in (None, "") or (p and str(site) != str(p.get("site"))):
+            return
+        folder, self.late_load = self.late_load, None
+        if self.load_fails.pop(folder, None):
+            self.fail_stamp.pop(folder, None)
+            self.log(f"Revive: '{folder}' came up after all (a slow load, not a bad save): its failed loads "
+                     "are forgotten.")
+
     def _count_fail(self, folder: str, why: str, full: bool = False) -> None:
-        """(r14 k1) `full`: a lasting fault, counted as LOAD_FAILS_MAX at once."""
+        """(r14 k1) `full`: a lasting fault, counted as LOAD_FAILS_MAX at once.
+        (r14 k1 fixes) The folder is kept (late_load) until another load or the
+        game closing: if its fort comes up after all, the count is undone."""
+        self.late_load = folder
         n = self._fails(folder) + 1
         n = self.load_fails[folder] = max(n, LOAD_FAILS_MAX) if full else n
         try:
@@ -719,6 +744,10 @@ class Reviver:
 
     def _watch_load(self, state: str, now: float) -> None:
         if self.loading is None:
+            if state == "world" and self.late_load:
+                self._late_success()
+            elif state == "down":
+                self.late_load = None
             return
         folder, since = self.loading
         if state == "world":
@@ -741,6 +770,7 @@ class Reviver:
                 self._count_fail(folder, "another site")
                 self.load_fails[folder] = max(self.load_fails.get(folder, 0), LOAD_FAILS_MAX)
                 self.wrong_load = folder
+                self.late_load = None
                 return
             self.loading = None
             self.stalls.pop(folder, None)
@@ -748,6 +778,7 @@ class Reviver:
             self.fail_stamp.pop(folder, None)
         elif state == "down":
             self._load_failed("Dwarf Fortress closed")
+            self.late_load = None
         elif state == "title":
             # (0.105.48, K17) the load goes on in steps inside the game: one
             # that stopped at the title screen (a list that wouldn't scroll)
@@ -763,10 +794,16 @@ class Reviver:
         elif state == "unknown" and now - since >= LOAD_TIMEOUT_S:
             # (r14 k1) DF stopped answering while it loaded the save and never
             # came back (E's torn 'autosave 3' hung it): counted in full, so the
-            # next try (after the hung game is closed) takes the next save
-            self.loading = None
-            self._count_fail(folder, f"Dwarf Fortress stopped answering during the load, {LOAD_TIMEOUT_S // 60} "
-                                     "minutes after it began: hung", full=True)
+            # next try (after the hung game is closed) takes the next save.
+            # (r14 k1 fixes) only when silent from (about) the load's start:
+            # a busy PC's timeouts later in the load are one failure
+            silent_from = self.unknown_since if self.unknown_since is not None else now
+            if silent_from <= since + HUNG_LOAD_MARGIN_S:
+                self.loading = None
+                self._count_fail(folder, f"Dwarf Fortress gave no answer from the load's start through "
+                                         f"{LOAD_TIMEOUT_S // 60} minutes: hung", full=True)
+            else:
+                self._load_failed(f"no fort {LOAD_TIMEOUT_S // 60} minutes after, Dwarf Fortress not answering")
         elif now - since >= LOAD_TIMEOUT_S:
             self._load_failed(f"no fort {LOAD_TIMEOUT_S // 60} minutes after")
 
@@ -800,8 +837,12 @@ class Reviver:
             if (f, stamp) in self.damaged_said:
                 continue
             self.damaged_said.add((f, stamp))
-            guess = ", written as the PC went down?" if save_check.torn(why) else ""
             then = f"loading '{nxt}'" if nxt else "no other save of the fort is left to load"
+            if save_check.no_sav(why):
+                # (r14 k1 fixes) not torn, just not a save DF can load: nothing to move
+                self.log(f"Revive: '{f}' {why}: not a save DF can load: skipped, {then}.")
+                continue
+            guess = ", written as the PC went down?" if save_check.torn(why) else ""
             self.log(f"Revive: '{f}' is damaged ({why}{guess}): skipped, {then}.")
             try:
                 root = _fort_root()
@@ -935,15 +976,25 @@ class Reviver:
                 LAST_DAMAGED.clear()
                 folders, world = self.candidates()
                 folders, skipped = self._skip_damaged(folders)
-                folders = [f for f in folders if self._fails(f) < LOAD_FAILS_MAX]
+                failed = [f for f in folders if self._fails(f) >= LOAD_FAILS_MAX]
+                folders = [f for f in folders if f not in failed]
                 self._say_damaged(skipped, folders[0] if folders else None)
                 if not folders:
                     # (0.105.0) every save failed: the newest copy in backups/
                     restored = self.restore(self.log) if self.restore else None
                     if not restored:
                         if not getattr(self, "none_said", False):
-                            self.log("Revive: no save of the pinned fort is left to try (each failed to load "
-                                     f"{LOAD_FAILS_MAX} times) and no backup copy to restore: left at the title.")
+                            # (r14 k1 fixes) which were ruled out, and why
+                            why = []
+                            if failed:
+                                why.append(f"failed to load {LOAD_FAILS_MAX} times: "
+                                           + ", ".join(f"'{f}'" for f in failed))
+                            if skipped:
+                                why.append("not loadable (damaged, or no world.sav): "
+                                           + ", ".join(f"'{f}'" for f, _ in skipped))
+                            self.log("Revive: no save of the pinned fort is left to try ("
+                                     + ("; ".join(why) or "none found") + ") and no backup copy to restore: "
+                                     "left at the title.")
                             self.none_said = True
                         return
                     self.restored.append(restored)
@@ -965,6 +1016,7 @@ class Reviver:
                         out = self._dfhack().run("ai-title", "load", folder)
                     if '"ok":true' in out.replace(" ", ""):
                         self.loading = (folder, now)
+                        self.late_load = None
                         self.log(f"Revive: the game sat at the title screen; loading the save '{folder}'.")
                     else:
                         self.log(f"Revive: couldn't load '{folder}' ({out.strip()[-200:]}).")
