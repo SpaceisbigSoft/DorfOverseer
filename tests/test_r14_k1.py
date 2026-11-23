@@ -326,5 +326,92 @@ def _():
     assert loads(df)[-1] == "autosave 2", loads(df)
 
 
+# ------------------------------------------------------------------ (r14 k1 fixes)
+
+def _rv(cands=("autosave 3", "autosave 2")):
+    t = [0.0]
+    df = TitleDF()
+    logs = []
+    rv = revive.Reviver(logs.append, dfhack=df, launcher=lambda *_: None, clock=lambda: t[0])
+    rv.candidates = lambda: (list(cands), None)
+    rv.restore = None
+    rv.damaged = lambda f: None
+    stamps = {"autosave 3": 100.0, "autosave 2": 50.0}
+    rv.save_stamp = lambda f: stamps.get(f)
+    return rv, df, logs, t
+
+
+@test("fixes: a busy PC's timeouts from minute 4 of a load are one failure, not a hang")
+def _():
+    rv, df, logs, t = _rv()
+    for _ in range(4):
+        rv.tick(); t[0] += 60
+    assert loads(df) == ["autosave 3"], loads(df)
+    for _ in range(4):                                       # answers 'NO-WORLD' (loading) for 4 minutes
+        rv.tick(); t[0] += 60
+    df.state = "hung"
+    for _ in range(int(revive.LOAD_TIMEOUT_S // 60)):
+        rv.tick(); t[0] += 60
+    assert rv.load_fails.get("autosave 3") == 1, rv.load_fails
+    assert not any("hung" in x for x in logs), logs
+
+
+@test("fixes: a load counted failed whose pinned fort then comes up: the count is forgotten")
+def _():
+    rv, df, logs, t = _rv()
+    for _ in range(4):
+        rv.tick(); t[0] += 60
+    df.state = "hung"                                        # silent from the start (counted in full)
+    for _ in range(int(revive.LOAD_TIMEOUT_S // 60) + 2):
+        rv.tick(); t[0] += 60
+    assert rv.load_fails.get("autosave 3") == revive.LOAD_FAILS_MAX, rv.load_fails
+    df.state = "world"                                       # ... but it was only slow
+    for _ in range(2):
+        rv.tick(); t[0] += 60
+    assert rv.load_fails == {}, rv.load_fails
+    assert any("came up after all" in x for x in logs), logs
+
+
+@test("fixes: every save ruled out: the line says which were damaged and which failed")
+def _():
+    rv, df, logs, t = _rv(("autosave 3", "autosave 2"))
+    rv.damaged = lambda f: "its world.sav ends in 3.1 MB of zeros" if f == "autosave 3" else None
+    rv.load_fails = {"autosave 2": revive.LOAD_FAILS_MAX}
+    rv.fail_stamp = {"autosave 2": 50.0}
+    for _ in range(4):
+        rv.tick(); t[0] += 60
+    line = [x for x in logs if "no save of the pinned fort" in x]
+    assert line, logs
+    assert "failed to load 2 times: 'autosave 2'" in line[0] and "'autosave 3'" in line[0], line
+    assert "each failed" not in line[0], line
+
+
+@test("fixes: a save-like folder without world.sav: skipped, not called damaged, no 'move it'")
+def _():
+    import save_check
+    root = TMP / "dfN" / "save"
+    d = root / "region4"
+    d.mkdir(parents=True)
+    (d / "world.dat").write_bytes(b"x" * 100)
+    plain = root / "notes"
+    plain.mkdir()
+    (plain / "readme.txt").write_text("x")
+    assert save_check.damage(plain) is None                  # not a save folder: not judged
+    intact(root, "autosave 2", 5000)
+    t = [0.0]
+    df = TitleDF()
+    logs = []
+    with Patched(root):
+        pin_to(TMP / "dfN", "region4")
+        rv = revive.Reviver(logs.append, dfhack=df, launcher=lambda *_: None, clock=lambda: t[0])
+        rv.restore = None
+        for _ in range(4):
+            rv.tick(); t[0] += 60
+    assert loads(df) == ["autosave 2"], loads(df)
+    said = [x for x in logs if "'region4'" in x]
+    assert said and all("damaged" not in x and "move it" not in x and "Needs you" not in x for x in said), said
+    assert "has no world.sav: not a save DF can load" in said[0], said
+
+
 if __name__ == "__main__":
     finish()
