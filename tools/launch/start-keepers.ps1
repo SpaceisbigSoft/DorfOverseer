@@ -137,7 +137,7 @@ function Show-View {
     Write-Host ''
     Write-Host "Keepers:  $run" -ForegroundColor Cyan
     Write-Host ("Hourly status (alerts, Claude Helper's status): next " + $NextStatus.ToString('HH:mm')) -ForegroundColor DarkGray
-    Write-Host '[S] stop all   [R] start stopped ones   [1-6] a fort''s live log (A-F)   [K] force-stop a stuck one   [Q] close (keepers run on)' -ForegroundColor DarkGray
+    Write-Host '[S] stop all  [R] start stopped  [1-6] live log A-F  [K] force-stop stuck  [Q] close (keepers run on)' -ForegroundColor DarkGray
 }
 
 Clear-Host
