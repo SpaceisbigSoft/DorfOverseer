@@ -7,7 +7,7 @@
 -- reqscript('gui/ai-overseer').name, as when it was one file.
 
 if not OVERSEER_PART_LOCALS then qerror('gui/ai-overseer-rules is a part of gui/ai-overseer; run gui/ai-overseer') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['gui/ai-overseer-rules'] = '0.105.82'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['gui/ai-overseer-rules'] = '0.105.83'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local widgets, S = OVERSEER_PART_LOCALS.widgets, OVERSEER_PART_LOCALS.S   -- (r9) the hub's locals
 

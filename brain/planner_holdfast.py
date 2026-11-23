@@ -407,22 +407,27 @@ def _losses_pass(s: dict, memory, cfg: dict, squads: dict, proposals: list, note
     return keep + fall_back(s, cfg, back, "the fight turned bad (" + "; ".join(whys)[:120] + ")", keep)
 
 
-def _fit(rows: list, qs: list) -> list:
+def _fit(rows: list, qs: list, inside: bool = False) -> list:
     """(0.105.54) The squads fit to go at these threats: against fliers (and
     a fire breather) crossbows only (planner_matchup.fight_bar ranged_only):
-    a squad with ranged power or a crossbow uniform."""
-    from planner_matchup import fight_bar
+    a squad with ranged power or a crossbow uniform. (0.105.83) Inside the
+    fort a flier comes down into the corridors to strike, so melee squads go
+    too (B's ravens, 23 Nov: three dead, no crossbow squad, 37 soldiers stayed
+    home); never at a fire breather."""
+    from planner_matchup import fight_bar, fire_breather
     from planner_core import is_ranged
     if not fight_bar(rows, PLANNER_CONFIG)["ranged_only"]:
+        return qs
+    if inside and not any(fire_breather(t) for t in rows if isinstance(t, dict)):
         return qs
     return [q for q in qs if is_ranged(q) or (_num(_d(q.get("power")).get("ranged_power")) or 0) > 0]
 
 
-def _party(rows: list, on: list, pool: list, bar: float, memory) -> tuple[list, float]:
+def _party(rows: list, on: list, pool: list, bar: float, memory, inside: bool = False) -> tuple[list, float]:
     """The strongest squads of the pool, as few as clear the bar with the
     ones already on them: (party, its ratio with `on`). Crossbows only
-    against fliers (_fit)."""
-    pool = _fit(rows, pool)
+    against fliers (_fit), but inside the fort."""
+    pool = _fit(rows, pool, inside)
     pool = sorted({q["id"]: q for q in pool}.values(), key=lambda q: (-_ratio(rows, [q], memory), -_power(q), q["id"]))
     party: list = []
     for q in pool:
@@ -495,14 +500,14 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
         in_rows = [t for t in rows if t.get("id") in inside]
         if in_rows:
             bar_in = min(bar, float(cfg.get("fight_ratio_inside", 1.0)))
-            party, r_in = _party(in_rows, [], pool, bar_in, memory)
+            party, r_in = _party(in_rows, [], pool, bar_in, memory, inside=True)
             target_ids = [t["id"] for t in in_rows]
             if r_in >= bar_in:
                 how = f"the {len(in_rows)} inside only (the squads are too weak for all of them)"
             else:
                 every = pool + [q for q in _free(s, squads, busy, cfg, memory, militia=True)
                                 if q["id"] not in {x["id"] for x in pool}]
-                every = _fit(in_rows, every)
+                every = _fit(in_rows, every, inside=True)
                 party, r_in = every, _ratio(in_rows, every, memory)
                 how = (f"the {len(in_rows)} inside the fort among the civilians: every squad, whatever the odds")
             r = r_in

@@ -150,6 +150,15 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         # (0.105.48 K1b) under `all` too, so its losses are counted and the
         # fight is called off (fight_or_hide) as under `ordinary`
         _note_fight(s, memory, [threats[i] for i in great if policy != "all" or i not in off])
+    # (0.105.83) a few ordinary enemies already inside, fliers and wild
+    # animals too (B, 23 Nov 14:48: three agitated giant ravens in through the
+    # cavern well's shaft killed a planter, a stonecrafter and a child in a
+    # minute; the Rules tab sends squads against nothing and a flier is never a
+    # "lone intruder", so 37 soldiers stood by): one armed squad, whatever the
+    # policy, when nothing else is sent
+    if not lone and not targets and reach:
+        from planner_leisure import inside_few
+        lone = inside_few(s, cfg, reach, threats)
     if lone:
         # (0.105.3) a lone intruder inside: one armed squad, whatever the policy
         _lone_squad(s, memory, cfg, squads, lone, threats, proposals, notes)

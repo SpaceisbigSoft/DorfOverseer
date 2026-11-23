@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from digest import _d
 
-__all__ = ["LEISURE_NEEDS", "soldiers_short_of_leisure"]
+__all__ = ["LEISURE_NEEDS", "soldiers_short_of_leisure", "inside_few"]
 
 # (BeWithFriends left out: it wants friends, not time off; 54 of 59 soldiers in happy A miss it)
 LEISURE_NEEDS = ("DrinkAlcohol", "MakeMerry", "Socialize", "PrayOrMeditate", "TakeItEasy")
@@ -37,3 +37,24 @@ def soldiers_short_of_leisure(s: dict, cfg: dict) -> str:
     return ""
 
 
+
+
+def inside_few(s: dict, cfg: dict, reach: list, threats: dict) -> list:
+    """(0.105.83) The ids of the enemies in reach when they are a few
+    (`inside_defence_max`, 6) and every one is already inside the fort (the
+    gate scan's intruders_inside, the hunt's "inside" targets, thieves and
+    interrupters inside: planner_holdfast._inside_ids), fliers and wild
+    animals included, none a great danger, fire breather or building
+    destroyer; [] otherwise. One squad goes at them whatever the Rules tab
+    says (B's ravens, 23 Nov)."""
+    from planner_holdfast import _inside_ids
+    ids = [i for i in reach if i is not None]
+    if not ids or len(ids) > int(cfg.get("inside_defence_max", 6)):
+        return []
+    inside = _inside_ids(s)
+    for i in ids:
+        t = threats.get(i)
+        if (not isinstance(t, dict) or i not in inside or t.get("great_danger") or t.get("destroyer")
+                or t.get("fire_breather")):
+            return []
+    return ids
