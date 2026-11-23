@@ -34,6 +34,7 @@ LOG_DIR = Path(os.environ.get("DFAI_LOG_DIR") or ROOT / "logs")   # (13c) tests:
 LOG = LOG_DIR / "unattended.log"
 STATUS = LOG_DIR / "unattended-status.txt"
 HEARTBEAT = LOG_DIR / "heartbeat"
+STOP_FILE = LOG_DIR / "keeper-stop"   # (0.105.77) the keepers' window asks a keeper without a console to stop
 STALE_S = 600                 # no heartbeat for this long: the overseer is stuck
 BACKOFF = [30, 60, 120, 300, 600]
 GOOD_RUN_S = 1800             # running this long resets the back-off
@@ -229,7 +230,28 @@ def pin_fort() -> None:
         EXTRAS["pinned"] = None
 
 
+class StopAsked(KeyboardInterrupt):
+    """(0.105.77) logs/keeper-stop found: stopped as Ctrl-C stops it."""
+
+
+def stop_asked() -> None:
+    """(0.105.77) The one-window keepers launcher (start-keepers.ps1) runs the
+    keepers with no console of their own, so Ctrl-C can't reach them: it
+    writes logs/keeper-stop instead. Found (every 5 s, with the chores): the
+    file removed and the keeper stopped as by Ctrl-C (the overseer ended, the
+    fort left open, the summary and the status written)."""
+    try:
+        if not STOP_FILE.exists():
+            return
+        STOP_FILE.unlink(missing_ok=True)
+    except OSError:
+        return
+    log("Keeper: asked to stop (logs/keeper-stop, from the keepers' window).")
+    raise StopAsked()
+
+
 def chores() -> None:
+    stop_asked()
     pin_fort()
     rv = EXTRAS.get("reviver")
     if rv is not None:
@@ -413,6 +435,10 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
         except Exception as e:  # noqa: BLE001
             log(f"Revive couldn't start ({e}); running without it.")
     restarts, streak, runs = 0, 0, 0
+    try:
+        STOP_FILE.unlink(missing_ok=True)       # (0.105.77) an old ask never stops a new run
+    except OSError:
+        pass
     write_status(started, restarts, "running")      # (0.105.48, K8) health_check reads how it ended
     try:
         while max_runs is None or runs < max_runs:
@@ -444,13 +470,14 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
                 sleep_doing_chores(wait)
             else:
                 sleep(wait)                   # (tests)
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as e:
+        how = "asked by the keepers' window" if isinstance(e, StopAsked) else "Ctrl-C"
         leave_fort_open()             # (0.105.47, J16) a fort left alone is never sealed
         for line in summary_lines():
             log("Summary: " + line)
         write_soak_report()
-        log("Keeper stopped (Ctrl-C).")
-        write_status(started, restarts, "Keeper stopped (Ctrl-C)")
+        log(f"Keeper stopped ({how}).")
+        write_status(started, restarts, f"Keeper stopped ({how})")
         return 0
     except BaseException as e:  # noqa: BLE001  (0.105.48, K8) never silently: logged, status written
         if isinstance(e, SystemExit) and e.code in (0, None):

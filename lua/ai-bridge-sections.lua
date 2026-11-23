@@ -10,7 +10,7 @@
 -- Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-sections is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.76'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.77'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- Run one section of the report; if it fails, keep the rest of the report
 -- and put the error where that section would have been.
