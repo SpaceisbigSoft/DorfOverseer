@@ -958,10 +958,37 @@ local function rotting_near(spots, max_spots)
             end
         end
     end
-    return found, false
+    -- (0.105.87) what the workshops in those blocks hold: their contents are
+    -- not on the blocks' item lists (F: 280 corpse pieces in the butcher's,
+    -- never seen); a building's own parts (use_mode 2) left out
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.WORKSHOP_ANY) do
+            local key = (b.centerx // 16 * 16) .. ',' .. (b.centery // 16 * 16) .. ',' .. b.z
+            if seen_block[key] then
+                for _, ci in ipairs(b.contained_items) do
+                    local it = ci.item
+                    if it and ci.use_mode ~= 2 and not seen_item[it.id] then
+                        seen_item[it.id] = true
+                        looked = looked + 1
+                        if looked > MIASMA_ITEMS_MAX then return end
+                        local kind = U.item_kind(it)
+                        local rotten = false
+                        pcall(function() rotten = it.flags.rotten == true end)
+                        if kind and (BODY_KINDS[kind] or (FOOD_KINDS[kind] and rotten)) then
+                            local x, y, z = U.item_pos(it)
+                            if x and not tile_outside(x, y, z) and not tile_cavern(x, y, z) then
+                                table.insert(found, {it = it, kind = kind, x = x, y = y, z = z})
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    return found, looked > MIASMA_ITEMS_MAX
 end
 
--- (0.105.86) held by a workshop, not in a job there: a finished product or a
+-- (0.105.87) held by a workshop, not in a job there: a finished product or a
 -- leftover nobody hauls off
 function in_workshop(it)
     if it.flags.in_job then return false end
@@ -984,7 +1011,7 @@ function keep_rotting(e, ctx, dumps)
     if f.owned then return 'owned' end
     if f.trader then return 'trader' end
     if f.in_building or f.construction then return 'in_building' end
-    -- (0.105.86) a workshop's leftovers outside any job (F, 23 Nov: 280
+    -- (0.105.87) a workshop's leftovers outside any job (F, 23 Nov: 280
     -- corpse pieces and rotten meat in the butcher's, the one refuse pile
     -- full, miasma for 82 citizens) go to the dump like the loose; the
     -- checks below (danger, reach, a body for the butcher) still hold

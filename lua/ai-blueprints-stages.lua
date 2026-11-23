@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-blueprints-stages is a part of ai-blueprints; run ai-blueprints') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-blueprints-stages'] = '0.105.86'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-blueprints-stages'] = '0.105.87'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local needs_floor, int, where, grids_of, cell, N8, mark = PART_LOCALS.needs_floor, PART_LOCALS.int, PART_LOCALS.where, PART_LOCALS.grids_of, PART_LOCALS.cell, PART_LOCALS.N8, PART_LOCALS.mark   -- (r9) the hub's and earlier parts' locals
 
