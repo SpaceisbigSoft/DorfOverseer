@@ -6,7 +6,7 @@
 -- (r8) Split off ai-builder-cistern.lua by theme; the top-level locals the
 -- ai-builder-cistern files share with this one come from CISTERN_PART_LOCALS.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-status'] = '0.105.74'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-status'] = '0.105.75'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 local DIR8 = CISTERN_PART_LOCALS.DIR8

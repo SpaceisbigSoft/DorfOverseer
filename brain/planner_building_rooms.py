@@ -32,12 +32,19 @@ def _stairwell_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list) -
     one great stair, a second one, or one a district; The Hundred Stairs two
     more): while the survey counts fewer, a new one for the next district of
     the plan without one, `dir` of the main stair, from the district's top
-    down through its levels. A season apart (the survey counts again)."""
+    down through its levels. A season apart (the survey counts again).
+    (0.105.75) Also, whatever the style and the fort's size, when the levels
+    by the staircases are all refused for water or magma (stairs_blocked): a
+    new one away from them for the deepest district without one."""
     if memory is None or young_fort(s, cfg):
         return
-    if int(_d(s.get("dwarves")).get("total") or 0) < cfg["stairwell_min_citizens"]:
-        return
     if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
+        return
+    from planner_stairs_blocked import stairs_blocked, STAIRS_BLOCKED_RULES   # (0.105.75)
+    blocked = stairs_blocked(memory, abs_tick(s))
+    if len(blocked) < STAIRS_BLOCKED_RULES:
+        blocked = []
+    if not blocked and int(_d(s.get("dwarves")).get("total") or 0) < cfg["stairwell_min_citizens"]:
         return
     site = _d(_d(_d(memory.atlas).get("survey")).get("site"))
     have = site.get("stairwells")
@@ -49,10 +56,24 @@ def _stairwell_rule(s: dict, memory, cfg: dict, traits: dict, proposals: list) -
         want = 1
     if has_rule(_d(memory.culture), "many_stairs"):
         want += 2
-    if have >= want:
+    if have >= want and not blocked:
         return
-    d = masterplan.stairwell_district(memory)
+    d = masterplan.stairwell_district(memory, deepest=bool(blocked))
     if not d:
+        return
+    if blocked:
+        plan = _d(_d(memory.atlas).get("plan"))
+        spine = _d(plan.get("spine"))
+        dirs = [x for x in d.get("dirs") or [] if x in masterplan.DIRS]
+        action = {"type": "dig_stairwell", "dir": dirs[0], "elev_lo": int(d["lo"]), "elev_hi": int(d["hi"]),
+                  "district": d.get("id")}
+        if isinstance(spine.get("x"), int) and isinstance(spine.get("y"), int):
+            action["spine"] = {"x": spine["x"], "y": spine["y"]}
+        proposals.append(Proposal("stairwell", action,
+                                  f"every new level by the staircase is refused for water or magma ({len(blocked)} "
+                                  f"kinds of work lately: {', '.join(str(b) for b in blocked[:4])}): a new stairwell "
+                                  f"{dirs[0]} of the main stair for {d.get('name') or d.get('id')} (elevations "
+                                  f"{d['lo']}-{d['hi']}), away from the water, its levels to grow from it", 6))
         return
     plan = _d(_d(memory.atlas).get("plan"))
     spine = _d(plan.get("spine"))

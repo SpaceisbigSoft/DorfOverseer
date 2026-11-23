@@ -964,16 +964,23 @@ def brief(memory) -> str:
 
 # --- stairwells (0.104.82) -----------------------------------------------------------
 
-def stairwell_district(memory) -> dict | None:
+def stairwell_district(memory, deepest: bool = False) -> dict | None:
     """The district to give a stairwell next: not the farms (they follow the
     soil) nor the homes (around the main stair), one without a stairwell,
-    those with the most levels built first, then in the plan's order."""
+    those with the most levels built first, then in the plan's order.
+    (0.105.75) deepest: the one reaching lowest first (the staircase's levels
+    blocked by water: the stair goes down past it)."""
     ds = [d for d in _l(_peek(memory).get("districts"))
           if isinstance(d, dict) and d.get("kind") not in ("farms", "homes") and not d.get("stair")
           and [x for x in (d.get("dirs") or []) if x in DIRS]]
     if not ds:
         return None
     order = {id(d): i for i, d in enumerate(ds)}
+    if deepest:
+        ds = [d for d in ds if isinstance(d.get("lo"), (int, float))]
+        if not ds:
+            return None
+        return sorted(ds, key=lambda d: (d["lo"], order[id(d)]))[0]
     return sorted(ds, key=lambda d: (-len(_l(d.get("levels"))), order[id(d)]))[0]
 
 
