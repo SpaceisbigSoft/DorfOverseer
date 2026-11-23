@@ -423,6 +423,22 @@ end""")
     assert clicks(G)[:3] == [(3, 38), (75, 33), (100, 5)], clicks(G)
     run = G.files["/df/dfhack-config/ai-overseer/mission-send.json"].runs[1]
     assert run.pressed == "Attack (case ignored)", run.pressed
+    assert len(lst(run.screen.rows)) > 0
+
+
+@test("(0.105.74, verifier) a lowercase 'attack' in a sentence is never clicked for the goal: stopped goal_unread, "
+      "the screen kept")
+def _():
+    env, G = world("""local old = G.labels
+G.labels = function()
+  local out = {}
+  for _, l in ipairs(old()) do if l[3] ~= 'Attack' then table.insert(out, l) end end
+  if G.screen and G.screen.view_mode == 8 then table.insert(out, {80, 40, 'Your soldiers could attack this site'}) end
+  return out
+end""")
+    r, last = send(env, G, goal="raid", site_id=73, squad_ids=[4])
+    assert last.step == "goal" and last.reason == "goal_unread", dict(last)
+    assert all(c[1] != 40 for c in clicks(G)), clicks(G)
 
 
 @test("(0.105.74) the goal's word not on New mission (live 22 Nov, A and E): stopped 'goal_unread' with the "

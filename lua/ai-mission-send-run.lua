@@ -279,7 +279,11 @@ function stop(run, result, reason)
     -- (0.105.74) the goal's word not read on New mission (live 22 Nov, A and
     -- E): 'goal_unread', tried again the next day (the screen kept in the
     -- log each time), up to 3 times a DF session; then a step nobody recorded
-    if run.step_name == 'goal' and run.reason == 'not_found' and run.goal_unread then
+    -- (verifier) a capitals press DF didn't take counts the same; the misses
+    -- are this DF session's, every goal and site together (as SITE_MISSES)
+    if run.step_name == 'goal' and ((run.reason == 'not_found' and run.goal_unread)
+            or (run.reason == 'unexpected' and run.goal_ci
+                and tostring(run.why or ''):find('still on world/NEW_MISSION', 1, true))) then
         GOAL_MISSES = (GOAL_MISSES or 0) + 1
         if GOAL_MISSES <= 3 then run.reason = 'goal_unread' end
         run.why = run.why .. ' (unread ' .. GOAL_MISSES .. ' this DF session)'

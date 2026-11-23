@@ -121,7 +121,7 @@ def note_contacts(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> None:
     book = contact_book(memory, create=True)
     sites = book["sites"]
     now = abs_tick(s)
-    from planner_missions import last_of_goal, interrupted
+    from planner_missions import last_of_goal, interrupted, click_missed
     last = last_of_goal(_d(_d(s.get("missions")).get("send")), "make_contact")
     sid, t = _int(last.get("site_id")), _int(last.get("tick"))
     if sid is not None and t is not None:
@@ -140,7 +140,8 @@ def note_contacts(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> None:
             elif reason in ("inaccessible", "unavailable"):
                 e["st"], e["why"] = "failed", game_text(f"DF said no ({last.get('why') or reason})", 60)
             elif res in ("stopped", "error"):
-                if not interrupted(last) and reason != "no_messenger":
+                # (0.105.74, verifier) a missed click or an unread goal is the screen's, not the site's
+                if not interrupted(last) and not click_missed(last) and reason != "no_messenger":
                     e["tries"] = int(_int(e.get("tries")) or 0) + 1
                 tries = int(_int(e.get("tries")) or 0)
                 if tries >= TRIES_MAX:

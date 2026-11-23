@@ -103,11 +103,12 @@ def _contact_sends(s: dict) -> bool:
     if not (player_rules(s)["send_messenger"] and send and "World" in set(str(b) for b in _l(send.get("buttons")))):
         return False
     # a run that stopped at a step lately: the rule only says so (once a season), no send
-    from planner_missions import last_of_goal, interrupted, SOFT_STOPS     # (r9) 'unavailable' a soft stop too
+    from planner_missions import last_of_goal, interrupted, click_missed, SOFT_STOPS     # (r9) 'unavailable' a soft stop too
     last = last_of_goal(send, "make_contact")
     t = last.get("tick") if isinstance(last.get("tick"), int) else None
     if (t is not None and 0 <= abs_tick(s) - t < SEND_RETRY_TICKS and last.get("result") in ("stopped", "error")
-            and last.get("reason") not in SOFT_STOPS and not interrupted(last)):
+            and last.get("reason") not in SOFT_STOPS and not interrupted(last)
+            and not click_missed(last)):          # (0.105.74) a missed click or unread goal: tomorrow
         return False
     return True
 
@@ -626,8 +627,9 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and click_missed(last):
         # (r12, live 22 Nov) DF didn't take the click on the site: tried again tomorrow
         if blocked:
-            notes.append("the messenger's last send: DF didn't take the AI's click on the site on the World "
-                         "screen; tried again tomorrow")
+            notes.append("the messenger's last send: " + ("the Diplomacy button wasn't read on New mission"
+                         if last.get("reason") == "goal_unread" else
+                         "DF didn't take the AI's click on the site on the World screen") + "; tried again tomorrow")
             return
     elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and interrupted(last):
         # (0.105.39 review 2) the player took the game back: tried again after a day

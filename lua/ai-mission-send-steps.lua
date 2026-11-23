@@ -74,7 +74,8 @@ function screen_dump(rows)
                     if ch > 32 and ch < 127 then out.letters = out.letters + 1
                     elseif (tonumber(t.tile) or 0) > 0 then out.glyphless = out.glyphless + 1
                     else out.blank = out.blank + 1 end
-                    if t.top_of_text then out.top_of_text = out.top_of_text + 1 end
+                    local okt, top = pcall(function() return t.top_of_text end)
+                    if okt and top then out.top_of_text = out.top_of_text + 1 end
                 end
             end
         end
@@ -347,13 +348,19 @@ STEP_DEFS = {
              if ok then run.pressed = w; return true end
              if m ~= 'not_found' then return false, m, why end
          end
-         -- (0.105.74) the case ignored (DIPLOMACY, ATTACK), then the screen kept
+         -- (0.105.74) the word in capitals (DIPLOMACY, ATTACK; never a lowercase
+         -- word in a sentence, verifier), the screen kept either way
          for _, w in ipairs(G.words) do
-             local m = pick_word(find_words_ci(rows, w))
+             local m
+             for _, c in ipairs(find_words_ci(rows, w)) do
+                 if rows[c.y]:sub(c.x + 1, c.x_end + 1) == w:upper() then m = c end
+             end
              if m then
                  local okc, err = pcall(click, m.cx, m.y)
                  if not okc then return false, 'click_failed', 'the click failed: ' .. tostring(err):sub(1, 160) end
                  run.pressed = w .. ' (case ignored)'
+                 run.screen = screen_dump(rows)
+                 run.goal_ci = true
                  return true
              end
          end
