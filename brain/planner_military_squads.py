@@ -282,7 +282,14 @@ def _training_rotation(s: dict, memory, squads: list, train_to: str, off: str, c
     # (0.104.53) while many soldiers badly want to train, all of them do
     # (Enxah: MartialTraining 16 badly, 52 distracted, a squad off duty by turns)
     cit = max(1, int(_d(s.get("dwarves")).get("total") or 0))
-    mt = int(_d(_d(_d(s.get("needs")).get("needs")).get("MartialTraining")).get("badly") or 0)
+    # (0.105.80) the soldiers' own longing when the report counts it: B, 23 Nov:
+    # 17 badly, 16 of them civilians, kept all 4 squads (34 soldiers) on
+    # constant training; the soldiers lost every hour off (20 of 20 missing
+    # drink, 13 of 13 merriment, 40% unhappy). Civilians who long to train go
+    # through soldier_swap and the training squad, not through more training.
+    mtd = _d(_d(_d(s.get("needs")).get("needs")).get("MartialTraining"))
+    mts = mtd.get("badly_soldiers")
+    mt = int(mts if isinstance(mts, int) and not isinstance(mts, bool) else (mtd.get("badly") or 0))
     # (0.104.149) a dead band: once every squad trains they keep on until the
     # need falls to `train_all_off_share`, read from the squads' own routines
     # (Teacheroar, 1 Nov: one threshold flipped 8 squads on and off duty 64

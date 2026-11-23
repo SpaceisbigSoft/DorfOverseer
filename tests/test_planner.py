@@ -4241,6 +4241,16 @@ def _():
     keen = copy.deepcopy(s)
     keen.setdefault("needs", {}).setdefault("needs", {})["MartialTraining"] = {"badly": 40, "distracted": 60}
     assert not [r for r in moves(keen).values() if r == "Off duty"], moves(keen)
+    # (0.105.80) B: the keen are civilians (1 soldier of 40): the squads still take turns
+    def fresh_moves(state):
+        mf = Memory()
+        mf.squads_trained = [q["id"] for q in sq]
+        return {p.action["squad_id"]: p.action["routine"] for p in by_rule(plan(state, mf)[0], "train")}
+    civ = copy.deepcopy(keen)
+    civ["needs"]["needs"]["MartialTraining"]["badly_soldiers"] = 1
+    assert len([r for r in fresh_moves(civ).values() if r == "Off duty"]) == len(ids) // 2, fresh_moves(civ)
+    civ["needs"]["needs"]["MartialTraining"]["badly_soldiers"] = 40
+    assert not [r for r in fresh_moves(civ).values() if r == "Off duty"], fresh_moves(civ)
     later = copy.deepcopy(s)                                   # a month on: the others' turn
     for q in later["military"]["squads"]:
         q["routine"] = "Off duty" if q["id"] in first else "Constant training"
