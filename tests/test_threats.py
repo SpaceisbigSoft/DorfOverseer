@@ -387,5 +387,21 @@ else:
         skip("needs the lupa package (pip install lupa)")      # (0.105.48) counted, not passed
 
 
+@test("(0.105.103) a cell on record as locked with its door open in the game: moon_cell again, and a note")
+def _():
+    s = fort({"were": {"list": [{"id": 4, "name": "Wolfy", "cell": True, "unlocked": True}],
+                       "changes": [{"tick": 0, "phase": 27}], "moon_phase": 26,
+                       "cells": [{"unit_id": 4, "unlocked": True}]}})
+    props, notes = plan(s, Memory())
+    c = acts(props, "moon_cell")
+    assert c and c[0].action["ids"] == [4] and not c[0].action.get("release"), c
+    assert any("its door is open in the game" in n for n in notes), notes
+    # locked and held: nothing to do
+    s["threats"]["were"]["list"] = [{"id": 4, "name": "Wolfy", "cell": True, "locked": True}]
+    s["threats"]["were"]["cells"] = [{"unit_id": 4, "locked": True, "others": ["Urist"]}]
+    props, notes = plan(s, Memory())
+    assert not acts(props, "moon_cell"), props
+    assert any("inside the locked cell" in n for n in notes), notes
+
 if __name__ == "__main__":
     finish()

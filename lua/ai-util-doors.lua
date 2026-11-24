@@ -8,7 +8,7 @@
 -- the helpers defined there and in the parts before it are in reach.
 
 if not PARTS then qerror('ai-util-doors is a part of ai-util; run ai-util') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-doors'] = '0.105.103'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-doors'] = '0.105.104'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- doors, hatches and the walk map (0.105.47, J16) ------------------------------
 --

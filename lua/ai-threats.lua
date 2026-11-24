@@ -943,7 +943,14 @@ local function were_report(d, t, txt)
                 local row = {id = u.id, name = name_of(u, txt), changed = now_changed or nil,
                              by_syndrome = cursed or nil}
                 local c = d.cells[tostring(u.id)]
-                if type(c) == 'table' then row.cell, row.locked = true, c.locked or nil end
+                if type(c) == 'table' then
+                    row.cell, row.locked = true, c.locked or nil
+                    -- (0.105.103) its doors not held in the game: not locked (moon_cell locks it again)
+                    if c.locked and type(cell_doors_held) == 'function' then
+                        local okh, h = pcall(cell_doors_held, c)
+                        if okh and not h then row.locked, row.unlocked = nil, true end
+                    end
+                end
                 if #out.list < 10 then table.insert(out.list, row) end
                 any_changed = any_changed or now_changed
             elseif not own and not changed(u) and were_cursed(u) then
@@ -972,8 +979,14 @@ local function were_report(d, t, txt)
     out.changes = ch
     for uid, c in pairs(d.cells) do
         if type(c) == 'table' then
-            local row = {unit_id = tonumber(uid), locked = c.locked or nil, doors = #(c.doors or {}),
-                         days = c.tick and (t - c.tick) // DAY or nil}
+            local held = true
+            if c.locked and type(cell_doors_held) == 'function' then
+                local okh, h = pcall(cell_doors_held, c)
+                held = not okh or h
+            end
+            -- (0.105.103) locked only while its doors are held in the game
+            local row = {unit_id = tonumber(uid), locked = (c.locked and held) or nil, doors = #(c.doors or {}),
+                         days = c.tick and (t - c.tick) // DAY or nil, unlocked = (c.locked and not held) or nil}
             -- (0.105.103) anyone else inside a locked cell (ai-threats-actions cell_others)
             if c.locked and type(cell_others) == 'function' then
                 pcall(function() row.others = cell_others(c, uid, txt) end)
@@ -1048,7 +1061,7 @@ PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = report_u
 PARTS = {'survey', 'actions'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-threats'] = '0.105.103'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-threats'] = '0.105.104'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

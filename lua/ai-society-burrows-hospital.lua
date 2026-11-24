@@ -7,7 +7,7 @@
 -- parts before it are in reach.
 
 if not BURROWS_PART_LOCALS then qerror('ai-society-burrows-hospital is a part of ai-society-burrows; run ai-society-burrows') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-hospital'] = '0.105.103'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-hospital'] = '0.105.104'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, S, rec_state, zone_tiles = BURROWS_PART_LOCALS.U, BURROWS_PART_LOCALS.report_citizens, BURROWS_PART_LOCALS.S, BURROWS_PART_LOCALS.rec_state, BURROWS_PART_LOCALS.zone_tiles   -- (r9) the hub's and earlier parts' locals
 

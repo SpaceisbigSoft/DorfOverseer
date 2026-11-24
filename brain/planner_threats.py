@@ -533,8 +533,12 @@ def _were(s, cfg, t, rules, proposals, notes):
     if not rows and not cells:
         return
     # (0.105.103) someone else in a locked cell (E, 24 Nov 08:31: four killed in Urvad's)
+    living = {x.get("id") for x in rows}
     for c in cells:
-        if c.get("locked") and _l(c.get("others")):
+        if c.get("unlocked") and c.get("unit_id") in living:
+            notes.append(f"the cell of werebeast {c.get('unit_id')} is on record as locked but its door is open "
+                         "in the game: locked again when they are alone inside")
+        if c.get("locked") and _l(c.get("others")) and c.get("unit_id") in living:
             notes.append(f"{', '.join(str(n) for n in _l(c.get('others'))[:3])} inside the locked cell of "
                          f"werebeast {c.get('unit_id')}: how they got in is not known yet")
     # (0.105.96) the cursed go in WERE_LEAD_PHASES before the change (moon_before_days

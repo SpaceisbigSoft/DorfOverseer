@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-actions is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.103'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.104'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, now_tick, name_of, save_state, unkey, is, citizens, fire_points, each_job, changed, okey, watcher_held, lure_open_ids = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.unkey, PART_LOCALS.is, PART_LOCALS.citizens, PART_LOCALS.fire_points, PART_LOCALS.each_job, PART_LOCALS.changed, PART_LOCALS.okey, PART_LOCALS.watcher_held, PART_LOCALS.lure_open_ids   -- (r8) the hub's and earlier parts' locals
 
@@ -301,6 +301,23 @@ function claimed_doors()
     return out
 end
 
+-- (0.105.103) a cell's doors still locked in the game: every door on its
+-- record there and forbidden. E, 24 Nov 14:00: three cells on record as
+-- locked had their doors unlocked (the cells' record is a file outside the
+-- save; a game reopened from an earlier save, or anything else unlocking
+-- them, left the record saying locked), and the brain sends no moon_cell
+-- for a cell it reads locked. A cell whose doors aren't held counts as not
+-- locked, and is locked again.
+function cell_doors_held(c)
+    if type(c) ~= 'table' or type(c.doors) ~= 'table' or #c.doors == 0 then return false end
+    for _, id in ipairs(c.doors) do
+        local b = df.building.find(tonumber(id) or id)
+        local ok, f = pcall(function() return b.door_flags.forbidden end)
+        if not (b and ok and f) then return false end
+    end
+    return true
+end
+
 -- (0.105.103) who else stands in a werebeast's locked cell: names (at most
 -- 3). E, 24 Nov 08:31: Urvad's cell was locked at 08:28 with him alone, yet
 -- he changed with Dakost and Momuz inside and killed them, then Deler and
@@ -393,6 +410,12 @@ function moon_cell(ids, release, dry_run, txt)
             end
             if u and not dfhack.units.isDead(u) then
                 local c = d.cells[uid]
+                -- (0.105.103) on record as locked, its doors not held in the game: lock again
+                if c and c.locked and not cell_doors_held(c) then
+                    out.relock = out.relock or {}
+                    table.insert(out.relock, name_of(u, txt))
+                    if not dry_run then c.locked, c.doors = nil, {} end
+                end
                 local z = c and c.zone and zone_by_id(c.zone)
                 if not z then
                     local kind
@@ -452,7 +475,7 @@ function moon_cell(ids, release, dry_run, txt)
         end
     end
     if not dry_run then save_state(d) end
-    if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) == 0 and not out.error then   -- (0.105.96, verifier) a squad left counts
+    if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) + #(out.relock or {}) == 0 and not out.error then   -- (0.105.96, verifier) a squad left counts
         return {ok = false, rejected = true, nothing_to_do = true, error = 'every cell is as it should be'}
     end
     return out
