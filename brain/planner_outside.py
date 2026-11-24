@@ -23,8 +23,14 @@ _drought_rule (every cycle, bookkeeping in memory.outside):
     stuck leaving (its merchants on the map `h9_caravan_stuck_days` after it
     began to leave); a siege or an enemy at the edge; else not known.
   * what the AI does about it: a stuck caravan's merchants are told to walk
-    off the map (`free_caravan`, DFHack emigration's own flags), once a
-    month, `h9_caravan_free_max` times, then a Needs you; with no other
+    off the map (`free_caravan`, DFHack emigration's own flags),
+    `h9_caravan_free_max` times; (0.105.97) then taken to the map's edge
+    (step "edge": teleported to an edge tile of their own walk group,
+    `h9_caravan_edge_max` times); once none of its merchants is on the map
+    and DF still holds it Leaving, DFHack's own fix/stuck-merchants and
+    `caravan leave` (step "dismiss", `h9_caravan_dismiss_max` times); each
+    step `h9_caravan_step_days` after the try before; only then a Needs you
+    saying what was tried and what DFHack answered; with no other
     cause a wave is called (`call_migrants`, Rules "call migrants") once a
     season, at most `h9_drought_max_calls` calls that brought nobody, then
     said plainly. A fallen or stalled fort's calls stay the recovery's
@@ -40,7 +46,8 @@ from digest import _d, _l
 from planner_core import (PLANNER_CONFIG, TICKS_PER_DAY, Proposal, abs_tick, ask_player, growth_mode,
                           player_rules)
 
-__all__ = ["note_outside", "stuck_caravans", "drought_cause", "_drought_rule"]
+__all__ = ["note_outside", "stuck_caravans", "gone_caravans", "drought_cause", "_drought_rule",
+           "note_caravan_try"]
 
 from util import conf_lookup as _c  # noqa: E402  (r6 c2) was a copy here
 
@@ -98,6 +105,7 @@ def note_outside(s: dict, memory, cfg: dict) -> dict:
         since = old.get(str(ent))
         seen[str(ent)] = since if isinstance(since, int) and since <= now else now
     o["leaving"] = seen
+    _book_stuck(o, mig, seen, now, cfg)
     # the AI's calls (record() kept the tick of the rule's last done action)
     lf = _d(getattr(memory, "last_fired", None)).get("migrant_drought")
     if isinstance(lf, int) and lf != o.get("call_seen") and lf <= now:
@@ -106,7 +114,7 @@ def note_outside(s: dict, memory, cfg: dict) -> dict:
     lf = _d(getattr(memory, "last_fired", None)).get("stuck_caravan")
     if isinstance(lf, int) and lf != o.get("free_seen") and lf <= now:
         o["free_seen"] = lf
-        o["frees"] = (_l(o.get("frees")) + [lf])[-10:]
+        _book_try_seen(o, lf, cfg)
     # the drought (no wave h9_drought_days) and its cause, for the rule and the digest
     start = max(x for x in (o.get("first"), o.get("last_wave")) if isinstance(x, int))
     mode, _n = growth_mode(s, cfg) if isinstance(s.get("settings"), dict) else ("target", None)
@@ -117,6 +125,150 @@ def note_outside(s: dict, memory, cfg: dict) -> dict:
     else:
         o.pop("drought", None)
     return o
+
+
+# --- (0.105.97) the stuck caravan's escalation ------------------------------------------
+#
+# B (23 Nov): a caravan stuck "Leaving" 118 days with 2 merchants on the map;
+# told to walk off twice, they stayed, and the AI only said so (a Needs you)
+# while no caravan and few migrants came. Each stuck caravan now has its book
+# in memory.outside["stuck"] (by civilisation): since when it is stuck, its
+# tries ([tick, step, what the bridge said]) and since when its merchants are
+# gone from the map while DF still holds it Leaving ("gone").
+
+STEPS = ("walk", "edge", "dismiss")
+
+
+def _book_stuck(o: dict, mig: dict, seen: dict, now: int, cfg: dict) -> None:
+    """The stuck book kept: a caravan leaving with its merchants on the map
+    h9_caravan_stuck_days gets an entry; it stays while DF holds the caravan
+    leaving (its merchants gone: "gone" since then); a caravan gone home or
+    trading again drops it. 0.105.96's walk tries ("frees") are carried over."""
+    wait = int(_c(cfg, "h9_caravan_stuck_days")) * TICKS_PER_DAY
+    old = _d(o.get("stuck"))
+    frees = [t for t in _l(o.get("frees")) if isinstance(t, int)]
+    new = {}
+    for c in _l(mig.get("caravans")):
+        c = _d(c)
+        ent = c.get("entity")
+        if not isinstance(ent, int) or not c.get("leaving"):
+            continue
+        k = str(ent)
+        e = dict(_d(old.get(k)))
+        if int(c.get("merchants") or 0) > 0:
+            since = seen.get(k)
+            if not e:
+                if not isinstance(since, int) or now - since < wait:
+                    continue
+                e = {"since": since, "tries": [[t, "walk", ""] for t in frees if t >= since][-10:]}
+            e.pop("gone", None)
+        else:
+            if not e:
+                continue                         # leaving, no merchant on the map: DF's own business
+            if not isinstance(e.get("gone"), int) or e["gone"] > now:
+                e["gone"] = now
+        if not isinstance(e.get("since"), int) or e["since"] > now:
+            e["since"] = now
+        e["tries"] = [t for t in _l(e.get("tries")) if isinstance(t, list) and t and isinstance(t[0], int)
+                      and t[0] <= now][-12:]
+        new[k] = e
+    o["stuck"] = new
+    o.pop("frees", None)
+
+
+def _counts(e: dict) -> dict:
+    n = {k: 0 for k in STEPS}
+    for t in _l(e.get("tries")):
+        st = t[1] if isinstance(t, list) and len(t) > 1 else "walk"
+        n[st if st in n else "walk"] += 1
+    return n
+
+
+def _next_step(e: dict, cfg: dict, at: int | None = None) -> str:
+    """The step the rule takes next for this book (by its tries so far; dismiss
+    when its merchants were gone by `at`)."""
+    if isinstance(e.get("gone"), int) and (at is None or e["gone"] <= at):
+        return "dismiss"
+    n = _counts(e)
+    return "walk" if n["walk"] < int(_c(cfg, "h9_caravan_free_max")) else "edge"
+
+
+def _book_try_seen(o: dict, lf: int, cfg: dict) -> None:
+    """A try the rule's cooldown says was done (record booked last_fired) and
+    note_caravan_try did not book (a test, an older record): put in the book
+    of the caravan the rule acts on first, its step worked out."""
+    books = _d(o.get("stuck"))
+    if any(isinstance(t, list) and t and t[0] == lf for e in books.values() for t in _l(_d(e).get("tries"))):
+        return
+    if not books:
+        return
+    k = sorted(books, key=lambda k: (isinstance(_d(books[k]).get("gone"), int),
+                                     int(_d(books[k]).get("since") or 0)))[0]
+    e = _d(books[k])
+    e["tries"] = (_l(e.get("tries")) + [[lf, _next_step(e, cfg, lf), ""]])[-12:]
+
+
+def _said(step: str, r: dict) -> str:
+    """What the bridge answered a try, short."""
+    if not isinstance(r, dict):
+        return ""
+    if step == "dismiss":
+        ran = r.get("ran")
+        ran = list(ran.values()) if isinstance(ran, dict) else _l(ran)
+        bits = []
+        for x in ran:
+            x = _d(x)
+            out = " ".join(str(x.get("out") or "").split())[:80]
+            bits.append(f"`{x.get('cmd')}`: {'ok' if x.get('ok') else 'failed'}" + (f" ({out})" if out else ""))
+        if r.get("skipped"):
+            bits.append(str(r["skipped"])[:120])
+        if r.get("still") is True:
+            bits.append("DF still held it leaving")
+        if not bits and r.get("error"):
+            bits.append(str(r["error"])[:120])
+        return "; ".join(bits)
+    if r.get("ok") is False:
+        return str(r.get("error") or "refused")[:160]
+    if step == "edge":
+        extra = [f"{r[k]} {w}" for k, w in (("shut", "with no way out"), ("held", "fighting or held"),
+                                            ("no_tile", "with no edge tile"), ("failed", "not moved"))
+                 if isinstance(r.get(k), int) and r[k]]
+        return f"{r.get('moved', r.get('told'))} taken to the edge" + (" (" + ", ".join(extra) + ")" if extra else "")
+    return f"{r.get('told')} told to leave" if r.get("told") is not None else ""
+
+
+def note_caravan_try(p, r, memory, now: int) -> None:
+    """(0.105.97, record) a free_caravan try booked in its caravan's book with
+    its step and what the bridge said (refused ones too: a step DF refuses
+    counts, so the next step comes). A dry run books nothing."""
+    a = _d(getattr(p, "action", None))
+    if a.get("type") != "free_caravan" or a.get("dry_run"):
+        return
+    step = a.get("step") if a.get("step") in STEPS else "walk"
+    o = _mem(memory, True)
+    books = o.setdefault("stuck", {})
+    k = str(a.get("entity"))
+    e = books.get(k)
+    if not isinstance(e, dict):
+        e = books[k] = {"since": now, "tries": []}
+    tries = [t for t in _l(e.get("tries")) if not (isinstance(t, list) and t and t[0] == now)]
+    e["tries"] = (tries + [[now, step, _said(step, _d(r))]])[-12:]
+
+
+def gone_caravans(s: dict, memory, cfg: dict) -> list:
+    """(0.105.97) The stuck caravans DF still holds leaving with none of their
+    merchants on the map: [{entity, ..., days (stuck), gone_days}]."""
+    books = _d(_mem(memory).get("stuck"))
+    now = abs_tick(s)
+    out = []
+    for c in _l(_d(s.get("migration")).get("caravans")):
+        c = _d(c)
+        e = _d(books.get(str(c.get("entity"))))
+        if c.get("leaving") and not int(c.get("merchants") or 0) and isinstance(e.get("gone"), int):
+            out.append({**c, "days": (now - int(e.get("since") or now)) // TICKS_PER_DAY,
+                        "gone_days": (now - e["gone"]) // TICKS_PER_DAY})
+    out.sort(key=lambda c: (not c.get("own"), -int(c.get("days") or 0)))
+    return out
 
 
 def stuck_caravans(s: dict, memory, cfg: dict) -> list:
@@ -163,6 +315,13 @@ def drought_cause(s: dict, memory, cfg: dict) -> tuple:
                            f"still on the map (DF's state {c.get('state')}): a caravan that never gets home "
                            "reports no wealth, and DF sends no caravan or migrant while it lasts (DF bug 12624)",
                 False)
+    gone = gone_caravans(s, memory, cfg)                  # (0.105.97)
+    if gone:
+        c = gone[0]
+        who = "the fort's own civilisation's caravan" if c.get("own") else "a caravan"
+        return ("caravan", f"DF still holds {who} leaving {c.get('days')} days, {c.get('gone_days')} days after "
+                           f"its last merchant left the map (DF's state {c.get('state')}): DF sends no caravan or "
+                           "migrant while it lasts (DF bug 12624)", False)
     try:
         from planner_recovery import migrants_wait
         hold = migrants_wait(s, cfg)
@@ -191,7 +350,8 @@ def _drought_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     start = max(x for x in (o.get("first"), o.get("last_wave")) if isinstance(x, int))
     wait = int(_c(cfg, "h9_drought_days")) * TICKS_PER_DAY
     stuck = stuck_caravans(s, memory, cfg)
-    if now - start < wait and not stuck:
+    gone = gone_caravans(s, memory, cfg)
+    if now - start < wait and not stuck and not gone:
         return
     days = (now - start) // TICKS_PER_DAY
     kind, words, player = drought_cause(s, memory, cfg)
@@ -202,27 +362,10 @@ def _drought_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
             ask_player(notes, say)
         else:
             notes.append("MIGRANT DROUGHT: " + say)
-    # a caravan stuck leaving: its merchants told to walk off (stuck, drought or not:
-    # no caravan comes while it lasts)
-    if stuck:
-        c = stuck[0]
-        ent = c.get("entity")
-        since = _d(o.get("leaving")).get(str(ent))
-        n = len([t for t in _l(o.get("frees")) if isinstance(t, int) and isinstance(since, int) and t >= since])
-        if c.get("can_leave") == 0:
-            ask_player(notes, f"a caravan has been leaving {c.get('days')} days and none of its "
-                              f"{c.get('merchants')} merchant(s) has a way to the map's edge: open the way out "
-                              "(gates, bridges, walls) so they can go home")
-        elif n >= int(_c(cfg, "h9_caravan_free_max")):
-            ask_player(notes, f"a caravan has been leaving {c.get('days')} days with {c.get('merchants')} "
-                              f"merchant(s) on the map; the AI told them to walk off {n} time(s) and they stayed "
-                              "(DF bug 12624): DF sends no caravan, and maybe no migrant, while it lasts; "
-                              "DFHack's `caravan` command shows it")
-        else:
-            proposals.append(Proposal("stuck_caravan", {"type": "free_caravan", "entity": ent},
-                                      f"a caravan has been leaving {c.get('days')} days and {c.get('merchants')} "
-                                      "of its merchants are still on the map: tell them to walk off it, so the "
-                                      "caravan gets home (and DF sends caravans and migrants again)", 5))
+    # a caravan stuck leaving: its merchants told to walk off, then taken to the
+    # edge, then DFHack's fixes (stuck, drought or not: no caravan comes while it lasts)
+    if stuck or gone:
+        _caravan_step(s, memory, cfg, stuck, gone, proposals, notes)
         return
     if not drought or kind != "unknown":
         return
@@ -251,3 +394,80 @@ def _drought_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
     proposals.append(Proposal("migrant_drought", {"type": "call_migrants"},
                               f"no migrants in {days} days and no cause the AI can see: call a wave "
                               f"(DFHack's {mig.get('force')} Migrants; {len(calls)} called before)", 6))
+
+
+def _tried(n: dict, e: dict) -> str:
+    """What the AI tried on a stuck caravan, in words (with DFHack's answers)."""
+    bits = []
+    if n["walk"]:
+        bits.append(f"told its merchants to walk off {n['walk']} time(s)")
+    if n["edge"]:
+        last = next((t[2] for t in reversed(_l(e.get("tries"))) if isinstance(t, list) and len(t) > 2
+                     and t[1] == "edge" and t[2]), "")
+        bits.append(f"took them to the map's edge {n['edge']} time(s)" + (f" ({last})" if last else ""))
+    if n["dismiss"]:
+        last = next((t[2] for t in reversed(_l(e.get("tries"))) if isinstance(t, list) and len(t) > 2
+                     and t[1] == "dismiss" and t[2]), "")
+        bits.append("ran DFHack's fix/stuck-merchants and `caravan leave`" + (f" ({last})" if last else ""))
+    return ", ".join(bits) if bits else "nothing yet"
+
+
+def _caravan_step(s: dict, memory, cfg: dict, stuck: list, gone: list, proposals: list, notes: list) -> None:
+    """(0.105.97) The stuck caravan's next step, each h9_caravan_step_days
+    after the try before: walk off (free_max), taken to the edge (edge_max),
+    with its merchants gone DFHack's fixes (dismiss_max); then a Needs you
+    saying what was tried. B, 23 Nov: 118 days stuck, two walk-offs, and
+    only a Needs you."""
+    now = abs_tick(s)
+    books = _d(_mem(memory).get("stuck"))
+    on_map = bool(stuck)
+    c = stuck[0] if on_map else gone[0]
+    ent = c.get("entity")
+    e = _d(books.get(str(ent)))
+    n = _counts(e)
+    ticks = [t[0] for t in _l(e.get("tries")) if isinstance(t, list) and t and isinstance(t[0], int)]
+    gap = int(_c(cfg, "h9_caravan_step_days")) * TICKS_PER_DAY
+    rested = not ticks or now - max(ticks) >= gap
+    tried = _tried(n, e)
+    if on_map:
+        if c.get("can_leave") == 0:
+            ask_player(notes, f"a caravan has been leaving {c.get('days')} days and none of its "
+                              f"{c.get('merchants')} merchant(s) has a way to the map's edge: open the way out "
+                              "(gates, bridges, walls) so they can go home")
+            return
+        if n["walk"] < int(_c(cfg, "h9_caravan_free_max")):
+            if rested:
+                proposals.append(Proposal("stuck_caravan", {"type": "free_caravan", "entity": ent},
+                                          f"a caravan has been leaving {c.get('days')} days and {c.get('merchants')} "
+                                          "of its merchants are still on the map: tell them to walk off it, so the "
+                                          "caravan gets home (and DF sends caravans and migrants again)", 5))
+            return
+        if n["edge"] < int(_c(cfg, "h9_caravan_edge_max")):
+            if rested:
+                proposals.append(Proposal("stuck_caravan", {"type": "free_caravan", "entity": ent, "step": "edge"},
+                                          f"a caravan has been leaving {c.get('days')} days and its "
+                                          f"{c.get('merchants')} merchant(s) stayed when told to walk off "
+                                          f"{n['walk']} time(s) (DF bug 12624): take them to the map's edge, "
+                                          "so they leave at once", 5))
+            return
+        ask_player(notes, f"a caravan has been leaving {c.get('days')} days with {c.get('merchants')} "
+                          f"merchant(s) on the map; the AI {tried}, and they stayed (DF bug 12624): DF sends "
+                          "no caravan, and maybe no migrant, while it lasts; DFHack's `caravan` command shows it")
+        return
+    # its merchants gone, DF still holding it leaving
+    others = sum(int(_d(x).get("merchants") or 0) for x in _l(_d(s.get("migration")).get("caravans")))
+    if n["dismiss"] < int(_c(cfg, "h9_caravan_dismiss_max")):
+        if others > 0:
+            notes.append(f"a caravan's merchants are gone from the map but DF still holds it leaving "
+                         f"({c.get('gone_days')} days): DFHack's fix/stuck-merchants waits until no merchant of "
+                         f"any caravan is on the map ({others} now)")
+            return
+        if rested and now - int(e.get("gone") or now) >= gap:
+            proposals.append(Proposal("stuck_caravan", {"type": "free_caravan", "entity": ent, "step": "dismiss"},
+                                      f"DF still holds a caravan leaving {c.get('gone_days')} days after its last "
+                                      "merchant left the map (DF bug 12624): DFHack's fix/stuck-merchants and "
+                                      "`caravan leave` dismiss it, so DF sends caravans and migrants again", 5))
+        return
+    ask_player(notes, f"DF still holds a caravan leaving {c.get('days')} days, {c.get('gone_days')} days after its "
+                      f"last merchant left the map; the AI {tried}, and DF still holds it (DF bug 12624): DF "
+                      "sends no caravan, and maybe no migrant, while it lasts; DFHack's `caravan` command shows it")

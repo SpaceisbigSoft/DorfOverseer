@@ -260,8 +260,13 @@ PART.update({
     "h9_wave_min": 2,                     # a rise of this many citizens at once is a migrant wave (one is a birth)
     # a caravan that never left (B, y251-y261: its merchants on the map 10 years, no caravan or migrant since)
     "h9_caravan_stuck_days": 28,          # leaving this long with its merchants still on the map: stuck
-    "h9_caravan_free_max": 2,             # tries at sending its merchants off the map before a Needs you
-    "h9_caravan_cooldown_ticks": 28 * 1200,   # ...one a month (the rule's cooldown)
+    "h9_caravan_free_max": 2,             # tries at sending its merchants off the map before the next step
+    # (0.105.97) then the escalation (B, 23 Nov: 118 days stuck, two walk-offs, only a Needs you)
+    "h9_caravan_edge_max": 1,             # tries at taking them to the map's edge (teleported), then a Needs you
+    "h9_caravan_dismiss_max": 1,          # tries at DFHack's fix/stuck-merchants + caravan leave once they're gone
+    "h9_caravan_step_days": 14,           # a try (any step) this long after the one before; a dismiss this long
+                                          # after its last merchant left the map (DF may end it itself)
+    "h9_caravan_cooldown_ticks": 14 * 1200,   # (0.105.97: was a month) the rule's cooldown, as the step's wait
     # petitions to stay from a fort between closed and welcoming (A3 finding 3: E 30 waiting, 78 days)
     "h9_residency_neutral_beds": 2,       # spare beds the fort keeps after taking a visitor in
     "h9_residency_neutral_food_pd": 10,   # food and drink a dwarf the fort has before it takes one in

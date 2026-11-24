@@ -126,8 +126,13 @@ def _office_swap_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=N
         return not (isinstance(now, int) and isinstance(t, int) and 0 <= now - t < int(cfg["office_swap_cooldown_ticks"]))
 
     ms = _d(offices.get("messenger"))
+    # (0.105.97) never a held killer into an office (B, 23 Nov: Fath Shemnish,
+    # 2 kills and celled, made militia captain); lua/ai-nobles.lua passes them
+    # over too, so a report from before this bridge is the only way one is named
+    from planner_killers import held_killer_ids
+    held = held_killer_ids(s)
     # the interim messenger out: any suitable free citizen will do
-    if ms.get("interim") and ms.get("free_unit") is not None:
+    if ms.get("interim") and ms.get("free_unit") is not None and ms.get("free_unit") not in held:
         busy = _messenger_busy(s, ms)
         p = Proposal("office_swap", {"type": "appoint", "office": "MESSENGER", "replace": True, "interim_out": True},
                      f"{ms.get('held_by') or 'an office holder'} doubles as messenger for now (they "
@@ -144,6 +149,8 @@ def _office_swap_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=N
     for code in SWAP_ORDER:
         o = _d(swap.get(code))
         if not o or o.get("fixed") or o.get("cand_unit") is None or o.get("holder_unit") is None:
+            continue
+        if o.get("cand_unit") in held:
             continue
         hs, cs = int(o.get("holder_score") or 0), int(o.get("cand_score") or 0)
         need = swap_needed(hs, cfg)

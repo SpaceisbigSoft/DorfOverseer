@@ -218,6 +218,9 @@ def stress_train(s: dict, cfg: dict, x: dict, memory=None) -> Proposal | None:
         return None
     if memory is not None and x["id"] in never_draft_ids(s, memory, cfg):
         return None
+    from planner_killers import held_killer_ids
+    if x["id"] in held_killer_ids(s):
+        return None                  # (0.105.97) a held killer is never drafted (B, 23 Nov)
     if _d(s.get("military")).get("training_called") or _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
         return None
     ok, _why = _allowed(s, cfg)

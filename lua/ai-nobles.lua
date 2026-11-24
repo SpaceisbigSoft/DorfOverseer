@@ -524,6 +524,11 @@ local function candidates(code)
     local wants = OFFICES[code]
     local military = MILITARY_OFFICES[code]
     local moms = (military or CIVILIAN_AWAY_OFFICES[code]) and mothers() or {}   -- (0.105.33 review) once, not per candidate
+    -- (0.105.97) never a killer the killer rule holds (lua/ai-killers.lua):
+    -- B, 23 Nov, Fath Shemnish (2 kills, celled) was made militia captain.
+    -- The appointment, the swaps (free_pick) and the messenger all choose here
+    local okh, held = pcall(function() return reqscript('ai-killers').held_ids() end)
+    if not (okh and type(held) == 'table') then held = {} end
     local out = {}
     for _, u in ipairs(report_citizens(true)) do
         -- (0.104.168) a military office's holder takes a squad's leader seat:
@@ -535,7 +540,7 @@ local function candidates(code)
         -- one gone insane
         local okmd, md = pcall(function() return u.mood end)
         local moody = okmd and type(md) == 'number' and md >= 0
-        if u.hist_figure_id >= 0 and not moody and not ((military or away) and u.military.squad_id >= 0) then
+        if u.hist_figure_id >= 0 and not moody and not held[u.id] and not ((military or away) and u.military.squad_id >= 0) then
             local skills = {}
             for i, name in ipairs(wants) do skills[i] = skill(u, name) end
             local okm, cat = pcall(function() return dfhack.units.getStressCategory(u) end)
@@ -989,6 +994,9 @@ end
 -- The two records DF's nobles screen writes, read back through DFHack (and
 -- undone if it doesn't see them); then the history event. Returns true/false.
 function write_appointment(ent, assignment, a_idx, pos, u)
+    -- (0.105.97) the last guard: never a held killer into any office (B, 23 Nov)
+    local okk, kheld = pcall(function() return reqscript('ai-killers').is_held(u) end)
+    if okk and kheld then return false end
     local hf = df.historical_figure.find(u.hist_figure_id)
     if not hf then return false end
     -- (r15) a slot the AI made before 0.105.72 holds army controller 0: cleared

@@ -7,7 +7,7 @@
 -- parts before it are in reach.
 
 if not BURROWS_PART_LOCALS then qerror('ai-society-burrows-calm is a part of ai-society-burrows; run ai-society-burrows') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-calm'] = '0.105.96'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-calm'] = '0.105.97'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, S, rec_state, zone_tiles, HOSP_SCAN_MAX, hb_state, hb_now, walk_group, stand_pos, can_walk, in_zones, pile_holds, burrow_unit_ids, in_tantrum, hb_citizen, shelter_id, wk_take_out = BURROWS_PART_LOCALS.U, BURROWS_PART_LOCALS.report_citizens, BURROWS_PART_LOCALS.S, BURROWS_PART_LOCALS.rec_state, BURROWS_PART_LOCALS.zone_tiles, BURROWS_PART_LOCALS.HOSP_SCAN_MAX, BURROWS_PART_LOCALS.hb_state, BURROWS_PART_LOCALS.hb_now, BURROWS_PART_LOCALS.walk_group, BURROWS_PART_LOCALS.stand_pos, BURROWS_PART_LOCALS.can_walk, BURROWS_PART_LOCALS.in_zones, BURROWS_PART_LOCALS.pile_holds, BURROWS_PART_LOCALS.burrow_unit_ids, BURROWS_PART_LOCALS.in_tantrum, BURROWS_PART_LOCALS.hb_citizen, BURROWS_PART_LOCALS.shelter_id, BURROWS_PART_LOCALS.wk_take_out   -- (r9) the hub's and earlier parts' locals
 
@@ -435,6 +435,7 @@ local function calm_maintain(d, now, dry_run, name, released)
         local why
         if not (u and b and room) then why = 'gone'
         elseif not hb_citizen(u) or u.military.squad_id ~= -1 then why = 'gone'
+        elseif killer_held(u) then why = 'held killer'           -- (0.105.97) their cell, not a calm room
         elseif not in_tantrum(u) then why = 'calm'
         elseif now - (tonumber(m.since) or now) >= days * 1200 then why = 'limit'
         elseif thirsty(u) then why = 'thirst'
@@ -509,6 +510,7 @@ function calm_burrow_status(txt)
                 local why
                 if okb and baby then why = 'baby'
                 elseif not hb_citizen(u) then why = 'insane'
+                elseif killer_held(u) then why = 'killer'                 -- (0.105.97) kept in their cell
                 elseif u.military.squad_id ~= -1 then why = 'soldier'
                 elseif thirsty(u) then why = 'thirsty'
                 elseif needs_care(u) then why = needs_care(u)     -- (review) patient, resting, cannot walk
@@ -570,6 +572,7 @@ function calm_burrow_tick(max, days, dry_run, txt, release)
         local okb, baby = pcall(dfhack.units.isBaby, u)
         if in_tantrum(u) and not d.members[key] and not was and not (okb and baby) and hb_citizen(u)
                 and not in_mood(u)   -- (0.105.51 merge) a mood claims its workshop outside the burrow
+                and not killer_held(u)   -- (0.105.97) a held killer stays in their cell (B, 23 Nov)
                 and u.military.squad_id == -1 and not thirsty(u) and not needs_care(u) then
             local other, which = calm_burrows_of(u, ids)
             -- (review) never one in the hospital burrow: they stay with the doctors

@@ -221,6 +221,7 @@ class Memory:
     released: dict = field(default_factory=dict)  # (0.104.164) unit id -> when stress care or a baby sent them home
     never_draft: dict = field(default_factory=dict)  # (0.105.47) unit id -> {at, stress}: stress care sent them home for good (planner_training)
     train_mode: dict = field(default_factory=dict)  # (0.104.168) the rotation's {all: bool, tick: when it changed}
+    leisure_hold: dict = field(default_factory=dict)  # (0.105.97) squad id -> when the rotation first held it off duty for its soldiers' leisure
     keen_lift: dict = field(default_factory=dict)   # (0.104.168) {n, tick}: soldiers wanted raised for the keen in a crisis
     unstick_seen: dict = field(default_factory=dict)   # (0.104.138) the spare gear at the last untangling, times
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}
@@ -377,6 +378,11 @@ def _soldier_swap(s: dict, cfg: dict, proposals: list | None, memory=None) -> No
     nd = _d(s.get("needs"))
     keen = int(nd.get("keen_civilians") or 0)
     starved = [x for x in _l(nd.get("starved_soldiers")) if isinstance(x, dict) and x.get("id") is not None]
+    # (0.105.97) never a held killer: the killer cell takes him out of the squad
+    # itself, and a swap's reason named him (B, 23 Nov: Fath Shemnish, 2 kills)
+    from planner_killers import held_killer_ids
+    held = held_killer_ids(s)
+    starved = [x for x in starved if x["id"] not in held]
     # (0.104.78) not one sent home lately: the list is the day's report, and the
     # cycles between asked for a soldier already out (refused)
     if memory is not None:

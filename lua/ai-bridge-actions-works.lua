@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-works is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.96'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.97'   -- bumped with BRIDGE_VERSION
 
 -- (0.99.7) Soldiers who don't pick up their uniforms: DFHack's
 -- uniform-unstick frees items assigned to one soldier but held by another
@@ -93,8 +93,11 @@ function act_recreation(a)
     end
     -- (0.105.51) unhappy: the plain unhappy moved in too (a fort unhappy past the brain's share)
     if a.unhappy ~= nil and type(a.unhappy) ~= 'boolean' then return reject('recreation: unhappy is true or false') end
+    -- (0.105.97) places for off-duty soldiers badly missing friends, drink or prayer
+    local sn, sd = int_in(a.soldiers or 0, 0, 10), int_in(a.soldier_days or 5, 2, 14)
+    if not sn or not sd then return reject('recreation: soldiers 0-10, soldier_days 2-14') end
     return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd, a.release == true,
-                                                   a.unhappy == true)
+                                                   a.unhappy == true, sn, sd)
 end
 
 -- (0.104.168) The loose cups no finished goods pile takes: the pile with the

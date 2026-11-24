@@ -7,7 +7,7 @@
 -- parts before it are in reach.
 
 if not BURROWS_PART_LOCALS then qerror('ai-society-burrows-hospital is a part of ai-society-burrows; run ai-society-burrows') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-hospital'] = '0.105.96'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-hospital'] = '0.105.97'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, S, rec_state, zone_tiles = BURROWS_PART_LOCALS.U, BURROWS_PART_LOCALS.report_citizens, BURROWS_PART_LOCALS.S, BURROWS_PART_LOCALS.rec_state, BURROWS_PART_LOCALS.zone_tiles   -- (r9) the hub's and earlier parts' locals
 
@@ -224,7 +224,10 @@ local function hospital_sources(zones)
         local t = b:getType()
         if t == df.building_type.Stockpile then
             local okf, food = pcall(function() return b.settings.flags.food end)
-            if okf and food then
+            -- (0.105.97) never a killer cell's own pile (ai-killers LARDER_PREFIX): the way
+            -- to it leads into the killer's cell (B, 23 Nov)
+            local okc, larder = pcall(function() return tostring(b.name):find('AI cell larder ', 1, true) == 1 end)
+            if okf and food and not (okc and larder) then
                 local has_drink, has_food = pile_holds(b)
                 if has_drink or has_food then
                     local p = stand_pos(b)
@@ -414,6 +417,9 @@ local function hb_eligible(u, staff, own_id, rec_id, sid)
     if okb and baby then return false end
     if not hb_citizen(u) or u.military.squad_id ~= -1 or staff[u.id] or in_tantrum(u) then return false end
     if in_mood(u) then return false end              -- (0.105.51) a strange mood needs its workshop
+    -- (0.105.97) never a held killer among the wounded (B, 23 Nov: Degel,
+    -- celled, killed again inside hospital zone 333)
+    if killer_held(u) then return false end
     if not is_patient(u) then return false end
     local other, rec, wk = burrows_of(u, own_id, rec_id, sid)
     if other then return false end
@@ -547,7 +553,7 @@ local function hb_maintain(d, b, zones, staff, src, now, dry_run, name, released
         local u = df.unit.find(tonumber(id))
         since = tonumber(since) or now
         local keep = u and hb_citizen(u) and u.military.squad_id == -1 and not staff[u.id] and is_patient(u)
-                     and not in_tantrum(u) and not in_mood(u)
+                     and not in_tantrum(u) and not in_mood(u) and not killer_held(u)   -- (0.105.97)
                      and not (burrows_of(u, b and b.id or -1, rec_id, shelter_id())) and true or false
         if keep and hb_dry(u) then
             let_out(id, u, true)                 -- (0.105.22) to drink and eat

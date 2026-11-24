@@ -8,7 +8,7 @@
 -- reqscript('ai-military').name and a name swapped there reaches this file.
 
 if not MILITARY_PART_LOCALS then qerror('ai-military-draft is a part of ai-military; run ai-military') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-draft'] = '0.105.96'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-draft'] = '0.105.97'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, COMBAT_SKILLS, wants_fight, fight_focus = MILITARY_PART_LOCALS.U, MILITARY_PART_LOCALS.report_citizens, MILITARY_PART_LOCALS.COMBAT_SKILLS, MILITARY_PART_LOCALS.wants_fight, MILITARY_PART_LOCALS.fight_focus   -- (r8) the hub's locals
 
@@ -55,6 +55,11 @@ function draftable(u, mothers, strict)
     -- of the squad, and a fill drafted them straight back (B, 23 Nov)
     local okw, cursed = pcall(function() return reqscript('ai-threats').were_cursed(u) end)
     if okw and cursed then return false end
+    -- (0.105.97) never a killer the killer rule holds (a cell, or a strong or
+    -- certain suspect): B, 23 Nov, soldier_swap's fill drafted the celled
+    -- Fath Shemnish (2 kills) into squad 182; the cell takes them out
+    local okk, held = pcall(function() return reqscript('ai-killers').is_held(u) end)
+    if okk and held then return false end
     local ok, yes = pcall(function()
         local m = tonumber(u.mood)
         if m ~= nil and m >= 0 then return false end
@@ -100,6 +105,9 @@ function seat_leader(u, sq)
     -- (0.105.96, verifier) a werebeast-cursed leader is never seated again (moon_cell took them out)
     local okw, cursed = pcall(function() return reqscript('ai-threats').were_cursed(u) end)
     if okw and cursed then return false end
+    -- (0.105.97) nor a held killer (B, 23 Nov: Fath Shemnish made captain of squad 214)
+    local okk, held = pcall(function() return reqscript('ai-killers').is_held(u) end)
+    if okk and held then return false end
     local hf = df.historical_figure.find(u.hist_figure_id)
     if not hf or u.military.squad_id ~= -1 or #sq.positions == 0 or sq.positions[0].occupant ~= -1 then
         return false
@@ -243,10 +251,30 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
             kept_last_hands = kept > 0 and kept or nil}
 end
 
+-- (0.105.97) How badly a soldier is doing in the squad: the needs a soldier's
+-- days leave unmet (friends, a drink, prayer) badly missed, one each, and
+-- two more when unhappy or worse (stress category 2 and below). B, 23 Nov:
+-- the defence floor kept 35-44 soldiers for years, almost all of them
+-- badly missing a drink; those go home first when the floor falls.
+TRIM_NEEDS = {BeWithFriends = true, DrinkAlcohol = true, PrayOrMeditate = true}
+function trim_misery(u)
+    local n = 0
+    pcall(function()
+        for _, nd in ipairs(u.status.current_soul.personality.needs) do
+            if TRIM_NEEDS[df.need_type[nd.id]] and nd.focus_level <= KEEN_FOCUS then n = n + 1 end
+        end
+    end)
+    local ok, cat = pcall(dfhack.units.getStressCategory, u)
+    if ok and type(cat) == 'number' and cat <= 2 then n = n + 2 end
+    return n
+end
+
 -- (0.102) An army bigger than the fort wants (Militarism lowered, or the
 -- fort shrank) is trimmed: up to `count` soldiers back to work, those least
 -- suited first (fewest combat skills, best at a trade), never a squad's
 -- leader, a dwarf who longs to fight, or a squad out on orders.
+-- (0.105.97) the unhappiest and those badly missing friends, a drink or
+-- prayer go first (trim_misery), then the least suited as before.
 function trim(count, dry_run, txt)
     if not (dfhack.military and type(dfhack.military.removeFromSquad) == 'function') then
         return {ok = false, rejected = true, error = 'this DFHack cannot take a dwarf out of a squad'}
@@ -271,13 +299,14 @@ function trim(count, dry_run, txt)
                             if is_combat then combat = combat + sk.rating
                             elseif sk.rating > best then best = sk.rating end
                         end
-                        table.insert(list, {u = u, squad = sid, score = combat * 3 - best})
+                        table.insert(list, {u = u, squad = sid, score = combat * 3 - best, misery = trim_misery(u)})
                     end
                 end
             end
         end
     end
     table.sort(list, function(a, b)
+        if a.misery ~= b.misery then return a.misery > b.misery end   -- (0.105.97) the unhappiest first
         if a.score ~= b.score then return a.score < b.score end
         return a.u.id < b.u.id
     end)
@@ -286,7 +315,7 @@ function trim(count, dry_run, txt)
         local c = list[i]
         local name = (txt or tostring)(dfhack.units.getReadableName(c.u))
         if dry_run or dfhack.military.removeFromSquad(c.u.id) then
-            table.insert(out, {unit_id = c.u.id, squad_id = c.squad, name = name})
+            table.insert(out, {unit_id = c.u.id, squad_id = c.squad, name = name, misery = c.misery > 0 and c.misery or nil})
         end
     end
     if #out == 0 then return {ok = false, rejected = true, error = 'no soldier who could go back to work'} end

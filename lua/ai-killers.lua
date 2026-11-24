@@ -38,7 +38,9 @@
 --                   confidence, citizen, resident, tags, kills, brawls,
 --                   lawful, victims, causes, crimes, drained, berserk,
 --                   changed, child, squad_id, x, y, z, seen_ticks, cell}],
---                   cells = [{unit_id, locked, out, kind, days}],
+--                   cells = [{unit_id, locked, out, kind, days, pile, drink,
+--                   food, pile_empty, let_outs, stocking, pile_error,
+--                   pile_all_food}] (0.105.97: the cell's pile),
 --                   rooms (free jail zones and bedrooms), scanned}
 --   cell(o, dry)    o.units: the ids to lock away (each in a burrow on a
 --                   jail zone, else a free bedroom; the room's doors locked
@@ -46,8 +48,15 @@
 --                   o.release_only: only the let-outs (the AI halted). A
 --                   dwarf locked in who grows thirsty or hungry is let out
 --                   to eat and drink (doors open, out of the burrow) and
---                   taken back once fed. {ok, placed, locked, waiting, out,
---                   released}
+--                   taken back once fed. (0.105.97) A pile of drink and
+--                   prepared meals is made inside the cell, its doors opened
+--                   for the haulers while it runs out of drink; while it holds
+--                   drink (meals) the let-out waits for THIRST_LAST (HUNGER_LAST).
+--                   {ok, placed, locked, waiting, out, released, stocking, apart}
+--   held_ids()      (0.105.97) {unit_id = true}: every unit with a cell and
+--                   every strong or certain suspect (not a child, not the
+--                   law); is_held(u) the same for one unit. The other rules'
+--                   last guard: no burrow, squad or office for them.
 --@ module = true
 
 local U = reqscript('ai-util')
@@ -268,7 +277,8 @@ function state()
     return d
 end
 
-local function save(d) pcall(U.site_put, SITE_KEY, d) end
+local HELD_MEMO = nil      -- (0.105.97) held_ids read once a second at most (each candidate asks); a save clears it
+local function save(d) HELD_MEMO = nil; pcall(U.site_put, SITE_KEY, d) end
 
 -- --- rooms and doors (as ai-threats' moon cells) ----------------------------
 
@@ -394,15 +404,20 @@ local function assign(uid, u, on)
 end
 
 -- a locked-in dwarf grown thirsty or hungry let out (doors open, out of the
--- burrow); returns true when let out now
-local function let_out(uid, c, u, t, dry)
+-- burrow); returns true when let out now. (0.105.97) While the cell's pile
+-- holds drink (meals), only at THIRST_LAST (HUNGER_LAST): out_levels, in
+-- the larder's part below. Each let-out counted (let_outs, in the save).
+local function let_out(uid, c, u, t, dry, memo)
     if not c.locked or not u then return false end
     local th, hu = need(u)
-    if th < THIRST_OUT and hu < HUNGER_OUT then return false end
+    local tl, hl = THIRST_OUT, HUNGER_OUT
+    pcall(function() tl, hl = out_levels(c, memo) end)
+    if th < tl and hu < hl then return false end
     if not dry then
         set_doors(c, false)
         assign(uid, u, false)
         c.locked, c.doors, c.out = false, {}, t
+        c.let_outs = (tonumber(c.let_outs) or 0) + 1
     end
     return true
 end
@@ -417,6 +432,377 @@ local function free(uid, c, u, dry)
             dfhack.burrows.clearTiles(b)
         end
     end)
+    pcall(larder_remove, c)     -- (0.105.97) the cell's pile goes with it
+end
+
+-- --- the cell's larder (0.105.97) ----------------------------------------------
+--
+-- (0.105.97) A killer's cell keeps them fed and watered inside it. Live 23
+-- Nov, B (the Monastery, no jail zone): the cells were the killers' own free
+-- bedrooms, with no drink or food in them, so each killer was let out every
+-- time their thirst passed THIRST_OUT, walked through the fort and was taken
+-- back once fed; the killers were "waiting" (out) almost every cycle of the
+-- hour, and Degël killed again inside hospital zone 333 while out. Now a
+-- small stockpile is made inside the cell room (1-2 free floor tiles, never
+-- the bed's or a door's tile, nor beside a door), taking only drink and
+-- prepared meals and linked to nothing, so haulers bring drink and food in
+-- and the killer drinks and eats there.
+--
+-- The doors: kept locked (the lock is what holds a killer in a tantrum or a
+-- strange mood; a burrow only keeps a sane dwarf at their work) and opened
+-- only while the pile runs low, for at most RESTOCK_TICKS, so the haulers
+-- can walk in; the killer stays assigned to the cell's burrow meanwhile, so
+-- they have no reason to leave. Locked again once stocked (and nobody else
+-- inside), or when the time is up; then not opened again for RESTOCK_GAP (a
+-- fort with no drink at all would hold the doors open for good). A drink
+-- barrel a hauler leaves in the pile counts (its drink is counted inside it).
+-- While the pile holds drink a thirsty killer is let out only at THIRST_LAST
+-- (near DF's dehydration), while it holds meals a hungry one only at
+-- HUNGER_LAST: a last resort. With none, the old levels (THIRST_OUT,
+-- HUNGER_OUT) stay.
+LARDER_PREFIX = 'AI cell larder '
+THIRST_LAST, HUNGER_LAST = 45000, 70000
+RESTOCK_TICKS = 2 * DAY        -- the doors open this long at most for the haulers
+RESTOCK_GAP = 3 * DAY          -- and not again sooner than this after
+LARDER_TRIES = 3               -- placings tried before the cell goes without one
+LARDER_SCAN = 400              -- items in the pile looked at at most
+LARDER_FOOD_VECTORS = {'meat', 'fish', 'unprepared_fish', 'egg', 'plants', 'cheese_plant', 'cheese_animal',
+                       'seeds', 'leaves', 'powder_plant', 'powder_creature', 'glob', 'glob_paste', 'glob_pressed',
+                       'liquid_plant', 'liquid_animal', 'liquid_misc'}
+LARDER_DRINK_VECTORS = {'drink_plant', 'drink_animal'}
+
+local function larder_builder() return reqscript('ai-builder') end
+
+-- the cell's pile, while it stands
+function larder_pile(c)
+    if type(c) ~= 'table' or not c.pile then return nil end
+    local ok, b = pcall(df.building.find, tonumber(c.pile))
+    if not ok or not b then return nil end
+    local okt, yes = pcall(function() return b:getType() == df.building_type.Stockpile end)
+    if okt and yes then return b end
+    return nil
+end
+
+-- a tile of the room the pile may take: floor, no building (bed, door,
+-- chest...) on it, no pile, no water; strict: no door beside it either
+local function larder_tile_free(z, x, y, strict)
+    if not in_zone(z, x, y, z.z) then return false end
+    local ok, free = pcall(function()
+        local tt = dfhack.maps.getTileType(x, y, z.z)
+        if not tt or df.tiletype.attrs[tt].shape ~= df.tiletype_shape.FLOOR then return false end
+        local des = dfhack.maps.getTileFlags(x, y, z.z)
+        if des and (des.pile or (des.flow_size or 0) > 0) then return false end
+        if dfhack.buildings.findAtTile(xyz2pos(x, y, z.z)) then return false end
+        if not strict then return true end
+        for dy = -1, 1 do
+            for dx = -1, 1 do
+                local b = dfhack.buildings.findAtTile(xyz2pos(x + dx, y + dy, z.z))
+                if b and (b:getType() == df.building_type.Door or b:getType() == df.building_type.Hatch) then
+                    return false
+                end
+            end
+        end
+        return true
+    end)
+    return ok and free == true
+end
+
+-- the pile's rectangle: two free tiles side by side, else one; away from
+-- the doors first (a small bedroom may have no such tile: then beside one)
+function larder_spot(z)
+    for _, strict in ipairs({true, false}) do
+        local one
+        for y = z.y1, z.y2 do
+            for x = z.x1, z.x2 do
+                if larder_tile_free(z, x, y, strict) then
+                    if larder_tile_free(z, x + 1, y, strict) then return {x = x, y = y, z = z.z, w = 2, h = 1} end
+                    if larder_tile_free(z, x, y + 1, strict) then return {x = x, y = y, z = z.z, w = 1, h = 2} end
+                    one = one or {x = x, y = y, z = z.z, w = 1, h = 1}
+                end
+            end
+        end
+        if one then return one end
+    end
+    return nil
+end
+
+-- drink and prepared meals only: DFHack's own stockpile presets first (as
+-- ai-gates-works moves a pile's settings), then the settings written by
+-- hand if the presets didn't take; true when the pile reads so after
+local function larder_reads_right(sp)
+    local ok, right = pcall(function()
+        local f = sp.settings.food
+        if f.prepared_meals ~= true then return false end
+        local any_drink = false
+        for _, k in ipairs(LARDER_DRINK_VECTORS) do
+            for _, v in ipairs(f[k]) do if v then any_drink = true end end
+        end
+        if not any_drink then return false end
+        for _, k in ipairs(LARDER_FOOD_VECTORS) do
+            local okv, vec = pcall(function() return f[k] end)
+            if okv and vec then for _, v in ipairs(vec) do if v then return false end end end
+        end
+        return true
+    end)
+    return ok and right == true
+end
+
+local function larder_settings(sp)
+    pcall(function()
+        local id = tostring(sp.id)
+        local ok1, _, r1 = pcall(dfhack.run_command_silent, 'stockpiles', 'import', 'library/booze', '-s', id)
+        if ok1 and r1 == CR_OK then
+            pcall(dfhack.run_command_silent, 'stockpiles', 'import', 'library/preparedmeals', '-m', 'enable', '-s', id)
+        end
+    end)
+    if larder_reads_right(sp) then return true end
+    pcall(function()
+        local f = sp.settings.food
+        for _, k in ipairs(LARDER_FOOD_VECTORS) do
+            pcall(function() for i = 0, #f[k] - 1 do f[k][i] = false end end)
+        end
+        for _, k in ipairs(LARDER_DRINK_VECTORS) do
+            pcall(function() for i = 0, #f[k] - 1 do f[k][i] = true end end)
+        end
+        f.prepared_meals = true
+        sp.settings.flags.food = true
+    end)
+    return larder_reads_right(sp)
+end
+
+-- the pile made in the cell room (when none stands); the pile, or nil and why
+function larder_make(uid, c, z, dry)
+    local sp = larder_pile(c)
+    if sp then return sp end
+    if (tonumber(c.pile_tries) or 0) >= LARDER_TRIES then return nil, 'no pile could be made in the cell' end
+    local r = larder_spot(z)
+    if not r then return nil, 'no free floor in the cell for a pile' end
+    if dry then return nil, 'dry run' end
+    c.pile_tries = (tonumber(c.pile_tries) or 0) + 1
+    local okq, good = pcall(function()
+        return (larder_builder().qf_try('place', {{x = 0, y = 0, text = ('f(%dx%d)'):format(r.w, r.h)}}, r.z, r.x, r.y, false))
+    end)
+    if not okq or not good then return nil, 'the game would not place a pile in the cell' end
+    local okf, b = pcall(dfhack.buildings.findAtTile, xyz2pos(r.x, r.y, r.z))
+    if not okf or not b then return nil, 'the new pile was not found' end
+    local okt, yes = pcall(function() return b:getType() == df.building_type.Stockpile end)
+    if not okt or not yes then return nil, 'the new pile was not found' end
+    pcall(function() b.name = LARDER_PREFIX .. uid end)
+    pcall(function() b.storage.max_barrels = r.w * r.h end)
+    pcall(function() b.storage.max_bins = 0 end)
+    c.pile, c.pile_tries = b.id, nil
+    c.pile_all_food = (not larder_settings(b)) or nil   -- the settings didn't take: said in the report
+    return b
+end
+
+-- the drink (units) and prepared meals (items) the pile holds, a barrel's
+-- drink counted inside it; nil when there is no pile. memo: one read a call
+function larder_stock(c, memo)
+    local sp = larder_pile(c)
+    if not sp then return nil, nil end
+    if memo and memo[sp.id] then return memo[sp.id][1], memo[sp.id][2] end
+    local drink, food, seen = 0, 0, 0
+    local function look(it)
+        local okf, f = pcall(function() return it.flags.forbid end)
+        if okf and f then return end
+        local okt, t = pcall(function() return df.item_type[it:getType()] end)
+        if not okt then return end
+        local okn, n = pcall(function() return it.stack_size end)
+        n = (okn and tonumber(n)) or 1
+        if t == 'DRINK' then drink = drink + n elseif t == 'FOOD' then food = food + n end
+    end
+    pcall(function()
+        for _, it in ipairs(dfhack.buildings.getStockpileContents(sp)) do
+            seen = seen + 1
+            if seen > LARDER_SCAN then break end
+            look(it)
+            pcall(function() for _, ci in ipairs(dfhack.items.getContainedItems(it)) do look(ci) end end)
+        end
+    end)
+    if memo then memo[sp.id] = {drink, food} end
+    return drink, food
+end
+
+local function larder_low(c, memo)
+    local drink, food = larder_stock(c, memo)
+    if drink == nil then return false end
+    -- (0.105.97, merge) drink only: a fort with drink and no prepared meals
+    -- would open the cell 2 days in every 5 (meals' let-out stays at hunger 40000)
+    return drink <= 0
+end
+
+-- the levels a locked-in dwarf is let out at: the last-resort ones while
+-- the pile holds drink (thirst) or meals (hunger)
+function out_levels(c, memo)
+    local drink, food = larder_stock(c, memo)
+    return ((drink or 0) > 0) and THIRST_LAST or THIRST_OUT, ((food or 0) > 0) and HUNGER_LAST or HUNGER_OUT
+end
+
+-- each cycle while the cell stands: the pile made if missing; a locked cell
+-- whose pile runs low opened for the haulers (not sooner than RESTOCK_GAP
+-- after the last time). 'open' when the doors were opened now, 'wait' when
+-- the pile runs low but the doors stay locked (inside the gap), else nil.
+-- (0.105.97, verifier) a killer in a tantrum (or enraged): the doors never
+-- opened for them, and shut again if open (B's killings were tantrums)
+local function raging(u)
+    if not u then return false end
+    local okm, m = pcall(function() return df.soldier_mood_type[u.counters.soldier_mood] end)
+    return okm and (m == 'Tantrum' or m == 'Enraged') or false
+end
+
+local function larder_check(uid, c, z, t, dry, memo, u)
+    local sp, why = larder_make(uid, c, z, dry)
+    if not dry then c.pile_error = (not sp) and why or nil end
+    if not sp or not c.locked or c.out then return nil end
+    if not larder_low(c, memo) then return nil end
+    -- (0.105.97, merge) never opened while the killer rages (B's killings were tantrums)
+    if raging(u) then return 'wait' end
+    if c.restock_end and t - c.restock_end < RESTOCK_GAP then return 'wait' end
+    if not dry then
+        set_doors(c, false)
+        c.locked, c.doors, c.restock = false, {}, t
+    end
+    return 'open'
+end
+
+-- while the doors stand open for the haulers: true; false (and the doors may
+-- lock again) once stocked or the time is up
+-- (0.105.97, verifier) and the doors shut at once when the killer starts to
+-- rage while they stand open (the burrow holds no one in a tantrum)
+local function restocking(c, t, dry, memo, u)
+    if not c.restock then return false end
+    if not raging(u) and larder_low(c, memo) and t - c.restock < RESTOCK_TICKS then return true end
+    if not dry then c.restock, c.restock_end = nil, t end
+    return false
+end
+
+-- the cell row's pile: pile (its id, or false), drink, food, pile_empty,
+-- let_outs, stocking (the doors open for the haulers), pile_error
+function larder_row(row, c, memo)
+    local drink, food = larder_stock(c, memo)
+    row.pile = (drink ~= nil) and tonumber(c.pile) or false
+    row.drink, row.food = drink, food
+    if drink ~= nil and drink + food == 0 then row.pile_empty = true end
+    row.let_outs = tonumber(c.let_outs) or 0
+    row.stocking = c.restock and true or nil
+    -- (0.105.97, verifier) locked, empty, inside RESTOCK_GAP: the cell action
+    -- can do nothing until the gap is over, so the brain doesn't ask each cycle
+    local okt, t = pcall(now_tick)
+    if okt and c.locked and not c.restock and c.restock_end and drink ~= nil and drink <= 0
+            and t - c.restock_end < RESTOCK_GAP then
+        row.restock_wait = true
+    end
+    row.pile_error = (drink == nil and c.pile_error) or nil
+    row.pile_all_food = (drink ~= nil and c.pile_all_food) or nil
+end
+
+function larder_remove(c)
+    local sp = larder_pile(c)
+    if sp then pcall(dfhack.buildings.deconstruct, sp) end   -- a pile goes at once; its items stay
+end
+
+-- --- (0.105.97) the held: kept in, kept apart ---------------------------------
+-- Live 23 Nov, B (no jail: the cells are burrows on bedrooms): the recreation
+-- rule added the celled Degel and Fath Shemnish to the recreation burrow (a
+-- dwarf in several burrows may go to any of them), `appoint` made Fath (2
+-- kills) militia captain and soldier_swap had drafted him; the killers were
+-- "waiting" out of their cells almost every cycle and Degel killed again in a
+-- hospital. Every rule that puts a dwarf into a burrow, a squad or an office
+-- asks is_held first (reqscript('ai-killers').is_held, behind pcall); the
+-- brain skips the same ids (brain/planner_killers.py held_killer_ids).
+
+-- {unit_id = true}: those with a cell, and the strong or certain suspects
+-- the report saw (d.seen), but never a child or the law (s.exempt)
+function held_ids()
+    local okc, sec = pcall(os.time)
+    local at = (okc and sec or 0) .. ':' .. tostring(now_tick())
+    if HELD_MEMO and HELD_MEMO.at == at then return HELD_MEMO.ids end
+    local d = state()
+    local out = {}
+    for uid, c in pairs(d.cells) do
+        local id = tonumber(uid)
+        if id and type(c) == 'table' then out[id] = true end
+    end
+    for uid, s in pairs(d.seen) do
+        local id = tonumber(uid)
+        if id and type(s) == 'table' and (s.confidence == 'strong' or s.confidence == 'certain') and not s.exempt then
+            out[id] = true
+        end
+    end
+    HELD_MEMO = {at = at, ids = out}
+    return out
+end
+
+-- is unit `u` (a unit or an id) held? `ids`: a held_ids() already read (a loop)
+function is_held(u, ids)
+    if u == nil then return false end
+    local id = u
+    if type(u) ~= 'number' then
+        local ok, v = pcall(function() return u.id end)
+        if not ok then return false end
+        id = v
+    end
+    return (ids or held_ids())[id] == true
+end
+
+-- Unit `u` (in cell burrow `cell_b`) out of every other burrow, out of
+-- their squad and out of any military office (as ai-threats' moon_cell's
+-- unsquad does for the cursed). Nothing is kept to restore: a killer let
+-- go is a civilian again, the fill and the offices find their own.
+-- Returns the words of what was done, or nil.
+function keep_apart(u, cell_b, dry)
+    local did = {}
+    pcall(function()
+        local keep = cell_b and cell_b.id or nil
+        local others = {}
+        for _, bid in ipairs(u.burrows or {}) do
+            if bid ~= keep then table.insert(others, bid) end
+        end
+        for _, bid in ipairs(others) do
+            local okf, b = pcall(df.burrow.find, bid)
+            if not okf then b = nil end
+            if not b then
+                for _, x in ipairs(df.global.plotinfo.burrows.list) do if x.id == bid then b = x break end end
+            end
+            -- a werebeast's moon cell (ai-threats) stays: it is a cell too
+            if b and tostring(b.name):sub(1, #'AI moon cell ') ~= 'AI moon cell ' then
+                if not dry then dfhack.burrows.setAssignedUnit(b, u, false) end
+                table.insert(did, 'out of burrow ' .. tostring(b.name ~= '' and b.name or bid))
+            end
+        end
+    end)
+    local oksq, sq = pcall(function() return u.military.squad_id end)
+    if oksq and type(sq) == 'number' and sq >= 0 then
+        if dry then
+            table.insert(did, 'out of squad ' .. sq)
+        else
+            -- DFHack's removeFromSquad also takes a squad leader's office link off
+            local oks, done = pcall(function() return dfhack.military.removeFromSquad(u.id) end)
+            table.insert(did, 'out of squad ' .. sq .. ((oks and done) and '' or ' (the game kept them in it)'))
+        end
+    end
+    -- a militia commander or captain's post still held (one leading no squad)
+    pcall(function()
+        local N = reqscript('ai-nobles')
+        local ent = U.fort_entity()
+        local hf = df.historical_figure.find(u.hist_figure_id)
+        if not (ent and hf) then return end
+        for _, a in ipairs(ent.positions.assignments) do
+            if a.histfig == hf.id then
+                local p
+                for _, pp in ipairs(ent.positions.own) do if pp.id == a.position_id then p = pp break end end
+                if p and N.MILITARY_OFFICES[p.code] then
+                    if not dry then
+                        N.undo_appointment(a, hf, ent)
+                        pcall(N.sync_held, ent, true)
+                    end
+                    table.insert(did, 'off the ' .. tostring(p.code):lower():gsub('_', ' '))
+                end
+            end
+        end
+    end)
+    if #did == 0 then return nil end
+    return name_of(u) .. ': ' .. table.concat(did, ', ')
 end
 
 -- --- the cell action ---------------------------------------------------------
@@ -427,7 +813,9 @@ function cell(o, dry)
     local t = now_tick()
     local want = {}
     for _, id in ipairs(o.units or {}) do want[tostring(id)] = true end
-    local out = {ok = true, placed = {}, locked = {}, waiting = {}, out = {}, released = {}, dry_run = dry or nil}
+    local out = {ok = true, placed = {}, locked = {}, waiting = {}, out = {}, released = {}, stocking = {},
+                 apart = {}, dry_run = dry or nil}
+    local memo = {}             -- (0.105.97) each cell's pile read once a call
     -- let out: those not wanted (unless only the let-outs run), the dead and
     -- gone, and the thirsty or hungry
     for uid, c in pairs(d.cells) do
@@ -437,7 +825,7 @@ function cell(o, dry)
                 free(uid, c, u, dry)
                 if not dry then d.cells[uid] = nil end
                 table.insert(out.released, u and name_of(u) or uid)
-            elseif let_out(uid, c, u, t, dry) then
+            elseif let_out(uid, c, u, t, dry, memo) then
                 table.insert(out.out, name_of(u))
             end
         end
@@ -449,6 +837,9 @@ function cell(o, dry)
             if u and not dead(u) then
                 local c = d.cells[uid]
                 local z = c and c.zone and zone_by_id(c.zone)
+                -- (0.105.97) the cell's pile made, and a locked cell opened for the haulers when it runs low
+                local lk = z and c and larder_check(uid, c, z, t, dry, memo, u)
+                if lk == 'wait' or (lk == 'open' and dry) then table.insert(out.stocking, name_of(u)) end
                 if not z then
                     local kind
                     z, kind = cell_room(u.pos, taken)
@@ -486,6 +877,8 @@ function cell(o, dry)
                     elseif c.out then
                         if not dry then assign(uid, u, true); c.out = nil end
                         table.insert(out.waiting, name_of(u))        -- back to the cell
+                    elseif restocking(c, t, dry, memo, u) then
+                        table.insert(out.stocking, name_of(u))       -- (0.105.97) the doors open for the haulers
                     elseif in_zone(z, u.pos.x, u.pos.y, u.pos.z) and not other_in_zone(z, u.id) then
                         for id, b in pairs(zone_doors(z)) do
                             local okf, f = pcall(function() return b.door_flags.forbidden end)
@@ -500,15 +893,22 @@ function cell(o, dry)
                         table.insert(out.waiting, name_of(u))
                     end
                 end
+                -- (0.105.97) a killer with a cell is in no other burrow, squad
+                -- or military office (B, 23 Nov): each cycle, as other rules
+                -- (or the player) may have put them back
+                if z and (dry or d.cells[uid]) then
+                    local okk, kept = pcall(keep_apart, u, burrow_named(CELL_PREFIX .. uid, false), dry)
+                    if okk and kept then table.insert(out.apart, kept) end
+                end
             end
         end
     end
     if not dry then save(d) end
-    local any = #out.placed + #out.locked + #out.released + #out.waiting + #out.out
+    local any = #out.placed + #out.locked + #out.released + #out.waiting + #out.out + #out.stocking + #out.apart
     if any == 0 and not out.error then
         return {ok = false, rejected = true, nothing_to_do = true, error = 'every cell is as it should be'}
     end
-    if out.error and #out.placed + #out.locked == 0 and #out.waiting == 0 then out.ok = false end
+    if out.error and #out.placed + #out.locked == 0 and #out.waiting + #out.stocking == 0 then out.ok = false end
     return out
 end
 
@@ -521,6 +921,7 @@ function report()
     local kills, scanned = killings(mem, t)
     local crime = crimes(mem)
     local out = {list = {}, cells = {}, scanned = scanned}
+    local memo = {}             -- (0.105.97) each cell's pile read once
     local seen = {}
     local ids = {}
     for id in pairs(mem) do table.insert(ids, id) end
@@ -551,10 +952,12 @@ function report()
             pcall(function() if dfhack.units.isAdult(u) == false then row.child = true end end)
             pcall(function() if u.military.squad_id ~= -1 then row.squad_id = u.military.squad_id end end)
             if law(u) then row.law = true end
+            s.exempt = (row.child or (row.law and row.kind == 'killer')) or nil   -- (0.105.97) held_ids: never held
             pcall(function() row.x, row.y, row.z = u.pos.x, u.pos.y, u.pos.z end)
             local c = d.cells[key]
             if type(c) == 'table' then
                 row.cell = {locked = c.locked or nil, out = c.out and true or nil, kind = c.kind}
+                pcall(function() larder_row(row.cell, c, memo) end)     -- (0.105.97)
             end
             table.insert(out.list, row)
         end
@@ -573,9 +976,11 @@ function report()
     for uid, c in pairs(d.cells) do
         if type(c) == 'table' then
             local u = df.unit.find(tonumber(uid))
-            if u and not dead(u) then let_out(uid, c, u, t, false) end
-            table.insert(out.cells, {unit_id = tonumber(uid), locked = c.locked or nil, out = c.out and true or nil,
-                                     kind = c.kind, days = c.tick and (t - c.tick) // DAY or nil})
+            if u and not dead(u) then let_out(uid, c, u, t, false, memo) end
+            local crow = {unit_id = tonumber(uid), locked = c.locked or nil, out = c.out and true or nil,
+                          kind = c.kind, days = c.tick and (t - c.tick) // DAY or nil}
+            pcall(function() larder_row(crow, c, memo) end)                 -- (0.105.97)
+            table.insert(out.cells, crow)
         end
     end
     out.rooms = count_rooms(taken_zones(d))

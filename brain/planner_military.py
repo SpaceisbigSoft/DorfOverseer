@@ -304,8 +304,11 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # training; 20 of 20 dwarves missing drink and 13 of 13 merriment were
     # soldiers, 28 miserable, dwarves strangling dwarves): idle civilians gain
     # nothing from more training, the soldiers lose every hour off
-    from planner_leisure import soldiers_short_of_leisure
-    many_idle = idle_hands(s, memory, cfg) and not soldiers_short_of_leisure(s, cfg)
+    # (0.105.97) nor while a fifth of them badly miss friends (in an unhappy
+    # fort), drink or prayer (planner_leisure.company_short)
+    from planner_leisure import soldiers_short_of_leisure, company_short
+    many_idle = (idle_hands(s, memory, cfg) and not soldiers_short_of_leisure(s, cfg)
+                 and not company_short(s, cfg))
     if (rules_["train_squads"] and not any_reach and train_to and off and not small and not many_idle
             and traits.get("militarism", 0) < cfg["train_rotate_below_militarism"]):
         # (0.100) the rotation trains on "Constant training": "Staggered" has

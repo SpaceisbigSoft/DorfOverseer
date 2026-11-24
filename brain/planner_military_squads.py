@@ -300,23 +300,62 @@ def _training_rotation(s: dict, memory, squads: list, train_to: str, off: str, c
         all_on and mt >= max(3, cit * cfg["train_all_off_share"]))
     if _train_mode_held(s, memory, cfg, want_all):
         k = n
+    # (0.105.97) while a fifth of the soldiers badly miss friends, drink or
+    # prayer (planner_leisure.company_short), half the squads train at most,
+    # one at least (B, 23 Nov: 2 of 3 squads on constant training, 30 of 32
+    # missing drink soldiers, 37 soldiers among 76 of 88 missing friends)
+    from planner_leisure import company_short, squad_mostly_short
+    short = company_short(s, cfg)
+    if short:
+        k = min(k, max(1, n // 2))
     turn = abs_tick(s) // (cfg["train_rotate_days"] * TICKS_PER_DAY)
-    on = {mine[(turn * k + j) % n] for j in range(k)}
     by_id = {q["id"]: q for q in squads if q.get("id") is not None}
+    order = [mine[(turn * k + j) % n] for j in range(n)]
+    # (0.105.97) a squad off duty most of whose members badly miss these
+    # isn't sent straight back to training: another resting squad takes its
+    # turn, and it rests one turn more at most (memory.leisure_hold: squad ->
+    # when first held); one squad trains whatever
+    now = abs_tick(s)
+    hold = _d(getattr(memory, "leisure_hold", None)) if short else {}
+    hold_ticks = cfg["train_rotate_days"] * TICKS_PER_DAY
+    on, held = [], []
+    for sid in order:
+        if len(on) >= k:
+            break
+        resting = "off duty" in str(by_id[sid].get("routine") or "").lower()
+        since = hold.get(str(sid))
+        if (short and resting and squad_mostly_short(s, cfg, sid)
+                and not (isinstance(since, int) and now - since >= hold_ticks)):
+            held.append(sid)
+            continue
+        on.append(sid)
+    if not on:
+        on = [order[0]]
+        held = [x for x in held if x != order[0]]
+    if memory is not None and (short or getattr(memory, "leisure_hold", None)):
+        # a hold run out is kept while the squad still rests (the routine
+        # changes by the next report), so it isn't held afresh meanwhile
+        keep = held + [x for x in on if str(x) in hold
+                       and "off duty" in str(by_id[x].get("routine") or "").lower()]
+        memory.leisure_hold = {str(x): (hold.get(str(x)) if isinstance(hold.get(str(x)), int) else now)
+                               for x in keep}
+    on = set(on)
     for sid in mine:
         q = by_id[sid]
         resting = "off duty" in str(q.get("routine") or "").lower()
         # (0.100) a squad on its turn still on staggered training (the AI's
         # older choice) moves to the rotation's routine, constant training
         staggered = "staggered" in str(q.get("routine") or "").lower() and "staggered" not in train_to.lower()
+        why = (f"; {short} soldiers badly miss friends, drink or prayer: half the squads train at most"
+               if short else "")
         if sid in on and (resting or staggered):
             proposals.append(Proposal("train", {"type": "squad_routine", "squad_id": sid, "routine": train_to},
                                       f"{q.get('name') or 'a squad'}'s turn to train this month "
-                                      f"({k} of {n} squads train at a time)", 4))
+                                      f"({len(on)} of {n} squads train at a time{why})", 4))
         elif sid not in on and not resting:
             proposals.append(Proposal("train", {"type": "squad_routine", "squad_id": sid, "routine": off},
                                       f"{q.get('name') or 'a squad'} has trained its month: back to work while "
-                                      f"another squad trains ({k} of {n} at a time)", 4))
+                                      f"another squad trains ({len(on)} of {n} at a time{why})", 4))
     return set(mine)
 
 

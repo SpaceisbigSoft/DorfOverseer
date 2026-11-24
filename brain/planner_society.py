@@ -315,6 +315,12 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
     wide = unhappy_wide(s, cfg)
     labels = UNHAPPY_LABELS if wide else ("miserable", "very_unhappy")
     low = [x for x in worst if x.get("stress") in labels and not x.get("squad")]
+    # (0.105.97) never a held killer (B, 23 Nov: the celled Degel and Fath
+    # Shemnish were moved in among the taverns and temples; Degel killed again);
+    # the bridge passes them over too (lua/ai-society-burrows.lua rec_base)
+    from planner_killers import held_killer_ids
+    held = held_killer_ids(s)
+    low = [x for x in low if x.get("id") not in held]
     n_unhappy = int(_d(_d(s.get("dwarves")).get("stress")).get("unhappy") or 0) if wide else 0
     # (0.104.80) civilians badly wanting friends get a few short stays too
     bwf = _d(_d(_d(s.get("needs")).get("needs")).get("BeWithFriends"))
@@ -337,7 +343,27 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
                    for t in _l(getattr(memory, "fight_deaths", None)))
     if fighting:
         friends = 0
-    if low or members or friends or n_unhappy:
+    # (0.105.97) off-duty soldiers badly missing friends (in an unhappy fort),
+    # drink or prayer get places too, a few days each (B, 23 Nov: 30 of 32
+    # missing drink were soldiers, 37 soldiers among 76 of 88 missing
+    # friends; the burrow took civilians only). The bridge picks only
+    # soldiers whose squad is off duty under no order, and lets them out when
+    # the squad goes back on duty (act_squad_routine) or takes an order; a
+    # threat empties the burrow above. While the fort's own fight, two at most.
+    # (`recreation_soldiers` 4 and `recreation_soldier_days` 5 are read with
+    # defaults, as planner_leisure's keys: PLANNER_CONFIG is pinned by r7 d6)
+    from planner_leisure import company_short
+    short_sol = company_short(s, cfg)
+    resting = any((q.get("members") or 0) > 0 and "off duty" in str(q.get("routine") or "").lower()
+                  and not q.get("ai_orders") and not (q.get("orders") or 0)
+                  for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict))
+    soldiers = (min(10, max(int(cfg.get("recreation_soldiers", 4)), short_sol // 4))
+                if short_sol and resting else 0)
+    if soldiers and fighting:
+        soldiers = min(soldiers, 2)
+    if soldiers and small:
+        soldiers = min(soldiers, max(1, citizens // 8))
+    if low or members or friends or n_unhappy or soldiers:
         cap = cfg["recreation_max"] if fighting else min(30, max(cfg["recreation_max"], citizens // 20))
         if wide and not fighting:
             cap = max(cap, min(30, citizens // 5))      # (0.105.51) a fifth of the fort at most
@@ -349,14 +375,19 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
             action["unhappy"] = True
         if friends:
             action.update(friends=friends, friend_days=cfg["recreation_friend_days"])
+        if soldiers:
+            action.update(soldiers=soldiers, soldier_days=int(cfg.get("recreation_soldier_days", 5)))
         proposals.append(Proposal("recreation", action,
                                   (f"{round(unhappy_share(s) * 100)}% of the fort unhappy or worse, "
                                    f"{max(len(low), n_unhappy)} civilian(s) unhappy or worse" if wide else
                                    f"{len(low)} civilian(s) very unhappy or worse")
                                   + (f", {lonely} civilian(s) badly wanting friends" if friends else "")
+                                  + (f", {short_sol} soldier(s) badly missing friends, drink or prayer"
+                                     if soldiers else "")
                                   + (f", {members} in the recreation burrow" if members else "")
                                   + ": the unhappiest off work in the taverns, temples and halls"
                                   + (", the lonely a week among the others" if friends else "")
+                                  + (", soldiers off duty a few days there" if soldiers else "")
                                   + ", the recovered back to work",
                                   4))
 

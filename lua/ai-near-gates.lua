@@ -258,6 +258,10 @@ function set(on, radius, dry_run, txt)
         local id = tostring(u.id)
         live[id] = true
         local mine, other = burrows_of(u, bid)
+        -- (0.105.97) a killer the killer rule holds counts as in another burrow
+        -- (their cell): never added, let out if a member (B, 23 Nov)
+        local okk, held = pcall(function() return reqscript('ai-killers').is_held(u) end)
+        if okk and held == true then other = true end
         local v = member_verdict({member = d.members[id] == true, in_ours = mine, other = other,
                                   soldier = soldier(u), patient = patient(u)})
         -- (0.105.51 merge) never a dwarf in a strange mood: DF lets it claim a

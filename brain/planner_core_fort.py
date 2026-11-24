@@ -353,9 +353,13 @@ def unmet(s: dict, *names: str) -> int:
 
 def recently_home(s: dict, memory) -> list:
     """(0.104.138) Units the AI sent home in the last 168 days (newest 100),
-    for the bridge's fill to pass over: swapped, or (0.104.164) released."""
+    for the bridge's fill to pass over: swapped, or (0.104.164) released.
+    (0.105.97) The killers the killer rule holds come first, memory or not
+    (B, 23 Nov: soldier_swap's fill drafted Fath Shemnish, 2 kills, celled)."""
+    from planner_killers import held_killer_ids
+    held = sorted(held_killer_ids(s))
     if memory is None:
-        return []
+        return held[:100]
     now = abs_tick(s)
     # (0.104.164) and those released for stress or a baby (the fill drafted
     # one back once he was merely unhappy; they never counted as swaps)
@@ -370,7 +374,8 @@ def recently_home(s: dict, memory) -> list:
     # first: kept until a long time passes or their mood rises (planner_training)
     from planner_training import never_draft_ids
     never = never_draft_ids(s, memory)
-    return (never + [i for i in out if i not in set(never)])[:100]
+    first = held + [i for i in never if i not in set(held)]
+    return (first + [i for i in out if i not in set(first)])[:100]
 
 
 # DF keeps some location supplies in larger units (abstract_building_contents)

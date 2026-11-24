@@ -75,16 +75,21 @@ def _():
     assert soldiers_wanted(s, 40, CFG, memory=Memory()) == 3
 
 
-@test("history: sieges on record raise the floor of a peaceful fort above its slider (capped at a third)")
+@test("history: sieges on record raise the floor above the slider (capped at a third at Militarism 0; "
+      "0.105.97: 12% at -50 and below)")
 def _():
-    s = fort()
+    # (0.105.97) at Militarism -100 the cap with no threat here is 12%: int(40 x .12) = 4
+    m0 = Memory()
+    m0.culture = {"sieges": 2}
+    assert DF.defence_floor(fort(), m0, CFG, 40)["soldiers"] == 4
+    s = fort(mil=0)
     m = Memory()
     m.culture = {"sieges": 2}
     f = DF.defence_floor(s, m, CFG, 40)
     # 40 x 1.25 = 50 at 4 a soldier (none known) -> 13; the cap int(40 x 0.33) = 13
     assert f["soldiers"] == 13 and "2 siege(s) on record" in f["why"], f
     assert soldiers_wanted(s, 40, CFG, memory=m) == 13
-    # the world report's siege counts count too (an older memory)
+    # the world report's siege counts count too (an older memory)  (Militarism 0: the slider's 4 below)
     s2 = copy.deepcopy(s)
     s2["world"] = {"sieges": [{"id": 5, "n": 1}]}
     assert DF.defence_floor(s2, Memory(), CFG, 40)["soldiers"] == 10      # 40 / 4
@@ -135,7 +140,7 @@ def _():
     t0 = s["date"].get("tick", 0)
     note_cycle(copy.deepcopy(s), m)
     assert m.defence_floor["peak"]["power"] == 40.0, m.defence_floor
-    gone = fort()
+    gone = fort(mil=0)                                          # (0.105.97) the cap a third at 0
     gone["date"]["tick"] = t0 + DAY                             # (same year)
     f = DF.defence_floor(normalize(gone), m, CFG, 40)
     assert f["soldiers"] == 10 and "remembered" in f["why"], f
@@ -144,7 +149,9 @@ def _():
     later["date"]["year"] = gone["date"].get("year", 0)
     fl = DF._decayed(m.defence_floor["peak"], DF.abs_tick(normalize(later)), CFG)
     assert 19 <= fl <= 21, fl                                   # halved after two seasons
-    assert DF._decayed(m.defence_floor["peak"], DF.abs_tick(gone) + 2000 * DAY, CFG) == 10.0   # a quarter kept
+    assert DF._decayed(m.defence_floor["peak"], DF.abs_tick(gone) + 600 * DAY, CFG) == 10.0   # a quarter kept
+    # (0.105.97) ...for two years, then let go
+    assert DF._decayed(m.defence_floor["peak"], DF.abs_tick(gone) + 2000 * DAY, CFG) == 0.0
     # a smaller threat later doesn't lower the remembered peak
     note_cycle(fort(threats=[goblin(0)]), m)
     assert m.defence_floor["peak"]["power"] == 40.0
@@ -167,12 +174,12 @@ def _():
 
 @test("never past the civilian cap (enough left to work)")
 def _():
-    s = fort(adults=20)
+    s = fort(mil=0, adults=20)                                  # (0.105.97) the cap a third at Militarism 0
     m = Memory()
     m.culture = {"sieges": 5}
     # floor wants 80/4 = 20, capped at int(20 x .33) = 6; the civilian cap 20 - 12 = 8
     assert soldiers_wanted(s, 20, CFG, memory=m) == 6
-    s = fort(adults=16)
+    s = fort(mil=0, adults=16)
     assert soldiers_wanted(s, 16, CFG, memory=m) == 4          # 16 - 12 civilians
 
 

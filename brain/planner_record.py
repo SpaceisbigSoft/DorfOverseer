@@ -54,6 +54,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
     the cooldown and counts start anyway, to be safe against doing it twice."""
     now = abs_tick(state)
     today = game_day(state)
+    from planner_outside import note_caravan_try as _caravan_try   # (0.105.97) local: planner's names stay as they were
     crops_set_now = any(p.action.get("type") == "set_farm_crops" and isinstance(r, dict) and r.get("ok") is True
                         for p, r in results)
     failed: set[str] = set()
@@ -400,6 +401,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         _hook("note_zone_full", note_zone_full, memory, p, r, now)                  # (item7) a zone with no free floor for furniture
         _hook("note_design", note_design, p, r, state, memory, now)                 # (D0) sites kept, a landmark's refusals and fallback
         _hook("note_thirst", note_thirst, p, r, memory, now)                        # (R1 g2) the thirst remedies' answers
+        _hook("note_caravan_try", _caravan_try, p, r, memory, now)                 # (0.105.97) a stuck caravan's step and answer
         a = p.action if isinstance(p.action, dict) else {}
         _hook("squads", _squads, p, r, ok, a)
         _hook("booked", _booked, p, r, ok, a)      # the cooldown and the log, after the hooks as before
@@ -428,7 +430,7 @@ RECORD_STEPS = ("brief_timeout", "note_labor_given", "record_outcome", "note_ref
                 "note_construct", "note_reserve_swap", "note_gate_stuck", "note_way_out", "note_cleanup",
                 "note_captives", "note_order_loop", "note_mood_help", "note_syndromes", "note_food_level",
                 "note_training", "note_stuck", "note_holdfast", "note_contact_sent", "note_keep_in", "note_quarry_dug",
-                "note_zone_full", "note_design", "note_thirst", "squads", "booked", "starts", "asked", "done", "gate",
+                "note_zone_full", "note_design", "note_thirst", "note_caravan_try", "squads", "booked", "starts", "asked", "done", "gate",
                 "done2", "alarm", "tools")
 
 

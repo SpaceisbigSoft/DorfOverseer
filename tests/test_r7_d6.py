@@ -50,9 +50,13 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # keys (m1_free_stale, m1_messenger_reappoint_days), (r14 m1 fixes) and m1_stale_confirm_days, no existing key changed or moved; the split itself was proven against 6298b4a in 0.105.63
 # (0.105.93) re-pinned after one deliberate value change: hospital_guard_hold_ticks 1200 -> 3600
 # (B: a one-day hold ran out every cycle); keys and order unchanged
-DUMP_6298B4A = "f53d48c7ba1f1e652994b0007fbbc459eb3aeb727419b83c84dfd668d4b616ef"
-KEYS_6298B4A = "b0f37a4996665f38606288100363073e996357abff4462a22b1d832ffcf7b7ac"
-COUNT_6298B4A = 1286
+# (0.105.97) re-pinned after eight deliberate keys (h9_caravan_edge_max, h9_caravan_dismiss_max,
+# h9_caravan_step_days; floor_max_share_peaceful, floor_keep_days, floor_fade_half_life_days,
+# floor_forget_share, floor_days_per_year) and two values (h9_caravan_cooldown_ticks 28 -> 14 days,
+# squad_trim_cooldown_ticks 3 -> 1 day): B, 23 Nov
+DUMP_6298B4A = "d46eddb7ee569a1b141dbecf6122235aafce0a498f3763dfcc13aa27afc3a761"
+KEYS_6298B4A = "745c14c2d29aa25eb13f9c54d90939fa80e6dac14d86b644ae9a96963c1c42a1"
+COUNT_6298B4A = 1294
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

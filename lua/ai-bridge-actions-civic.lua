@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-civic is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.96'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.97'   -- bumped with BRIDGE_VERSION
 
 local string_list = ACTIONS_PART_LOCALS.string_list
 
@@ -647,10 +647,21 @@ function act_set_uniform_weapon(a)
     return reqscript('ai-military').set_uniform_weapon(id, a.weapon, a.dry_run == true)
 end
 
+-- (0.105.97) a squad back on duty or given an order: its soldiers on leave in
+-- the recreation burrow let out at once (not at the burrow's next tick, a
+-- week off), so the burrow and the duty don't pull on them both
+local function squad_rec_release(id, r)
+    local okl, out = pcall(function() return reqscript('ai-society').recreation_release_squad(id, txt) end)
+    if okl and type(out) == 'table' and #out > 0 and type(r) == 'table' then r.recreation_released = out end
+end
+
 function act_squad_routine(a)
     local id = whole_number(a.squad_id)
     if not id or type(a.routine) ~= 'string' then return reject('squad_routine needs squad_id and routine') end
-    return reqscript('ai-military').set_routine(id, a.routine)
+    local r = reqscript('ai-military').set_routine(id, a.routine)
+    -- (0.105.97) back on duty: its soldiers in the recreation burrow let out now
+    if r and r.ok and not a.routine:lower():find('off duty', 1, true) then squad_rec_release(id, r) end
+    return r
 end
 
 function act_squad_orders(a)
@@ -666,7 +677,10 @@ function act_squad_orders(a)
         if not n then return reject('kill must list unit ids') end
         table.insert(ids, n)
     end
-    return reqscript('ai-military').orders(id, ids, false)
+    local r = reqscript('ai-military').orders(id, ids, false)
+    -- (0.105.97, verifier) a kill order lets its soldiers on leave out of the recreation burrow too
+    if type(r) == 'table' and r.ok then squad_rec_release(id, r) end
+    return r
 end
 
 function act_pull_gate(a)

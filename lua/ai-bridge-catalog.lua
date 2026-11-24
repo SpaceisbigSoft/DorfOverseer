@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.96'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.97'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -584,11 +584,13 @@ ACTIONS = {
         return reqscript('ai-recovery').call_migrants(a.dry_run == true)
     end,
     -- (r2 h9) the merchants of a caravan stuck leaving told to walk off the map
-    -- (lua/ai-recovery.lua free_caravan, brain/planner_outside.py)
+    -- (lua/ai-recovery.lua free_caravan, brain/planner_outside.py); (0.105.97)
+    -- step: walk (the default), edge (teleported to the map's edge), dismiss
+    -- (DFHack's fix/stuck-merchants and caravan leave, its merchants gone)
     free_caravan = function(a)
         local id = math.tointeger(tonumber(a.entity))
         if not id then return reject('free_caravan needs entity (the caravan\'s civilisation id)') end
-        return reqscript('ai-recovery').free_caravan(id, a.dry_run == true)
+        return reqscript('ai-recovery').free_caravan(id, a.dry_run == true, a.step)
     end,
     -- (0.105.47, J1) a gathering strange mood's workshop and materials put in the AI
     -- shelter while the alarm is up (lua/ai-mood-help.lua; I7a: 5 moods cancelled "Forbidden area")
@@ -806,7 +808,8 @@ for _, name in ipairs({
     'forbid_secrets',    -- (0.105.95) its dry run changes no flag
     'thirst_way', 'thirst_patient', 'thirst_probe',   -- (R1 g2) each dry run plans or counts and changes nothing
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
-    'free_caravan',    -- (r2 h9) its dry run counts the merchants and tells none to leave
+    'free_caravan',    -- (r2 h9) its dry run counts the merchants and tells none to leave; (0.105.97) moves none,
+                       -- runs only fix/stuck-merchants -n
     'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none
     'open_meeting',    -- (0.105.47) its dry run finds the diplomacy light and clicks nothing
     'close_world',     -- (0.105.48, K9) its dry run says whether the World screen would be left, and presses nothing

@@ -159,7 +159,8 @@ ALL = {
 # (0.105.81) _training_rotation reads the soldiers' own MartialTraining (B): the one changed statement
 # (0.105.82) _military_rules: no "many idle, all train" while soldiers are short of leisure; its train_all by soldiers
 # (0.105.83) _military_rules: a few enemies inside, fliers too, get one squad whatever the policy (B's ravens)
-BASE_NODES = (123, "c45614904b817c9d16b433ec72c6a6c3")
+# (0.105.97) _training_rotation: half the squads at most while soldiers miss friends/drink/prayer, the short held a turn; _military_rules: no "many idle" then either
+BASE_NODES = (123, "8a85ae4a69a8b834c5ea757cda12b685")
 
 
 def _defined(name: str) -> list[str]:

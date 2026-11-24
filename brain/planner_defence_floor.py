@@ -19,6 +19,16 @@ slider only adds above it (its share stays the target when larger).
   squads' `power` per member), capped at `floor_max_share` of the adults
   (and, in soldiers_wanted, the civilian cap). The bridge's fill never
   drafts the last farmer or brewer outside the squads (lua/ai-military.lua).
+- (0.105.97) The floor follows the fort's character and lets go: with no
+  threat on the map now the cap falls with Militarism below 0 (a third at 0,
+  `floor_max_share_peaceful` at -50 and below); a threat here now keeps the
+  full third (survival first). The remembered threat and the history keep
+  `floor_keep_share` only for `floor_keep_days` (two years), then halve every
+  `floor_fade_half_life_days` and are forgotten below `floor_forget_share`:
+  one beast gives no floor for ever. B, 23 Nov (Militarism -60): Stuxul's
+  184.3, a year gone, kept 46 for good; the soldiers being weak, the floor
+  asked the 33% cap (35-44 soldiers of ~88 adults for years; the slider wants
+  ~12-15), the soldiers missing friends and drink.
 """
 
 from __future__ import annotations
@@ -29,7 +39,7 @@ from digest import _d, _l
 from planner_core import TICKS_PER_DAY, abs_tick, wildlife_threat
 
 __all__ = ["defence_floor", "note_defence_floor", "floor_note", "present_threat", "soldier_power_avg",
-           "history_threat", "peaceful_ranged"]
+           "history_threat", "peaceful_ranged", "floor_cap_share"]
 
 # the kinds whose learned factor (memory.fight_factor) a nominal beast takes
 BEAST_KEYS = ("ForgottenBeast", "Titan", "Megabeast", "Demon", "SemiMegabeast")
@@ -66,6 +76,33 @@ def present_threat(s: dict, memory, cfg: dict) -> tuple[float, str]:
     return best_b[0], f"{name} on the map (strength {best_b[0]:.0f})"
 
 
+def _fade(age_days, cfg: dict) -> float:
+    """(0.105.97) What is still kept of a threat gone `age_days`: all of it
+    for `floor_keep_days`, then halving every `floor_fade_half_life_days`,
+    nothing once below `floor_forget_share`. 1.0 when the age is unknown."""
+    if age_days is None:
+        return 1.0
+    keep = float(cfg.get("floor_keep_days", 672))
+    if age_days <= keep:
+        return 1.0
+    half = max(1.0, float(cfg.get("floor_fade_half_life_days", 84)))
+    f = 0.5 ** ((age_days - keep) / half)
+    return 0.0 if f < float(cfg.get("floor_forget_share", 0.08)) else f
+
+
+def _year_now(s: dict):
+    y = _num(_d(s.get("date")).get("year"))
+    return int(y) if y is not None else None
+
+
+def _last_siege_year(s: dict, memory):
+    culture = _d(getattr(memory, "culture", None)) if memory is not None else {}
+    ys = [_num(culture.get("last_siege_year"))] + [_num(_d(e).get("last_year"))
+                                                   for e in _l(_d(s.get("world")).get("sieges"))]
+    ys = [int(y) for y in ys if y is not None]
+    return max(ys) if ys else None
+
+
 def _sieges(s: dict, memory) -> int:
     culture = _d(getattr(memory, "culture", None)) if memory is not None else {}
     world = sum(int(_num(_d(e).get("n")) or 0) for e in _l(_d(s.get("world")).get("sieges")))
@@ -74,12 +111,22 @@ def _sieges(s: dict, memory) -> int:
 
 def history_threat(s: dict, memory, cfg: dict) -> tuple[float, str]:
     """The likely threat from what the fort has lived through, at nominal
-    strengths: (power, words). It doesn't fade: the fort is a known target."""
+    strengths: (power, words). The fort is a known target: it is kept whole
+    for `floor_keep_days` after the last siege (by the game year:
+    culture.last_siege_year, the world report's last_year) or the last great
+    danger seen (memory.last_great_tick), then fades as the remembered peak
+    does (0.105.97); an age not known doesn't fade."""
     out, why = 0.0, ""
     n = _sieges(s, memory)
     if n > 0:
         p = float(cfg.get("floor_siege_power", 40)) * min(2.0, 1 + 0.25 * (n - 1))
-        out, why = p, f"{n} siege(s) on record"
+        ly, ny = _last_siege_year(s, memory), _year_now(s)
+        age = (ny - ly) * float(cfg.get("floor_days_per_year", 336)) if ly is not None and ny is not None else None
+        f = _fade(age, cfg)
+        if f < 1.0:
+            out, why = p * f, f"{n} siege(s) on record (the last y{ly}, fading)"
+        else:
+            out, why = p, f"{n} siege(s) on record"
     if memory is not None:
         culture = _d(getattr(memory, "culture", None))
         slain = len(_l(culture.get("beasts_slain")))
@@ -89,10 +136,15 @@ def history_threat(s: dict, memory, cfg: dict) -> tuple[float, str]:
             ff = _d(getattr(memory, "fight_factor", None))
             learned = max([float(_num(ff.get(k)) or 1.0) for k in BEAST_KEYS] + [1.0])
             p = float(cfg.get("floor_beast_power", 30)) * min(float(cfg.get("floor_learned_max", 4.0)), learned)
+            lt = _num(getattr(memory, "last_great_tick", None))
+            age = (abs_tick(s) - lt) / TICKS_PER_DAY if lt and lt > 0 else None
+            f = _fade(max(0.0, age) if age is not None else None, cfg)
+            p *= f
             if p > out:
                 out = p
                 why = ("great dangers seen" + (f" ({slain} slain)" if slain else "")
-                       + (f", learned {learned:g}x stronger than they look" if learned > 1 else ""))
+                       + (f", learned {learned:g}x stronger than they look" if learned > 1 else "")
+                       + (", fading" if f < 1.0 else ""))
     return out, why
 
 
@@ -112,14 +164,39 @@ def soldier_power_avg(s: dict, cfg: dict) -> tuple[float, bool]:
                min(float(cfg.get("floor_soldier_power_max", 15.0)), tot / n)), True
 
 
-def _decayed(peak: dict, now: int, cfg: dict) -> float:
-    p = float(_num(_d(peak).get("power")) or 0)
+def _peak_age(peak: dict, now: int):
     t = _num(_d(peak).get("tick"))
-    if p <= 0 or t is None:
+    return None if t is None else max(0.0, (now - t) / TICKS_PER_DAY)
+
+
+def _decayed(peak: dict, now: int, cfg: dict) -> float:
+    """The remembered peak now: halving every `floor_half_life_days`, kept at
+    `floor_keep_share` of it for `floor_keep_days`; (0.105.97) after that the
+    kept share halves too (_fade), down to nothing."""
+    p = float(_num(_d(peak).get("power")) or 0)
+    age_days = _peak_age(peak, now)
+    if p <= 0 or age_days is None:
         return 0.0
-    age_days = max(0.0, (now - t) / TICKS_PER_DAY)
     half = max(1.0, float(cfg.get("floor_half_life_days", 168)))
-    return max(p * 0.5 ** (age_days / half), p * float(cfg.get("floor_keep_share", 0.25)))
+    v = max(p * 0.5 ** (age_days / half), p * float(cfg.get("floor_keep_share", 0.25)) * _fade(age_days, cfg))
+    return 0.0 if v < p * float(cfg.get("floor_forget_share", 0.08)) * float(cfg.get("floor_keep_share", 0.25)) else v
+
+
+def floor_cap_share(s: dict, cfg: dict, present: float) -> float:
+    """(0.105.97) The floor's cap as a share of the adults: `floor_max_share`
+    while a threat is on the map now or at Militarism 0 and above; below 0 it
+    falls in a straight line to `floor_max_share_peaceful` at -50 and below
+    (B at -60: 12%, not a third, of the adults for a beast long gone)."""
+    hi = float(cfg.get("floor_max_share", 0.33))
+    if present > 0:
+        return hi
+    lo = min(hi, float(cfg.get("floor_max_share_peaceful", 0.12)))
+    traits = _d(_d(s.get("settings")).get("traits"))
+    mil = float(_num(traits.get("militarism")) or 0)
+    if mil >= 0:
+        return hi
+    t = min(1.0, -mil / 50.0)
+    return hi + (lo - hi) * t
 
 
 def defence_floor(s: dict, memory, cfg: dict, citizens: int | None = None) -> dict:
@@ -130,9 +207,19 @@ def defence_floor(s: dict, memory, cfg: dict, citizens: int | None = None) -> di
     peak = _d(_d(getattr(memory, "defence_floor", None)).get("peak")) if memory is not None else {}
     mem = _decayed(peak, now, cfg)
     hist, hwhy = history_threat(s, memory, cfg)
+    age = _peak_age(peak, now)
+    keep_d = float(cfg.get("floor_keep_days", 672))
+    fade_w = ""
+    if mem < float(_num(peak.get("power")) or 0) - 0.5:
+        fade_w = f" (fading from {float(peak.get('power') or 0):.0f}"
+        if age is not None:
+            # (0.105.97) the note says when the kept share starts to go
+            fade_w += (f", {age:.0f} days ago; let go after {keep_d:.0f} days)" if age <= keep_d
+                       else f", {age:.0f} days ago: being forgotten)")
+        else:
+            fade_w += ")"
     cands = [(pres, pwhy), (mem, (f"{peak.get('why')}, remembered" if peak.get("why") else "a past threat")
-                            + (f" (fading from {float(peak.get('power') or 0):.0f})"
-                               if mem < float(_num(peak.get("power")) or 0) - 0.5 else "")),
+                            + fade_w),
              (hist, hwhy)]
     threat, why = max(cands, key=lambda c: c[0])
     out = {"soldiers": 0, "power": 0.0, "threat": round(threat, 1), "why": why, "present": round(pres, 1),
@@ -148,12 +235,14 @@ def defence_floor(s: dict, memory, cfg: dict, citizens: int | None = None) -> di
     adults = int(adults or 0)
     if isinstance(citizens, int) and citizens > 0:
         adults = min(adults, citizens) if adults else citizens
-    cap = int(adults * float(cfg.get("floor_max_share", 0.33)))
+    share = floor_cap_share(s, cfg, pres)          # (0.105.97) by Militarism with no threat here now
+    cap = int(adults * share)
     # (as soldiers_wanted) a handful of dwarves keep to their work unless a threat is on the map now
     if (citizens or adults) < cfg.get("squad_min_citizens", 0) and pres <= 0:
         cap = 0
     out.update({"soldiers": max(0, min(n, cap)), "wanted": n, "power": round(need, 1), "per_soldier": round(per, 1),
-                "per_known": known, "cap": cap})
+                "per_known": known, "cap": cap, "cap_share": round(share, 3),
+                "militarism": int(float(_num(_d(_d(s.get("settings")).get("traits")).get("militarism")) or 0))})
     return out
 
 
@@ -178,6 +267,13 @@ def floor_note(f: dict, have: int, militarism_want: int) -> str:
     if not f or f.get("threat", 0) <= 0:
         return ""
     extra = f" (cap; {f.get('wanted')} to match)" if f.get("wanted", 0) > f.get("soldiers", 0) else ""
+    # (0.105.97) the cap said: a third while a threat is here, less in a peaceful fort
+    sh = f.get("cap_share")
+    if extra and isinstance(sh, (int, float)):
+        extra = (f" (cap {f.get('cap')} = {sh * 100:.0f}% of the adults"
+                 + (" while a threat is on the map" if f.get("present", 0) > 0 else
+                    f" at Militarism {f.get('militarism', 0):+d}" if sh < 0.33 - 1e-6 else "")
+                 + f"; {f.get('wanted')} to match)")
     by = "" if f.get("per_known") else "?"
     return (f"Defence floor {f['soldiers']}{extra}: {f.get('why')}; even fight {f.get('power', 0):.0f} at "
             f"{f.get('per_soldier', 0):g}{by}/soldier; Militarism {militarism_want}; soldiers {have}")

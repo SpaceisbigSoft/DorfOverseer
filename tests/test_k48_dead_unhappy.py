@@ -328,8 +328,8 @@ def _():
 def _():
     assert "rec_eligible(u, unhappy and 2 or 1)" in BURROWS
     assert "cat <= (worst_cat or 1)" in BURROWS
-    assert "function recreation_tick(max, days, dry_run, txt, friends, friend_days, release, unhappy)" in BURROWS
-    assert "a.unhappy == true)" in ACTS
+    assert "function recreation_tick(max, days, dry_run, txt, friends, friend_days, release, unhappy" in BURROWS   # (0.105.97) the soldiers after
+    assert "a.unhappy == true, sn, sd)" in ACTS   # (0.105.97) the soldiers after
     assert "if cat <= 2 then" in REPORT
     assert "a.stress < b.stress" not in REPORT and "stress_cat[a]" in REPORT
 

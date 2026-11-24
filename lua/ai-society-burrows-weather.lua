@@ -7,7 +7,7 @@
 -- parts before it are in reach.
 
 if not BURROWS_PART_LOCALS then qerror('ai-society-burrows-weather is a part of ai-society-burrows; run ai-society-burrows') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-weather'] = '0.105.96'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-weather'] = '0.105.97'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, S, rec_state, rec_dry, hb_state, hb_now, calm_state = BURROWS_PART_LOCALS.U, BURROWS_PART_LOCALS.report_citizens, BURROWS_PART_LOCALS.S, BURROWS_PART_LOCALS.rec_state, BURROWS_PART_LOCALS.rec_dry, BURROWS_PART_LOCALS.hb_state, BURROWS_PART_LOCALS.hb_now, BURROWS_PART_LOCALS.calm_state   -- (r9) the hub's and earlier parts' locals
 
@@ -115,7 +115,8 @@ function weather_keep_in(on, dry_run, txt)
         elseif not d.members[id] then
             if out_t then d.out[id] = nil end
             local mine, other = wk_burrows(u, b.id)
-            if mine or other or wk_soldier(u) then
+            -- (0.105.97) and never a held killer: a second burrow lets them out of their cell
+            if mine or other or wk_soldier(u) or killer_held(u) then
                 skipped = skipped + 1        -- the player's own member, another burrow's, a soldier
             elseif dry_run then
                 added = added + 1

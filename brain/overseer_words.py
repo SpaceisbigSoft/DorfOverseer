@@ -250,7 +250,7 @@ SHORT_WORDS = {
     "hunt_send": "hunt: send squads after a beast or an enemy",   # (0.105.45)
     "hunt_recall": "hunt back: call the hunting squads home",    # (0.105.45)
     "call_migrants": "call a migrant wave (DFHack's force Migrants) to a fallen fort DF sends none to",  # (0.105.46, I4)
-    "free_caravan": "tell the merchants of a caravan stuck leaving to walk off the map",  # (r2 h9)
+    "free_caravan": "a caravan stuck leaving: its merchants told to walk off the map, taken to its edge, or (gone) DFHack's fixes run",  # (r2 h9; 0.105.97 steps)
     "open_meeting": "open the meeting waiting behind DF's diplomacy light",  # (0.105.47)
     "close_world": "leave DF's World screen",   # (0.105.48, K9) unattended backstop
     "hospital_guard": "station a calm squad in the hospital while a tantrum is loose (or take it off)",  # (0.105.47)

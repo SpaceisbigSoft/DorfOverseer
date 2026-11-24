@@ -685,6 +685,9 @@ def _pet_swap(s: dict, cfg: dict, rules: dict, what: str, proposals: list, notes
         return True
     owners = sorted({x["unit_id"] for x in _l(_d(_d(s.get("missions")).get("pets")).get("held"))
                      if isinstance(x, dict) and _int(x.get("unit_id")) is not None})
+    from planner_killers import held_killer_ids     # (0.105.97) never a held killer drafted in his place
+    _held = held_killer_ids(s)
+    owners = sorted(_held) + [o for o in owners if o not in _held]
     proposals.append(Proposal("mission_pets", {"type": "squad_swap", "unit_id": p["unit_id"], "avoid": owners[:40]},
                               f"a mission could {what}, but soldier {p['unit_id']}'s pet is held where the AI can't "
                               f"let it out ({pet_words(p)}) and would hold the squad at the map edge: swap the soldier "
