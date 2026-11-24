@@ -331,11 +331,17 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             if "off duty" in str(a.get("routine") or "").lower():
                 if sid not in memory.squads_rested:
                     memory.squads_rested.append(sid)        # the AI's own rest: it trains again later
+                ra = getattr(memory, "rested_at", None)
+                if isinstance(ra, dict) and "another squad trains" in str(getattr(p, "reason", "")):
+                    ra[str(sid)] = now                      # (0.105.99) the rotation's rest month (E: put back at once)
             else:
                 if sid not in memory.squads_trained:
                     memory.squads_trained.append(sid)
                 if sid in memory.squads_rested:
                     memory.squads_rested.remove(sid)
+                ra = getattr(memory, "rested_at", None)
+                if isinstance(ra, dict):
+                    ra.pop(str(sid), None)
                 memory.last_train_tick = now
 
     def _alarm_owned(p, r, ok, a):

@@ -847,7 +847,9 @@ def _fill_env():
 def _():
     env, added = _fill_env()
     got = lambda: sorted(added[i] for i in range(1, len(added) + 1))
-    assert env.fill(10, 3, env.tostring).ok and got() == [1, 2, 3], got()      # out of crisis: the keen, unhappy or not
+    # (0.105.99) out of crisis: the keen, but never the miserable (draft_bar: E, 24 Nov, Medtob drafted
+    # miserable and slipping into depression, a tantrum among his squad 8 minutes later)
+    assert env.fill(10, 3, env.tostring).ok and got() == [2, 3, 4], got()
     env, added = _fill_env()
     assert env.fill(10, 3, env.tostring, None, True).ok and got() == [3, 4], got()   # strict: never 1 or 2
     env, added = _fill_env()

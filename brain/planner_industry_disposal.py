@@ -323,6 +323,46 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
             notes.append("the game's standing order to gather refuse is off again after the AI switched it on: "
                          "left as you set it")
 
+    # 1b. (0.105.99) the game's order to gather refuse from outside: DF's
+    # haulers dump nothing that lies under the sky while it is off (the wiki's
+    # Dump and Refuse pages: it "also controls the collection of dumped items
+    # outside your fortress"). B (24 Nov): 135 items marked for the dump (89
+    # of them outside, the dead birds by the gate, a visitor's body), the
+    # order off, 77 refuse haulers and not one DumpItem job; dumped_items 0.
+    # Switched on while marked items lie outside and a dump zone stands; set
+    # back off by the player after the AI set it, it is left as they set it.
+    okey = _standing_key(st_, "gather_refuse_outside")
+    out_marked = dis.get("marked_dump_outside")
+    out_n = out_marked if isinstance(out_marked, int) and not isinstance(out_marked, bool) else None
+    # (0.105.99, merge) only while nothing that can reach the dwarves is about
+    # (B, 24 Nov: agitated giant birds and a hoary marmot killed four outside
+    # that hour), and set back off by the AI itself once the outside is clear
+    # of marked items or a danger comes: the haulers don't stay out for good
+    reach = bool(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"))
+    t_on, t_off = last("disposal_outside"), last("disposal_outside_off")
+    ai_on = t_on is not None and (t_off is None or t_off < t_on)
+    if okey is not None and st_.get(okey) and ai_on and (reach or out_n == 0):
+        proposals.append(Proposal("disposal_outside_off", {"type": "set_standing_orders", "orders": {okey: 0}},
+                                  ("a danger can reach the dwarves" if reach else
+                                   "no item marked for the dump lies outside any more")
+                                  + ": the game's standing order to gather refuse from outside, which the AI "
+                                    "switched on, goes back off (the haulers stay in)", 3))
+    elif (okey is not None and not st_.get(okey) and out_n and out_n > 0 and not reach
+            and any(isinstance(z, dict) for z in _l(dis.get("dump_zones")))):
+        # (merge) after the AI's own switch-off, two days clear before on again: a danger
+        # seen and gone each cycle doesn't flip the order every cycle
+        if t_on is None or (t_off is not None and t_off >= t_on and not 0 <= now - t_off < 2 * 1200):
+            proposals.append(Proposal("disposal_outside", {"type": "set_standing_orders", "orders": {okey: 1}},
+                                      f"{out_n} items marked for the garbage dump lie outside and the game's "
+                                      "standing order to gather refuse from outside is off, so no hauler takes "
+                                      "them: switch it on while nothing dangerous is about", 6))
+        elif not 0 <= now - t_on < cfg["disposal_outside_cooldown_ticks"]:
+            notes.append(f"{out_n} items marked for the dump lie outside and the game's standing order to "
+                         "gather refuse from outside is off again after the AI switched it on: left as you set "
+                         "it, so they stay where they lie")
+    elif out_n and out_n > 0 and reach and okey is not None and not st_.get(okey):
+        notes.append(f"{out_n} items marked for the dump lie outside: the haulers wait for the danger to go")
+
     # 2. store: unforbid what is worth keeping (the haulers store it)
     why = ["used_ammo"]
     if not unburied:

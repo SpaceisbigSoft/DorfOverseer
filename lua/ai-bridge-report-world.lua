@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-world is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.98'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.99'   -- bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 local inc, TICKS_PER_DAY = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.TICKS_PER_DAY
@@ -943,6 +943,28 @@ function death_details(ev, id)
                 end
             end
         end)
+        -- (0.105.99) a calm killer in a fight the victim was drawn into (the
+        -- victim's Conflict / JoinConflict thoughts): a brawl, and whose
+        -- tantrum it grew from (E, 23 Nov: two patients "suffocated by" a
+        -- miner and an axedwarf who had joined the fight round a tantrum)
+        -- (0.105.99, verifier) a citizen killer only: a dwarf in a fight with an
+        -- invader or a beast carries the same thoughts, and that is no brawl
+        if ev.kill_kind == nil and ev.killer_kind == 'citizen' then
+            pcall(function()
+                local kind, from = reqscript('ai-tantrums').fight_of(u, abs_tick())
+                if not kind then return end
+                ev.kill_kind = kind
+                if ev.conflict == nil or ev.conflict == 'None' then
+                    ev.conflict_df = ev.conflict
+                    ev.conflict = 'Brawl'
+                end
+                local t = from and df.unit.find(from)
+                if t and t.id ~= k.id then
+                    ev.brawl_tantrum_id = t.id
+                    ev.brawl_tantrum = txt(dfhack.units.getReadableName(t))
+                end
+            end)
+        end
         pcall(function()
             if k.pos.x >= 0 then ev.killer_x, ev.killer_y, ev.killer_z = k.pos.x, k.pos.y, k.pos.z end
         end)

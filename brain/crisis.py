@@ -30,7 +30,7 @@ RECOVERY_RULES |= {"containers"}
 # The crisis's tantrum levers now: posts taken from tantrum-throwers, the
 # loyalty fix on every tantrum, a guard at the hospital, the chronic cases
 # one by one (brain/planner_tantrums.py), all recovery rules:
-RECOVERY_RULES |= {"staff_tantrum", "chronic_posts", "chronic_care", "hospital_guard"}
+RECOVERY_RULES |= {"staff_tantrum", "chronic_posts", "chronic_care", "hospital_guard", "tantrum_soldier"}   # (0.105.99)
 RECOVERY_RULES |= {"booze_variety"}   # (0.105.24) the worst stress in B and E: the same old booze
 # levels that are themselves recovery when started (a build of these kinds is never held)
 # (0.105.48, K5) one table for crisis and recovery: brain/hold_classes.py

@@ -160,7 +160,8 @@ ALL = {
 # (0.105.82) _military_rules: no "many idle, all train" while soldiers are short of leisure; its train_all by soldiers
 # (0.105.83) _military_rules: a few enemies inside, fliers too, get one squad whatever the policy (B's ravens)
 # (0.105.97) _training_rotation: half the squads at most while soldiers miss friends/drink/prayer, the short held a turn; _military_rules: no "many idle" then either
-BASE_NODES = (123, "8a85ae4a69a8b834c5ea757cda12b685")
+# (0.105.99) re-pinned: the rotation's rest month kept by the sits-off rule (planner_military.py; E, 24 Nov)
+BASE_NODES = (123, "2c2c1e9422085953d1b65e3173f7be86")
 
 
 def _defined(name: str) -> list[str]:

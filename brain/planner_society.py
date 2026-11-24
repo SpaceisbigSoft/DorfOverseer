@@ -1307,16 +1307,30 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
         # each body as it falls and the AI unforbids the ones with a free tomb,
         # as before. The order itself is left as the player set it
         order_on = bool(d.get("forbid_own_dead"))
-        if (why.get("forbidden") or 0) - (why.get("unreachable") or 0) > 0 and proposals is not None:
+        # (0.105.99) the bridge counts the forbidden the dwarves can walk to
+        # (why.forbidden_reach); forbidden less unreachable said nothing when
+        # the unreachable weren't the forbidden ones: B (24 Nov) had 2 ghosts'
+        # bodies forbidden on a barracks floor in reach and 6 unforbidden
+        # bodies under water, 2 - 6 < 0, so they were never unforbidden and
+        # the ghosts walked. An older bridge: the old sum.
+        fr = why.get("forbidden_reach")
+        told = isinstance(fr, int) and not isinstance(fr, bool)
+        forbidden_reach = fr if told else (why.get("forbidden") or 0) - (why.get("unreachable") or 0)
+        if forbidden_reach > 0 and proposals is not None:
             proposals.append(Proposal("burial", {"type": "unforbid_dead", "max": 20},
-                                      f"{why['forbidden']} of the fort's {d['unburied']} unburied dead are forbidden "
-                                      f"where they lie and {d['free_tombs']} tomb(s) stand free: unforbid them so "
-                                      "they are buried"
+                                      f"{fr if told else why['forbidden']} of the fort's {d['unburied']} unburied dead lie forbidden "
+                                      f"where the dwarves can walk and {d['free_tombs']} tomb(s) stand free: "
+                                      "unforbid them so they are buried (none by a danger)"
                                       + (" (the game's standing order \"forbid your dead\" forbids each body as "
                                          "it falls)" if order_on else ""), 3))
         if why.get("unreachable"):
+            # (0.105.99) and how many of them under water: left where they lie
+            # (B, 24 Nov: 6 drowned at z136, water 3), the slabs rules name them
+            wet = why.get("in_water") if isinstance(why.get("in_water"), int) else 0
             notes.append(f"{why['unreachable']} of the unburied dead lie where the dwarves can't walk"
-                         + (f" ({why.get('outside')} outside)" if why.get("outside") else ""))
+                         + (f" ({why.get('outside')} outside)" if why.get("outside") else "")
+                         + (f", {wet} of them under water: left where they lie, a memorial slab put up for each "
+                            "of the fort's instead" if wet else ""))
     # (0.105.35) the tombs rule digs a tomb level with its coffins (planner_building): a note
     if d.get("unburied") and not d.get("free_tombs"):
         notes.append(f"{d['unburied']} citizen bodies wait for burial and there is no free tomb: the AI digs a "

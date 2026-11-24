@@ -31,6 +31,8 @@
 --                         days, or 3+ in a year (ai-society can_staff)
 --   kill_kind(k)          'tantrum', 'berserk' or 'possessed' for a killer
 --                         (the death event's conflict, ai-bridge-report)
+--   fight_of(victim)      (0.105.99) 'brawl' and the tantrum-thrower loose
+--                         then, for a victim drawn into a fight
 --   guard(squad, zone, dry)   a squad stationed at a hospital zone (ai-military station)
 --   unguard(squad, dry)       its station order taken off, the marks cleared
 --   step_down(unit, medical, dry, txt)   every post the dwarf holds vacated
@@ -46,6 +48,7 @@ YEAR = 403200
 STAFF_DAYS = 28           -- a tantrum this recent bars a post (can_staff)
 CHRONIC = 3               -- tantrums in a year that make a chronic case
 KILL_DAYS = 2             -- a killer with a tantrum this recent killed in one
+SEEN_STEP = 100           -- (0.105.99) a tantrum's "last seen on" written this often at most
 EPISODE_GAP = 300         -- a tantrum seen again this soon after one began is the same one
 MAX_TICKS = 12            -- tantrum starts kept a dwarf
 MAX_ROWS = 12             -- tantrum-throwers listed at most (in one now first, then the most)
@@ -130,8 +133,16 @@ function note(now)
                 r.on = true
                 changed = true
             end
+            -- (0.105.99) when it was last seen on (kill_kind, fight_of), written
+            -- every SEEN_STEP ticks at most
+            local seen = tonumber(r.seen)
+            if seen == nil or now - seen >= SEEN_STEP or now < seen then
+                r.seen = now
+                changed = true
+            end
         elseif type(r) == 'table' and r.on then
             r.on = nil
+            r.ended = now        -- (0.105.99) when it ended: kill_kind counts from there
             changed = true
         end
     end
@@ -170,15 +181,75 @@ end
 
 -- What a killer was in when they killed: 'tantrum' (in one now, or one in
 -- the last KILL_DAYS), 'berserk', 'possessed'; nil otherwise.
+-- (0.105.99) "one in the last KILL_DAYS" from the tantrum's END too (the
+-- ledger's `ended`, or `seen`: last seen on by a report), not only its start.
+-- E, 23 Nov 23:55:43: Meng Inoddesor's tantrum began at tick 183635 and ran
+-- past 186154 (five blows at the stonecrafter Urist); Urist suffocated at
+-- 186584, 2949 ticks after the start, with Meng calm by then: told as a
+-- killing "without a tantrum" (conflict None).
 function kill_kind(k, now)
     if not k then return nil end
     local m = mood_of(k)
     if m == 'Berserk' then return 'berserk' end
     if m == 'Possessed' then return 'possessed' end
     if in_tantrum(k) then return 'tantrum' end
-    local ok, n = pcall(function() return count(load(), k.id, KILL_DAYS, now or U.abs_tick()) end)
+    now = now or U.abs_tick()
+    local ok, n = pcall(function()
+        local d = load()
+        if count(d, k.id, KILL_DAYS, now) > 0 then return 1 end
+        local r = d.units[tostring(k.id)]
+        if type(r) ~= 'table' then return 0 end
+        for _, e in ipairs({tonumber(r.ended) or false, tonumber(r.seen) or false}) do
+            if e and now - e >= 0 and now - e < KILL_DAYS * DAY then return 1 end
+        end
+        return 0
+    end)
     if ok and n > 0 then return 'tantrum' end
     return nil
+end
+
+-- (0.105.99) A death in a fight the victim was drawn into: 'brawl' when the
+-- victim's own thoughts of the last KILL_DAYS hold a Conflict or JoinConflict
+-- (DF's "got into a fight" and "joined a fight"), and the citizen whose
+-- tantrum was loose then (the ledger's latest: on, ended or begun within
+-- KILL_DAYS), or nil. E, 23 Nov 23:47: Medtob Sefollòr's tantrum (tick
+-- 141621) struck the butcher Tobul at 142379; the peasant Endok joined the
+-- fight at 142434 (JoinConflict), both had "major injuries" by 142900 and
+-- were carried to the hospital (Rescued), and both suffocated there at
+-- 143695 and 144129, the kills credited to the miner Zon Avuzfikod and the
+-- axedwarf Dodók Tithlethzas, calm dwarves who had joined in (no weapon in
+-- DF's record of either death). Read: brawl, round Medtob's tantrum.
+BRAWL_THOUGHTS = {Conflict = true, JoinConflict = true}
+function fight_of(v, now)
+    if not v then return nil end
+    now = now or U.abs_tick()
+    local seen = false
+    pcall(function()
+        for _, e in ipairs(v.status.current_soul.personality.emotions) do
+            local okt, th = pcall(function() return df.unit_thought_type[e.thought] end)
+            if okt and BRAWL_THOUGHTS[th] then
+                local t = U.abs_tick(e.year, e.year_tick)
+                if now - t >= 0 and now - t < KILL_DAYS * DAY then
+                    seen = true
+                    break
+                end
+            end
+        end
+    end)
+    if not seen then return nil end
+    local best, bt = nil, nil
+    pcall(function()
+        for key, r in pairs(load().units) do
+            if type(r) == 'table' then
+                local t = math.max(tonumber(r.seen) or -1, tonumber(r.ended) or -1,
+                                   type(r.t) == 'table' and tonumber(r.t[#r.t]) or -1)
+                if t >= 0 and now - t >= 0 and now - t < KILL_DAYS * DAY and (bt == nil or t > bt) then
+                    best, bt = tonumber(key), t
+                end
+            end
+        end
+    end)
+    return 'brawl', best
 end
 
 -- --- one dwarf's row -------------------------------------------------------------

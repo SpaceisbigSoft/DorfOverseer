@@ -198,11 +198,44 @@ function hospital_stock(it)
     return ok and yes == true
 end
 
+-- (0.105.99) a trader's goods: the item or its bin flagged trader or
+-- foreign (DF's "(pig tail cloth)"). B, 24 Nov 00:35: Edzul's Secretive mood
+-- waited 41 days on "1 cloth (plant)" counted "other 20", and died of thirst;
+-- the 20 were all the stuck caravan's (10 in a bin in the depot, 10 in a bin
+-- a merchant carried), the fort itself holding none. And a foreign leather
+-- in a plain bin on a stockpile was counted "free, in walk": DF's jobs take no
+-- foreign item. Counted `trader`, apart, so the AI makes the cloth instead.
+function traders_item(it)
+    local ok, yes = pcall(function()
+        if it.flags.trader or it.flags.foreign then return true end
+        local c = dfhack.items.getContainer(it)
+        return c ~= nil and (c.flags.trader == true or c.flags.foreign == true)
+    end)
+    return ok and yes == true
+end
+
+-- (0.105.99) the item's own bin or bag when that is forbidden or marked for
+-- the dump (the item itself not): DF takes nothing out of a forbidden bin, so
+-- such an item is counted forbidden, and free_items takes it out (nil: none)
+function closed_container(it)
+    local ok, c = pcall(function()
+        local c = dfhack.items.getContainer(it)
+        if c and (c.flags.forbid == true or c.flags.dump == true) then return c end
+        return nil
+    end)
+    return ok and c or nil
+end
+
+-- (0.105.99) 'trader' and 'hospital' are their own standings now (they were
+-- 'other' among buildings, owned and artifacts), so the planner can say
+-- which, and never waits on them
 function item_standing(it)
+    if traders_item(it) then return 'trader' end
     local why = U.item_unfree(it, HELD_OK)
     if why == nil then
-        if hospital_stock(it) then return 'other' end       -- (0.105.33) the hospital's, not the mood's
-        if hospital_ground(it) then return 'other' end      -- (R1 g6) on the hospital's floor too
+        if hospital_stock(it) then return 'hospital' end    -- (0.105.33) the hospital's, not the mood's
+        if hospital_ground(it) then return 'hospital' end   -- (R1 g6) on the hospital's floor too
+        if closed_container(it) then return 'forbidden' end -- (0.105.99) in a forbidden bin
         return 'free'
     end
     return STANDING[why] or 'other'
@@ -428,7 +461,8 @@ local function partial_cloth(ji, it)
 end
 
 function request_avail(ji, entry, unit, taken)
-    local a = {free = 0, reach = 0, forbidden = 0, forbidden_reach = 0, dump = 0, job = 0, other = 0, held = 0}
+    local a = {free = 0, reach = 0, forbidden = 0, forbidden_reach = 0, dump = 0, job = 0, other = 0, held = 0,
+               trader = 0, hospital = 0}             -- (0.105.99) a trader's goods and the hospital's, apart
     local from = unit and unit.pos or nil
     local want = math.max(1, tonumber(entry.quantity) or 1)
     local skip = unit and own_items(unit) or {}
@@ -610,6 +644,25 @@ local function unforbid_guard()
     end
 end
 
+-- (0.105.99) an item in a forbidden (or dumped) bin is set on the ground
+-- where the bin stands, the bin left as the player or the AI set it: true
+-- when the item isn't in such a bin, or was taken out (a dry run: could be);
+-- false for a bin a unit carries or one inside a building (a chest, a
+-- depot), or when DFHack refuses the move. Nothing worn or in use is touched:
+-- the item itself passed U.item_unfree (no job, building, owner or holder).
+function out_of_bin(it, dry_run)
+    local c = closed_container(it)
+    if not c then return true end
+    local ok, done = pcall(function()
+        if c.flags.in_building or c.flags.in_job or dfhack.items.getHolderUnit(c) then return false end
+        local x, y, z = dfhack.items.getPosition(c)
+        if not x then return false end
+        if dry_run then return true end
+        return dfhack.items.moveToGround(it, xyz2pos(x, y, z)) == true
+    end)
+    return ok and done == true
+end
+
 function free_items(unit_id, dry_run, max, txt)
     txt = txt or tostring
     max = math.min(FREE_MAX, math.max(1, tonumber(max) or FREE_MAX))
@@ -634,8 +687,14 @@ function free_items(unit_id, dry_run, max, txt)
             local want = math.max(0, e.quantity - a.reach)
             if want > 0 then
                 each_suitable(ji, e, u.pos, function(it, st, r)
+                    -- (0.105.99) a part-used cloth is never what a mood takes (0.105.94): B's
+                    -- "pig tail cloth (80%)" was freed for Edzul, who could not use it
+                    if partial_cloth(ji, it) then return end
                     local why = (st == 'forbidden' or st == 'dump') and r and kept(it) or nil
                     if why then
+                        held[why] = (held[why] or 0) + 1
+                    elseif (st == 'forbidden' or st == 'dump') and r and not out_of_bin(it, dry_run) then
+                        why = 'in a bin it cannot be taken from'
                         held[why] = (held[why] or 0) + 1
                     elseif (st == 'forbidden' or st == 'dump') and r then
                         if not dry_run then

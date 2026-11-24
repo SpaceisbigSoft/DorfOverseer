@@ -328,13 +328,32 @@ def _others_dead_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     if dis.get("siege"):
         return
     zones = [z for z in _l(dis.get("dump_zones")) if isinstance(z, dict)]
+    # (0.105.99) the bridge says how many of the loose the dump may take and
+    # the dwarves can reach (why.not_ours_dumpable, the action's own test):
+    # none, and nothing is asked (it would only be refused), the why said.
+    # B (24 Nov): a visiting marksdwarf of another civ lay on the surface,
+    # kept by the action (DF's dead_dwarf flag) and counted loose by the
+    # report, so burial_others was refused 44 times in 2 hours ("no body DF
+    # leaves unburied may be marked for the dump now"). An older bridge: as before.
+    told = any(k in why for k in ("not_ours_dumpable", "not_ours_kept", "not_ours_unreachable"))
+    dumpable = int(why.get("not_ours_dumpable") or 0) if told else n
+    if dumpable <= 0:
+        far = int(why.get("not_ours_unreachable") or 0)
+        kept = int(why.get("not_ours_kept") or 0)
+        marked = max(0, int(why.get("not_ours") or 0) - n)
+        parts = ([f"{far} where the dwarves can't walk"] if far else []) \
+            + ([f"{kept} kept as the fort's own remains (their record can't say they were another's)"] if kept
+               else []) + ([f"{marked} more already marked or in the dump"] if marked else [])
+        notes.append(f"{n} dead of other civs lie unburied (DF buries only its own) and none can go to the dump now"
+                     + (": " + ", ".join(parts) if parts else "") + ": left where they lie")
+        return
     if any(z.get("inside") is False for z in zones):
         most = min(int(_c(cfg, "burial_others_max")), 500)
         proposals.append(Proposal("burial_others", {"type": "mark_dump", "bodies": True, "junk": False,
                                                     "reasons": ["free", "other_dead"], "max": most},
-                                  f"{n} dead of other civs (visitors, merchants: DF buries only its own) lie "
-                                  "unburied: their bodies marked for the garbage dump outside, before they rot "
-                                  "indoors", 4))
+                                  f"{dumpable} dead of other civs (visitors, merchants: DF buries only its own) lie "
+                                  "unburied where the dwarves can reach them: their bodies marked for the garbage "
+                                  "dump outside, before they rot", 4))
         return
     clearing = _d(_d(s.get("buildings")).get("clearing"))
     a = {"type": "place_surface", "kind": "dump"}

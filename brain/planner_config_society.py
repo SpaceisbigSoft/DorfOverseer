@@ -128,6 +128,7 @@ PART = {
     "disposal_empty_max": 500,                   # ...at most this many a call (<= DISPOSAL_ACTION_MAX)
     "disposal_empty_cooldown_ticks": 7 * 1200,
     "disposal_orders_cooldown_ticks": 28 * 1200,  # the refuse standing order set at most once a month
+    "disposal_outside_cooldown_ticks": 28 * 1200,  # (0.105.99) "gather refuse from outside" set at most once a month
     "disposal_unknown_note": 200,                # forbidden for no reason the game gives: past this, Needs you
     "soldier_swap_month_min": 2,                 # (0.104.114) swaps allowed in 28 days: this many at least ...
     "soldier_swap_month_share": 10,              # ... or one per this many soldiers

@@ -96,7 +96,10 @@ def death_words(ev: dict) -> str:
     if ev.get("killer") and not ev.get("again"):
         bits.append(f"by {' '.join(str(ev['killer']).split())} ({ev.get('killer_kind') or '?'})")
     # (0.104.139) the fight's level, the killer's state and the victim's
-    extra = [w for w in (ev.get("conflict") not in (None, "None") and f"a {str(ev['conflict']).lower()} fight",
+    extra = [w for w in (ev.get("conflict") not in (None, "None") and (
+                             "a brawl" if ev.get("conflict") == "Brawl" else f"a {str(ev['conflict']).lower()} fight"),
+                         # (0.105.99) a brawl and the tantrum it grew from
+                         ev.get("brawl_tantrum") and f"round {' '.join(str(ev['brawl_tantrum']).split())}'s tantrum",
                          ev.get("killer_mood") and f"the killer {str(ev['killer_mood']).lower()}",
                          # (0.105.24) which outsider: a visitor; or an old wound (the killer died first)
                          ev.get("killer_visitor") and "the killer a visitor",
@@ -449,6 +452,8 @@ def short(a: dict) -> str:
         office = str(a.get('office')).lower().replace('_', ' ')
         if a.get("replace_stale"):   # (r14 m1)
             return f"give the {office}'s post, whose holder left the fort, to a dwarf at home"
+        if a.get("killer_out"):      # (0.105.99)
+            return f"give the {office}'s post to a calm dwarf (the holder killed in fights)"
         if a.get("interim_out"):     # (r11 n1)
             return "give the messenger's post to a free, suitable dwarf (the office holder doubling as messenger steps down)"
         if a.get("replace"):
@@ -560,6 +565,8 @@ def short(a: dict) -> str:
     if t == "quick_location":
         return f"make the dining hall a {a.get('kind')} for now"
     if t == "squad_release":
+        if a.get("tantrum"):     # (0.105.99)
+            return f"take unit {a.get('unit_id')} out of the squad: in a tantrum"
         return f"take unit {a.get('unit_id')} out of the squad"
     if t == "squad_trim":
         return f"send {a.get('count')} soldier(s) back to work"

@@ -8,7 +8,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-orders is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-orders'] = '0.105.98'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-orders'] = '0.105.99'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 
 ---------------------------------------------------------------------------
@@ -510,6 +510,15 @@ function get_orders()
                 local mi = dfhack.matinfo.decode(o.mat_type, o.mat_index)
                 if mi then e.material = mi:getToken() end
             end
+        end)
+        -- (0.105.99) what kind of material an order takes by category (cloth,
+        -- silk, yarn, leather): a waiting mood's cloth went into clothing orders
+        pcall(function()
+            local mc, cats = o.material_category, {}
+            for _, k in ipairs({'cloth', 'silk', 'yarn', 'leather'}) do
+                if mc[k] == true then table.insert(cats, k) end
+            end
+            if #cats > 0 then e.mat_cats = cats end
         end)
     end
     return out

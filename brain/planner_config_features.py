@@ -170,6 +170,8 @@ PART = {
     "meeting_reopen_after_s": 1800,       # ...and after leaving one it couldn't answer, not again for this long (real s)
     # (0.105.47, R2 item 3) tantrums one dwarf at a time (brain/planner_tantrums.py, lua/ai-tantrums.lua)
     "staff_tantrum_cooldown_ticks": 100,  # a post taken from a tantrum-thrower (one a cycle, soon the next)
+    "tantrum_soldier_release": True,      # (0.105.99) a soldier in a tantrum out of his squad (the calm burrow takes no soldier)
+    "tantrum_soldier_cooldown_ticks": 100,  # ...one a cycle (a tantrum lasts hours)
     "break_fights_report_ticks": 600,     # a tantrum, berserk or possession report this recent: fix/loyaltycascade
     "hospital_guard_on": True,            # a calm squad stationed at each hospital while a tantrum is loose
     "hospital_guard_hold_ticks": 3600,    # ...kept 3 days after the last tantrum seen loose (0.105.93: B runs ~1300 ticks a cycle, a day ran out every cycle: 58 posts and recalls an hour)...
@@ -182,6 +184,11 @@ PART = {
     "chronic_convict_tantrums": 5,        # ...only after this many in a year...
     "chronic_convict_after_days": 28,     # ...this long after they became a chronic case (their needs tried first)
     "chronic_convict_cooldown_ticks": 8400,
+    # (0.105.99) the sheriff or captain of the guard who killed this many of the
+    # fort's own outside a punishment (B, 23 Nov: one each in a tantrum's brawl):
+    # the office to a calm free dwarf (planner_killers._law_row), a month per office
+    "law_killer_kills": 2,
+    "law_swap_cooldown_ticks": 28 * 1200,
     "crisis_kill_days": 14,               # a citizen killed by a citizen this recently: crisis mode
     "crisis_repeat_dwarves": 2,           # ...or this many dwarves...
     "crisis_repeat_tantrums": 2,          # ...each with this many tantrums in 28 days

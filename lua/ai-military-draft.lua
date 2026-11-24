@@ -8,7 +8,7 @@
 -- reqscript('ai-military').name and a name swapped there reaches this file.
 
 if not MILITARY_PART_LOCALS then qerror('ai-military-draft is a part of ai-military; run ai-military') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-draft'] = '0.105.98'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-draft'] = '0.105.99'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, COMBAT_SKILLS, wants_fight, fight_focus = MILITARY_PART_LOCALS.U, MILITARY_PART_LOCALS.report_citizens, MILITARY_PART_LOCALS.COMBAT_SKILLS, MILITARY_PART_LOCALS.wants_fight, MILITARY_PART_LOCALS.fight_focus   -- (r8) the hub's locals
 
@@ -69,6 +69,35 @@ function draftable(u, mothers, strict)
             and not (u.health and u.health.flags.needs_healthcare)
     end)
     return ok and yes == true
+end
+
+-- (0.105.99) Never drafted into the fort's squads (the training squad apart:
+-- no uniform, no weapons, it is where the stress-prone who long to train
+-- go): a dwarf in a breakdown now (soldier_mood Tantrum, Enraged, Depressed
+-- or Oblivious), the miserable whatever they long for, and one with a
+-- tantrum in the last 28 days or 3+ in a year (ai-tantrums' ledger, the bar
+-- a post has). E, 23 Nov 00:07:57: the defence floor's fill drafted Medtob
+-- Sefollòr (miserable, stress 83,000, a tantrum 78 days before, slipping
+-- into depression that very report) into squad 191; at 00:15:13 he threw a
+-- tantrum among his squad and struck down Goden Besmardodók, and the calm
+-- burrow never takes a soldier. The reason, or nil.
+DRAFT_BREAKDOWN = {Tantrum = true, Enraged = true, Depressed = true, Oblivious = true}
+local LEDGER_MEMO = {at = nil, d = nil}
+function draft_bar(u)
+    local okm, m = pcall(function() return df.soldier_mood_type[u.counters.soldier_mood] end)
+    if okm and DRAFT_BREAKDOWN[m] then return 'in a breakdown (' .. tostring(m) .. ')' end
+    local okc, cat = pcall(dfhack.units.getStressCategory, u)
+    if okc and cat == 0 then return 'miserable' end
+    local okt, why = pcall(function()
+        local T = reqscript('ai-tantrums')
+        local now = U.abs_tick()
+        if LEDGER_MEMO.at ~= now or LEDGER_MEMO.d == nil then LEDGER_MEMO.at, LEDGER_MEMO.d = now, T.load() end
+        local d = LEDGER_MEMO.d
+        if T.count(d, u.id, T.STAFF_DAYS, now) > 0 then return 'a tantrum in the last ' .. T.STAFF_DAYS .. ' days' end
+        if T.count(d, u.id, T.YEAR // T.DAY, now) >= T.CHRONIC then return T.CHRONIC .. '+ tantrums this year' end
+        return nil
+    end)
+    return okt and why or nil
 end
 
 local function candidates(strict)
@@ -183,7 +212,15 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
                 if a.id == sq.leader_assignment and a.histfig == -1 then
                     local pos
                     for _, p in ipairs(fort.positions.own) do if p.id == a.position_id then pos = p end end
-                    local pick = pos and pick_soldiers(candidates(), 1)[1]
+                    -- (0.105.99, verifier) the leader's seat kept from the breaking-down
+                    -- and the tantrum-throwers too (draft_bar), the training squad's as well: a seat is an office
+                    local pool = {}
+                    if pos then
+                        for _, c in ipairs(candidates()) do
+                            if not draft_bar(c.unit) then table.insert(pool, c) end
+                        end
+                    end
+                    local pick = pos and pick_soldiers(pool, 1)[1]
                     if pick and reqscript('ai-nobles').write_appointment(fort, a, idx, pos, pick.unit)
                             and seat_leader(pick.unit, sq) then
                         seated = true
@@ -218,6 +255,20 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
         end
         cands = only
     end
+    -- (0.105.99) the breaking-down and the tantrum-throwers kept out (draft_bar),
+    -- but for the training squad
+    local barred = 0
+    local okts, TSQ = pcall(reqscript, 'ai-training-squad')
+    local okm, tmarks = false, nil
+    if okts and type(TSQ) == 'table' and type(TSQ.marks) == 'function' then okm, tmarks = pcall(TSQ.marks) end
+    local training = okm and type(tmarks) == 'table' and tmarks[tostring(squad_id)] or false
+    if not training then
+        local kept_c = {}
+        for _, c in ipairs(cands) do
+            if draft_bar(c.unit) then barred = barred + 1 else table.insert(kept_c, c) end
+        end
+        cands = kept_c
+    end
     local added = {}
     local tried, k = 0, 1
     local okh, hands = pcall(last_hands)          -- (0.105.54) never the last farmer or brewer
@@ -243,12 +294,13 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
     end
     if #added == 0 then
         return seated and {ok = true, added = {}, leader_seated = true, leader_appointed = appointed_leader}
-            or {ok = false, error = ('no suitable dwarves could be added (%d candidate(s), %d tried, %d open place(s)%s%s)'):format(
+            or {ok = false, error = ('no suitable dwarves could be added (%d candidate(s), %d tried, %d open place(s)%s%s%s)'):format(
                 #cands, tried, open, sq.positions[0] and sq.positions[0].occupant == -1 and ', the leader\'s seat empty' or '',
-                kept > 0 and (', %d kept as the last farmer or brewer'):format(kept) or '')}
+                kept > 0 and (', %d kept as the last farmer or brewer'):format(kept) or '',
+                barred > 0 and (', %d kept out: breaking down or a recent tantrum'):format(barred) or '')}
     end
     return {ok = true, added = added, leader_seated = seated or nil, leader_appointed = appointed_leader,
-            kept_last_hands = kept > 0 and kept or nil}
+            kept_last_hands = kept > 0 and kept or nil, kept_out = barred > 0 and barred or nil}
 end
 
 -- (0.105.97) How badly a soldier is doing in the squad: the needs a soldier's
@@ -327,7 +379,11 @@ end
 -- leader, nor while the squad is out on orders.
 -- `mother`: (0.104.159) a soldier with a baby goes home whatever she longs
 -- for (the baby is carried into every fight); only a squad leader stays.
-function release(unit_id, dry_run, txt, mother)
+-- `tantrum`: (0.105.99) a soldier in a tantrum now goes home whatever he
+-- longs for (the calm burrow never takes a soldier, and his squad stands
+-- round him armed): E, 24 Nov 00:15, Medtob Sefollòr, a tantrum among squad
+-- 191, struck down Goden; only a squad leader stays.
+function release(unit_id, dry_run, txt, mother, tantrum)
     if not (dfhack.military and type(dfhack.military.removeFromSquad) == 'function') then
         return {ok = false, rejected = true, error = 'this DFHack cannot take a dwarf out of a squad'}
     end
@@ -338,7 +394,13 @@ function release(unit_id, dry_run, txt, mother)
     -- (0.103.10) one who longs to fight or train stays: the squad is what
     -- meets that (and the fill would draft them straight back)
     if mother and not nursing_mothers()[u.id] then return {ok = false, rejected = true, error = 'no baby of hers'} end
-    if wants_fight(u) and not mother then return {ok = false, rejected = true, error = 'longs to fight or train: the squad is what meets that'} end
+    if tantrum then
+        local okm, m = pcall(function() return df.soldier_mood_type[u.counters.soldier_mood] end)
+        if not (okm and (m == 'Tantrum' or m == 'Enraged')) then
+            return {ok = false, rejected = true, error = 'not in a tantrum now'}
+        end
+    end
+    if wants_fight(u) and not mother and not tantrum then return {ok = false, rejected = true, error = 'longs to fight or train: the squad is what meets that'} end
     local sq = df.squad.find(u.military.squad_id)
     if sq and #sq.orders > 0 then return {ok = false, rejected = true, error = 'the squad is out on orders'} end
     local name = (txt or tostring)(dfhack.units.getReadableName(u))

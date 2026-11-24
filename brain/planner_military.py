@@ -343,6 +343,15 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             if (q.get("members") or 0) > 0 and "off duty" in str(q.get("routine") or "").lower():
                 if q["id"] in memory.squads_trained and q["id"] not in memory.squads_rested:
                     continue          # the AI trained it before and you sent it off duty: your call
+                # (0.105.99) a squad the rotation rested keeps its month off even
+                # on a cycle the rotation doesn't run (a threat seen a moment,
+                # idle hands): E, 24 Nov, squads 191/210/217/219 sent off duty
+                # and put back on staggered training every few minutes
+                ra = getattr(memory, "rested_at", None)
+                t_r = ra.get(str(q["id"])) if isinstance(ra, dict) else None
+                if (isinstance(t_r, int) and q["id"] in memory.squads_rested and not small and len(squads) > 1
+                        and 0 <= abs_tick(s) - t_r < cfg.get("train_rest_month_ticks", 28 * 1200)):
+                    continue
                 proposals.append(Proposal("train", {"type": "squad_routine", "squad_id": q["id"], "routine": train_to},
                                           f"{q.get('name') or 'a squad'} sits off duty: put it on {train_to.lower()}", 4))
             elif (train_all and constant and (q.get("members") or 0) > 0 and q.get("id") in ai_squads

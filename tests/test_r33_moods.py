@@ -160,9 +160,9 @@ def _():
     hosp = W.item(1, "yarn", 1, L.table_from({"in_inventory": True}), 1)
     hosp.box = W.chest
     e = env.requests_missing(j)[1]
-    assert env.item_standing(hosp) == "other"
+    assert env.item_standing(hosp) == "hospital"       # (0.105.99) the hospital's own, counted apart
     a = env.request_avail(j.job_items[0], e, u)
-    assert a.free == 0 and a.reach == 0 and a.other == 1 and not a.enough, dict(a)
+    assert a.free == 0 and a.reach == 0 and a.hospital == 1 and not a.enough, dict(a)
     W.item(1, "yarn", 1, L.table_from({}), 1)                 # one on a stockpile: free
     a = env.request_avail(j.job_items[0], e, u)
     assert a.free == 1 and a.reach == 1 and a.enough, dict(a)

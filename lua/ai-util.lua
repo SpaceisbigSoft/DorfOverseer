@@ -504,6 +504,36 @@ function fort_remains(it, kind, ctx)
         and corpse_was_pet(it)
 end
 
+-- (0.105.99) A body (or part) the garbage dump may take for DF won't bury
+-- it: another's (corpse_side 'other'), a person's (of the fort's race, or
+-- with a historical figure: an animal's carcass is the butcher's and the
+-- refuse haulers'), and not the fort's own remains. DF sets dead_dwarf on
+-- every dwarf's body, a visitor's of another civ too, and fort_remains
+-- keeps all of those: B (24 Nov) counted a visiting marksdwarf of civ 272
+-- (the fort's 300) loose in the dead report while dump_bodies kept him, so
+-- burial_others asked and was refused 44 times in 2 hours. The flag alone
+-- keeps a body now only while its record or its civ doesn't say another's.
+-- The dead report (dead.why.not_ours_dumpable) and dump_bodies both ask this.
+function dumpable_other_body(it, kind, ctx)
+    if corpse_side(it, kind, ctx) ~= 'other' then return false end
+    local okp, person = pcall(function()
+        if ctx.race ~= nil and tonumber(it.race) == ctx.race then return true end
+        local hf = tonumber(it.hist_figure_id)
+        return hf ~= nil and hf >= 0
+    end)
+    if not (okp and person) then return false end
+    if not fort_remains(it, kind, ctx) then return true end
+    if not it.flags.dead_dwarf then return false end
+    local race, civ = corpse_race_civ(it)
+    if race == nil then return false end
+    local rec = corpse_record(it, ctx)
+    if rec == 'own' then return false end
+    local same_civ = civ ~= nil and ctx.civ ~= nil and civ == ctx.civ
+    if rec ~= 'visitor' and (civ == nil or ctx.civ == nil or same_civ) then return false end
+    if same_civ and corpse_was_pet(it) then return false end
+    return true
+end
+
 -- The context forbidden_reason reads: the cistern's tiles, the fort's race
 -- and civ, and the caller's own tests for a dump zone's tile and a
 -- stockpile's (opts.in_dump(x, y, z), opts.in_stockpile(x, y, z)). The other
@@ -605,7 +635,7 @@ PARTS = {'dig', 'flows', 'doors', 'helpers'}
 -- each part marks the version it came with (the bridge's `version` lists one
 -- that differs from BRIDGE_VERSION); started afresh at each load, so a part
 -- that failed to load shows as unmarked
-PART_VERSIONS = {['ai-util'] = '0.105.98'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-util'] = '0.105.99'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

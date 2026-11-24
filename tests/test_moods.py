@@ -189,7 +189,8 @@ def _():
     u = W.unit(5, j)
     miss = M.mood_report(j, u)
     a = miss[1].avail
-    assert (a.free, a.reach, a.forbidden, a.forbidden_reach, a.job, a.other) == (1, 0, 1, 1, 1, 1), dict(a)
+    # (0.105.99) a trader's counted as `trader`, no longer `other`
+    assert (a.free, a.reach, a.forbidden, a.forbidden_reach, a.job, a.trader, a.other) == (1, 0, 1, 1, 1, 1, 0), dict(a)
     assert not a.enough
     W.item(ROUGH, "gem", 4)                                        # one free within reach
     M.AVAIL_CACHE = LUA.table_from({})

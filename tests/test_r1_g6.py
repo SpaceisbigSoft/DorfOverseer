@@ -357,9 +357,9 @@ def _():
     cloth = W.item(1, "plant", 109, L.table_from({}), 1)
     cloth.y, cloth.z = 174, 163
     e = env.requests_missing(j)[1]
-    assert env.item_standing(cloth) == "other"
+    assert env.item_standing(cloth) == "hospital"      # (0.105.99) the hospital's own, counted apart
     a = env.request_avail(j.job_items[0], e, u)
-    assert a.free == 0 and a.reach == 0 and a.other == 1 and not a.enough, dict(a)
+    assert a.free == 0 and a.reach == 0 and a.hospital == 1 and not a.enough, dict(a)
     # the same cloth a floor down, or beside the zone: free as before
     cloth.z = 162
     assert env.item_standing(cloth) == "free"

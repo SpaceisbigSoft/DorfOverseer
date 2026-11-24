@@ -582,14 +582,12 @@ function dump_bodies(ctx, want, max, res, dry_run)
         local f = it.flags
         if f.dump or f.removed or f.garbage_collect then return end
         if not U.on_ground(it) then return end
-        if U.fort_remains(it, kind, ctx) then return end
-        if U.corpse_side(it, kind, ctx) ~= 'other' then return end
-        local okp, person = pcall(function()
-            if ctx.race ~= nil and tonumber(it.race) == ctx.race then return true end
-            local hf = tonumber(it.hist_figure_id)
-            return hf ~= nil and hf >= 0
-        end)
-        if not (okp and person) then return end
+        -- (0.105.99) the one test the dead report counts by too (ai-util
+        -- dumpable_other_body): a visitor's dwarf body carries DF's dead_dwarf
+        -- flag, so fort_remains kept it and the report still counted it loose
+        -- (B, 24 Nov: burial_others refused 44 times in 2 hours, one other
+        -- civ's marksdwarf visitor lying on the surface)
+        if not U.dumpable_other_body(it, kind, ctx) then return end
         local x, y, z = position(it)
         if x and in_dump(ctx.dumps, x, y, z) then return end
         if not outside then skip(res, 'no_outside_dump'); return end
@@ -815,10 +813,30 @@ function report()
         local ok, all = pcall(function() return df.global.world.items.all end)
         list = ok and all or {}
     end
+    -- (0.105.99) of the marked, those lying (or in a bin) on a tile under the
+    -- sky outside every dump zone, not forbidden: DF's haulers leave them
+    -- while its standing order "gather refuse from outside" is off (the
+    -- wiki's Dump and Refuse pages). B (24 Nov): 135 marked, 89 of them
+    -- outside, the order off, not one DumpItem job with 77 refuse haulers
+    out.marked_dump_outside = 0
+    local dumps
     for _, it in ipairs(list) do
         local f = it.flags
         if not (f.removed or f.garbage_collect) then
-            if f.dump then out.marked_dump = out.marked_dump + 1 end
+            if f.dump then
+                out.marked_dump = out.marked_dump + 1
+                if not f.forbid then
+                    pcall(function()
+                        local x, y, z = position(it)
+                        if x and outside_tile(x, y, z) then
+                            dumps = dumps or dump_zones()
+                            if not in_dump(dumps, x, y, z) then
+                                out.marked_dump_outside = out.marked_dump_outside + 1
+                            end
+                        end
+                    end)
+                end
+            end
             if f.melt then out.marked_melt = out.marked_melt + 1 end
         end
     end

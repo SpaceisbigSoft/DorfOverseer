@@ -96,6 +96,7 @@ def refusal_key(p: Proposal) -> str:
     # (0.105.48, K6) "id" is in REFUSAL_KEYS for every action now (was only REFUSAL_ID_TYPES')
     # (r11 n1 fixes) one office's swap refused isn't another's, nor the interim's swap-out a better holder's
     keys = REFUSAL_KEYS + (("office", "interim_out") if p.rule == "office_swap" else ())
+    keys += ("office",) if p.rule == "law_swap" else ()        # (0.105.99) the sheriff's refusal isn't the captain's
     keys += ("office",) if p.rule == "office_free" else ()     # (r14 m1) one stale post's refusal isn't another's
     return p.rule + ":" + json.dumps({k: _key_value(a.get(k)) for k in keys if k in a},
                                      sort_keys=True, default=str)
@@ -109,6 +110,8 @@ def cooldown_key(p: Proposal) -> str:
         return f"{p.rule}:{a['id']}"
     if p.rule == "office_swap" and a.get("office"):      # (r11 n1) a season per office
         return f"office_swap:{a['office']}"
+    if p.rule == "law_swap" and a.get("office"):         # (0.105.99) one law office's swap, not the other's
+        return f"law_swap:{a['office']}"
     return p.rule
 
 

@@ -78,6 +78,7 @@ LAWFUL_CONFLICT = {Horseplay = true, Training = true}
 -- a fist fight or a beating gone too far (a sheriff's beating is Nonlethal): said, never acted on
 BRAWL_CONFLICT = {Brawl = true, Nonlethal = true}
 STRONG_CRIMES = {Murder = true, BloodDrinking = true, AttemptedMurder = true}
+LAW_KILLS = 2               -- (0.105.99) a law officer's killings outside a punishment: the office goes
 
 -- --- helpers ---------------------------------------------------------------
 
@@ -182,11 +183,33 @@ function members()
     return out
 end
 
+-- (0.105.99) the units DF sentenced (a crime of theirs sentenced, or in the
+-- punishments queue): a sheriff's or captain's killing of one is a punishment
+function convict_ids()
+    local out = {}
+    pcall(function()
+        local list = df.global.world.crimes.all
+        for i = 0, #list - 1 do
+            pcall(function() if list[i].flags.sentenced then out[list[i].criminal] = true end end)
+        end
+    end)
+    pcall(function()
+        local list = df.global.plotinfo.punishments
+        for i = 0, #list - 1 do out[list[i].criminal] = true end
+    end)
+    return out
+end
+
 -- The killings of the fort's own by a living member, newest first:
--- {killer_id = {kills, brawls, lawful, victims = {names}, causes = {CAUSE = n}, drained}}
+-- {killer_id = {kills, brawls, lawful, punished, victims = {names}, causes = {CAUSE = n}, drained}}
+-- (0.105.99) `punished`: a convict killed by the law (a beating): lawful,
+-- not counted. B, 23 Nov: the sheriff and the captain of the guard each
+-- killed a dwarf with their fists in a tantrum's brawl (one activity, no
+-- crime, no sentence, punches by both at each other too): kills like any other
 function killings(mem, now)
     local by = {}
     local scanned, old = 0, 0
+    local convicts, is_law = nil, {}
     local ok, list = pcall(function() return df.global.world.incidents.all end)
     if not ok or not list then return by, 0 end
     local n = 0
@@ -208,7 +231,7 @@ function killings(mem, now)
             if not mem[kid] or kid == vid then return end
             local v = df.unit.find(vid)
             if not v or not own(v) then return end
-            local row = by[kid] or {kills = 0, brawls = 0, lawful = 0, victims = {}, causes = {}}
+            local row = by[kid] or {kills = 0, brawls = 0, lawful = 0, punished = 0, victims = {}, causes = {}}
             by[kid] = row
             local conflict = nil
             pcall(function() conflict = enum_name(df.conflict_level, inc.conflict_level) end)
@@ -216,6 +239,11 @@ function killings(mem, now)
                     or LAWFUL_CONFLICT[conflict] then
                 row.lawful = row.lawful + 1
                 return
+            end
+            if is_law[kid] == nil then is_law[kid] = law(mem[kid]) end
+            if is_law[kid] then
+                convicts = convicts or convict_ids()
+                if convicts[vid] then row.punished = row.punished + 1; return end
             end
             local cname = enum_name(df.death_type, cause)
             row.causes[cname] = (row.causes[cname] or 0) + 1
@@ -244,6 +272,25 @@ function crimes(mem)
         end
     end)
     return by
+end
+
+-- (0.105.99) the law offices a unit holds (SHERIFF, CAPTAIN_OF_THE_GUARD)
+function law_codes(u)
+    local out = {}
+    pcall(function()
+        for _, p in ipairs(dfhack.units.getNoblePositions(u) or {}) do
+            local code = tostring(p.position.code)
+            if code:find('SHERIFF') or code:find('CAPTAIN_OF_THE_GUARD') then table.insert(out, code) end
+        end
+    end)
+    return out
+end
+
+-- (0.105.99) is unit id `id` a law officer who killed LAW_KILLS or more
+-- outside a punishment (the report's last word, in the save's record)?
+function law_killer(id)
+    local s = state().seen[tostring(id)]
+    return type(s) == 'table' and s.law_killer == true
 end
 
 -- the sheriff or captain of the guard (a punishment can kill: never locked away for it)
@@ -1147,11 +1194,19 @@ function report()
             if k then
                 row.kills, row.brawls, row.lawful, row.drained = k.kills, k.brawls, k.lawful, k.drained or nil
                 row.victims, row.causes = k.victims, k.causes
+                if (k.punished or 0) > 0 then row.punished = k.punished end
             end
             if cr then row.crimes = cr end
             pcall(function() if dfhack.units.isAdult(u) == false then row.child = true end end)
             pcall(function() if u.military.squad_id ~= -1 then row.squad_id = u.military.squad_id end end)
-            if law(u) then row.law = true end
+            if law(u) then
+                row.law, row.law_codes = true, law_codes(u)
+                -- (0.105.99) killings outside a lawful punishment (fights): at
+                -- LAW_KILLS the office may go to a calmer dwarf (ai-nobles-swap)
+                row.law_kills = k and (k.kills + k.brawls) or 0
+                if row.law_kills >= LAW_KILLS and row.kind == 'killer' then row.law_killer = true end
+            end
+            s.law_killer = row.law_killer
             s.exempt = (row.child or (row.law and row.kind == 'killer')) or nil   -- (0.105.97) held_ids: never held
             pcall(function() row.x, row.y, row.z = u.pos.x, u.pos.y, u.pos.z end)
             local c = d.cells[key]

@@ -22,7 +22,7 @@
 local N = reqscript('ai-nobles')
 local U = reqscript('ai-util')      -- (r11) the shared helpers
 
-PART_VERSIONS = {['ai-nobles-swap'] = '0.105.98'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-nobles-swap'] = '0.105.99'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
 
 -- the civilian offices the AI may give to a better holder. (r11 n1 fixes)
 -- Not the sheriff nor the captain of the guard: their posts lead the fortress
@@ -221,11 +221,38 @@ end
 -- messenger's interim holder, one holding another office, replaced by any
 -- suitable free citizen), else margin_add / margin_factor (the candidate's
 -- skill score must reach needed()).
+-- (0.105.99) killer_out: the sheriff or captain of the guard who killed
+-- LAW_KILLS or more of the fort's own outside a punishment (lua/ai-killers.lua
+-- law_killer; B, 23 Nov, both killed in a tantrum's brawl) replaced by a calm
+-- free citizen (no killing of their own, not unhappy), whatever the skills.
+-- The slot that leads the guard's squad still never moves.
+LAW_OFFICES = {SHERIFF = true, CAPTAIN_OF_THE_GUARD = true}
+
+local function calm_pick(code, holder_id)
+    local K = reqscript('ai-killers')
+    local seen = {}
+    pcall(function() seen = K.state().seen end)
+    local best, bs
+    for _, c in ipairs(N.office_candidates(code)) do
+        local u = df.unit.find(c.id)
+        local okm, cat = pcall(function() return dfhack.units.getStressCategory(u) end)
+        local calm = okm and type(cat) == 'number' and cat >= 3
+        if (c.offices or 0) == 0 and c.id ~= holder_id and not c.child and not c.soldier and calm
+                and seen[tostring(c.id)] == nil then
+            local sc = N.skill_score(c.skills)
+            if not best or sc > bs or (sc == bs and c.id < best.id) then best, bs = c, sc end
+        end
+    end
+    return best
+end
+
 function replace(code, dry_run, txt, opts)
     opts = opts or {}
     local civil = false
     for _, c in ipairs(SWAP_OFFICES) do if c == code then civil = true end end
-    if not civil then return no('the AI replaces only ' .. table.concat(SWAP_OFFICES, ', ')) end
+    local law_out = opts.killer_out == true and LAW_OFFICES[code] == true
+    if opts.killer_out and not law_out then return no('killer_out is only for the sheriff or the captain of the guard') end
+    if not civil and not law_out then return no('the AI replaces only ' .. table.concat(SWAP_OFFICES, ', ')) end
     local ent = U.fort_entity()
     if not ent then return {ok = false, error = 'no fort government (entity) found'} end
     local a, a_idx, p = held_slot(ent, code)
@@ -242,18 +269,28 @@ function replace(code, dry_run, txt, opts)
     if opts.interim_out and (code ~= 'MESSENGER' or N.fort_offices(old, ent) < 2) then
         return no('the messenger holds no other office: not an interim')
     end
-    local c = best_free(code, old.id)
-    if not c then return no('no free citizen suits the ' .. code:lower():gsub('_', ' ')) end
+    if law_out then
+        local okk, yes = pcall(function() return reqscript('ai-killers').law_killer(old.id) end)
+        if not (okk and yes) then
+            return no('the ' .. code:lower():gsub('_', ' ') .. ' has not killed twice outside a punishment: kept')
+        end
+    end
+    local c = law_out and calm_pick(code, old.id) or (not law_out and best_free(code, old.id)) or nil
+    if not c then
+        return no('no free citizen suits the ' .. code:lower():gsub('_', ' ')
+                  .. (law_out and ' (calm, no office, no soldier, no killing of their own)' or ''))
+    end
     local hs, cs = N.skill_score(N.office_skills(old, code)), N.skill_score(c.skills)
     local need = needed(hs, opts.margin_add, opts.margin_factor)
-    if not opts.interim_out and cs < need then
+    if not opts.interim_out and not law_out and cs < need then
         return no('not vastly better: skill ' .. hs .. ' -> ' .. cs .. ' (needs ' .. need .. ')',
                   {holder_score = hs, cand_score = cs})
     end
     local new = df.unit.find(c.id)
     local out = {ok = true, office = code, replaced = name_of(old, txt), replaced_unit = old.id,
                  name = name_of(new, txt), unit_id = c.id, holder_score = hs, cand_score = cs,
-                 interim_out = opts.interim_out and true or nil, dry_run = dry_run or nil}
+                 interim_out = opts.interim_out and true or nil, killer_out = law_out or nil,
+                 dry_run = dry_run or nil}
     if dry_run then return out end
     -- all or nothing: the old holder off, the new one on, else the old one back
     local saved = take_off(ent, a, hf)

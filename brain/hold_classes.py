@@ -104,6 +104,7 @@ _SURVIVAL_RULES = {
     "pair_chairs", "comfort", "cups_home",
     # health and care
     "hospital", "hospital_burrow", "hospital_guard", "doctor_patient", "doctor_post", "staff", "staff_tantrum",
+    "tantrum_soldier",
     "care_clean", "care_diagnose", "care_feed", "infected_rest", "traction", "traction_parts", "traction_rest",
     "soap", "soap_rush", "syndrome_clean", "syndrome_quarantine", "miasma_clear", "miasma_dump", "miasma_refuse",
     "rescue_labor", "stranded", "insane", "cave_in_dig_out", "way_in", "way_out", "way_out_dig", "second_way",
@@ -119,7 +120,7 @@ _SURVIVAL_RULES = {
     "jail_urgent", "jail_size", "jail_more", "prisoners_water", "pit_prisoners", "mothers", "mood",
     "mood_reserve", "mood_shelter", "instrument_orders", "join_levels",
     # the fort's offices and people
-    "appoint", "messenger", "office_swap", "office_free", "pop_cap", "recovery_migrants", "migrant_drought", "stuck_caravan", "census", "labor", "labor_trim", "petitions",
+    "appoint", "law_swap", "messenger", "office_swap", "office_free", "pop_cap", "recovery_migrants", "migrant_drought", "stuck_caravan", "census", "labor", "labor_trim", "petitions",
     "petition_retarget", "residency", "citizenship", "location_access",
     # (r2h6) a temple or guildhall petition answered: held in a crisis it
     # lapsed, DF's "The guildhall petition by The Sienna Guild has been
@@ -134,7 +135,8 @@ _SURVIVAL_RULES = {
     "unsuspend", "stuck_order", "stuck_sweep", "tools", "mechanisms", "bins", "picks", "fuel", "fuel_trim",
     "smelt", "smelting", "steel", "cloth", "crafts", "hauling", "hauling_add", "hauling_back", "hauling_relieve",
     "hauling_shrink", "barrows", "barrow_order", "feeder", "feeder_link", "bench_caps", "excess_shops",
-    "disposal_dump", "disposal_empty", "disposal_melt", "disposal_melt_order", "redig", "disposal_orders", "disposal_place_dump",
+    "disposal_dump", "disposal_empty", "disposal_melt", "disposal_melt_order", "redig", "disposal_orders", "disposal_outside", "disposal_outside_off",
+    "disposal_place_dump",
     "disposal_unforbid", "dump", "refuse", "prune", "prune_keep_parts", "depot", "traffic_audit", "traffic_paint",
     "cavern_logging_stop",
     # trade (the wealth DF sends migrants by)

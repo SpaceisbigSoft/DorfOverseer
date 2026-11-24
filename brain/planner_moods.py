@@ -90,7 +90,7 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
             if missing and (counted or days >= cfg["mood_wait_days"]
                             or stalled >= cfg.get("mood_stall_days", 7)):
                 _mood_materials(s, name, mood, missing, days, proposals, notes, cfg, memory=memory,
-                                unit_id=m.get("unit_id"), stalled=stalled)
+                                unit_id=m.get("unit_id"), stalled=stalled, thirst=m.get("thirst"))
             elif isinstance(have, int) and isinstance(want, int) and have < want and days >= 3:
                 notes.append(f"{name}'s {mood.lower()} mood: gathering materials ({have}/{want}) for "
                              f"{days} days; if it stalls, DFHack's showmood says what's missing")
@@ -194,6 +194,20 @@ MOOD_THREAD_BLOCKS = {"plant": ("weave_plant_cloth",), "silk": ("weave_silk_clot
                       "yarn": ("weave_yarn_cloth",)}
 
 
+def mood_blocks_of(x: dict) -> list:
+    """(0.105.26; a helper since 0.105.99, verifier) The AI's recipes held
+    while one mood request waits (mood_blocked): cloth and thread by the kind
+    of thread it names (none named: every kind)."""
+    kind = mood_kind(x)
+    flags = set(str(f) for f in _l(x.get("flags")))
+    item = str(x.get("item") or "").upper()
+    if kind == "cloth" or item == "THREAD":
+        table = MOOD_CLOTH_BLOCKS if kind == "cloth" else MOOD_THREAD_BLOCKS
+        kinds = [k for k in table if k in flags] or list(table)
+        return [r for k in kinds for r in table[k]]
+    return list(MOOD_BLOCKS.get(kind, ()))
+
+
 def mood_blocked(s: dict) -> tuple[dict, dict]:
     """(0.105.26) What the fort's crafting moods wait for and don't have
     within reach, as ({recipe: what}, {material token: what}): the AI's
@@ -207,15 +221,7 @@ def mood_blocked(s: dict) -> tuple[dict, dict]:
             if not isinstance(x, dict) or mood_on_hand(x) is True:
                 continue
             kind, what = mood_kind(x), mood_item_text(x)
-            flags = set(str(f) for f in _l(x.get("flags")))
-            item = str(x.get("item") or "").upper()
-            if kind == "cloth" or item == "THREAD":
-                table = MOOD_CLOTH_BLOCKS if kind == "cloth" else MOOD_THREAD_BLOCKS
-                kinds = [k for k in table if k in flags] or list(table)
-                found = [r for k in kinds for r in table[k]]
-            else:
-                found = list(MOOD_BLOCKS.get(kind, ()))
-            for r in found:
+            for r in mood_blocks_of(x):
                 recipes.setdefault(r, what)
             mat = str(x.get("material") or "").upper().replace(" ", "_")
             if kind == "bar" and mat and mat != "ROCK":
@@ -248,7 +254,7 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
     q = max(1, min(10, q))
     flags = set(_l(x.get("flags")))
     acts: list = []
-    stuck = int(_d(mood).get("stalled") or 0) >= cfg.get("mood_stall_days", 7)
+    stuck = int(_d(mood).get("stalled") or 0) >= cfg.get("mood_stall_days", 7) or bool(_d(mood).get("urgent"))
     unwoven = ""
     dead: list[str] = []          # (0.105.47) the routes DF keeps cancelling, in words
 
@@ -260,7 +266,9 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         if d:
             dead.append(d)
             return False
-        if queued(s, {recipe}):
+        # (0.105.99) a stalled mood waits only on the AI's own order of it: the player's or
+        # DFHack's (the smelting library's SmeltOre orders wait for 100 charcoal) may never run
+        if queued(s, {recipe}, ai_only=stuck):
             return True                    # already on order: wait for it
         a = {"type": "work_order", "recipe": recipe, "amount": max(1, int(amount))}
         if material:
@@ -442,7 +450,24 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         return acts, ("no rough gem the dwarf can reach (they come from mining gem veins, or a caravan's); "
                       "the AI's gem cutting waits meanwhile")
     if kind == "log":
-        return acts, "no log (trees felled, or a caravan's wood)"
+        # (0.105.99) none within the dwarf's walk (D, 24 Nov: Nil's Fey mood counted 19 logs,
+        # all where no dwarf walks, and went berserk on day 42): one of the fort's own
+        # underground trees felled (the forestry's inside-only marking: no cavern, no surface)
+        ins = _d(_d(s.get("forestry")).get("inside"))
+        inside = int(ins.get("reachable") or 0)
+        rm = ins.get("reach_marked")      # an older bridge: none, and the marked ones count
+        marked = rm if isinstance(rm, int) and not isinstance(rm, bool) else int(ins.get("marked") or 0)
+        if mood and inside > 0 and marked > 0:
+            # (0.105.99, verifier) one already marked within reach: wait for its felling
+            # (the mood's quarter-day cooldown marked another tree each time while the
+            # first stood)
+            return acts, None
+        if mood and inside > 0:
+            if not any(a.get("type") == "cavern_logging" for a, _ in acts):
+                acts.append(({"type": "cavern_logging", "limit": 1, "inside_only": True},
+                             f"fell one of the fort's own {inside} underground tree(s) within reach for a log"))
+            return acts, None
+        return acts, "no log within the dwarf's walk (trees felled, or a caravan's wood)"
     if kind == "stone":
         av = _d(x.get("avail"))
         if int(av.get("held") or 0) > 0:
@@ -569,7 +594,10 @@ def mood_counts_text(x: dict) -> str:
     n = lambda k: int(av.get(k) or 0)            # noqa: E731
     bits = [f"{n('free')} free ({n('reach')} in walk)"]
     for k, w in (("forbidden", "forbidden"), ("dump", "for the dump"), ("job", "in other jobs"),
-                 ("other", "in use"), ("held", "carried by the dwarf")):
+                 ("other", "in use"), ("held", "carried by the dwarf"),
+                 # (0.105.99) a trader's goods and the hospital's, counted apart (they were "in use")
+                 ("trader", "a trader's goods"), ("hospital", "the hospital's"),
+                 ("partial", "part-used (a mood takes whole cloth)")):
         if n(k):
             bits.append(f"{n(k)} {w}")
     if av.get("capped"):
@@ -577,9 +605,18 @@ def mood_counts_text(x: dict) -> str:
     return f"{what}: " + ", ".join(bits)
 
 
+# (0.105.99) a moody dwarf drinks nothing till the artifact is made (B, 24 Nov: Edzul died of
+# thirst on day 43): past DFHack's "thirsty" (25000, lua/ai-thirst.lua THIRSTY), or stalled this
+# many days, the mood's materials come first (priority 0; the AI's orders that would use them
+# cancelled). Constants, not PLANNER_CONFIG keys (tests/test_r7_d6 pins that dict); a cfg of the
+# same name overrides them.
+MOOD_THIRST_URGENT = 25000
+MOOD_URGENT_DAYS = 20
+
+
 def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
                     proposals: list, notes: list, cfg: dict | None = None, memory=None, unit_id=None,
-                    stalled: int | None = None) -> None:
+                    stalled: int | None = None, thirst: int | None = None) -> None:
     """A mood gathering materials: get it what it waits for, and say exactly
     what the fort can't supply (a mood that never gets its materials ends in
     madness).
@@ -611,6 +648,20 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
     asks: list[str] = []
     who = {"name": name, "unit_id": unit_id, "stalled": stalled}
     taken = {p.action.get("order_id") for p in proposals if p.action.get("type") == "cancel_work_order"}
+    # (0.105.99) a moody dwarf drinks nothing till the artifact is made (B, 24 Nov 00:18: Edzul
+    # died of thirst on day 43 of a Secretive mood): thirsty (DF's counter past
+    # `mood_thirst_urgent`) or stalled `mood_urgent_days`, the mood's materials come first
+    thirsty = (isinstance(thirst, int) and not isinstance(thirst, bool)
+               and thirst >= int(cfg.get("mood_thirst_urgent", MOOD_THIRST_URGENT)))
+    urgent = thirsty or (stalled is not None and stalled >= int(cfg.get("mood_urgent_days", MOOD_URGENT_DAYS)))
+    who["urgent"] = urgent
+    prio = 0 if urgent else 1
+    # (0.105.99) the requests the fort has nothing free in the dwarf's walk for: the true
+    # blockers. B, 24 Nov: Edzul's first request (2 iron bars, free in a bin on a stockpile)
+    # read "on hand" for 41 days and the AI smelted bars five times, while the plant cloth
+    # (none of the fort's own: the 20 counted were the stuck caravan's) had nothing done
+    blockers = [x for x in missing if mood_on_hand(x) is False]
+    waiting: list[str] = []
     for i, x in enumerate(missing):
         kind = mood_kind(x)
         av = _d(x.get("avail"))
@@ -621,7 +672,8 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
             # DF will take (B, 8 Nov: 1 bone "free 1, in reach 1" for 40 days,
             # 33 tame animals and a butcher's, nothing tried; the dwarf went
             # raving). Make it as if missing; never "none" said for it.
-            if i == 0 and stalled is not None and stalled >= cfg.get("mood_stall_days", 7):
+            if (i == 0 and stalled is not None and stalled >= cfg.get("mood_stall_days", 7)
+                    and not blockers):      # (0.105.99) another request lacks: that one first
                 acts, _ = _mood_make(s, x, kind, memory, cfg, mood=who)
                 for a, how in acts:
                     if a.get("type") == "work_order" and any(p.action == a for p in proposals):
@@ -629,7 +681,7 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
                     proposals.append(Proposal(
                         "mood", a, f"{name}'s {mood.lower()} mood needs {mood_item_text(x)} (the one it is "
                         f"fetching now): the fort's counts it within the dwarf's walk, but nothing was "
-                        f"fetched for {stalled} days, so more is made: {how}", 1, a.get("type") == "work_order"))
+                        f"fetched for {stalled} days, so more is made: {how}", prio, a.get("type") == "work_order"))
                     if a.get("type") == "work_order":
                         ordered.append(a.get("recipe"))
             continue                                   # free within reach: the dwarf will fetch it
@@ -639,16 +691,31 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
             if int(av.get("reach") or 0) + int(av.get("forbidden_reach") or 0) >= want:
                 continue
         out_of_walk = counted and int(av.get("free") or 0) > int(av.get("reach") or 0)
-        if counted and int(av.get("job") or 0) > 0:
+        held_by_job = counted and int(av.get("job") or 0) > 0
+        if held_by_job or (counted and urgent):
+            # (0.105.99) urgent: the AI's orders that would use up what is made for the
+            # mood go too, not only one holding the fort's last (B: the cloth woven for
+            # the reserve went into clothing within minutes)
+            # (0.105.99, verifier) the urgent cancel only of the orders select() then holds
+            # while the mood waits (mood_blocked, mood_blocks_of): a plant-cloth mood's
+            # cancel of the AI's silk or yarn bag order was placed again by the bag
+            # rule, cancelled again, each cooldown (and a silk bag's job holds no plant cloth)
+            held_r = set(mood_blocks_of(x))
             for o in _l(s.get("orders")):
                 if (isinstance(o, dict) and o.get("by_ai") and o.get("recipe") in MOOD_CONSUMERS.get(kind, ())
-                        and o.get("id") is not None and o.get("id") not in taken):
+                        and o.get("id") is not None and o.get("id") not in taken
+                        and o.get("recipe") in held_r):
                     taken.add(o.get("id"))
                     proposals.append(Proposal("mood", {"type": "cancel_work_order", "order_id": o["id"]},
                                               f"{name}'s {mood.lower()} mood waits for {mood_item_text(x)} and "
-                                              f"another job holds the fort's last: cancel the AI's {o['recipe']} "
-                                              "order (its jobs let go of it)", 1))
-                    break
+                                              + ("another job holds the fort's last" if held_by_job else
+                                                 ("the dwarf is thirsty (no moody dwarf drinks)" if thirsty else
+                                                  f"has stalled {stalled} days") + "; this order would use it up")
+                                              + f": cancel the AI's {o['recipe']} order (its jobs let go of it)",
+                                              prio))
+                    if held_by_job:
+                        break
+        extra = _mood_held_words(s, x, kind)
         acts, why = _mood_make(s, x, kind, memory, cfg, mood=who)
         for a, how in acts:
             if a.get("type") == "work_order" and any(p.action == a for p in proposals):
@@ -656,11 +723,21 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
             proposals.append(Proposal("mood", a, f"{name}'s {mood.lower()} mood needs {mood_item_text(x)}"
                                       + (" (the one it is fetching now)" if i == 0 else "")
                                       + (" (the fort's lies where the dwarf can't walk)" if out_of_walk else "")
-                                      + f": {how}", 1, a.get("type") == "work_order"))
+                                      + (f" ({extra})" if extra else "")
+                                      + (" (the dwarf is thirsty: no moody dwarf drinks)" if thirsty else "")
+                                      + f": {how}", prio, a.get("type") == "work_order"))
             if a.get("type") == "work_order":
                 ordered.append(a.get("recipe"))
         if acts:
             continue
+        if why is None and not out_of_walk:
+            # (0.105.99) on its way (an order already queued, or the bridge's search cut
+            # short): said once the mood has stalled, with what holds the fort's (it was
+            # silent: B's plant cloth "on order" 41 days)
+            waiting.append(mood_item_text(x) + (f" ({extra})" if extra else ""))
+            continue
+        if why and extra:
+            why = f"{why}; {extra}"
         if out_of_walk:
             # in the fort, but where the dwarf can't walk: never "none" (F, 8 Nov)
             far.append(mood_item_text(x) + (f" (none to be made here: {why})" if why else ""))
@@ -726,13 +803,70 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
     if freeing and unit_id is not None and not free_items_skip(memory, unit_id, missing):
         proposals.append(Proposal("mood", {"type": "mood_free_items", "unit_id": unit_id, "max": 10},
                                   f"{name}'s {mood.lower()} mood can use items that lie forbidden or marked for "
-                                  "the dump: free them", 1))
+                                  "the dump (or in a forbidden bin): free them", prio))
     for a in asks:
         ask_player(notes, a)
+    if waiting and (urgent or (stalled is not None and stalled >= cfg.get("mood_stall_days", 7))):
+        notes.append(f"{name}'s {mood.lower()} mood (day {days}) waits on {'; '.join(waiting)}: already on "
+                     "order (the AI's own orders' jobs come first while it waits)")
+    if thirsty:
+        players = _mood_player_orders(s, blockers)
+        notes.append(f"{name} is thirsty in a {mood.lower()} mood (DF lets no moody dwarf drink till the "
+                     f"artifact is made): the mood's materials come first"
+                     + (f"; the player's own orders use the same material ({players}): the AI cancels only its own"
+                        if players else ""))
     if not lacking and not asks and not stall_noted and counted and (ordered or freeing):
         notes.append(f"{name}'s {mood.lower()} mood (day {days}): fetching {first}"
                      + (f"; ordered {', '.join(ordered)}" if ordered else "")
                      + ("; forbidden materials freed" if freeing else ""))
+
+
+def _mood_held_words(s: dict, x: dict, kind: str) -> str:
+    """(0.105.99) What holds the fort's items of a request the mood can't
+    take, in words ('' when nothing): a trader's goods (B, 24 Nov: the 20
+    plant cloth counted "other" were the stuck caravan's), the hospital's
+    stock, part-used cloth, and the thread kept in the hospital's chests (B:
+    its 15 thread, the fort's only, all there)."""
+    av = _d(x.get("avail"))
+    n = lambda k: int(av.get(k) or 0)            # noqa: E731
+    bits = []
+    if n("trader"):
+        bits.append(f"the {n('trader')} counted are a trader's goods: the mood's only if bought {TRADE_IF}")
+    if n("hospital"):
+        bits.append(f"{n('hospital')} are the hospital's stock, which DF keeps for the hospital")
+    if n("partial"):
+        bits.append(f"{n('partial')} are part-used (a mood takes whole cloth only)")
+    if kind == "cloth" or str(x.get("item") or "").upper() == "THREAD":
+        su = _d(s.get("supplies"))
+        hosp = int(_d(su.get("hospital")).get("thread") or 0)
+        th = _d(su.get("thread_kinds"))
+        if hosp > 0 and th and not any(int(v or 0) for v in th.values()):
+            bits.append(f"the fort's {hosp} thread all lie in the hospital's chests (DF won't weave them)")
+    return "; ".join(bits)
+
+
+def _mood_player_orders(s: dict, blockers: list) -> str:
+    """(0.105.99) The player's (or DFHack's) work orders that take the
+    material a mood lacks, by DF's job name ('' when none): the bridge's
+    `mat_cats` (B, 24 Nov: MakePants and MakeArmor orders not the AI's while
+    Edzul waited on plant cloth). The AI cancels only its own orders."""
+    want = set()
+    for x in blockers:
+        k = mood_kind(x)
+        if k == "cloth":
+            flags = set(str(f) for f in _l(x.get("flags")))
+            want |= {"cloth"} if "plant" in flags or not flags & {"silk", "yarn"} else set()
+            want |= {f for f in ("silk", "yarn") if f in flags}
+        elif k == "leather":
+            want.add("leather")
+    if not want:
+        return ""
+    jobs = {}
+    for o in _l(s.get("orders")):
+        if isinstance(o, dict) and not o.get("by_ai") and set(str(c) for c in _l(o.get("mat_cats"))) & want:
+            j = str(o.get("job") or o.get("recipe") or "order")
+            jobs[j] = jobs.get(j, 0) + 1
+    return ", ".join(f"{n} {j}" for j, n in sorted(jobs.items()))
 
 
 def _mood_trade_words(s: dict, name: str, kinds: list) -> str:
@@ -783,7 +917,8 @@ def mood_trade_wants(s: dict) -> list[dict]:
     return out
 
 
-MOOD_JOURNAL_KEYS = ("free", "reach", "forbidden", "forbidden_reach", "dump", "job", "other", "held")
+MOOD_JOURNAL_KEYS = ("free", "reach", "forbidden", "forbidden_reach", "dump", "job", "other", "held",
+                     "trader", "hospital", "partial")      # (0.105.99) the last three apart
 
 
 def mood_journal(s: dict, memory) -> list[dict]:
@@ -829,6 +964,12 @@ def mood_journal(s: dict, memory) -> list[dict]:
             e["day"] = (abs_tick(s) - seen) // TICKS_PER_DAY
         if isinstance(prog.get("since"), int):
             e["stalled"] = (abs_tick(s) - prog["since"]) // TICKS_PER_DAY
+        # (0.105.99) DF's thirst counter: the digest can say "dying of thirst in a mood"
+        th = m.get("thirst")
+        if isinstance(th, int) and not isinstance(th, bool):
+            e["thirst"] = th
+            if th >= int(PLANNER_CONFIG.get("mood_thirst_urgent", MOOD_THIRST_URGENT)):
+                e["thirsty"] = True
         out.append(e)
         logged[uid] = today
     if memory is not None:

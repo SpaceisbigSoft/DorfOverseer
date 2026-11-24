@@ -132,6 +132,7 @@ LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow", "join_levels", "censu
 # and STEER_PROTECTED are copies made here at import, so a rule a later module
 # put in EMERGENCY (way_out, way_out_dig, well_rescue) missed them
 STEER_PROTECTED.update({"intruder_guard", "thief_watch", "destroyer_gate", "hospital_guard", "staff_tantrum", "chronic_posts",
+                        "tantrum_soldier",   # (0.105.99)
                         "near_gates", "near_gates_refresh", "hunting_stop", "fire_guard", "magma_guard",
                         "magma_shut", "lure_shut", "mood_shelter", "well_rescue", "well_safety"})
 

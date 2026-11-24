@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.98'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.99'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local json = require('json')
 local utils = require('utils')
@@ -28,19 +28,36 @@ function act_unforbid_dead(a)
     local max = whole_number(a.max) or 20
     local from = citizen_anchor()
     local n = 0
+    -- (0.105.99) never a body by a live danger, nor one the AI forbade on its
+    -- cistern's tiles (ai-util near_danger, cistern_tiles): those forbids stand
+    local spots, cistern = {}, {}
+    pcall(function()
+        local U = reqscript('ai-util')
+        spots, cistern = U.danger_spots(), U.cistern_tiles()
+    end)
+    local kept = 0
     for _, it in ipairs(df.global.world.items.other.CORPSE) do
         if n >= max then break end
         local ok, r = pcall(function() return it.race end)
         if ok and r == race and it.flags.forbid and not it.flags.in_building and not it.flags.removed
                 and not it.flags.in_job then
             local x, y, z = dfhack.items.getPosition(it)
-            if x and from and dfhack.maps.canWalkBetween(from, xyz2pos(x, y, z)) then
+            local okk, keep = pcall(function()
+                return x ~= nil and (cistern[x .. ',' .. y .. ',' .. z]
+                    or reqscript('ai-util').near_danger(spots, x, y, z)) and true or false
+            end)
+            if okk and keep then
+                kept = kept + 1
+            elseif x and from and dfhack.maps.canWalkBetween(from, xyz2pos(x, y, z)) then
                 if not a.dry_run then it.flags.forbid = false end
                 n = n + 1
             end
         end
     end
-    if n == 0 then return reject('no forbidden body of the fort\'s the dwarves can reach') end
+    if n == 0 then
+        return reject(kept > 0 and ('the %d forbidden bodies left lie by a live danger or on the cistern\'s tiles: '
+            .. 'left forbidden'):format(kept) or 'no forbidden body of the fort\'s the dwarves can reach')
+    end
     return {ok = true, unforbidden = n, dry_run = a.dry_run or nil}
 end
 

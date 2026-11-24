@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-fort is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-fort'] = '0.105.98'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-fort'] = '0.105.99'   -- bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 local inc = REPORT_PART_LOCALS.inc
@@ -75,6 +75,9 @@ function get_moods()
             local e = {unit_id = u.id, name = txt(dfhack.units.getReadableName(u)), mood = mood,
                        craft = CRAFT_MOODS[mood] == true}
             if e.craft then
+                -- (0.105.99) DF's thirst counter: a moody dwarf drinks nothing till the
+                -- artifact is made (B, 24 Nov: Edzul died of thirst on day 43 of a mood)
+                pcall(function() e.thirst = u.counters2.thirst_timer end)
                 e.skill = df.job_skill[u.job.mood_skill] or tostring(u.job.mood_skill)
                 local job = u.job.current_job
                 if job then

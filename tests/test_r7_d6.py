@@ -54,9 +54,12 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # h9_caravan_step_days; floor_max_share_peaceful, floor_keep_days, floor_fade_half_life_days,
 # floor_forget_share, floor_days_per_year) and two values (h9_caravan_cooldown_ticks 28 -> 14 days,
 # squad_trim_cooldown_ticks 3 -> 1 day): B, 23 Nov
-DUMP_6298B4A = "d46eddb7ee569a1b141dbecf6122235aafce0a498f3763dfcc13aa27afc3a761"
-KEYS_6298B4A = "745c14c2d29aa25eb13f9c54d90939fa80e6dac14d86b644ae9a96963c1c42a1"
-COUNT_6298B4A = 1294
+# (0.105.99) re-pinned after five deliberate keys: tantrum_soldier_release, tantrum_soldier_cooldown_ticks
+# (E's soldier in a tantrum), law_killer_kills, law_swap_cooldown_ticks (B's officers),
+# disposal_outside_cooldown_ticks (B's dump): 24 Nov
+DUMP_6298B4A = "19d567144f2cd7e64c5e6dd79845981cb881d5aaa86656364885c1eda5748608"
+KEYS_6298B4A = "13a776bbe5bfbf9eedf0585b158bddc087a209aa07489a6e39c45b354569057c"
+COUNT_6298B4A = 1299
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

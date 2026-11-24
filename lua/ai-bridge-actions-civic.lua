@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-civic is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.98'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.99'   -- bumped with BRIDGE_VERSION
 
 local string_list = ACTIONS_PART_LOCALS.string_list
 
@@ -500,7 +500,7 @@ end
 function act_squad_release(a)
     local id = whole_number(a.unit_id)
     if not id then return reject('squad_release needs unit_id') end
-    return reqscript('ai-military').release(id, a.dry_run == true, txt, a.mother == true)
+    return reqscript('ai-military').release(id, a.dry_run == true, txt, a.mother == true, a.tantrum == true)   -- (0.105.99) tantrum
 end
 
 -- (0.104.65) A swap: a soldier trained enough goes back to work and the

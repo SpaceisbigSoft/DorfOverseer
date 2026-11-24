@@ -344,7 +344,7 @@ function report()
     local d = load_state()
     local cave_d, all_d = dangers()
     local out = {surface = {trees = 0, saplings = 0, marked = 0}, cavern = {trees = 0, reachable = 0, marked = 0},
-                 inside = {trees = 0, reachable = 0, marked = 0}, ai_marked = 0, ai_marked_unsafe = 0,
+                 inside = {trees = 0, reachable = 0, marked = 0, reach_marked = 0}, ai_marked = 0, ai_marked_unsafe = 0,
                  cavern_dangers = #cave_d}
     local standing = {}
     for _, t in ipairs(c.trees) do
@@ -352,6 +352,8 @@ function report()
         b.trees = b.trees + 1
         if t.marked then b.marked = b.marked + 1 end
         if t.reach then b.reachable = (b.reachable or 0) + 1 end
+        -- (0.105.99, verifier) marked and within reach: a mood's log waits on its felling
+        if t.reach and t.marked then b.reach_marked = (b.reach_marked or 0) + 1 end
         standing[key(t.x, t.y, t.z)] = t
     end
     for _, s in ipairs(c.saplings) do

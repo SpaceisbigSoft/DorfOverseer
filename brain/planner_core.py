@@ -221,6 +221,7 @@ class Memory:
     released: dict = field(default_factory=dict)  # (0.104.164) unit id -> when stress care or a baby sent them home
     never_draft: dict = field(default_factory=dict)  # (0.105.47) unit id -> {at, stress}: stress care sent them home for good (planner_training)
     train_mode: dict = field(default_factory=dict)  # (0.104.168) the rotation's {all: bool, tick: when it changed}
+    rested_at: dict = field(default_factory=dict)     # (0.105.99) squad id -> when the AI last sent it off duty (the rotation's rest month)
     leisure_hold: dict = field(default_factory=dict)  # (0.105.97) squad id -> when the rotation first held it off duty for its soldiers' leisure
     keen_lift: dict = field(default_factory=dict)   # (0.104.168) {n, tick}: soldiers wanted raised for the keen in a crisis
     unstick_seen: dict = field(default_factory=dict)   # (0.104.138) the spare gear at the last untangling, times

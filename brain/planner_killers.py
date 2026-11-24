@@ -20,8 +20,10 @@ What the AI does (it acts itself; nothing waits for the player):
   * any suspect is noted first: the AI acts only once it has been suspected
     `killer_note_ticks` (half a day) and still is;
   * a berserk one: the military rules' squads (not here); a werebeast: the
-    moon cells (planner_threats); a child or the sheriff / captain of the
-    guard (a punishment can kill): a note only;
+    moon cells (planner_threats); a child: a note only; the sheriff /
+    captain of the guard (a punishment can kill): never locked away in
+    office, but (0.105.99) two killings outside a punishment and the office
+    goes to a calm free dwarf (`_law_row`);
   * a vampire: sent away when the Rules tab's "send vampires away" is on
     and they are a citizen (planner_military's expel rule); still here
     `killer_expel_wait` (a week) later, or a resident (who can't be sent
@@ -172,6 +174,57 @@ def _larder_words(c: dict) -> str:
     return "; " + ", ".join(bits)
 
 
+LAW_OFFICES = ("CAPTAIN_OF_THE_GUARD", "SHERIFF")
+
+
+def _law_row(s: dict, cfg: dict, r: dict, head: str, proposals: list, notes: list) -> None:
+    """(0.105.99) The sheriff or the captain of the guard among the suspects.
+    Never locked away while in office (a punishment can kill: a convict's
+    death by the law is counted apart, `punished`). Live B, 23 Nov
+    (probes r99i11-law-*): the sheriff struck down a mechanic and the captain
+    of the guard broke a strand extractor's neck with her fists in a tantrum's
+    brawl (one activity, three dead; no crime, no sentence, no punishment
+    queue, no jail; the two officers punched each other too). Killings like
+    those, outside a punishment, LAW_KILLS (cfg law_killer_kills) or more:
+    the office goes to a calm free citizen (`appoint` replace killer_out,
+    lua/ai-nobles-swap.lua), after which the killer rule treats them as any
+    other (a cell). Fewer: said only."""
+    if not isinstance(r.get("law_kills"), int):
+        # an older bridge: its kills hold the convicts' beatings too
+        notes.append(f"{head}: the fort's sheriff or captain of the guard (a punishment can kill): the AI "
+                     "doesn't lock away the law; DF's justice judges them")
+        return
+    n = r["law_kills"]
+    punished = int(r.get("punished") or 0)
+    pun = f"; {punished} convict(s) died of DF's punishment at their hands (lawful)" if punished else ""
+    need = int(cfg.get("law_killer_kills", 2))
+    if n < need and not r.get("law_killer"):
+        notes.append(f"{head}: the fort's sheriff or captain of the guard; {n} killing(s) outside a punishment"
+                     f"{pun}: watched (the office goes to a calmer dwarf at {need}); the AI doesn't lock away the law")
+        return
+    codes = [c for c in LAW_OFFICES if c in [str(x) for x in _l(r.get("law_codes"))]]
+    seen = r.get("seen_ticks") if isinstance(r.get("seen_ticks"), int) else 0
+    if not codes:
+        notes.append(f"{head}: the fort's law ({n} killing(s) outside a punishment{pun}) by an office other "
+                     "than the sheriff's or the captain of the guard's: left to DF's justice")
+        return
+    if not player_rules(s)["appoint_nobles"]:
+        notes.append(f"{head}: {n} killing(s) outside a punishment as the fort's law{pun}; appointing is off on "
+                     "the Rules tab, so the AI leaves the office as it is")
+        return
+    if seen < int(cfg.get("killer_note_ticks", 600)):
+        notes.append(f"{head}: {n} killing(s) outside a punishment as the fort's law{pun}; the office goes to a "
+                     "calmer dwarf if it still holds in half a day")
+        return
+    code = codes[0]
+    word = code.lower().replace("_", " ")
+    proposals.append(Proposal("law_swap", {"type": "appoint", "office": code, "replace": True, "killer_out": True,
+                                           "unit_id": r["id"]},
+                              f"{head}: the {word} killed {n} of the fort's own outside a punishment (fights, not "
+                              f"DF's sentences){pun}: the post goes to a calm free dwarf; out of office, the killer "
+                              "rule holds them as any other", 2))
+
+
 def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """Each suspect said with the evidence and the confidence; the cell
     proposed for the murderers (and the vampires kept), a squad sent at a
@@ -192,6 +245,9 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
         what = {"vampire": "is a vampire", "werebeast": "carries a werebeast curse",
                 "cursed": "carries a curse (undead-like)", "killer": "may be a murderer"}[kind]
         head = f"{who} {what} ({conf}: {ev})"
+        if r.get("law") and kind == "killer":
+            _law_row(s, cfg, r, head, proposals, notes)
+            continue
         if conf == "weak":
             notes.append(f"{head}: watched; one killing or a fight gone too far is not enough for the AI to "
                          "act on one of the fort's own")
@@ -204,10 +260,6 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
             continue
         if r.get("child"):
             notes.append(f"{head}: a child; the AI locks away or sends a squad at no child")
-            continue
-        if r.get("law") and kind == "killer":
-            notes.append(f"{head}: the fort's sheriff or captain of the guard (a punishment can kill): the AI "
-                         "doesn't lock away the law; DF's justice judges them")
             continue
         if seen < note_ticks:
             notes.append(f"{head}: first seen {seen // 50} hour(s) ago; the AI acts if it still holds in "

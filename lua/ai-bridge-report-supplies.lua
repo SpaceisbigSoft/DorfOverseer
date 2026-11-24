@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.98'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.99'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
 
@@ -906,6 +906,39 @@ function get_dead()
                         end)
                     end
                     if loose then why.not_ours_loose = (why.not_ours_loose or 0) + 1 end
+                    -- (0.105.99) of the loose, those dump_bodies takes (the same
+                    -- test) and the dwarves can walk to: burial_others asks for
+                    -- these alone, and says why when none (B, 24 Nov: 44 refusals
+                    -- in 2 hours for a visitor's body the action kept)
+                    if loose then
+                        local okd, dumpable = pcall(function()
+                            return side_ctx ~= nil and side_ctx.U.dumpable_other_body(it, 'CORPSE', side_ctx)
+                        end)
+                        if okd and dumpable then
+                            if reach then
+                                why.not_ours_dumpable = (why.not_ours_dumpable or 0) + 1
+                            else
+                                why.not_ours_unreachable = (why.not_ours_unreachable or 0) + 1
+                            end
+                        elseif okd and side_ctx ~= nil then
+                            why.not_ours_kept = (why.not_ours_kept or 0) + 1
+                        end
+                    end
+                end
+                -- (0.105.99) forbidden where the dwarves can walk: the burial
+                -- rule's unforbid_dead asked only while forbidden outnumbered
+                -- unreachable (B, 24 Nov: 2 forbidden on a barracks floor, 6
+                -- unforbidden under water, so never). And the out-of-reach under water.
+                if f.forbid and reach and not f.in_job and (not okc or own) then
+                    why.forbidden_reach = (why.forbidden_reach or 0) + 1
+                end
+                if not reach and x then
+                    pcall(function()
+                        local d = dfhack.maps.getTileFlags(xyz2pos(x, y, z))
+                        if d and d.flow_size > 0 and not d.liquid_type then
+                            why.in_water = (why.in_water or 0) + 1
+                        end
+                    end)
                 end
                 if reach and not f.forbid and not f.dump and not f.in_job and not f.in_inventory
                         and (not okc or own) then

@@ -25,6 +25,8 @@ AI's hospital guards. What it does (nothing waits for the player):
                     possession report and while a tantrum is loose (harmless
                     when nothing is wrong: "No loyalty cascade found" 30 times
                     in E), not only after a death; never with enemies about.
+  * tantrum_soldier (0.105.99) a soldier in a tantrum out of his squad, so
+                    the calm burrow can take him.
   * hospital_guard  while a tantrum is loose, one calm squad (no member very
                     unhappy or worse or in a tantrum, none wounded, thirsty or
                     hungry, on no other order) stationed in each hospital
@@ -55,11 +57,13 @@ from planner_core import (AGENDA_THEMES, Proposal, TICKS_PER_DAY, _has_shop, _tr
 # the season's agenda (planner_core agenda): these rules' themes
 AGENDA_THEMES["staff_tantrum"] = "no post in the hands of a dwarf in a tantrum"
 AGENDA_THEMES["hospital_guard"] = "a guard at the hospital while a tantrum is loose"
+AGENDA_THEMES["tantrum_soldier"] = "no soldier left in his squad in a tantrum"   # (0.105.99)
 AGENDA_THEMES["chronic_posts"] = AGENDA_THEMES["chronic_care"] = "care for the chronic tantrum cases"
 AGENDA_THEMES["chronic_convict"] = "care for the chronic tantrum cases"
 
 __all__ = ["tantrum_section", "tantrum_rows", "guard_ids", "loose_tantrums", "note_tantrum_book",
-           "mind_break_why", "_break_fights_report_rule", "_staff_tantrum_rule", "_hospital_guard_rule",
+           "mind_break_why", "_break_fights_report_rule", "_staff_tantrum_rule", "_tantrum_soldier_rule",
+           "_hospital_guard_rule",
            "chronic_cases", "chronic_need_actions", "_chronic_rule", "_tantrum_rules", "NEED_WORDS"]
 
 # the needs no action of the AI's meets for one dwarf, and who meets them
@@ -210,6 +214,37 @@ def _staff_tantrum_rule(s: dict, cfg: dict, proposals: list) -> None:
             return
 
 
+def _tantrum_soldier_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
+    """(0.105.99) A soldier in a tantrum goes home (squad_release with
+    `tantrum`: the bridge lets him go whatever he longs for, never a squad's
+    leader, never while the squad is out on orders), so the calm burrow,
+    which never takes a soldier, can take him; the fill keeps him out while
+    the ledger holds a tantrum of his in 28 days (ai-military draft_bar).
+    E, 24 Nov 00:07-00:15: the defence floor drafted the miserable Medtob
+    Sefollòr into squad 191; seven minutes later he threw a tantrum among his
+    squad (he went for two militia captains and an axe lord) and struck down
+    Goden Besmardodók, the calm burrow passing him over as a soldier. Never
+    while enemies can reach the dwarves. One a cycle."""
+    if not cfg.get("tantrum_soldier_release", True) or proposals is None:
+        return
+    if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
+        return
+    now = abs_tick(s)
+    for r in tantrum_rows(s):
+        if not (r.get("now") and r.get("squad")):
+            continue
+        p = Proposal("tantrum_soldier", {"type": "squad_release", "unit_id": r["id"], "tantrum": True},
+                     f"{r.get('name') or r['id']} is in a tantrum in a squad: out of it, so the calm burrow can "
+                     "take him (a soldier is never moved there) and his squad stops standing round him "
+                     "(E: Medtob, drafted miserable, struck down Goden 7 minutes later)", 1)
+        if memory is not None:
+            from planner_core_refusals import _refused_wait
+            if _refused_wait(memory, p, now) is not None:
+                continue
+        proposals.append(p)
+        return
+
+
 def _hospital_guard_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """(I7c fix 4) While a tantrum is loose, one calm squad stationed in each
     hospital zone: soldiers on station meet a tantrum before it reaches a bed.
@@ -335,6 +370,12 @@ def _convict_blockers(s: dict, cfg: dict, r: dict) -> list:
     out = []
     if not cfg["chronic_convict_on"]:
         out.append("switched off")
+    # (0.105.99) already chained: E, 24 Nov 00:32-00:40, the planter convicted
+    # at 00:32 (and in the jail since) was asked again every cycle, the bridge
+    # refusing "no solved case of that culprit waits for a trial"
+    if any(isinstance(p, dict) and p.get("id") == r.get("id")
+           for p in _l(_d(s.get("justice")).get("prisoners"))):
+        out.append("already serving time in the jail")
     if r.get("hurt"):
         out.append("they are hurt")
     if int(_d(s.get("dwarves")).get("needs_medical_care") or 0):
@@ -409,5 +450,6 @@ def _tantrum_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
     if not tantrum_section(s):
         return
     _staff_tantrum_rule(s, cfg, proposals)
+    _tantrum_soldier_rule(s, memory, cfg, proposals)      # (0.105.99)
     _hospital_guard_rule(s, memory, cfg, proposals, notes)
     _chronic_rule(s, cfg, proposals, notes)
