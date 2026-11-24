@@ -6,5 +6,7 @@
   "df_save_dir": "C:\\Users\\you\\AppData\\Roaming\\Bay 12 Games\\Dwarf Fortress\\save",
   "strategist_backend": "subscription",
   "pc_token_cap": 250000,
+  "fresh_start_hours": 3,
+  "fresh_start_max_wait_hours": 2,
   "strategist_shadow": true
 }

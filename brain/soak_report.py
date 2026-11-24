@@ -42,6 +42,12 @@ EVENTS = [
     # (0.105.48, K8) the keeper's own end, and an overseer that can't stay up
     ("keeper trouble (stopped, or the overseer can't run)",
      r"Keeper stopped unexpectedly|the overseer couldn't be run|Keeper: the overseer has stopped \d+ times in a row"),
+    # (0.105.100) the keeper's planned restarts (brain/fresh_start.py): counted
+    # apart, never flagged; their reopening says "Revive (planned):", which the
+    # revive lines above don't match, so a planned close is never a crash
+    ("fresh starts (planned: saved, closed and reopened)", r"Fresh start: .*saving, closing and reopening"),
+    ("fresh starts put off", r"Fresh start: not done"),
+    ("planned reopenings (not crashes)", r"Revive \(planned\): Dwarf Fortress wasn't running"),
 ]
 
 

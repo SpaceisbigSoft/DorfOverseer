@@ -539,6 +539,16 @@ class Reviver:
         self.session_ending = session_end.ending
         self.any_df = any_df_running
         self.all_closed_said = False
+        # (0.105.100) when the pinned fort's world came up (brain/fresh_start.py
+        # counts its hours from it; None while down or at the title), and a
+        # reopening after the keeper's own planned close: its lines say
+        # "Revive (planned):", never counted as a crash (brain/soak_report.py)
+        self.world_since: float | None = None
+        self.planned = False
+        self.planned_since: float | None = None
+
+    def _tag(self) -> str:
+        return "Revive (planned)" if self.planned else "Revive"
 
     def _held(self, state: str, now: float) -> bool:
         """(r1g9) Nothing is started, loaded or closed: the fort has fallen
@@ -898,6 +908,10 @@ class Reviver:
         state = self.probe()
         if state in ("title", "world"):
             self.seen_up = True
+        if state == "world" and getattr(self, "site", None) not in (None, ""):
+            self.world_since = self.world_since if self.world_since is not None else now
+        elif state in ("down", "title"):
+            self.world_since = None
         self._watch_load(state, now)
         if state in ("down", "title", "unknown") and self._held(state, now):
             return
@@ -961,7 +975,7 @@ class Reviver:
                 self.last_launch = now
                 try:
                     self.launcher(cmd)
-                    self.log(f"Revive: Dwarf Fortress wasn't running for {int(now - self.down_since)} s: "
+                    self.log(f"{self._tag()}: Dwarf Fortress wasn't running for {int(now - self.down_since)} s: "
                              f"started it again ({cmd}).")
                 except OSError as e:
                     self.log(f"Revive: couldn't start Dwarf Fortress ({e}).")
@@ -1017,7 +1031,7 @@ class Reviver:
                     if '"ok":true' in out.replace(" ", ""):
                         self.loading = (folder, now)
                         self.late_load = None
-                        self.log(f"Revive: the game sat at the title screen; loading the save '{folder}'.")
+                        self.log(f"{self._tag()}: the game sat at the title screen; loading the save '{folder}'.")
                     else:
                         self.log(f"Revive: couldn't load '{folder}' ({out.strip()[-200:]}).")
                         # (0.105.33) a lasting refusal (no save of the world among

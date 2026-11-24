@@ -589,6 +589,13 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 say(f"THE FORT IS IN TROUBLE: {bad}" if bad else "The fort is out of trouble.")
                 chronicle.add(memory, state, "trouble", bad or "out of trouble")
                 memory.trouble_seen = bad
+            if controls.get("unattended"):
+                # (0.105.100) the keeper's fresh start: is the fort calm now (logs/calm.json)
+                try:
+                    import fresh_start
+                    fresh_start.note_cycle(state, memory, fort=key)
+                except Exception:  # noqa: BLE001  (never stops the fort)
+                    pass
             line = report.maybe_write(state, memory, key, todo, controls.get("fps"))
             if line:
                 say(f"Report: {line}")

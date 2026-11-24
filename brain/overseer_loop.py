@@ -154,6 +154,11 @@ def _run(args) -> int:
             season_end = isinstance(_d0.get("tick"), int) and (_d0["tick"] // 33600) % 3 == 2 and int(_d0.get("day") or 0) >= 26
             save_said, quiet_wait = False, 10
             controls = {"halted": st.get("halted") is True, "decisions": st.get("decisions") or {}}
+            if args.unattended:
+                # (0.105.100) the keeper's fresh start waits for a calm moment: the
+                # game's status as of this poll (logs/calm.json; never raises)
+                import fresh_start
+                fresh_start.note_status(st, halted=controls["halted"], season_end=season_end)
             if st.get("in_fort") and controls["halted"] != was_halted:
                 say("Halted in the game (Ctrl-Shift-H): watching only, changing nothing."
                     if controls["halted"] else "Resumed in the game.")

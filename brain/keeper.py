@@ -12,6 +12,11 @@ stops both. The overseer still obeys the in-game halt (Ctrl-Shift-H) and the
 STOP file; so does this, in that it never restarts anything they stopped:
 they don't stop the overseer, they only stop its actions.
 
+With --revive it also gives the game a fresh start every few hours
+(config.json "fresh_start_hours", default 3; 0 = off; brain/fresh_start.py):
+at a calm moment the game is saved, closed and opened again on that save,
+and the keeper itself starts again as a new process.
+
 No tokens are spent unless --ai is given.
 """
 
@@ -235,6 +240,220 @@ def pin_fort() -> None:
         EXTRAS["pinned"] = None
 
 
+class FreshStartDue(Exception):
+    """(0.105.100) A planned restart is due now (brain/fresh_start.py): the
+    overseer is stopped and the keeper saves, closes and reopens the game."""
+
+    def __init__(self, info: dict):
+        super().__init__(info.get("how"))
+        self.info = info
+
+
+def fresh_due() -> dict | None:
+    """(0.105.100) A fresh start to do now, or None (off, not due, not calm, another game's turn)."""
+    fs = EXTRAS.get("fresh")
+    if fs is None:
+        return None
+    try:
+        return fs.check()
+    except Exception as e:  # noqa: BLE001  (never stops the run)
+        if not EXTRAS.get("fresh_error_said"):
+            EXTRAS["fresh_error_said"] = True
+            log(f"Fresh start: check failed ({type(e).__name__}: {str(e)[:120]})")
+        return None
+
+
+def planned_done(rv, now: float | None = None) -> None:
+    """(0.105.100) The reopening after a planned close: done once the fort is up
+    (said, logs/fresh-start.json marked done); past fresh_start.PLANNED_MAX_S
+    without it, the reviver's lines count as any revive's again."""
+    if not getattr(rv, "planned", False):
+        return
+    import fresh_start
+    now = time.time() if now is None else now
+    since = rv.planned_since if isinstance(rv.planned_since, (int, float)) else now
+    if rv.world_since is not None:
+        rv.planned = False
+        mark = fresh_start.read_mark(now) or {}
+        log(f"Fresh start: done: the fort is loaded again, {int(now - since)} s after the planned close"
+            + (f" (the save '{mark.get('folder')}')." if mark.get("folder") else "."))
+        if mark:
+            fresh_start.mark_done(mark, now)
+    elif now - since > fresh_start.PLANNED_MAX_S:
+        rv.planned = False
+        log(f"Fresh start: the game isn't back {int(now - since) // 60} min after the planned close: from now on "
+            "its revive lines count as any revive's.")
+
+
+def respawn(argv: list[str]):
+    """(0.105.100) This keeper started again as a new process with the same
+    arguments, in the same console (its Python's memory let go); errors to
+    logs/keeper-console.txt as start-keepers.ps1's own start. The new process
+    (0.105.100, verifier: handover() then waits for it to take the lock), or
+    None when it couldn't be started."""
+    cmd = [sys.executable, str(HERE / "keeper.py"), *argv]
+    err = None
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        err = open(LOG_DIR / "keeper-console.txt", "a", encoding="utf-8")
+    except OSError:
+        err = None
+    try:
+        return subprocess.Popen(cmd, cwd=str(ROOT), stdin=subprocess.DEVNULL, stderr=err or subprocess.DEVNULL,
+                                close_fds=True)
+    except OSError as e:
+        log(f"Fresh start: the keeper couldn't start itself again ({e}); this one runs on.")
+        return None
+    finally:
+        if err is not None:
+            err.close()
+
+
+HANDOVER_S = 120             # (0.105.100, verifier) the new keeper takes the folder's lock within this
+
+
+def release_lock(f) -> None:
+    """(0.105.100, verifier) The folder's lock let go at once: unlocked, then
+    closed (Windows may unlock a closed file's region only some time later,
+    and the new keeper, finding it still locked, said "Another keeper is
+    already running" and ended, the game left closed)."""
+    if f is None:
+        return
+    try:
+        if os.name == "nt":
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+    except OSError:
+        pass
+    try:
+        f.close()
+    except OSError:
+        pass
+
+
+def handover(proc, clock=time.time, sleep=time.sleep, wait_s: float = HANDOVER_S):
+    """(0.105.100, verifier) The new keeper seen taking this folder's lock:
+    "taken"; it ended first: its exit code (1: it found the lock held; 2: it
+    failed at start, e.g. at import); still starting after `wait_s`: "slow"
+    (it is running: left to it). The lock is only tried, never kept: a new
+    keeper finding it held that instant tries again (main, after a fresh start)."""
+    start = clock()
+    while clock() - start < wait_s:
+        code = proc.poll()
+        if code is not None:
+            return code
+        probe = single_instance()
+        if probe is None:
+            return "taken"
+        release_lock(probe)
+        sleep(1)
+    return "slow"
+
+
+def stop_waiting() -> bool:
+    """(0.105.100, verifier) logs/keeper-stop is there (the keepers' window's S),
+    taken: True. For the fresh start's own steps, where a StopAsked can't go."""
+    try:
+        if STOP_FILE.exists():
+            STOP_FILE.unlink(missing_ok=True)
+            return True
+    except OSError:
+        pass
+    return False
+
+
+CLOSED_STOP_WORDS = ("the game is closed (saved for a fresh start); R in the keepers' window starts this keeper, "
+                     "which opens the game and loads that save")
+
+
+# (0.105.100) tests replace these
+FRESH_HOOKS: dict = {"wait_saved": None, "close": None, "respawn": None}
+
+
+def do_fresh_start(info: dict) -> bool:
+    """(0.105.100) Save the game, wait for the save, close the game (by its pid).
+    True when the game is closed (the keeper then starts again); False when
+    it was put off (the game runs on, the overseer starts again)."""
+    import fresh_start
+    fs, rv = EXTRAS["fresh"], EXTRAS["reviver"]
+    log(f"Fresh start: {info['hours']:.1f} h since the game loaded, {info['how']}: saving, closing and reopening.")
+    asked = time.time()
+    try:
+        out = rv._dfhack().run("quicksave")
+    except Exception as e:  # noqa: BLE001  (DFHackError, the game gone)
+        fs.put_off(time.time(), f"the save couldn't be asked for: {str(e)[:120]}")
+        return False
+    log(f"Fresh start: the save asked for ({(out or '').strip()[:100] or 'quicksave'}); waiting until it is "
+        "written...")
+    wait = FRESH_HOOKS.get("wait_saved")
+    downs = {"n": 0, "at": time.time()}
+    if wait is None:
+        def beat():
+            # the PC-wide word kept fresh (the others see this game busy) and
+            # the keepers' window's stop still heard while the save is written
+            fs.publish_state()
+            stop_asked()
+            # (0.105.100, verifier) the game gone meanwhile (a crash mid-save):
+            # given up at once, not 15 min with no reviver (it opens it again)
+            if time.time() - downs["at"] >= 30:
+                downs["at"] = time.time()
+                try:
+                    downs["n"] = downs["n"] + 1 if rv.probe() == "down" else 0
+                except Exception:  # noqa: BLE001
+                    pass
+                if downs["n"] >= 2:
+                    return False
+            return True
+        try:
+            folder = fresh_start.wait_saved(asked, beat=beat)
+        except KeyboardInterrupt:
+            fs.busy = fs.busy_since = None          # (verifier) the others not held by a stopped keeper
+            fresh_start.publish(fs.me, None, None, time.time())
+            raise
+    else:
+        folder = wait(asked)
+    if not folder:
+        fs.put_off(time.time(), "the game went down while it saved" if downs["n"] >= 2
+                   else f"no save was written within {fresh_start.SAVE_WAIT_S // 60} min")
+        return False
+    log(f"Fresh start: the save '{folder}' is written (the newest, the one the reviver loads); closing the game.")
+    fs.busy = "closing for a fresh start"
+    fs.publish_state()
+    close = FRESH_HOOKS.get("close") or fresh_start.close_game
+    if not close(rv, log):
+        fs.put_off(time.time(), "the game couldn't be closed")
+        return False
+    now = time.time()
+    rv.world_since = None       # (0.105.100, verifier) closed: no old load counts (planned_done, the next period)
+    run_start = EXTRAS.get("run_start")
+    fresh_start.write_mark({
+        "phase": "closed", "closed_at": now, "folder": folder, "hours": round(info["hours"], 2),
+        "run_start": run_start.isoformat() if isinstance(run_start, datetime) else None,
+        "last_check": EXTRAS.get("last_check"), "check_copy": EXTRAS.get("check_copy"),
+        "last_summary": EXTRAS.get("last_summary")})
+    fs.busy, fs.busy_since = "reopening after a fresh start", now
+    fs.publish_state()
+    return True
+
+
+def after_fresh(mark: dict | None) -> None:
+    """(0.105.100) Started by a fresh start: the run's start, its checks and
+    summaries carried over (the run check stays daily, not every 3 h)."""
+    if not mark:
+        return
+    try:
+        if mark.get("run_start"):
+            EXTRAS["run_start"] = datetime.fromisoformat(mark["run_start"])
+    except (TypeError, ValueError):
+        pass
+    for k in ("last_check", "last_summary"):
+        if isinstance(mark.get(k), (int, float)):
+            EXTRAS[k] = float(mark[k])
+    if isinstance(mark.get("check_copy"), str):
+        EXTRAS["check_copy"] = mark["check_copy"]
+
+
 class StopAsked(KeyboardInterrupt):
     """(0.105.77) logs/keeper-stop found: stopped as Ctrl-C stops it."""
 
@@ -264,6 +483,16 @@ def chores() -> None:
             rv.tick()
         except Exception as e:  # noqa: BLE001
             log(f"Revive: check failed ({e})")
+        try:
+            planned_done(rv)
+        except Exception:  # noqa: BLE001
+            pass
+    fs = EXTRAS.get("fresh")
+    if fs is not None:
+        try:
+            fs.publish_state()
+        except Exception:  # noqa: BLE001
+            pass
     last = EXTRAS.get("last_summary")
     if EXTRAS.get("run_start") and (last is None or time.time() - last >= SUMMARY_EVERY_S):
         if last is not None:
@@ -305,6 +534,11 @@ def run_once(ai: bool, popen=subprocess.Popen, preset: str | None = None) -> tup
     started = time.time()
     try:
         return _watch(proc, t, started)
+    except FreshStartDue:
+        # (0.105.100) the overseer stopped first: nothing acts on the fort while it is saved and closed
+        proc.kill()
+        t.join(timeout=5)
+        raise
     except KeyboardInterrupt:
         proc.kill()
         raise
@@ -317,6 +551,9 @@ def _watch(proc, t, started) -> tuple[int | None, str]:
             t.join(timeout=5)
             return code, f"the overseer stopped (exit code {code})"
         chores()
+        go = fresh_due()
+        if go is not None:
+            raise FreshStartDue(go)
         age = heartbeat_age()
         if (age is not None and age > STALE_S) or (age is None and time.time() - started > STALE_S):
             proc.kill()
@@ -406,14 +643,47 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
     ap.add_argument("--preset", metavar="NAME",
                     help="apply this built-in or saved preset (e.g. \"War-hold\") to the fort once at the start "
                          "(as the window's Load preset); a restart or revive doesn't apply it again over your changes")
+    raw_argv = list(sys.argv[1:] if argv is None else argv)     # (0.105.100) for the fresh start's new keeper
     args = ap.parse_args(argv)
     preset = (args.preset or "").strip() or None
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
     lock = single_instance()
+    if lock is None and args.revive:
+        # (0.105.100, verifier) started by this folder's fresh start: the old
+        # keeper may still be letting the lock go (or trying it, handover):
+        # tried again for a while rather than ending with the game closed
+        try:
+            import fresh_start
+            m0 = fresh_start.read_mark()
+        except Exception:  # noqa: BLE001
+            m0 = None
+        if m0 and time.time() - float(m0["closed_at"]) < HANDOVER_S + 60:
+            for _ in range(30):
+                (sleep or time.sleep)(1)
+                lock = single_instance()
+                if lock is not None:
+                    break
     if lock is None:
         log("Another keeper is already running for this folder: not starting a second one.")
         return 1
+    try:
+        import fresh_start
+        mark = fresh_start.read_mark() if args.revive else None
+    except Exception:  # noqa: BLE001
+        mark = None
+    if mark and STOP_FILE.exists():
+        # (0.105.100, verifier) the keepers' window's S came while the old keeper
+        # handed over: honoured, not taken away as an old ask
+        try:
+            STOP_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass
+        log(f"Keeper: asked to stop (logs/keeper-stop, from the keepers' window) as it started after a fresh start: "
+            f"{CLOSED_STOP_WORDS}.")
+        write_status(stamp(), 0, f"Keeper stopped (asked by the keepers' window): {CLOSED_STOP_WORDS}")
+        release_lock(lock)
+        return 0
     try:
         STOP_FILE.unlink(missing_ok=True)       # (0.105.77) an old ask never stops a new run (at once: verifier)
     except OSError:
@@ -426,10 +696,17 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
         log(f"Preset: {preset} asked for: applied to the fort before its first cycle, unless this fort "
             "already had it from --preset (logs/keeper-preset.json).")
     EXTRAS["run_start"] = datetime.now()
+    # (0.105.100) started by this folder's own fresh start (logs/fresh-start.json,
+    # read above): the same run goes on (its pin kept, its checks carried over)
+    if mark:
+        after_fresh(mark)
+        log(f"Fresh start: this keeper started again after the planned close ({int(time.time() - mark['closed_at'])} "
+            f"s ago); the game is opened again and the save '{mark.get('folder')}' loaded.")
     # (0.105.0) a new run pins afresh: the fort the overseer names first
     try:
         import pin
-        pin.clear()
+        if not mark:
+            pin.clear()
     except Exception:  # noqa: BLE001
         pass
     EXTRAS["start_ts"], EXTRAS["pinned"] = time.time(), None
@@ -443,6 +720,18 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
                 + ", and a game left at the title screen loads the fort's newest save.")
         except Exception as e:  # noqa: BLE001
             log(f"Revive couldn't start ({e}); running without it.")
+        rv = EXTRAS.get("reviver")
+        if rv is not None:
+            if mark:
+                rv.planned, rv.planned_since = True, float(mark["closed_at"])
+            try:
+                import fresh_start
+                fs = fresh_start.FreshStart(log, rv, after_fresh=bool(mark))
+                if fs.on():
+                    EXTRAS["fresh"] = fs
+                    log(fs.first_line())
+            except Exception as e:  # noqa: BLE001
+                log(f"Fresh start couldn't start ({e}); running without it.")
     restarts, streak, runs = 0, 0, 0
     write_status(started, restarts, "running")      # (0.105.48, K8) health_check reads how it ended
     try:
@@ -451,6 +740,57 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
             t0 = time.time()
             try:
                 code, why = run_once(args.ai, popen, preset)
+            except FreshStartDue as due:
+                # (0.105.100) the planned restart: saved, closed, and this keeper
+                # started again as a new process; put off: the overseer starts
+                # again at once (not a restart, no back-off)
+                if not do_fresh_start(due.info):
+                    continue
+                if stop_waiting():
+                    # (0.105.100, verifier) the keepers' window's S during the
+                    # close: honoured here (the new keeper would have taken the
+                    # file away as an old ask and run on)
+                    log(f"Keeper: asked to stop (logs/keeper-stop, from the keepers' window) during a fresh start: "
+                        f"{CLOSED_STOP_WORDS}.")
+                    write_status(started, restarts, f"Keeper stopped (asked by the keepers' window): "
+                                 f"{CLOSED_STOP_WORDS}")
+                    return 0
+                write_status(started, restarts, "Keeper restarting itself for a fresh start (the game saved "
+                             "and closed)")
+                release_lock(lock)
+                lock = None
+                child = (FRESH_HOOKS.get("respawn") or respawn)(raw_argv)
+                how = None
+                if child and hasattr(child, "poll"):
+                    how = (FRESH_HOOKS.get("handover") or handover)(child)
+                elif child:
+                    how = "taken"
+                if how in ("taken", "slow"):
+                    log("Fresh start: the keeper starts again as a new process (its Python's memory let go); this "
+                        "one ends." + (" (It hasn't taken the folder's lock yet: still starting.)"
+                                       if how == "slow" else ""))
+                    return 0
+                if how == 0:
+                    # (0.105.100, verifier) it started and stopped as asked (S)
+                    log("Fresh start: the new keeper stopped at once (asked to stop): this one ends too.")
+                    return 0
+                lock = single_instance()
+                if lock is None:
+                    log("Fresh start: another keeper took this folder meanwhile: this one ends.")
+                    return 0
+                if how is not None:
+                    # (0.105.100, verifier) it failed at start (exit code `how`): this one
+                    # goes on, so the game is opened again (look at logs/keeper-console.txt)
+                    log(f"Fresh start: the new keeper ended at start (exit code {how}; logs/keeper-console.txt): "
+                        "this one runs on and opens the game again.")
+                write_status(started, restarts, "running")
+                rv = EXTRAS["reviver"]
+                rv.planned, rv.planned_since = True, time.time()
+                rv.world_since = None
+                fs = EXTRAS.get("fresh")
+                if fs is not None:
+                    fs.busy = fs.busy_since = None      # (verifier) the reviver's own word ("reopening") from now
+                continue
             except Exception as e:  # noqa: BLE001  (0.105.48, K8) e.g. OSError from popen: logged, retried
                 code, why = None, f"the overseer couldn't be run ({type(e).__name__}: {str(e)[:200]})"
                 log_exception(e)
@@ -494,7 +834,7 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
         leave_fort_open()
         return 2
     finally:
-        lock.close()
+        release_lock(lock)
     write_status(started, restarts, f"Keeper stopped (after {runs} runs)")
     return 0
 

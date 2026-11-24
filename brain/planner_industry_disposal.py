@@ -355,7 +355,7 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
             proposals.append(Proposal("disposal_outside", {"type": "set_standing_orders", "orders": {okey: 1}},
                                       f"{out_n} items marked for the garbage dump lie outside and the game's "
                                       "standing order to gather refuse from outside is off, so no hauler takes "
-                                      "them: switch it on while nothing dangerous is about", 6))
+                                      "them: switch it on while nothing dangerous is about", 4))   # (0.105.100) 6 was held by the action limit (B, 24 Nov 03:08-03:21)
         elif not 0 <= now - t_on < cfg["disposal_outside_cooldown_ticks"]:
             notes.append(f"{out_n} items marked for the dump lie outside and the game's standing order to "
                          "gather refuse from outside is off again after the AI switched it on: left as you set "
