@@ -486,10 +486,44 @@ def _undead(s, cfg, t, proposals, notes):
                                       "before they walk (entombed dead are kept)", 4))
 
 
+def _were_outsiders(s, cfg, w, proposals, notes):
+    """(0.105.91) An outsider (a visitor, a representative, a petitioner) who
+    carries the werebeast curse, in their own form now. Live 23 Nov, C: the
+    weregecko representative Thob walked the fort as a dwarf, turned at the
+    full moon and killed 6 (a baby, children, patients) in 17 s; the seven
+    squads sent once he changed came too late. A visitor can't be shut in a
+    moon cell (no bedroom of theirs, the game walks them off), so the squads
+    kill them while they are a dwarf, whatever the moon and the Rules tab say:
+    a werebeast loose among the dwarves is an enemy at the next full moon.
+    One squad at a time; one already after them is left on them."""
+    rows = [x for x in _l(w.get("outsiders")) if isinstance(x, dict) and x.get("id") is not None
+            and not x.get("caged")]
+    if not rows:
+        return
+    names = ", ".join(str(x.get("name")) for x in rows[:3])
+    ids = [x["id"] for x in rows]
+    on_it = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict) and q.get("ai_orders")
+             and set(_l(q.get("kill_ids"))) & set(ids)]
+    if on_it:
+        notes.append(f"{names} (a werebeast visitor, in their own form): {on_it[0].get('name') or 'a squad'} is after them")
+        return
+    busy = {p.action.get("squad_id") for p in proposals if isinstance(p.action, dict)}
+    able = [q for q in _able_squads(s, cfg) if q.get("id") not in busy]
+    q = able[0] if able else _weak_free(s)
+    if q is None:
+        notes.append(f"{names}: a werebeast visitor in the fort (the curse found on them) and no squad free: "
+                     "sent at once a squad is free")
+        return
+    proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": ids[:10]},
+                              f"{names}: a werebeast visitor (the curse found on them), in their own form now: "
+                              f"send {q.get('name') or 'the squad'} before the full moon changes them", 0))
+
+
 def _were(s, cfg, t, rules, proposals, notes):
     w = _d(t.get("were"))
     rows = [x for x in _l(w.get("list")) if isinstance(x, dict) and x.get("id") is not None]
     cells = [x for x in _l(w.get("cells")) if isinstance(x, dict)]
+    _were_outsiders(s, cfg, w, proposals, notes)
     if not rows and not cells:
         return
     due = moon_phase_due(_l(w.get("changes")), w.get("moon_phase"), cfg)    # (0.105.76) by DF's phase

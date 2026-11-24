@@ -738,7 +738,7 @@ PART_LOCALS = {ROCK_WALK = ROCK_WALK, ROCK_DUG = ROCK_DUG, SURF_WALK = SURF_WALK
 PARTS = {'translate', 'stages'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-blueprints'] = '0.105.90'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-blueprints'] = '0.105.91'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

@@ -946,6 +946,20 @@ local function were_report(d, t, txt)
                 if type(c) == 'table' then row.cell, row.locked = true, c.locked or nil end
                 if #out.list < 10 then table.insert(out.list, row) end
                 any_changed = any_changed or now_changed
+            elseif not own and not changed(u) and were_cursed(u) then
+                -- (0.105.91) an outsider carrying the curse, in its own form
+                -- now. Live 23 Nov, C: a weregecko representative (a visitor,
+                -- not a citizen) turned at the full moon and killed 6 in 17 s
+                -- before the squads came; it had walked the fort for days as a
+                -- dwarf with the WERECURSE syndrome, unseen by the citizens-only
+                -- list. Changed ones are hostile and the squads' already.
+                out.outsiders = out.outsiders or {}
+                local row = {id = u.id, name = name_of(u, txt)}
+                pcall(function() row.caged = u.flags1.caged or u.flags1.chained or nil end)
+                pcall(function() row.visitor = is(dfhack.units.isVisitor, u) or nil end)
+                pcall(function() row.hfid = u.hist_figure_id end)
+                pcall(function() row.pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z} end)
+                if #out.outsiders < 10 then table.insert(out.outsiders, row) end
             end
         end
     end
@@ -1029,7 +1043,7 @@ PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = report_u
 PARTS = {'survey', 'actions'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-threats'] = '0.105.90'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-threats'] = '0.105.91'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')
