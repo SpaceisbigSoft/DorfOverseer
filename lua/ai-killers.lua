@@ -78,6 +78,10 @@ LAWFUL_CONFLICT = {Horseplay = true, Training = true}
 -- a fist fight or a beating gone too far (a sheriff's beating is Nonlethal): said, never acted on
 BRAWL_CONFLICT = {Brawl = true, Nonlethal = true}
 STRONG_CRIMES = {Murder = true, BloodDrinking = true, AttemptedMurder = true}
+-- (0.105.101) a law officer's killings are looked for three years back (B,
+-- 24 Nov: the sheriff killed three citizens in y263, y264 and y266, never two
+-- within a year, so law_swap never saw two)
+LAW_WINDOW_TICKS = 3 * 403200
 LAW_KILLS = 2               -- (0.105.99) a law officer's killings outside a punishment: the office goes
 
 -- --- helpers ---------------------------------------------------------------
@@ -220,7 +224,8 @@ function killings(mem, now)
         local inc = list[i]
         pcall(function()
             local y, t = inc.event_year, inc.event_time
-            if type(y) == 'number' and y >= 0 and now - U.abs_tick(y, t or 0) > WINDOW_TICKS then
+            local age = (type(y) == 'number' and y >= 0) and now - U.abs_tick(y, t or 0) or 0
+            if age > LAW_WINDOW_TICKS then
                 old = old + 1
                 return
             end
@@ -229,6 +234,11 @@ function killings(mem, now)
             if type(cause) ~= 'number' or cause < 0 then return end
             local kid, vid = inc.criminal, inc.victim
             if not mem[kid] or kid == vid then return end
+            -- (0.105.101) past a year only a law officer's killings still count
+            if age > WINDOW_TICKS then
+                if is_law[kid] == nil then is_law[kid] = law(mem[kid]) end
+                if not is_law[kid] then return end
+            end
             local v = df.unit.find(vid)
             if not v or not own(v) then return end
             local row = by[kid] or {kills = 0, brawls = 0, lawful = 0, punished = 0, victims = {}, causes = {}}

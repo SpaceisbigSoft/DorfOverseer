@@ -7,7 +7,7 @@
 -- parts before it are in reach.
 
 if not BURROWS_PART_LOCALS then qerror('ai-society-burrows-calm is a part of ai-society-burrows; run ai-society-burrows') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-calm'] = '0.105.100'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-burrows-calm'] = '0.105.101'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, S, rec_state, zone_tiles, HOSP_SCAN_MAX, hb_state, hb_now, walk_group, stand_pos, can_walk, in_zones, pile_holds, burrow_unit_ids, in_tantrum, hb_citizen, shelter_id, wk_take_out = BURROWS_PART_LOCALS.U, BURROWS_PART_LOCALS.report_citizens, BURROWS_PART_LOCALS.S, BURROWS_PART_LOCALS.rec_state, BURROWS_PART_LOCALS.zone_tiles, BURROWS_PART_LOCALS.HOSP_SCAN_MAX, BURROWS_PART_LOCALS.hb_state, BURROWS_PART_LOCALS.hb_now, BURROWS_PART_LOCALS.walk_group, BURROWS_PART_LOCALS.stand_pos, BURROWS_PART_LOCALS.can_walk, BURROWS_PART_LOCALS.in_zones, BURROWS_PART_LOCALS.pile_holds, BURROWS_PART_LOCALS.burrow_unit_ids, BURROWS_PART_LOCALS.in_tantrum, BURROWS_PART_LOCALS.hb_citizen, BURROWS_PART_LOCALS.shelter_id, BURROWS_PART_LOCALS.wk_take_out   -- (r9) the hub's and earlier parts' locals
 

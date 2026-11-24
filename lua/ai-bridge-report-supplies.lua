@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.100'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.101'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
 
@@ -690,7 +690,9 @@ end
 
 function standing_orders_dead()
     local out = {}
+    local U = reqscript('ai-util')
     local function read(name)
+        if not U.standing_order(name) then return end       -- (0.105.101) a misplaced global: unknown
         local ok, v = pcall(function() return df.global['standing_orders_' .. name] end)
         if not ok or v == nil then return end
         if type(v) == 'boolean' then out[name] = v and 1 or 0
