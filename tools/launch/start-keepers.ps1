@@ -1,7 +1,7 @@
 # DF AI Overseer: the six keepers in one window (22 Nov 2026).
 #
 # Starts each fort's keeper (brain\keeper.py --revive --preset ...) with no
-# window of its own, 10 s apart, and shows the six forts in one view (the test
+# window of its own, 3 s apart, and shows the six forts in one view (the test
 # runner's dashboard.py), refreshed every 30 s. It also writes the hourly status
 # (watch_tests.py --status-once: results\status, what Claude Helper's status
 # reads), so the test runner's window isn't needed beside it. Keys:
@@ -67,7 +67,7 @@ function Start-Missing {
     $first = $true
     foreach ($f in $Forts) {
         if (Test-Running $f) { Write-Host "  $($f.L) $($f.Preset): already running" -ForegroundColor DarkGray; continue }
-        if (-not $first) { Start-Sleep -Seconds 10 }    # the games load one at a time
+        if (-not $first) { Start-Sleep -Seconds 3 }    # the games load one at a time (23 Nov: 3 s, was 10)
         Start-Keeper $f
         $first = $false
     }
@@ -142,7 +142,7 @@ function Show-View {
 }
 
 Clear-Host
-Write-Host 'DF AI Overseer: starting the keepers that aren''t running (10 s apart)...' -ForegroundColor Cyan
+Write-Host 'DF AI Overseer: starting the keepers that aren''t running (3 s apart)...' -ForegroundColor Cyan
 Start-Missing
 Start-Sleep -Seconds 2
 
