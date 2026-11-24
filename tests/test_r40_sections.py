@@ -594,11 +594,17 @@ def run_threats(version: str, inside: bool, times: int = 1):
 def _():
     _, base_o, outs_o = run_threats("new", False, 2)
     o = to_py(outs_o[0])
+    # (0.105.100) `_ms` lists the parts over 5 ms: a busy PC (six games) adds it
+    # now and then (run-m100a, the 0.105.100 release's run): not the report's shape
+    if isinstance(o, dict):
+        o.pop("_ms", None)
     snapshot("r40_sections_threats", o)                                    # merge39's, then 0.105.47's
     for inside in (False, True):
         lua_n, base_n, outs_n = run_threats("new", inside, 2)
         for b in outs_n:                        # (two engines: compared as plain Python)
             pb = to_py(b)
+            if isinstance(pb, dict):
+                pb.pop("_ms", None)             # (0.105.100) timing, as above
             # (fix41) the evil weather is its own section now (weather_section), not in the survey
             assert "weather" not in pb, pb
             assert o == pb, (inside, first_diff(o, pb))
