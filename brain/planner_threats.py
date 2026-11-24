@@ -201,9 +201,14 @@ def moon_phase_due(changes: list, phase, cfg: dict) -> bool | None:
     phases = [int(c["phase"]) for c in changes if isinstance(c, dict) and _num(c.get("phase"))]
     if not phases or not _num(phase):
         return None
-    at = max(set(phases), key=phases.count)
-    d = (int(phase) - at) % MOON_PHASES
-    return d >= MOON_PHASES - _c(cfg, "moon_before_days") or d <= _c(cfg, "moon_after_days")
+    # (0.105.103) due by ANY phase a change was seen at, not the commonest
+    # one: a beast still changed a day later adds a 28 or a 0, the commonest
+    # shifted, and E's cells were let out and taken again twice before the
+    # 24 Nov 08:17 moon (07:55, 08:07); Olon and Solon changed outside theirs
+    def near(at):
+        d = (int(phase) - at) % MOON_PHASES
+        return d >= MOON_PHASES - _c(cfg, "moon_before_days") or d <= _c(cfg, "moon_after_days")
+    return any(near(at) for at in set(phases))
 
 
 def moon_due(changes: list, now: int, cfg: dict) -> bool | None:
@@ -527,11 +532,17 @@ def _were(s, cfg, t, rules, proposals, notes):
     _were_outsiders(s, cfg, w, proposals, notes)
     if not rows and not cells:
         return
+    # (0.105.103) someone else in a locked cell (E, 24 Nov 08:31: four killed in Urvad's)
+    for c in cells:
+        if c.get("locked") and _l(c.get("others")):
+            notes.append(f"{', '.join(str(n) for n in _l(c.get('others'))[:3])} inside the locked cell of "
+                         f"werebeast {c.get('unit_id')}: how they got in is not known yet")
     # (0.105.96) the cursed go in WERE_LEAD_PHASES before the change (moon_before_days
     # at the least). Live 23 Nov, B: ~1300 ticks a cycle, so 3 phases were 2-3
     # cycles; Mafol was sent 1500 ticks before his change and never reached the cell
     wcfg = dict(cfg, moon_before_days=max(_c(cfg, "moon_before_days"), WERE_LEAD_PHASES))
     due = moon_phase_due(_l(w.get("changes")), w.get("moon_phase"), wcfg)    # (0.105.76) by DF's phase
+    phase_due = due
     if due is None:
         due = moon_due(_l(w.get("changes")), abs_tick(s), wcfg)
     # (0.105.76, verifier) a curse found by its syndrome before any change was
@@ -556,8 +567,15 @@ def _were(s, cfg, t, rules, proposals, notes):
                                       f"the full moon is near: {', '.join(str(x.get('name')) for x in rows[:3])} "
                                       "into a cell (a jail or a free bedroom, locked once inside)", 1))
     elif cells and not any(x.get("changed") for x in rows):
-        proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": [], "release": True},
-                                  f"the full moon is past: let {len(cells)} werebeast(s) out of their cells", 3))
+        # (0.105.103) let out only when DF's moon phase was read and says the
+        # moon is past: an unread phase or the tick count's guess (it slips
+        # ~2.5 days a moon) keeps them in
+        if phase_due is False:
+            proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": [], "release": True},
+                                      f"the full moon is past: let {len(cells)} werebeast(s) out of their cells", 3))
+        else:
+            notes.append(f"{len(cells)} werebeast(s) in their cells: kept in until DF's moon phase shows the "
+                         f"full moon past (phase {w.get('moon_phase')})")
 
 
 ALL_CAVERNS = "all caverns"        # (0.105.26) the seal's record: every cavern opening on record

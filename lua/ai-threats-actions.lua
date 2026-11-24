@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-actions is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.102'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.103'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, now_tick, name_of, save_state, unkey, is, citizens, fire_points, each_job, changed, okey, watcher_held, lure_open_ids = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.unkey, PART_LOCALS.is, PART_LOCALS.citizens, PART_LOCALS.fire_points, PART_LOCALS.each_job, PART_LOCALS.changed, PART_LOCALS.okey, PART_LOCALS.watcher_held, PART_LOCALS.lure_open_ids   -- (r8) the hub's and earlier parts' locals
 
@@ -299,6 +299,26 @@ function claimed_doors()
     end
     for id in pairs(watcher_held()) do out[id] = true end
     return out
+end
+
+-- (0.105.103) who else stands in a werebeast's locked cell: names (at most
+-- 3). E, 24 Nov 08:31: Urvad's cell was locked at 08:28 with him alone, yet
+-- he changed with Dakost and Momuz inside and killed them, then Deler and
+-- Inod; no rule had unlocked the door. The report says it each cycle, so
+-- the next full moon shows how they get in.
+function cell_others(c, uid, txt)
+    if type(c) ~= 'table' or not c.zone then return nil end
+    local z = df.building.find(c.zone)
+    if not z then return nil end
+    local out = {}
+    pcall(function()
+        for _, u in ipairs(report_citizens(true)) do
+            if tostring(u.id) ~= tostring(uid) and in_zone(z, u.pos.x, u.pos.y, u.pos.z) and #out < 3 then
+                table.insert(out, name_of(u, txt))
+            end
+        end
+    end)
+    return #out > 0 and out or nil
 end
 
 -- Werebeasts in cells for the full moon: each id given gets a burrow on its

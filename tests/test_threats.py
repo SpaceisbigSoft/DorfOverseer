@@ -134,8 +134,21 @@ def _():
     assert c and c[0].action == {"type": "moon_cell", "ids": [4]}, c
     s["threats"]["were"]["changes"] = [{"tick": now - 10 * TICKS_PER_DAY}]
     s["threats"]["were"]["cells"] = [{"unit_id": 4, "locked": True}]
+    # (0.105.103) the tick count alone (no phase seen) never lets them out
+    props, notes = plan(s, Memory())
+    assert not [p for p in acts(props, "moon_cell") if p.action.get("release")], props
+    assert any("kept in until DF's moon phase" in n for n in notes), notes
+    # by DF's phase: the change seen at 27, the moon at 7 (8 phases past): let out
+    s["threats"]["were"]["changes"] = [{"tick": now - 10 * TICKS_PER_DAY, "phase": 27}]
     c = acts(plan(s, Memory())[0], "moon_cell")
     assert c and c[0].action.get("release") is True, c
+    # a later change seen at phase 1 too: phase 2 is near that one, so they stay in
+    s["threats"]["were"]["changes"] = [{"tick": now - 40 * TICKS_PER_DAY, "phase": 27},
+                                       {"tick": now - 39 * TICKS_PER_DAY, "phase": 27},
+                                       {"tick": now - 10 * TICKS_PER_DAY, "phase": 1}]
+    s["threats"]["were"]["moon_phase"] = 2
+    assert PT.moon_phase_due(s["threats"]["were"]["changes"], 2, PLANNER_CONFIG) is True
+    s["threats"]["were"]["moon_phase"] = 7
     assert PT.moon_due([], now, PLANNER_CONFIG) is None
     s["settings"]["moon_cells"] = False
     c = acts(plan(s, Memory())[0], "moon_cell")

@@ -972,8 +972,13 @@ local function were_report(d, t, txt)
     out.changes = ch
     for uid, c in pairs(d.cells) do
         if type(c) == 'table' then
-            table.insert(out.cells, {unit_id = tonumber(uid), locked = c.locked or nil, doors = #(c.doors or {}),
-                                     days = c.tick and (t - c.tick) // DAY or nil})
+            local row = {unit_id = tonumber(uid), locked = c.locked or nil, doors = #(c.doors or {}),
+                         days = c.tick and (t - c.tick) // DAY or nil}
+            -- (0.105.103) anyone else inside a locked cell (ai-threats-actions cell_others)
+            if c.locked and type(cell_others) == 'function' then
+                pcall(function() row.others = cell_others(c, uid, txt) end)
+            end
+            table.insert(out.cells, row)
         end
     end
     return out
@@ -1043,7 +1048,7 @@ PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = report_u
 PARTS = {'survey', 'actions'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-threats'] = '0.105.102'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-threats'] = '0.105.103'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

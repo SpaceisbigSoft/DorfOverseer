@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-survey is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-survey'] = '0.105.102'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-survey'] = '0.105.103'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units, DAY, now_tick, name_of, save_state, is, outside_at, citizens, dist_to, reaches, fire_report, prisoners_report, thieves_report, undead_report, were_report, surface_report, rescue_report = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.report_units, PART_LOCALS.DAY, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.is, PART_LOCALS.outside_at, PART_LOCALS.citizens, PART_LOCALS.dist_to, PART_LOCALS.reaches, PART_LOCALS.fire_report, PART_LOCALS.prisoners_report, PART_LOCALS.thieves_report, PART_LOCALS.undead_report, PART_LOCALS.were_report, PART_LOCALS.surface_report, PART_LOCALS.rescue_report   -- (r8) the hub's and earlier parts' locals
 

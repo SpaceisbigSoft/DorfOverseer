@@ -16,7 +16,7 @@ local function report_units(...) return U.report_units(...) end   -- (r6) ai-uti
 local S = reqscript('ai-society')   -- find_burrow, new_burrow
 -- (r9) the hub's and its parts' version marks; started afresh at each load, so a part
 -- that failed to load shows as unmarked (as ai-gates does)
-PART_VERSIONS = {['ai-society-burrows'] = '0.105.102'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-society-burrows'] = '0.105.103'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- (0.104.78) the recreation burrow ----------------------------------------
 --
