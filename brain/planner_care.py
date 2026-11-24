@@ -99,7 +99,7 @@ def _infection_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                                                 "keep_free": cfg["infected_rest_keep_free"]},
                               f"{untreated} dwarves walk about with infected wounds DF asks no treatment for"
                               + (f" ({bleeding} bleeding from it)" if bleeding else "")
-                              + f" and {free} hospital bed(s) are free: the {m} worst of the idle put to bed "
+                              + f" and {free} hospital bed(s) are free: the {m} worst of the idle (or badly infected) put to bed "
                                 "there, for the doctors to diagnose and clean", 2 if bleeding else 4))
 
 

@@ -172,7 +172,7 @@ PART = {
     "staff_tantrum_cooldown_ticks": 100,  # a post taken from a tantrum-thrower (one a cycle, soon the next)
     "break_fights_report_ticks": 600,     # a tantrum, berserk or possession report this recent: fix/loyaltycascade
     "hospital_guard_on": True,            # a calm squad stationed at each hospital while a tantrum is loose
-    "hospital_guard_hold_ticks": 1200,    # ...kept a day after the last tantrum seen loose...
+    "hospital_guard_hold_ticks": 3600,    # ...kept 3 days after the last tantrum seen loose (0.105.93: B runs ~1300 ticks a cycle, a day ran out every cycle: 58 posts and recalls an hour)...
     "hospital_guard_max_days": 7,         # ...and never longer than this at a stretch (they eat, drink and train)
     "hospital_guard_cooldown_ticks": 50,
     "chronic_tantrums": 3,                # tantrums in a year that make a chronic case (handled one dwarf at a time)

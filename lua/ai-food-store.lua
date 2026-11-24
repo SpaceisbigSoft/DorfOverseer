@@ -388,7 +388,7 @@ function item_counts(seconds)
                         if des and des.pile then out.exposed = out.exposed + 1
                         elseif des and not des.outside then out.loose = out.loose + 1 end
                     elseif not f.on_ground and not f.in_job and not f.forbid then
-                        -- (0.105.92) a workshop's finished food nobody hauls
+                        -- (0.105.93) a workshop's finished food nobody hauls
                         -- off (no pile with room): F, 23 Nov: 110 meat, 15 fish,
                         -- cheese left in the shops, rotting into miasma for 82
                         -- citizens while all 282 food pile tiles stood full

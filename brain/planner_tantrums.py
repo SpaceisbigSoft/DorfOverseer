@@ -217,7 +217,7 @@ def _hospital_guard_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
         enemies = _enemies_about(s)
         why = ("the hospital guard is switched off" if not cfg["hospital_guard_on"]
                else "enemies can reach the dwarves" if enemies
-               else "no tantrum loose for a day" if quiet
+               else f"no tantrum loose for {cfg['hospital_guard_hold_ticks'] // TICKS_PER_DAY} day(s)" if quiet
                else f"{q.get('parched')} of its soldiers are thirsty or hungry" if int(q.get("parched") or 0)
                else f"on guard {cfg['hospital_guard_max_days']} days" if isinstance(since, int)
                and now - since >= cfg["hospital_guard_max_days"] * TICKS_PER_DAY

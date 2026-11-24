@@ -413,7 +413,7 @@ def _():
 @test("(review) eligibility: needs_healthcare, and never the unhappy, raging, mad, in a burrow, hospital staff, caged, office holders")
 def _():
     base = {"infected": True, "load": 500, "x": 50}
-    bad = [dict(base, id=11, care=False), dict(base, id=12, stress=2), dict(base, id=13, tantrum=True),
+    bad = [dict(base, id=11, care=False), dict(base, id=12, stress=2, load=10), dict(base, id=13, tantrum=True),
            dict(base, id=14, insane=True), dict(base, id=15, burrow=True), dict(base, id=16),
            dict(base, id=17, caged=True), dict(base, id=18, noble=True)]
     env, _, _, _, _ = health(bad + [dict(base, id=19, load=10)], beds=BEDS4, posts=[{"type": 3, "unit_id": 16}])

@@ -74,9 +74,20 @@ end
 local BARS = {'asked', 'in_hospital', 'soldier', 'child', 'mood', 'sent', 'cooldown', 'unhappy', 'tantrum',
               'insane', 'burrow', 'staff', 'restrained', 'noble'}
 
+-- (0.105.93) A heavy infection (load HEAVY_LOAD or more) is sent busy or
+-- unhappy too: its job given up first (rest_infected). Live 23 Nov, B: 7
+-- infected, all at work or unhappy, none ever sent (idle_untreated 0, 6 beds
+-- free) while tantrums strangled the weakened (Kubuk, load 118, by a child).
+HEAVY_LOAD = 60
+local HEAVY_PASS = {unhappy = true}
+
 function eligible(c)
-    if not (c.infected and c.care and c.idle) then return false end
-    for _, k in ipairs(BARS) do if c[k] then return false end end
+    if not (c.infected and c.care) then return false end
+    local heavy = (c.load or 0) >= HEAVY_LOAD
+    if not (c.idle or heavy) then return false end
+    for _, k in ipairs(BARS) do
+        if c[k] and not (heavy and HEAVY_PASS[k]) then return false end
+    end
     return true
 end
 
@@ -387,7 +398,7 @@ function rest_infected(max, dry_run, txt, cap, keep_free)
     local picks = pick_patients(cands, #cands)
     if #picks == 0 then
         if not dry_run then save_state(d) end
-        return {ok = false, rejected = true, error = 'no idle infected dwarf outside the hospital waits for care'}
+        return {ok = false, rejected = true, error = 'no idle (or badly infected) dwarf outside the hospital waits for care'}
     end
     local sent, used = {}, {}
     for _, c in ipairs(picks) do
@@ -398,6 +409,12 @@ function rest_infected(max, dry_run, txt, cap, keep_free)
             return u.counters2.thirst_timer >= REST_THIRST or u.counters2.hunger_timer >= REST_HUNGER
         end)
         if okd and dry then goto next_pick end
+        -- (0.105.93) a heavy infection at work: its job given up first (as
+        -- DF's own interruptions do), else it is passed over
+        if u.job.current_job and not dry_run then
+            pcall(function() dfhack.job.removeWorker(u.job.current_job, 0) end)
+            if u.job.current_job then goto next_pick end
+        end
         local bed
         for i, b in ipairs(beds) do
             if not used[i] then

@@ -476,7 +476,7 @@ function cell(o, dry)
                     if z then table.insert(out.placed, name_of(u)) end
                 elseif not c.locked then
                     local th, hu = need(u)
-                    -- (0.105.92) back once under the levels that let them out:
+                    -- (0.105.93) back once under the levels that let them out:
                     -- the timers only fall by drinking and eating. Live 23 Nov,
                     -- B: Led Siguntat drank just after she was let out, her
                     -- thirst passed 3000 again before a cycle saw it, and she
