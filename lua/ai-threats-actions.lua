@@ -354,6 +354,22 @@ function moon_cell(ids, release, dry_run, txt)
         for _, c in pairs(d.cells) do if type(c) == 'table' and c.zone then taken[c.zone] = true end end
         for uid in pairs(want) do
             local u = df.unit.find(tonumber(uid))
+            -- (0.105.96) a soldier out of the squad first: on duty (training,
+            -- stationed) a squad's orders take them past the cell's burrow. Live
+            -- 23 Nov, B: the captain of the guard Mafol and the wrestler Ineth
+            -- waited for their cells 4 cycles each, changed outside them and
+            -- killed (a bone doctor) before the militia shot them
+            if u and not dfhack.units.isDead(u) and not changed(u) and u.military.squad_id ~= -1 then
+                local name = name_of(u, txt)
+                if dry_run then
+                    out.unsquad = out.unsquad or {}
+                    table.insert(out.unsquad, name)
+                else
+                    local oks, done = pcall(function() return dfhack.military.removeFromSquad(u.id) end)
+                    out.unsquad = out.unsquad or {}
+                    table.insert(out.unsquad, name .. ((oks and done) and '' or ' (the game kept them in the squad)'))
+                end
+            end
             if u and not dfhack.units.isDead(u) then
                 local c = d.cells[uid]
                 local z = c and c.zone and zone_by_id(c.zone)

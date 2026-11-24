@@ -189,6 +189,7 @@ def threat_alert(s: dict, cfg: dict) -> str:
 
 MOON_PHASES = 28        # DF's world_data.moon_phase runs 0..27 (one turn ~25.5 days)
 WERE_FULL_PHASE = 27    # (verifier) vanilla interaction_werebeast: [CE:PERIODIC:MOON_PHASE:27:0]
+WERE_LEAD_PHASES = 8    # (0.105.96) the cursed into their cells this many phases (~days) before the change
 
 
 def moon_phase_due(changes: list, phase, cfg: dict) -> bool | None:
@@ -526,13 +527,17 @@ def _were(s, cfg, t, rules, proposals, notes):
     _were_outsiders(s, cfg, w, proposals, notes)
     if not rows and not cells:
         return
-    due = moon_phase_due(_l(w.get("changes")), w.get("moon_phase"), cfg)    # (0.105.76) by DF's phase
+    # (0.105.96) the cursed go in WERE_LEAD_PHASES before the change (moon_before_days
+    # at the least). Live 23 Nov, B: ~1300 ticks a cycle, so 3 phases were 2-3
+    # cycles; Mafol was sent 1500 ticks before his change and never reached the cell
+    wcfg = dict(cfg, moon_before_days=max(_c(cfg, "moon_before_days"), WERE_LEAD_PHASES))
+    due = moon_phase_due(_l(w.get("changes")), w.get("moon_phase"), wcfg)    # (0.105.76) by DF's phase
     if due is None:
-        due = moon_due(_l(w.get("changes")), abs_tick(s), cfg)
+        due = moon_due(_l(w.get("changes")), abs_tick(s), wcfg)
     # (0.105.76, verifier) a curse found by its syndrome before any change was
     # seen: DF's own full moon (phase 27), so the first moon locks them too
     if due is None and any(x.get("by_syndrome") for x in rows):
-        due = moon_phase_due([{"phase": WERE_FULL_PHASE}], w.get("moon_phase"), cfg)
+        due = moon_phase_due([{"phase": WERE_FULL_PHASE}], w.get("moon_phase"), wcfg)
     if rows and due is None:
         notes.append(f"{len(rows)} werebeast citizen(s): no change seen yet, so the full moon isn't known "
                      f"(moon phase {w.get('moon_phase')}); the first change teaches it")

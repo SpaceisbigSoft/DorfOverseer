@@ -48,14 +48,14 @@ def fort(were):
     return tfort({"were": were})
 
 
-@test("plan: a citizen cursed by the syndrome (not changed yet), E's changes, phase 26: into a cell; at phase 23: "
+@test("plan: a citizen cursed by the syndrome (not changed yet), E's changes, phase 26: into a cell; at phase 18 (0.105.96: 8 phases' lead; was 23): "
       "nothing yet; the 28-day count no longer decides when phases are known")
 def _():
     rows = [{"id": 18102, "name": "Urist", "by_syndrome": True}]
     s = fort({"list": rows, "changes": E_CHANGES, "moon_phase": 26, "cells": []})
     props = [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
     assert props and props[0].action == {"type": "moon_cell", "ids": [18102]}, props
-    s = fort({"list": rows, "changes": E_CHANGES, "moon_phase": 23, "cells": []})
+    s = fort({"list": rows, "changes": E_CHANGES, "moon_phase": 18, "cells": []})   # (0.105.96) the lead is 8 phases
     assert not [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
 
 
