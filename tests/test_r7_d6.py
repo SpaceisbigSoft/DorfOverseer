@@ -48,7 +48,9 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # eleven contact_* keys, (r10 p3 fixes) and three more contact_* keys, (r11 n1) and the six interim
 # messenger / office swap keys (n1_*, office_swap_cooldown_ticks), (r14 m1) and the two stale-holder
 # keys (m1_free_stale, m1_messenger_reappoint_days), (r14 m1 fixes) and m1_stale_confirm_days, no existing key changed or moved; the split itself was proven against 6298b4a in 0.105.63
-DUMP_6298B4A = "3d59fa3435a4ede5a120351c7c6853958277e424cfe403d33bffb73523e23222"
+# (0.105.93) re-pinned after one deliberate value change: hospital_guard_hold_ticks 1200 -> 3600
+# (B: a one-day hold ran out every cycle); keys and order unchanged
+DUMP_6298B4A = "f53d48c7ba1f1e652994b0007fbbc459eb3aeb727419b83c84dfd668d4b616ef"
 KEYS_6298B4A = "b0f37a4996665f38606288100363073e996357abff4462a22b1d832ffcf7b7ac"
 COUNT_6298B4A = 1286
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "

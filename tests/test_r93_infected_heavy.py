@@ -23,7 +23,9 @@ from harness import test, finish, need_lua  # noqa: E402
 
 from planner import PLANNER_CONFIG  # noqa: E402
 
-HEALTH = (ROOT / "lua" / "ai-health.lua").read_text(encoding="utf-8")
+from lua_modules_util import module_src  # noqa: E402
+
+HEALTH = module_src("ai-health.lua")      # with the prelude (reqscript and the like), as test_care
 
 
 def pure():
@@ -62,8 +64,9 @@ def _():
 @test("ai-health.lua compiles under Lua 5.3")
 def _():
     lua, _ = pure()
+    src = (ROOT / "lua" / "ai-health.lua").read_text(encoding="utf-8")
     f = lua.eval("function(s) local f, e = load(s, 'b', 't', {}) return e end")
-    assert f(HEALTH) is None, f(HEALTH)
+    assert f(src) is None, f(src)
 
 
 @test("the hospital guard is held 3 days after the last tantrum seen loose (was 1: B ran out each cycle)")
