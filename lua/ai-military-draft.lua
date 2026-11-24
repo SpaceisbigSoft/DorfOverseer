@@ -51,6 +51,10 @@ end
 -- R-AD, Melbil, Zas and Fikod were put into squads mid-mood by soldier_swap,
 -- and all three died)
 function draftable(u, mothers, strict)
+    -- (0.105.96) never a werebeast-cursed dwarf: the moon cell takes them out
+    -- of the squad, and a fill drafted them straight back (B, 23 Nov)
+    local okw, cursed = pcall(function() return reqscript('ai-threats').were_cursed(u) end)
+    if okw and cursed then return false end
     local ok, yes = pcall(function()
         local m = tonumber(u.mood)
         if m ~= nil and m >= 0 then return false end
