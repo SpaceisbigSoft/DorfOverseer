@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.97'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.98'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -32,6 +32,17 @@ function load_projects()
     if not (okc and type(ctx) == 'table') then return decode_projects() end
     if ctx.projects == nil then ctx.projects = decode_projects() end
     return util_module().deep_copy(ctx.projects)
+end
+
+-- (0.105.98) The projects to read only: inside a report the one decoded
+-- record itself (no deep copy: the caller must not change it or save it),
+-- outside one a fresh decode. For readers asking of many openings at once
+-- (the threats report's openings: ai-threats-survey openings_report).
+function projects_read_only()
+    local okc, ctx = pcall(function() return util_module().REPORT_CTX end)
+    if not (okc and type(ctx) == 'table') then return decode_projects() end
+    if ctx.projects == nil then ctx.projects = decode_projects() end
+    return ctx.projects
 end
 
 OLD_AREAS_MAX = 600       -- (0.104.19) outlines of levels dropped from the list, kept for safety

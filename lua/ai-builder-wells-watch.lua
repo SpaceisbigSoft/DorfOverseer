@@ -7,7 +7,7 @@
 -- (r8) Cut from ai-builder-wells.lua, which had grown to 133 KB; loaded right
 -- after it and its parts before this one, in the old file's order.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-watch'] = '0.105.97'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-watch'] = '0.105.98'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 local STAIR_DOWN_SHAPE, shaft_bottom, hatch_at, job_of =
@@ -422,6 +422,28 @@ function well_lids(probe, data)
                 r.gate_error = tostring(g):sub(1, 120)
             end
             table.insert(out, r)
+        end
+    end
+    return out
+end
+
+-- (0.105.98) The cavern wells' shaft hatches alone: {{project_id, shaft_hatch
+-- = {x, y, z}}}, the same wells and the same tiles as well_lids' rows, without
+-- the rest of its look at each well (the gate's state, the watcher's test over
+-- every unit, the free mechanisms, the lid). The threats report's openings and
+-- the gates scan want only where the hatches are; with well_lids they cost
+-- 150-170 ms a report in C and F (live 23 Nov 22:12, threats._ms.openings 170
+-- and 157 against 31-59 in A, B, D, E). data: the projects, if read already.
+function well_shaft_hatches(data)
+    local out = {}
+    data = data or load_projects()
+    for _, p in ipairs(data.list or {}) do
+        local okk, kept = pcall(shaft_kept, p)
+        if okk and kept then
+            pcall(function()
+                local an0 = anchor_of(p)
+                table.insert(out, {project_id = p.id, shaft_hatch = {x = an0.x, y = an0.y, z = shaft_bottom(p)}})
+            end)
         end
     end
     return out

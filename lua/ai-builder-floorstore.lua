@@ -12,7 +12,7 @@
 -- knows only ai-layouts and quickfort): ai-floorplan and ai-overseer-settings
 -- are fetched inside functions, each behind pcall. Nothing here reads a map tile.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floorstore'] = '0.105.97'
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floorstore'] = '0.105.98'
 
 FLOORS_KEY = 'ai-overseer/floors'
 FLOOR_RETRY_DAYS = 28        -- the report's `full`: tags marked less than this many days ago

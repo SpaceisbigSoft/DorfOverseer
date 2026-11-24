@@ -158,6 +158,14 @@ def _larder_words(c: dict) -> str:
         bits.append("the doors open for the haulers again after a short wait")
     if c.get("pile_all_food"):
         bits.append("its settings did not take (it takes all food)")
+    # (0.105.98) the settings written again while the cell stood (B, 23 Nov:
+    # both piles took every food), and a pile found again by its name
+    fixed = c.get("pile_fixed")
+    if isinstance(fixed, int) and fixed > 0:
+        bits.append(f"its settings put back to drink and meals only {fixed} time(s)")
+    lost = c.get("pile_lost")
+    if isinstance(lost, int) and lost > 0:
+        bits.append(f"its pile went missing {lost} time(s)")
     n = c.get("let_outs")
     if isinstance(n, int) and n > 0:
         bits.append(f"let out {n} time(s)")

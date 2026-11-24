@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-survey is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-survey'] = '0.105.97'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-survey'] = '0.105.98'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units, DAY, now_tick, name_of, save_state, is, outside_at, citizens, dist_to, reaches, fire_report, prisoners_report, thieves_report, undead_report, were_report, surface_report, rescue_report = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.report_units, PART_LOCALS.DAY, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.is, PART_LOCALS.outside_at, PART_LOCALS.citizens, PART_LOCALS.dist_to, PART_LOCALS.reaches, PART_LOCALS.fire_report, PART_LOCALS.prisoners_report, PART_LOCALS.thieves_report, PART_LOCALS.undead_report, PART_LOCALS.were_report, PART_LOCALS.surface_report, PART_LOCALS.rescue_report   -- (r8) the hub's and earlier parts' locals
 
@@ -45,7 +45,8 @@ function note_opening(d, x, y, z, kind, source, t)
     return true
 end
 
-function gather_openings(d, t)
+-- (0.105.98) data: the projects, read once by the caller (nil: read here)
+function gather_openings(d, t, data)
     pcall(function()
         local G = reqscript('ai-gates')
         for _, e in ipairs(G.GATES and G.GATES.entrances or {}) do
@@ -62,8 +63,18 @@ function gather_openings(d, t)
             end
         end
     end)
+    -- (0.105.98) only the hatches' tiles (well_shaft_hatches), not well_lids'
+    -- whole look at each well (its gate, the watcher's test over every unit):
+    -- the same tiles, 100+ ms less a report in C and F (live 23 Nov 22:12)
     pcall(function()
-        for _, w in ipairs(reqscript('ai-builder').well_lids(false) or {}) do
+        local B = reqscript('ai-builder')
+        local wells
+        if B.well_shaft_hatches then
+            if data ~= nil then wells = B.well_shaft_hatches(data) else wells = B.well_shaft_hatches() end
+        else
+            wells = B.well_lids(false)
+        end
+        for _, w in ipairs(wells or {}) do
             local h = w.shaft_hatch
             if type(h) == 'table' then
                 note_opening(d, h.x, h.y, h.z, 'well', 'cavern well ' .. tostring(w.project_id), t)
@@ -73,7 +84,10 @@ function gather_openings(d, t)
     -- (0.105.47) each cavern well's door at its gallery's fort end (a hatch over
     -- its stair top in a hall): a way into the caverns the seal locks
     pcall(function()
-        for _, w in ipairs(reqscript('ai-well-safety').fort_doors() or {}) do
+        local W = reqscript('ai-well-safety')
+        local doors
+        if data ~= nil then doors = W.fort_doors(data) else doors = W.fort_doors() end
+        for _, w in ipairs(doors or {}) do
             note_opening(d, w.x, w.y, w.z, 'gate', 'cavern well ' .. tostring(w.project_id) .. ' door', t)
         end
     end)
@@ -114,7 +128,10 @@ end
 --   * nothing but a door or hatch is lockable (a wall, an empty tile);
 --   * a cavern well's door with a dwarf beyond it (door_blocked), or whose
 --     well's shaft gate keeps the cavern out (door_seal_skip): left open.
-function seal_lockable(o, row)
+-- (0.105.98) ctx (optional): {data = the projects, cits = the citizens} read
+-- once by a caller asking of many openings (the openings report); the same
+-- answers, without a read of the projects and the citizens per opening.
+function seal_lockable(o, row, ctx)
     if type(o) ~= 'table' then return false, 'not an opening' end
     if o.kind == 'well' then
         return false, 'a cavern well\'s shaft hatch: its own watcher shuts it when a danger comes near', nil, 'shaft'
@@ -127,12 +144,29 @@ function seal_lockable(o, row)
     if type(o.source) == 'string' and o.source:find('^cavern well') then
         local okw, W = pcall(reqscript, 'ai-well-safety')
         if okw and W then
-            local okb, who = pcall(function() return W.door_blocked(o) end)
+            local data, cits
+            if type(ctx) == 'table' then
+                data = ctx.data
+                if ctx.cits == nil and W.citizens then
+                    local okc, l = pcall(W.citizens)
+                    ctx.cits = (okc and type(l) == 'table') and l or false
+                end
+                cits = ctx.cits or nil
+                ctx.checked = (ctx.checked or 0) + 1
+            end
+            -- (the extra arguments only when there are any: a stand-in that takes one still works)
+            local okb, who = pcall(function()
+                if data ~= nil then return W.door_blocked(o, cits, data) end
+                if cits ~= nil then return W.door_blocked(o, cits) end
+                return W.door_blocked(o)
+            end)
             if okb and who then
                 local name = tostring(who)
                 return false, name .. ' is beyond the cavern well\'s door', name, 'blocked'
             end
-            local oks, why = pcall(W.door_seal_skip, o)
+            local oks, why
+            if data ~= nil then oks, why = pcall(W.door_seal_skip, o, data)
+            else oks, why = pcall(W.door_seal_skip, o) end
             if oks and type(why) == 'string' then return false, why, nil, 'skip' end
         end
     end
@@ -192,8 +226,19 @@ end
 -- sealed? (the seal locked it, or shut it by its lever, and (0.105.26 seal
 -- fix) it is locked, or shut, now: one opened again since reads unsealed,
 -- so the brain seals it again)}], n}
+-- (0.105.98) The projects read once here for every opening (each cavern well
+-- door read them twice, a deep copy of the whole record each time, and the
+-- citizens afresh; with well_lids that was C's 170 ms and F's 157, live 23
+-- Nov 22:12, against 31-59 ms in A, B, D, E). `cost` says what was read:
+-- project reads, the well doors checked (a probe sees the saving).
 function openings_report(d, t, txt)
-    gather_openings(d, t)
+    local ctx = {}
+    pcall(function()
+        local B = reqscript('ai-builder')
+        -- read only here: no copy of the whole record (old_areas up to 600 boxes)
+        ctx.data = B.projects_read_only and B.projects_read_only() or B.load_projects()
+    end)
+    gather_openings(d, t, ctx.data)
     local held = seal_holds(d)   -- the doors and hatches the seal locked or shut by their lever
     local list = {}
     local lure = lure_open_ids()   -- (0.105.45)
@@ -209,7 +254,7 @@ function openings_report(d, t, txt)
             -- the planner counted "1 door on record, 1 open" and the seal was refused
             -- "no door or hatch on the way down to lock" (A 12, B 9, C 7, E 7 times)
             -- (r2h7) the seal's own test (seal_lockable): the brain counts these rows only
-            local okl, can, why, blocked, code = pcall(seal_lockable, o, row)
+            local okl, can, why, blocked, code = pcall(seal_lockable, o, row, ctx)
             row.lockable = (okl and can) and true or false
             if okl and code == 'blocked' then row.well_blocked = tostring(blocked):sub(1, 60)
             elseif okl and code == 'skip' then row.seal_skip = tostring(why):sub(1, 120) end
@@ -222,6 +267,9 @@ function openings_report(d, t, txt)
         if a.y ~= b.y then return a.y < b.y end
         return a.x < b.x
     end)
+    -- (0.105.98, merge) the cost kept out of the report (its shape pinned by
+    -- test_r40_sections' snapshot): OPENINGS_COST for a probe
+    OPENINGS_COST = {project_reads = ctx.data and 1 or 0, doors_checked = ctx.checked or 0}
     return {list = list, n = #list}
 end
 

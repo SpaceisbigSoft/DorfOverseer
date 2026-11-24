@@ -565,9 +565,11 @@ end
 
 -- Every cavern well's door: {{x, y, z, kind, project_id}} (ai-threats' openings).
 -- (K48-K4) and its rescue stair's hatch (kind 'hatch', rescue = true).
-function fort_doors()
+-- (0.105.98) data: the projects when the caller read them already (the
+-- openings report reads them once for all its openings, not 2 a door)
+function fort_doors(data)
     local out = {}
-    local data = builder().load_projects()
+    data = data or builder().load_projects()
     for _, p in ipairs(data.list or {}) do
         local d = is_cavern_well(p) and type(p.fort_door) == 'table' and p.fort_door or nil
         if d and math.tointeger(d.x) and (watched(p) or p.phase == 'cancelled') then
@@ -584,8 +586,8 @@ end
 
 -- Who is beyond a well's door (the gallery past it, the stair column, the
 -- shaft, the cavern under it): the seal doesn't lock it on them. o: {x, y, z}.
-function door_blocked(o, cits)
-    local data = builder().load_projects()
+function door_blocked(o, cits, data)
+    data = data or builder().load_projects()     -- (0.105.98) the caller's, if read
     for _, p in ipairs(data.list or {}) do
         local h = is_cavern_well(p) and type(p.rescue) == 'table' and type(p.rescue.hatch) == 'table'
             and p.rescue.hatch or nil
@@ -621,8 +623,8 @@ end
 -- well's own shaft gate (linked, watched every 100 ticks) already keeps the
 -- cavern out. The reason (a string) or nil (the seal locks it as before: a
 -- hall's stair hatch, a given-up well, a gate not linked yet).
-function door_seal_skip(o)
-    local data = builder().load_projects()
+function door_seal_skip(o, data)
+    data = data or builder().load_projects()     -- (0.105.98) the caller's, if read
     for _, p in ipairs(data.list or {}) do
         local d = is_cavern_well(p) and type(p.fort_door) == 'table' and p.fort_door or nil
         if d and d.x == o.x and d.y == o.y and d.z == o.z then

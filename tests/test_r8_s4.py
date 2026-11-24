@@ -229,12 +229,13 @@ def _():
         sorted((got - funcs - {"WELLS_PART_LOCALS"}) ^ set(OLD_GLOBALS.split()))
     # every global function of the one file, counted (45, and OPEN_SHAPE) and the ones other modules call by name
     # ((r9) 44: shaft_threat_near, kept for callers of the old name, had none and went)
-    assert len(funcs) == 44, len(funcs)
+    # ((0.105.98) 45: well_shaft_hatches, the hatches alone for the threats survey's openings)
+    assert len(funcs) == 45, len(funcs)
     for fn in ("water_below", "find_well_spot", "find_shore_well_spot", "find_cavern_well_spot",
                "find_gallery_well_spot", "designate", "shaft_gate_state", "well_shaft_step", "hostile_wild",
                "shaft_judge", "shaft_threats", "shaft_watch_start", "well_lids", "seal_well_stairs",
                "revive_cavern_well", "undo_well_cells", "well_safety_call", "find_filled_well_spot", "place_well",
-               "well_spots_unreached", "well_dig_check", "renew_well_dig"):
+               "well_spots_unreached", "well_dig_check", "renew_well_dig", "well_shaft_hatches"):
         assert fn in funcs, fn
     shared = env.WELLS_PART_LOCALS
     assert sorted(shared.keys()) == sorted(HANDED), list(shared.keys())

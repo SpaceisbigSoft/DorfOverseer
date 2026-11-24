@@ -107,13 +107,38 @@ end
 function W.item(kind, n, contained)
     return {getType = function() return kind end, stack_size = n or 1, flags = {forbid = false}, contained = contained}
 end
+-- (0.105.98) a new pile's settings as DF gives an `f` pile: every food list
+-- on (0-based lists, as DFHack's vectors read), prepared meals on; W.locked:
+-- the lists refuse writes (the write that doesn't take)
+function W.vec(n, val)
+    local data = {}
+    for i = 0, n - 1 do data[i] = val end
+    return setmetatable({}, {__len = function() return n end,
+                             __index = function(_, i) return data[i] end,
+                             __newindex = function(_, i, v)
+                                 if W.locked then error('read-only') end
+                                 if type(i) ~= 'number' or i < 0 or i >= n then error('index out of range') end
+                                 data[i] = v
+                             end})
+end
+function W.new_settings(n)
+    n = n or 3
+    local food = {prepared_meals = true}
+    for _, k in ipairs({'meat', 'fish', 'unprepared_fish', 'egg', 'plants', 'drink_plant', 'drink_animal',
+                        'cheese_plant', 'cheese_animal', 'seeds', 'leaves', 'powder_plant', 'powder_creature',
+                        'glob', 'glob_paste', 'glob_pressed', 'liquid_plant', 'liquid_animal', 'liquid_misc'}) do
+        food[k] = W.vec((k == 'cheese_plant' or k == 'powder_creature') and 0 or n, true)
+    end
+    return {flags = {food = true, animals = false, furniture = false, stone = false}, food = food}
+end
+df.global.world.buildings.other.STOCKPILE = W.piles
 local builder = {qf_try = function(mode, cells, z, x, y, dry)
     local w, h = cells[1].text:match('f%((%d+)x(%d+)%)')
     w, h = tonumber(w), tonumber(h)
     table.insert(W.qf, {mode = mode, x = x, y = y, z = z, w = w, h = h, text = cells[1].text})
     if dry or W.qf_refuse then return not W.qf_refuse end
     local b = {id = 700 + #W.qf, x1 = x, y1 = y, x2 = x + w - 1, y2 = y + h - 1, z = z, name = '',
-               settings = {flags = {food = true}, food = {}}, storage = {max_barrels = 0, max_bins = 5},
+               settings = W.new_settings(), storage = {max_barrels = 0, max_bins = 5},
                getType = function() return 'Stockpile' end}
     table.insert(W.piles, b)
     return true
@@ -207,10 +232,10 @@ def _():
     assert re.search(r"if c\.out and \(th >= THIRST_OUT or hu >= HUNGER_OUT\) then", SRC)
 
 
-@test("ai-killers: the pile takes drink and prepared meals only (DFHack's presets, then by hand), never linked")
+@test("ai-killers: the pile takes drink and prepared meals only (written by hand: 0.105.98), never linked")
 def _():
-    assert "'stockpiles', 'import', 'library/booze', '-s', id" in SRC
-    assert "'library/preparedmeals', '-m', 'enable', '-s', id" in SRC
+    # (0.105.98) DFHack's presets dropped (B, 23 Nov: both piles took every food)
+    assert "'stockpiles', 'import'" not in SRC
     assert "f.prepared_meals = true" in SRC
     assert "links" not in re.search(r"function larder_make\(.*?\nend\n", SRC, re.S).group(0)
     assert "pcall(larder_remove, c)" in re.search(r"local function free\(.*?\nend\n", SRC, re.S).group(0)
@@ -242,10 +267,10 @@ def _():
     sp = w.piles[1]
     assert (sp.x1, sp.y1, sp.x2, sp.y2) == (21, 20, 21, 21), py(w.qf)  # 1x2, away from the bed and the door
     assert sp.name == "AI cell larder 3" and sp.storage.max_barrels == 2 and sp.storage.max_bins == 0
-    cmds = py(w.commands)
-    assert cmds == [f"stockpiles import library/booze -s {sp.id}",
-                    f"stockpiles import library/preparedmeals -m enable -s {sp.id}"], cmds
+    assert not py(w.commands), py(w.commands)                       # (0.105.98) no presets: written by hand (an empty Lua table reads as {})
+    f = sp.settings.food
     assert sp.settings.food.prepared_meals is True
+    assert f.drink_plant[0] is True and f.drink_animal[2] is True and f.meat[0] is False and f.seeds[2] is False
     st = py(w.site["ai-overseer/killers"])["cells"]["3"]
     assert st["pile"] == sp.id and "pile_all_food" not in st, st
     r = cell(lua, env, [3])
@@ -269,7 +294,7 @@ def _():
     rep = py(env.report())
     assert rep["cells"][0]["pile"] is False and "no free floor" in rep["cells"][0]["pile_error"], rep["cells"]
     w.walls = None
-    w.import_ok = False
+    w.locked = True                                  # (0.105.98) the write doesn't take
     cell(lua, env, [3])
     assert len(w.piles) == 1
     c = py(env.report())["cells"][0]

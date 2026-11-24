@@ -40,7 +40,9 @@
 --                   changed, child, squad_id, x, y, z, seen_ticks, cell}],
 --                   cells = [{unit_id, locked, out, kind, days, pile, drink,
 --                   food, pile_empty, let_outs, stocking, pile_error,
---                   pile_all_food}] (0.105.97: the cell's pile),
+--                   pile_all_food, pile_fixed, pile_refound, pile_lost}]
+--                   (0.105.97: the cell's pile; 0.105.98: its settings put
+--                   right, found again by its name, lost),
 --                   rooms (free jail zones and bedrooms), scanned}
 --   cell(o, dry)    o.units: the ids to lock away (each in a burrow on a
 --                   jail zone, else a free bedroom; the room's doors locked
@@ -432,6 +434,7 @@ local function free(uid, c, u, dry)
             dfhack.burrows.clearTiles(b)
         end
     end)
+    c.pile_name = c.pile_name or (LARDER_PREFIX .. uid)      -- (0.105.98) found by its name too
     pcall(larder_remove, c)     -- (0.105.97) the cell's pile goes with it
 end
 
@@ -474,12 +477,51 @@ LARDER_DRINK_VECTORS = {'drink_plant', 'drink_animal'}
 local function larder_builder() return reqscript('ai-builder') end
 
 -- the cell's pile, while it stands
-function larder_pile(c)
-    if type(c) ~= 'table' or not c.pile then return nil end
-    local ok, b = pcall(df.building.find, tonumber(c.pile))
-    if not ok or not b then return nil end
+-- (0.105.98) The id kept (c.pile) is always the stockpile's building id; when
+-- it no longer finds a stockpile of ours, the pile is looked for by its name
+-- (c.pile_name, "AI cell larder <uid>") and the id kept again (c.pile_refound
+-- counts it); found by neither, the id is forgotten (c.pile_lost counts it) so
+-- larder_make lays a new one. Live 23 Nov 22:11, B: the report gave one
+-- cell's pile as 1538 and a probe found no building 1538 just after. The
+-- report only gives an id that found a stockpile that cycle, so the pile went
+-- after it (a cell let go takes its pile with it; a pile moved out of a gate's
+-- opening, ai-gates-works move_stockpile, keeps its name under a new id; a pile
+-- whose tiles are all built over goes): the name finds it again in the
+-- second case, and a cell whose id was lost by any way finds its own pile
+-- instead of laying a second one beside it.
+local function larder_ours(b, name)
     local okt, yes = pcall(function() return b:getType() == df.building_type.Stockpile end)
-    if okt and yes then return b end
+    if not (okt and yes) then return false end
+    if not name then return true end
+    local okn, n = pcall(function() return tostring(b.name or '') end)
+    return okn and (n == name or n == '')       -- '' : a 0.105.97 pile whose name didn't take
+end
+
+local function larder_by_name(name)
+    if not name then return nil end
+    local found
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.STOCKPILE) do
+            if tostring(b.name) == name then found = b; return end
+        end
+    end)
+    return found
+end
+
+function larder_pile(c)
+    if type(c) ~= 'table' then return nil end
+    if c.pile then
+        local ok, b = pcall(df.building.find, tonumber(c.pile))
+        if ok and b and larder_ours(b, c.pile_name) then return b end
+    end
+    if not c.pile_name then return nil end
+    local b = larder_by_name(c.pile_name)
+    if b then
+        if c.pile then c.pile_refound = (tonumber(c.pile_refound) or 0) + 1 end
+        c.pile = b.id
+        return b
+    end
+    if c.pile then c.pile_lost, c.pile = (tonumber(c.pile_lost) or 0) + 1, nil end
     return nil
 end
 
@@ -526,53 +568,155 @@ function larder_spot(z)
     return nil
 end
 
--- drink and prepared meals only: DFHack's own stockpile presets first (as
--- ai-gates-works moves a pile's settings), then the settings written by
--- hand if the presets didn't take; true when the pile reads so after
-local function larder_reads_right(sp)
-    local ok, right = pcall(function()
+-- drink and prepared meals only, written by hand and read back.
+-- (0.105.98) Live 23 Nov 22:11, B (DFHack 53.17-r1): both cells' piles took
+-- every food (meat 14800/14800, seeds, plants, globs... all on, prepared
+-- meals on) and both rows said pile_all_food. 0.105.97 ran DFHack's presets
+-- (`stockpiles import library/booze -s <id>`, then `library/preparedmeals -m
+-- enable`) and wrote by hand only when they didn't read right; the end state
+-- is what a new `f` pile gets (every food on), so neither the presets nor
+-- the hand-written loops changed that pile when they ran: the likeliest
+-- reading is that the new pile's food lists were not yet filled (length 0:
+-- nothing to clear, no drink to enable, so the read-back failed) and were
+-- filled with everything on after, and nothing looked at the pile again.
+-- Now: no presets (commands whose effect we can't follow or test here; the
+-- hand-written settings are the same each time and read back); every list in settings.food written
+-- element by element (every one off, then drink_plant and drink_animal all
+-- on), prepared_meals on and every other food switch off, flags.food on and
+-- every other category off, bins 0 (max_barrels kept). Read back exactly; on
+-- creation and again each cycle the cell stands while the read-back differs
+-- (larder_check: c.pile_fixed counts the corrections, c.pile_all_food only
+-- when the write itself didn't take).
+LARDER_FLAGS = {'animals', 'food', 'furniture', 'corpses', 'refuse', 'stone', 'ammo', 'coins', 'bars_blocks',
+                'gems', 'finished_goods', 'leather', 'cloth', 'wood', 'weapons', 'armor', 'sheet'}
+local LARDER_DRINK, LARDER_VECTORS = {}, {}
+for _, k in ipairs(LARDER_DRINK_VECTORS) do LARDER_DRINK[k] = true; table.insert(LARDER_VECTORS, k) end
+for _, k in ipairs(LARDER_FOOD_VECTORS) do table.insert(LARDER_VECTORS, k) end
+
+-- the fields of a settings struct: the known names, and whatever pairs() gives
+local function larder_fields(s, known)
+    local seen, out = {}, {}
+    for _, k in ipairs(known) do if not seen[k] then seen[k] = true; table.insert(out, k) end end
+    pcall(function()
+        for k in pairs(s) do
+            if type(k) == 'string' and not seen[k] then seen[k] = true; table.insert(out, k) end
+        end
+    end)
+    return out
+end
+
+-- a vector of switches: its length, else nil (a boolean, a number: not one)
+local function larder_len(v)
+    if type(v) ~= 'userdata' and type(v) ~= 'table' then return nil end
+    local ok, n = pcall(function() return #v end)
+    return ok and type(n) == 'number' and n or nil
+end
+
+local function larder_on(x) return x == true or x == 1 end
+
+-- the lengths of the pile's food lists added up (a new pile's may be 0)
+function larder_size(sp)
+    local n = 0
+    pcall(function()
         local f = sp.settings.food
-        if f.prepared_meals ~= true then return false end
-        local any_drink = false
-        for _, k in ipairs(LARDER_DRINK_VECTORS) do
-            for _, v in ipairs(f[k]) do if v then any_drink = true end end
+        for _, k in ipairs(larder_fields(f, LARDER_VECTORS)) do
+            local okv, v = pcall(function() return f[k] end)
+            n = n + ((okv and larder_len(v)) or 0)
         end
-        if not any_drink then return false end
-        for _, k in ipairs(LARDER_FOOD_VECTORS) do
-            local okv, vec = pcall(function() return f[k] end)
-            if okv and vec then for _, v in ipairs(vec) do if v then return false end end end
+    end)
+    return n
+end
+
+-- true when the pile takes drink and prepared meals and nothing else.
+-- quick: each list's first and last switch only (B's meat list is 14800
+-- long: the whole read is kept for once a day, larder_keep_right)
+function larder_reads_right(sp, quick)
+    local ok, right = pcall(function()
+        local f, fl = sp.settings.food, sp.settings.flags
+        for _, k in ipairs(larder_fields(fl, LARDER_FLAGS)) do
+            local okv, v = pcall(function() return fl[k] end)
+            if okv and type(v) == 'boolean' and v ~= (k == 'food') then return false end
         end
+        if fl.food ~= true or f.prepared_meals ~= true then return false end
+        local drinks = 0
+        for _, k in ipairs(larder_fields(f, LARDER_VECTORS)) do
+            local okv, v = pcall(function() return f[k] end)
+            v = okv and v
+            local n = larder_len(v)
+            if n then
+                local want = LARDER_DRINK[k] == true
+                if quick then
+                    if n > 0 and (larder_on(v[0]) ~= want or larder_on(v[n - 1]) ~= want) then return false end
+                else
+                    for i = 0, n - 1 do
+                        if larder_on(v[i]) ~= want then return false end
+                    end
+                end
+                if want then drinks = drinks + n end
+            elseif type(v) == 'boolean' and v ~= (k == 'prepared_meals') then
+                return false
+            end
+        end
+        if drinks == 0 then return false end      -- lists not filled yet: no drink to take
+        local okb, bins = pcall(function() return sp.storage.max_bins end)
+        if okb and type(bins) == 'number' and bins ~= 0 then return false end
         return true
     end)
     return ok and right == true
 end
 
-local function larder_settings(sp)
-    pcall(function()
-        local id = tostring(sp.id)
-        local ok1, _, r1 = pcall(dfhack.run_command_silent, 'stockpiles', 'import', 'library/booze', '-s', id)
-        if ok1 and r1 == CR_OK then
-            pcall(dfhack.run_command_silent, 'stockpiles', 'import', 'library/preparedmeals', '-m', 'enable', '-s', id)
-        end
-    end)
-    if larder_reads_right(sp) then return true end
+-- the settings written; true when the pile reads right after
+function larder_settings(sp)
     pcall(function()
         local f = sp.settings.food
-        for _, k in ipairs(LARDER_FOOD_VECTORS) do
-            pcall(function() for i = 0, #f[k] - 1 do f[k][i] = false end end)
+        for _, k in ipairs(larder_fields(f, LARDER_VECTORS)) do
+            pcall(function()
+                local v = f[k]
+                local n = larder_len(v)
+                if n then
+                    local want = LARDER_DRINK[k] == true
+                    for i = 0, n - 1 do pcall(function() v[i] = want end) end
+                elseif type(v) == 'boolean' then
+                    f[k] = (k == 'prepared_meals')
+                end
+            end)
         end
-        for _, k in ipairs(LARDER_DRINK_VECTORS) do
-            pcall(function() for i = 0, #f[k] - 1 do f[k][i] = true end end)
-        end
-        f.prepared_meals = true
-        sp.settings.flags.food = true
+        pcall(function() f.prepared_meals = true end)
     end)
+    pcall(function()
+        local fl = sp.settings.flags
+        for _, k in ipairs(larder_fields(fl, LARDER_FLAGS)) do
+            pcall(function() if type(fl[k]) == 'boolean' then fl[k] = (k == 'food') end end)
+        end
+        fl.food = true
+    end)
+    pcall(function() sp.storage.max_bins = 0 end)
     return larder_reads_right(sp)
+end
+
+-- (0.105.98) the stockpile on a tile: findAtTile's building when it is one,
+-- else the newest stockpile whose box holds the tile (the id kept is always
+-- the stockpile's own building id, never a zone's or a bed's)
+local function larder_at(x, y, zz)
+    local okf, b = pcall(dfhack.buildings.findAtTile, xyz2pos(x, y, zz))
+    if okf and b and larder_ours(b, nil) then return b end
+    local best
+    pcall(function()
+        for _, p in ipairs(df.global.world.buildings.other.STOCKPILE) do
+            if p.z == zz and x >= p.x1 and x <= p.x2 and y >= p.y1 and y <= p.y2
+                    and (not best or p.id > best.id) then
+                best = p
+            end
+        end
+    end)
+    return best
 end
 
 -- the pile made in the cell room (when none stands); the pile, or nil and why
 function larder_make(uid, c, z, dry)
+    if not dry then c.pile_name = c.pile_name or (LARDER_PREFIX .. uid) end   -- (0.105.98) found again by it
     local sp = larder_pile(c)
+    if not sp and dry then sp = larder_by_name(LARDER_PREFIX .. uid) end
     if sp then return sp end
     if (tonumber(c.pile_tries) or 0) >= LARDER_TRIES then return nil, 'no pile could be made in the cell' end
     local r = larder_spot(z)
@@ -583,16 +727,49 @@ function larder_make(uid, c, z, dry)
         return (larder_builder().qf_try('place', {{x = 0, y = 0, text = ('f(%dx%d)'):format(r.w, r.h)}}, r.z, r.x, r.y, false))
     end)
     if not okq or not good then return nil, 'the game would not place a pile in the cell' end
-    local okf, b = pcall(dfhack.buildings.findAtTile, xyz2pos(r.x, r.y, r.z))
-    if not okf or not b then return nil, 'the new pile was not found' end
-    local okt, yes = pcall(function() return b:getType() == df.building_type.Stockpile end)
-    if not okt or not yes then return nil, 'the new pile was not found' end
+    local b = larder_at(r.x, r.y, r.z)
+    if not b then return nil, 'the new pile was not found' end
     pcall(function() b.name = LARDER_PREFIX .. uid end)
     pcall(function() b.storage.max_barrels = r.w * r.h end)
     pcall(function() b.storage.max_bins = 0 end)
     c.pile, c.pile_tries = b.id, nil
-    c.pile_all_food = (not larder_settings(b)) or nil   -- the settings didn't take: said in the report
+    c.pile_all_food = (not larder_settings(b)) or nil   -- the write didn't take: said in the report
+    pcall(function()
+        c.pile_tried = c.pile_all_food and now_tick() or nil
+        c.pile_size = c.pile_all_food and larder_size(b) or nil
+    end)
     return b
+end
+
+-- (0.105.98) each cycle the cell stands: a pile that no longer reads drink
+-- and meals only (B's two, made by 0.105.97; or one DF filled after it was
+-- made) written again; c.pile_fixed counts the corrections that took
+-- (each cycle the quick read; the whole read once a day, c.pile_read)
+LARDER_READ_GAP = DAY
+function larder_keep_right(c, sp, dry)
+    if not sp then return false end
+    local okt, t = pcall(now_tick)
+    t = okt and tonumber(t) or nil
+    local whole = not (t and c.pile_read and t >= c.pile_read and t - c.pile_read < LARDER_READ_GAP)
+    if larder_reads_right(sp, not whole) then
+        if not dry then
+            c.pile_all_food = nil
+            if whole then c.pile_read = t end
+        end
+        return false
+    end
+    if dry then return true end
+    -- a write that didn't take is tried again once a day, not each cycle, or
+    -- at once when the pile's lists change length (DF filling a new pile's)
+    local size = larder_size(sp)
+    if c.pile_all_food and t and c.pile_tried and t >= c.pile_tried and t - c.pile_tried < LARDER_READ_GAP
+            and c.pile_size == size then
+        return false
+    end
+    local ok = larder_settings(sp)
+    if ok then c.pile_fixed, c.pile_read = (tonumber(c.pile_fixed) or 0) + 1, t end
+    c.pile_all_food, c.pile_tried, c.pile_size = (not ok) or nil, (not ok) and t or nil, (not ok) and size or nil
+    return ok
 end
 
 -- the drink (units) and prepared meals (items) the pile holds, a barrel's
@@ -653,6 +830,7 @@ end
 local function larder_check(uid, c, z, t, dry, memo, u)
     local sp, why = larder_make(uid, c, z, dry)
     if not dry then c.pile_error = (not sp) and why or nil end
+    pcall(larder_keep_right, c, sp, dry)       -- (0.105.98) drink and meals only, each cycle
     if not sp or not c.locked or c.out then return nil end
     if not larder_low(c, memo) then return nil end
     -- (0.105.97, merge) never opened while the killer rages (B's killings were tantrums)
@@ -694,11 +872,23 @@ function larder_row(row, c, memo)
     end
     row.pile_error = (drink == nil and c.pile_error) or nil
     row.pile_all_food = (drink ~= nil and c.pile_all_food) or nil
+    -- (0.105.98) the settings put right after it was made; found again by its name; lost
+    for _, k in ipairs({'pile_fixed', 'pile_refound', 'pile_lost'}) do
+        local n = tonumber(c[k])
+        row[k] = (n and n > 0) and n or nil
+    end
 end
 
 function larder_remove(c)
     local sp = larder_pile(c)
     if sp then pcall(dfhack.buildings.deconstruct, sp) end   -- a pile goes at once; its items stay
+    -- (0.105.98) and any other pile of the cell's name (one made again after its id was lost)
+    for _ = 1, 4 do
+        local more = c.pile_name and larder_by_name(c.pile_name)
+        if not more or more == sp then break end
+        if not pcall(dfhack.buildings.deconstruct, more) then break end
+        sp = more
+    end
 end
 
 -- --- (0.105.97) the held: kept in, kept apart ---------------------------------
@@ -923,6 +1113,16 @@ function report()
     local out = {list = {}, cells = {}, scanned = scanned}
     local memo = {}             -- (0.105.97) each cell's pile read once
     local seen = {}
+    -- (0.105.98) each cell's pile known by its name too, and its settings put
+    -- right with the report: the brain asks for the cell action only while a
+    -- cell needs something (a locked, stocked cell is left alone), and the
+    -- report runs each cycle
+    for uid, c in pairs(d.cells) do
+        if type(c) == 'table' and c.pile then
+            c.pile_name = c.pile_name or (LARDER_PREFIX .. uid)
+            pcall(function() larder_keep_right(c, larder_pile(c), false) end)
+        end
+    end
     local ids = {}
     for id in pairs(mem) do table.insert(ids, id) end
     table.sort(ids)
