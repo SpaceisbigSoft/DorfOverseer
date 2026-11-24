@@ -277,7 +277,8 @@ def chronic_need_actions(s: dict, cfg: dict, r: dict) -> list:
             # (ai-society-needs acquire_need). B: Mebzuth's BeExtravagant drew it
             # 28 times an hour, refused "nobody wants something to own" (he
             # wasn't wanting); BeExtravagant alone is left to the jewellery orders
-            if need == "AcquireObject" or "AcquireObject" in _l(r.get("unmet")):
+            # (verifier) AcquireObject's own entry serves both: one entry, not twice the weight
+            if need == "AcquireObject":
                 out.append((need, {"type": "give_trinkets", "max": 5}, "give out trinkets", False))
         elif need in ("BeWithFriends", "Socialize", "MakeMerriment"):
             zones = [z for e in _l(_d(s.get("locations")).get("list")) if isinstance(e, dict)

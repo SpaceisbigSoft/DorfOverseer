@@ -513,8 +513,12 @@ def _need_care(s: dict, cfg: dict, x: dict, near: bool, proposals: list, memory=
                 return None                  # the needs_meal rule orders them for the fort this cycle
             p = _meal("missing a good meal most")
         elif need in ("AcquireObject", "BeExtravagant"):
+            # (0.105.94, verifier) give_trinkets serves only AcquireObject wanters
+            # (ai-society-needs): BeExtravagant alone was refused "nobody wants
+            # something to own", as chronic_care was (B)
             if isinstance(nd.get("trinkets"), int) and nd["trinkets"] > 0 and "give_trinkets" not in kinds \
-                    and player_rules(s).get("give_trinkets", True):
+                    and player_rules(s).get("give_trinkets", True) \
+                    and (need == "AcquireObject" or "AcquireObject" in _l(x.get("unmet"))):
                 p = Proposal("stress_care", {"type": "give_trinkets", "max": 3},
                              f"{who}, missing something of their own most: give out trinkets", pri)
         elif need == "CraftObject":
