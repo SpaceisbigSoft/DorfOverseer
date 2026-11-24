@@ -476,7 +476,12 @@ function cell(o, dry)
                     if z then table.insert(out.placed, name_of(u)) end
                 elseif not c.locked then
                     local th, hu = need(u)
-                    if c.out and (th > THIRST_BACK or hu > HUNGER_BACK) then
+                    -- (0.105.92) back once under the levels that let them out:
+                    -- the timers only fall by drinking and eating. Live 23 Nov,
+                    -- B: Led Siguntat drank just after she was let out, her
+                    -- thirst passed 3000 again before a cycle saw it, and she
+                    -- stayed out ten days ("waiting" 60 times an hour)
+                    if c.out and (th >= THIRST_OUT or hu >= HUNGER_OUT) then
                         table.insert(out.waiting, name_of(u))        -- still out to eat and drink
                     elseif c.out then
                         if not dry then assign(uid, u, true); c.out = nil end

@@ -328,7 +328,7 @@ PARTS = {'rules', 'culture'}
 -- each part marks the version it came with (the bridge's `version` lists one
 -- that differs from BRIDGE_VERSION); started afresh at each load, so a part
 -- that failed to load shows as unmarked
-PART_VERSIONS = {['gui/ai-overseer'] = '0.105.91'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['gui/ai-overseer'] = '0.105.92'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- a part's file beside this one (lua/gui/<file>.lua), else DFHack's search
 -- for it by its script name (gui/<file>)

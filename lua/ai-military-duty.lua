@@ -8,7 +8,7 @@
 -- reqscript('ai-military').name and a name swapped there reaches this file.
 
 if not MILITARY_PART_LOCALS then qerror('ai-military-duty is a part of ai-military; run ai-military') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-duty'] = '0.105.91'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-duty'] = '0.105.92'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units, gear, save_shelter_marks, order_tick, is_guard_order, is_ai_order = MILITARY_PART_LOCALS.U, MILITARY_PART_LOCALS.report_citizens, MILITARY_PART_LOCALS.report_units, MILITARY_PART_LOCALS.gear, MILITARY_PART_LOCALS.save_shelter_marks, MILITARY_PART_LOCALS.order_tick, MILITARY_PART_LOCALS.is_guard_order, MILITARY_PART_LOCALS.is_ai_order   -- (r8) the hub's locals
 
