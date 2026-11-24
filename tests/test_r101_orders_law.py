@@ -49,8 +49,8 @@ df = {global = {standing_orders_mix_food = 1, standing_orders_gather_refuse = 1,
 dfhack = {internal = {getAddress = function(n) return A[n] end,
                       setAddress = function(n, a) A[n] = a; return true end}}
 reqscript = function() return {} end
-local env = setmetatable({}, {__index = _G})
-local chunk = load(src, 'ai-util', 't', env)
+local env = setmetatable({PARTS = {}}, {__index = _G})
+local chunk = load(src, 'ai-util-helpers', 't', env)
 chunk()
 return env, A
 """
@@ -60,7 +60,7 @@ return env, A
 def _():
     need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, A = lua.execute(UTIL_FAKE, module_src("ai-util.lua"))
+    env, A = lua.execute(UTIL_FAKE, module_src("ai-util-helpers.lua"))
     assert env.standing_order("gather_refuse") == "standing_orders_gather_refuse"
     # DF's own name for dump_other lies in the block on a free byte reading 0/1: bound
     assert env.standing_order("standing_orders_dump_other") == "standing_orders_dump_other"
