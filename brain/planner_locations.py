@@ -24,8 +24,8 @@ def _location_supply_rules(s: dict, cfg: dict, proposals: list, notes: list) -> 
             h, w = short["goblets"]
             # (0.104.4) wooden cups while there's no stone (Enxah: mugs ordered and
             # cancelled six times, 0 usable boulders, 233 logs)
-            wood = int(_d(s.get("stocks")).get("wood") or 0)
-            cups = stone_short(s, cfg["stone_low"]) and wood >= 20
+            from cup_material import cup_recipe      # (0.105.94) wood while the stone is spoken for (B)
+            cups = cup_recipe(s, cfg, min(10, w - h)) == "wooden_cups"
             proposals.append(Proposal("tavern", {"type": "work_order", "recipe": "wooden_cups" if cups else "stone_mugs",
                                                  "amount": min(10, w - h)},
                                       f"the tavern has {h} of the {w} goblets it keeps: make "

@@ -273,7 +273,12 @@ def chronic_need_actions(s: dict, cfg: dict, r: dict) -> list:
         elif need == "CraftObject" and _has_shop(b, "Craftsdwarfs"):
             out.append((need, {"type": "idle_crafting"}, "let idle dwarves craft at the Craftsdwarf's workshops", False))
         elif need in ("AcquireObject", "BeExtravagant") and int(nd.get("trinkets") or 0) > 0:
-            out.append((need, {"type": "give_trinkets", "max": 5}, "give out trinkets", False))
+            # (0.105.94) give_trinkets reaches only those wanting AcquireObject
+            # (ai-society-needs acquire_need). B: Mebzuth's BeExtravagant drew it
+            # 28 times an hour, refused "nobody wants something to own" (he
+            # wasn't wanting); BeExtravagant alone is left to the jewellery orders
+            if need == "AcquireObject" or "AcquireObject" in _l(r.get("unmet")):
+                out.append((need, {"type": "give_trinkets", "max": 5}, "give out trinkets", False))
         elif need in ("BeWithFriends", "Socialize", "MakeMerriment"):
             zones = [z for e in _l(_d(s.get("locations")).get("list")) if isinstance(e, dict)
                      and e.get("type") == "INN_TAVERN" for z in _l(e.get("zones")) if isinstance(z, int)]

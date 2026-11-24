@@ -763,9 +763,9 @@ def _comfort_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     if (isinstance(free_cups, int) and not (waiting and not room) and free_cups < want
             and cupless >= citizens * cfg["cupless_share"]
             and _has_shop(b, "Craftsdwarfs") and not queued(s, {"stone_mugs", "wooden_cups"})):
-        wood = int(st.get("wood") or 0)
-        cups = stone_short(s, cfg["stone_low"]) and wood >= 20
         n = min(cfg["cups_batch"], want - free_cups)
+        from cup_material import cup_recipe          # (0.105.94) wood while the stone is spoken for (B)
+        cups = cup_recipe(s, cfg, n) == "wooden_cups"
         proposals.append(Proposal("comfort", {"type": "work_order", "recipe": "wooden_cups" if cups else "stone_mugs",
                                               "amount": n},
                                   f"{cupless} citizens drank without a cup lately and {free_cups} cups are free"
