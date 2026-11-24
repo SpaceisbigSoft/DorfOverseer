@@ -6,7 +6,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.93'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.94'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, ez = info, has, ez
 -- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
@@ -924,7 +924,7 @@ function ghost_hfs()
     pcall(function()
         local race, civ = df.global.plotinfo.race_id, df.global.plotinfo.civ_id
         -- the report's one walk of the units when in a report (ai-util's cache)
-        -- (0.105.93) every unit: a ghost drops off the active list between its appearances (F's Urvad)
+        -- (0.105.94) every unit: a ghost drops off the active list between its appearances (F's Urvad)
         local list = df.global.world.units.all
         for _, u in ipairs(list) do
             pcall(function()
@@ -986,7 +986,7 @@ function memorial_slabs()
     pcall(function()
         for _, it in ipairs(df.global.world.items.other.SLAB) do
             local okh, hb = pcall(dfhack.items.getHolderBuilding, it)
-            -- (0.105.93) a finished slab left in the workshop that made it
+            -- (0.105.94) a finished slab left in the workshop that made it
             -- (not in a job there) is free to put up: B, 23 Nov: both of the
             -- one ghost's slabs lay in mason's workshops, the count read 0,
             -- nothing was put up and the ghost haunted 55 citizens
@@ -1107,7 +1107,7 @@ QUICK_LOCATIONS = {temple = 'location=temple', tavern = 'location=tavern'}
 function quick_location(kind, dry_run)
     local loc = QUICK_LOCATIONS[kind]
     if not loc then return {ok = false, rejected = true, error = 'quick_location makes a temple or tavern'} end
-    -- (0.105.93) the largest dining hall; with none, the largest meeting hall
+    -- (0.105.94) the largest dining hall; with none, the largest meeting hall
     -- (D, 23 Nov: no dining hall, one meeting hall, no tavern; 16 of 16
     -- missed MakeMerry, 62% unhappy, while every new level was refused for water)
     local best, best_a

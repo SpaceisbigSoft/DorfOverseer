@@ -947,7 +947,7 @@ local function were_report(d, t, txt)
                 if #out.list < 10 then table.insert(out.list, row) end
                 any_changed = any_changed or now_changed
             elseif not own and not changed(u) and were_cursed(u) then
-                -- (0.105.93) an outsider carrying the curse, in its own form
+                -- (0.105.94) an outsider carrying the curse, in its own form
                 -- now. Live 23 Nov, C: a weregecko representative (a visitor,
                 -- not a citizen) turned at the full moon and killed 6 in 17 s
                 -- before the squads came; it had walked the fort for days as a
@@ -1043,7 +1043,7 @@ PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = report_u
 PARTS = {'survey', 'actions'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-threats'] = '0.105.93'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-threats'] = '0.105.94'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

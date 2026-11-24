@@ -74,7 +74,7 @@ end
 local BARS = {'asked', 'in_hospital', 'soldier', 'child', 'mood', 'sent', 'cooldown', 'unhappy', 'tantrum',
               'insane', 'burrow', 'staff', 'restrained', 'noble'}
 
--- (0.105.93) A heavy infection (load HEAVY_LOAD or more) is sent busy or
+-- (0.105.94) A heavy infection (load HEAVY_LOAD or more) is sent busy or
 -- unhappy too: its job given up first (rest_infected). Live 23 Nov, B: 7
 -- infected, all at work or unhappy, none ever sent (idle_untreated 0, 6 beds
 -- free) while tantrums strangled the weakened (Kubuk, load 118, by a child).
@@ -436,7 +436,7 @@ function rest_infected(max, dry_run, txt, cap, keep_free)
             return u.counters2.thirst_timer >= REST_THIRST or u.counters2.hunger_timer >= REST_HUNGER
         end)
         if okd and dry then goto next_pick end
-        -- (0.105.93) a heavy infection at work: its job given up first (as
+        -- (0.105.94) a heavy infection at work: its job given up first (as
         -- DF's own interruptions do), else it is passed over
         if u.job.current_job and not dry_run then
             pcall(function() dfhack.job.removeWorker(u.job.current_job, 0) end)

@@ -707,7 +707,7 @@ function quarry_status()
     local list = quarry_tried()
     local e = list[#list]
     if not e or type(e.tiles) ~= 'table' then return nil end
-    -- (0.105.93) a tile whose mark became a dig job is still to dig, not
+    -- (0.105.94) a tile whose mark became a dig job is still to dig, not
     -- dropped (E, 23 Nov: 8 Dig jobs on the quarry, every mark gone: read as
     -- "never dug, the marks dropped", two strikes, no quarry for 28 days
     -- while 5 ghosts waited for the slabs its stone makes)
