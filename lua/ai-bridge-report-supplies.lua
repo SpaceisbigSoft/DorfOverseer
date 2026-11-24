@@ -355,7 +355,16 @@ function get_supplies()
     each('QUIVER', function(it)
         if it.flags.in_inventory then out.quivers_worn = out.quivers_worn + 1 else out.quivers = out.quivers + 1 end
     end)
-    each('SLAB', function(it) out.slabs = (out.slabs or 0) + 1 end)
+    -- (0.105.94) blank slabs only (engraving_type Slab, -1): the engraved are
+    -- no use to a memorial. Live 23 Nov, F: a "Secrets" slab counted as the
+    -- one blank, so slabs (1) < ghosts (1) never held and no blank was made;
+    -- Urvad's EngraveSlab job waited 11 hours with no slab to take
+    local BLANK = -1
+    pcall(function() if df.slab_engraving_type.Slab ~= nil then BLANK = df.slab_engraving_type.Slab end end)
+    each('SLAB', function(it)
+        local okb, blank = pcall(function() return it.engraving_type == BLANK end)
+        if okb and blank then out.slabs = (out.slabs or 0) + 1 end
+    end)
     -- (0.103.16) engraved memorial slabs nobody has put up yet
     pcall(function() out.memorial_slabs = #reqscript('ai-builder').memorial_slabs() end)
     -- (r1g8) of them the walking ghosts' own; and the ghosts with no memorial
