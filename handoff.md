@@ -1,6 +1,6 @@
 # DF AI Overseer: Handoff
 
-24 Nov 2026 (11:30) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
+24 Nov 2026 (12:10) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
 
 ## Standing instructions
 
@@ -22,7 +22,12 @@ The AI Overseer runs a Dwarf Fortress fort through DFHack while the player watch
 
 **AI module work (Phase 14.3, 14a-14d) has its own note: `handoff-ai.md` (project doc "DF AI Overseer AI Module Handoff"), written 11 Nov; read it with this one.**
 
-**Latest version: 0.105.100** (24 Nov 03:36, `main` `35fe9ec`; handoff commits since; delivered by Claude Helper's `release`: 936 files, 0 differ in all six; running in all six keepers since the 03:37 restart). This chat (23-24 Nov, "B's deep dive") built 0.105.97-0.105.100; their notes are in the archive ("Moved out 24 Nov 2026 (11:30)"). In short:
+**Latest version: 0.105.102** (24 Nov 12:04, `main` `4bb03e6`; delivered by `release`: 937 files, 0 differ in all six; Python: the keepers need S then R to run it). This chat (24 Nov, "B's dump and the law") built 0.105.101-0.105.102:
+- **0.105.101:** a law officer's killings counted three years back (`LAW_WINDOW_TICKS`; anyone else's still one year). B's sheriff Urdim killed citizens in y263, y264, y266: never two in a year, so `law_swap` never fired. (Doren, the captain, died y267.) A standing-order address guard went out in this version by mistake (11:43, A only) and was taken out again in `3fca2ab` (0.105.101b, 11:59): DFHack's addresses for the 16 orders 9 MB from the `mix_food` block are **right** (A, 11:55: "gather outdoor refuse" switched in DF's screen moved `standing_orders_gather_refuse_outside` 0->1; no byte in the block changed). Don't chase that again.
+- **0.105.102:** B's dump: the AI's own `disposal_outside_off` switched "gather refuse from outside" off for any threat anywhere that could reach the dwarves (11:10, 11:56) and waited two days to switch back on. Now only a threat that can reach the dwarves (or flies) within 40 tiles and 10 levels of a dump zone, or the alarm, keeps the haulers in; on again half a day after (`disposal_outside_danger_tiles`, `disposal_outside_rearm_ticks`).
+- PC restarted 11:34 (the player); keepers and games back 11:38-11:51.
+
+Before (0.105.97-0.105.100, 23-24 Nov, "B's deep dive"; notes in the archive, "Moved out 24 Nov 2026 (11:30)"):
 - **0.105.97:** celled killers kept apart from every other rule (recreation, squads, offices: `held_ids`/`keep_apart`); a drink+meals pile in each killer cell; the defence floor by Militarism (cap 12% at -50 and below with no threat on the map) and fading after two years (`squad_trim` 2 a day); soldiers' leisure (at most half the squads train while a fifth miss friends/drink/prayer; off-duty soldiers in the recreation burrow); the stuck "Leaving" caravan escalated (walk off, the edge, `fix/stuck-merchants`, `caravan leave`).
 - **0.105.98:** the cell larder's food settings written by hand (DF's food switches read as numbers 0/1: `if v[i]` counts every one as on); the threats survey's `openings` read the projects once (C/F 150-176 ms a report -> 8-11).
 - **0.105.99:** moods (a trader's goods and the hospital's stock counted apart, urgent moods, thirst in the record); bodies (`disposal_outside`: DF's "gather refuse from outside"); the law (`law_swap` at two kills outside a punishment); E's brawls (`kill_kind: brawl`, `draft_bar`, `tantrum_soldier`); the rotation's rest month (`memory.rested_at`).
@@ -44,7 +49,8 @@ The road to completion: each phase a few rounds, each checked against the live k
   - [x] R10 0.105.66 petitions by DF's own standing orders (seen live: bound and set), the messenger's post (seen live: open from embark), initial contact for every fort then contact and raids by the AI · R11 0.105.67 the interim messenger and far better office holders (seen live: a swap at A 04:12) · 0.105.68 the World screen by DF's key `D_WORLD` (seen live) · 0.105.69 the site's hovered click, a missed click retried the next day
   - [x] R14 0.105.70 the stale messenger and crash-torn saves (E) · 0.105.71 the messenger hold · 0.105.72 the cause: the slot's army link (seen fixed live) · 0.105.73 the travellers' way out read fresh (A's false "can't walk off the map"; seen fixed live) · 0.105.74 the goal's word: capitals, the screen kept, a next-day retry · 0.105.75 D's stairwell past the water (designated live) · 0.105.76 werebeasts found by their curse · 0.105.78 meals capped at 3x their target (D's miasma), a mood's cloth by whole pieces (E's, B's stalled moods)
   - [x] R15-R18 0.105.97-0.105.100 (23-24 Nov): B's spiral, the cell larder, the threats' cost, moods/bodies/law/brawls, the 3-hour fresh start (the archive, 24 Nov 11:30)
-  - [ ] **Open from 24 Nov (start notes):** B's dump order, `law_swap`, cursed citizens and visitors, FPS, B's cloth, brawls.
+  - [x] R19 0.105.101-0.105.102 (24 Nov): the law's three-year look-back; B's outdoor refuse order kept off only by a danger near the dump
+  - [ ] **Open from 24 Nov 12:10 (start notes):** see B's dump fill and `law_swap` fire; cursed citizens (E's moon cell), FPS, B's cloth, brawls, `burial_others`.
   - [ ] **Open from the 22 Nov run:** Make contact's goal step (Diplomacy not read); C's "fallen" alert; D (Hermit hold) unhappy 25%, idle 37%, no migrants; stalled moods (C's Èrith: a rough gem and a log, both free in reach).
 - [ ] **The improvement plan (14 Nov; Gap Checklist, "Improvement plan 14 Nov"):** R1-R2b and layout option B built; **R3 in game** = this run (also 14.1 step 5's exit test); later: minecarts, beekeeping, dyes and ceramics, a zoo, toys.
 - [x] **Before the road (Oct 20-23)** and **Phase 10 (verification sweep)**: done; hand checks left in the Gap Checklist's in-game list.
@@ -167,10 +173,10 @@ Inside the project folder: `DF-AI\docs\` (code-level design notes: building, mil
 
 Notes for the next chat only (they move to the archive once done).
 
-**24 Nov 11:30 (0.105.100 running). Next, in order:**
-1. **B's dump:** `disposal_outside` turned "gather refuse from outside" on 4 times overnight (04:35-05:49, each ok) yet it read off again each time and only 1 of ~90 marked items reached dump zone 228. Find what turns it off: `disposal_outside_off` (a threat that can reach the dwarves), DF itself, the fresh start's reload (is the standing order saved?), or another rule. Also `burial_others` still refuses ~10 an hour ("no body DF leaves unburied may be marked for the dump now"): 0.105.99's note-instead-of-proposal didn't take for this case.
-2. **B's law:** the sheriff (Urdim, 08:22) and the captain of the guard (Doren, 07:58) each killed again, so each has 2 kills outside a punishment, yet `law_swap` never fired. Check the killers report's `law_kills`/`law_killer` for them and the brain's `_law_row` (the seen wait, the Rules tab's appointing switch, DF's "replaced" flag on the sheriff's post).
-3. **Cursed citizens and visitors:** E's weregiraffe outbreak (Mebzuth, Urvad, Aban, citizens, 08:17-08:46: bitten earlier? the moon cell found none ahead), A's representative Thob (5 killed at 04:33). Check `were_report`, the moon cells and `_were_outsiders` (0.105.91) against what happened.
+**24 Nov 12:10 (0.105.102 delivered; keepers to restart S then R). Next, in order:**
+1. **See 0.105.102 and 0.105.101 work:** B's `disposal_outside` on and staying on, dump zone 228 filling (`disposal.dump_zones[0].items`, `marked_dump_outside` falling); `disposal_outside_off` only with a threat near the dump. B's `law_swap` for the sheriff Urdim (y264 + y266 kills now in the window): a calm free citizen appointed. Also `burial_others` still refuses ~10 an hour ("no body DF leaves unburied may be marked for the dump now"). **Learned:** the AI's memory file keeps `last_fired` under `kinds.working`; `journal` text filters miss rule names (use `rule`).
+2. **E's moon cell:** at 08:31 the brain named Urvad and then Aban for a cell; the action answered "every cell is as it should be" (`nothing_to_do`), and Aban changed 14 min later. The brain's list and the action's list differ: read `moon_cell` in the bridge against the brain's proposal.
+3. **Cursed visitors:** A's representative Thob (5 killed at 04:33). Check `were_report`, the moon cells and `_were_outsiders` (0.105.91) against what happened.
 4. **FPS:** lower everywhere overnight (A 61, C 53, E 47, F 40). Compare perf.jsonl before and after each fresh start (a reload's first hour?) and with the PC's load.
 5. **B's cloth:** the hospital takes every thread, so cloth moods still can't finish (lower the hospital's thread quota, or move one thread to the loom while a cloth mood waits).
 6. **Brawls:** nothing ends one (`break_fights` = `fix/loyaltycascade`, for cascades only).
@@ -196,6 +202,8 @@ One line per version, newest first (0.105.95 and older: the archive file, "Chang
 
 | Version | Date | What changed | Status |
 | --- | --- | --- | --- |
+| 0.105.102 | Nov 24 | The outdoor refuse order kept off only by a danger near the dump (or the alarm), on again half a day after | delivered 24 Nov 12:04; keepers to restart |
+| 0.105.101 | Nov 24 | A law officer's killings counted three years back (a standing-order guard in and out again, 101b) | delivered 24 Nov 11:59 |
 | 0.105.100 | Nov 24 | A fresh start every 3 hours (save, close, reopen, the keeper's Python too); the dump rule's priority | in game: fresh starts seen A-E 06:39-08:39 (24 Nov) |
 | 0.105.99 | Nov 24 | Moods get their materials; bodies reach the dump; law brawlers replaced; the miserable never drafted; the rotation's rest kept | delivered 24 Nov 01:07; partly seen: the dump order doesn't stay on, `law_swap` never fired |
 | 0.105.98 | Nov 23 | The cell's larder: drink and meals only, put right each cycle; the threats survey's openings ~150 ms cheaper in C and F | delivered and seen 23 Nov 22:26 |
