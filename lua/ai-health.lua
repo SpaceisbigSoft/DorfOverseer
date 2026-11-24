@@ -165,6 +165,25 @@ local function asked(u)
     return ok and r
 end
 
+-- (0.105.94) every infected wound already diagnosed: DF counts it treated.
+-- Live 23 Nov, B (probe-beds-who): all 7 infected had their infected wound
+-- flagged diagnosed (most sutured too, some years old), no treatment asked,
+-- needs_healthcare false: no doctor sees them and the bed rule (it wants
+-- needs_healthcare) can't send them; free beds were not what held them.
+local function diagnosed_only(u)
+    local ok, r = pcall(function()
+        local any = false
+        for _, w in ipairs(u.body.wounds) do
+            if w.flags.infection then
+                any = true
+                if not w.flags.diagnosed then return false end
+            end
+        end
+        return any
+    end)
+    return ok and r or false
+end
+
 local function load_of(u)
     local ok, n = pcall(function() return u.body.infection_level end)
     return ok and tonumber(n) or 0
@@ -239,6 +258,7 @@ local function candidate(u, zones, staff, d)
     if not c.infected then return c end
     pcall(function() c.care = u.health ~= nil and u.health.flags.needs_healthcare == true end)
     c.in_hospital = in_hospital(u, zones)
+    c.diagnosed = diagnosed_only(u)                      -- (0.105.94)
     pcall(function() c.idle = u.job.current_job == nil end)
     c.soldier = u.military.squad_id ~= -1
     pcall(function() c.child = not dfhack.units.isAdult(u) end)
@@ -332,7 +352,7 @@ function survey(txt)
     local zones, staff = hospitals()
     local citizens = report_citizens(true)
     local out = {infected = 0, untreated = 0, bleeding = 0, in_hospital = 0, idle_untreated = 0, max_load = 0,
-                 worst = {}}
+                 not_patients = 0, chronic = 0, worst = {}}
     local worst = {}
     for _, u in ipairs(citizens) do
         local c = candidate(u, zones, staff, d)
@@ -344,6 +364,12 @@ function survey(txt)
             if not c.asked then
                 out.untreated = out.untreated + 1
                 if eligible(c) then out.idle_untreated = out.idle_untreated + 1 end
+                -- (0.105.94) not DF's patient: the bed rule can't send them;
+                -- chronic: every infected wound already diagnosed
+                if not c.care then
+                    out.not_patients = out.not_patients + 1
+                    if c.diagnosed then out.chronic = out.chronic + 1 end
+                end
             end
             table.insert(worst, c)
         end
@@ -352,7 +378,8 @@ function survey(txt)
     for i = 1, math.min(5, #worst) do
         local c = worst[i]
         table.insert(out.worst, {id = c.id, name = (txt or tostring)(dfhack.units.getReadableName(c.unit)),
-                                 load = c.load, asked = c.asked or nil, in_hospital = c.in_hospital or nil})
+                                 load = c.load, asked = c.asked or nil, in_hospital = c.in_hospital or nil,
+                                 patient = c.care or nil, diagnosed = c.diagnosed or nil})
     end
     local beds, total = free_beds(zones)
     out.beds, out.free_beds = total, #beds
@@ -596,4 +623,52 @@ function traction_rest(max, dry_run, txt)
     if not dry_run then U.site_put(TRACTION_KEY, d) end
     if #up == 0 then return {ok = false, error = 'the game kept them in bed (the Rest job could not be removed)'} end
     return {ok = true, dry_run = dry_run or nil, got_up = up, benches_free = #benches}
+end
+
+-- (0.105.94) DESIGN ONLY, never called by the planner (no bridge action):
+-- what a re-diagnosis of a chronic heavy infection would change. DF asks a
+-- treatment (rq_cleaning, rq_surgery...) only at a diagnosis, and a wound
+-- flagged diagnosed is not diagnosed again; the idea is to clear the
+-- infected wounds' diagnosed flags (the wound's and its parts') and set the
+-- patient's rq_diagnosis and needs_healthcare, as a new wound does. Unproven:
+-- run a live trial on one dwarf (a save first) before any use. With
+-- dry_run (the default, anything but false) it only reports.
+function rediagnose(ids, dry_run, min_load)
+    dry_run = dry_run ~= false
+    min_load = min_load or HEAVY_LOAD
+    local out = {ok = true, dry_run = dry_run or nil, units = {}}
+    for _, id in ipairs(ids or {}) do
+        local u = df.unit.find(id)
+        local row = {id = id}
+        if not u then
+            row.skip = 'no such unit'
+        elseif load_of(u) < min_load then
+            row.skip = 'load ' .. load_of(u) .. ' under ' .. min_load
+        elseif asked(u) then
+            row.skip = 'a treatment is asked already'
+        elseif not u.health then
+            row.skip = 'no health record (DF keeps one only for a unit hurt once)'
+        else
+            row.wounds = {}
+            for _, w in ipairs(u.body.wounds) do
+                if w.flags.infection and w.flags.diagnosed then
+                    table.insert(row.wounds, w.id)
+                    if not dry_run then
+                        w.flags.diagnosed = false
+                        for _, p in ipairs(w.parts) do
+                            pcall(function() p.flags1.diagnosed = false end)   -- whichever set holds it
+                            pcall(function() p.flags2.diagnosed = false end)
+                        end
+                    end
+                end
+            end
+            row.would_set = {'rq_diagnosis', 'needs_healthcare'}
+            if not dry_run and #row.wounds > 0 then
+                u.health.flags.rq_diagnosis = true
+                u.health.flags.needs_healthcare = true
+            end
+        end
+        table.insert(out.units, row)
+    end
+    return out
 end

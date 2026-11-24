@@ -48,6 +48,15 @@ def _infection_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         text += f"; {bleeding} bleed from the infection (load 300 or more): they die of it unless treated"
     if worst:
         text += "; worst: " + ", ".join(f"{w.get('name') or w.get('id')} ({w.get('load')})" for w in worst[:3])
+    # (0.105.94) B (probe-beds-who): every infected wound already diagnosed,
+    # needs_healthcare false: DF counts them treated, so no doctor sees them
+    # and the bed rule (it takes DF's patients only) can't send them
+    chronic, not_pat = int(inf.get("chronic") or 0), int(inf.get("not_patients") or 0)
+    if not_pat:
+        text += (f"; {not_pat} of them DF doesn't count as patients"
+                 + (f" ({chronic} with every infected wound already diagnosed: DF counts them treated)"
+                    if chronic else "")
+                 + ", so no doctor sees them and the AI can't put them to bed")
     notes.append(text)
     if inf.get("cleaners") == 0:
         # (0.105.35) given by the AI (was a Needs you): the work detail's own
