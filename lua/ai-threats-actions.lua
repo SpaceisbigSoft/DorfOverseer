@@ -432,7 +432,7 @@ function moon_cell(ids, release, dry_run, txt)
         end
     end
     if not dry_run then save_state(d) end
-    if #out.placed + #out.locked + #out.released + #out.waiting == 0 and not out.error then
+    if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) == 0 and not out.error then   -- (0.105.96, verifier) a squad left counts
         return {ok = false, rejected = true, nothing_to_do = true, error = 'every cell is as it should be'}
     end
     return out

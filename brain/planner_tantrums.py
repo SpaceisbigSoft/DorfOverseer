@@ -265,6 +265,13 @@ def _hospital_guard_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
                      "no unhappy, wounded or thirsty soldier, on no other order)")
         return
     h, q = want[0], free[0]
+    # (0.105.96, verifier) decided with this squad counted as a guard: the last
+    # able squad posted while wildlife can reach the dwarves was released the
+    # next cycle ("enemies can reach"), posted again, and so on
+    if _guard_wanted_elsewhere(s, cfg, used | {q["id"]}):
+        notes.append(f"{loose} citizen(s) in a tantrum: no hospital guard while enemies can reach the dwarves and "
+                     f"{q.get('name') or 'that squad'} is the only one left able to meet them")
+        return
     proposals.append(Proposal("hospital_guard", {"type": "hospital_guard", "squad_id": q["id"], "zone_id": h["zone_id"]},
                               f"{loose} citizen(s) in a tantrum: a calm squad ({q.get('members')} soldiers) stands "
                               f"guard in the hospital (zone {h['zone_id']}, x{h.get('x')} y{h.get('y')} z{h.get('z')}) "

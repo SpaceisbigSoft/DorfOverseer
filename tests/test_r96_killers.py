@@ -77,4 +77,18 @@ def _():
     assert PT._guard_wanted_elsewhere(s, PLANNER_CONFIG, {20}) is False
 
 
+
+@test("(verifier) no guard yet, one able squad and the raven: no guard posted (it would be released next cycle); "
+      "with a second able squad: the guard is posted")
+def _():
+    def unguarded(squads):
+        s = guard_fort([RAVEN], squads)
+        s["tantrums"]["guards"] = []
+        s["tantrums"]["squads"] = [{"id": q["id"], "members": q["members"], "calm": True, "ai_orders": 0,
+                                    "player_orders": 0} for q in squads]
+        return [p for p in plan(s, Memory())[0] if p.rule == "hospital_guard" and not p.action.get("release")]
+    assert not unguarded([sq(20, 8)]), unguarded([sq(20, 8)])
+    got = unguarded([sq(20, 8), sq(30)])
+    assert got and got[0].action["squad_id"] == 20, got
+
 finish()

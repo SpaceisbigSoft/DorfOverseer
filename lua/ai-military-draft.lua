@@ -97,6 +97,9 @@ end
 -- written as addToSquad writes the others (the place's occupant, the unit's
 -- squad and place, the figure's squad link, an equipment update).
 function seat_leader(u, sq)
+    -- (0.105.96, verifier) a werebeast-cursed leader is never seated again (moon_cell took them out)
+    local okw, cursed = pcall(function() return reqscript('ai-threats').were_cursed(u) end)
+    if okw and cursed then return false end
     local hf = df.historical_figure.find(u.hist_figure_id)
     if not hf or u.military.squad_id ~= -1 or #sq.positions == 0 or sq.positions[0].occupant ~= -1 then
         return false
