@@ -690,9 +690,7 @@ end
 
 function standing_orders_dead()
     local out = {}
-    local okU, U = pcall(reqscript, 'ai-util')
     local function read(name)
-        if okU and type(U) == 'table' and U.standing_order and not U.standing_order(name) then return end       -- (0.105.101) a misplaced global: unknown
         local ok, v = pcall(function() return df.global['standing_orders_' .. name] end)
         if not ok or v == nil then return end
         if type(v) == 'boolean' then out[name] = v and 1 or 0

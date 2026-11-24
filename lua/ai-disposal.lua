@@ -743,8 +743,6 @@ local function order_global(name)
         if short:sub(1, #p) == p then fam = true end
     end
     if not fam or not short:match('^[%w_]+$') then return nil end
-    -- (0.105.101) a global DFHack places away from the other orders is missing
-    if not U.standing_order(short) then return nil end
     return 'standing_orders_' .. short, short
 end
 

@@ -257,7 +257,6 @@ end
 -- --- butchery, tanning, cooking --------------------------------------------------------
 
 local function read_standing(name)
-    if not U.standing_order(name) then return nil end      -- (0.105.101) a misplaced global
     local ok, v = pcall(function() return df.global['standing_orders_' .. name] end)
     if not ok or v == nil then return nil end
     if type(v) == 'boolean' then return v and 1 or 0 end
