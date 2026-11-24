@@ -423,3 +423,11 @@ PART.update({
 PART.update({
     "m1_stale_confirm_days": 3,
 })
+
+# (0.105.101, live B 24 Nov 11:10 and 11:56) "gather refuse from outside" kept
+# off by any danger anywhere on the map: only one near a dump zone (or the
+# alarm) keeps the haulers in now, and the AI's own switch-off lasts half a day
+PART.update({
+    "disposal_outside_danger_tiles": 40,  # a danger this near a dump zone keeps the haulers in
+    "disposal_outside_rearm_ticks": 600,  # half a day clear after the AI's switch-off, then on again
+})

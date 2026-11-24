@@ -138,11 +138,17 @@ def _():
 
 
 
-@test("(merge) disposal_outside waits while a danger can reach the dwarves; the AI's own switch goes back off")
+@test("(merge, 0.105.101) disposal_outside waits while a danger near the dump can reach the dwarves (or the alarm); the AI's own switch goes back off, on again half a day after")
 def _():
     from planner_core import abs_tick
     s = st()
-    s["others_on_map"] = {"threats": [], "threats_that_can_reach_dwarves": 2}
+    # (0.105.101) one far from the dump (B's zone at x100 y158 z170) doesn't count; one near does
+    far = {"threats": [{"id": 1, "can_reach_dwarves": True, "pos": {"x": 10, "y": 10, "z": 170}}],
+           "threats_that_can_reach_dwarves": 1}
+    s["others_on_map"] = far
+    assert "disposal_outside" in disposal(s)[0]
+    s["others_on_map"] = {"threats": [{"id": 2, "can_reach_dwarves": True, "pos": {"x": 120, "y": 150, "z": 171}}],
+                          "threats_that_can_reach_dwarves": 1}
     got, notes = disposal(s)
     assert "disposal_outside" not in got and any("wait for the danger" in n for n in notes), (got.keys(), notes)
     # on by the AI, then a danger: off
@@ -160,10 +166,14 @@ def _():
     assert "disposal_outside_off" not in disposal(s2)[0]
     # the AI set it off itself: it may switch it on again when it is clear
     m.last_fired["disposal_outside_off"] = abs_tick(s) - 50
-    assert "disposal_outside" not in disposal(st(), m)[0]          # two days clear first
-    m.last_fired["disposal_outside"] = abs_tick(s) - 5 * 1200     # on 5 days ago, off 3 days ago
-    m.last_fired["disposal_outside_off"] = abs_tick(s) - 3 * 1200
+    assert "disposal_outside" not in disposal(st(), m)[0]          # half a day clear first (0.105.101)
+    m.last_fired["disposal_outside"] = abs_tick(s) - 2 * 1200     # on 2 days ago, off 700 ticks ago
+    m.last_fired["disposal_outside_off"] = abs_tick(s) - 700
     assert "disposal_outside" in disposal(st(), m)[0]
+    # the fort's alarm up: haulers in whatever the threats' places
+    s3 = st()
+    s3["civ_alert"] = True
+    assert "disposal_outside" not in disposal(s3)[0]
 
 @test("disposal_outside is a known rule: a hold class and its own cooldown")
 def _():

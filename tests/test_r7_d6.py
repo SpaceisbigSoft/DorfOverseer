@@ -57,9 +57,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # (0.105.99) re-pinned after five deliberate keys: tantrum_soldier_release, tantrum_soldier_cooldown_ticks
 # (E's soldier in a tantrum), law_killer_kills, law_swap_cooldown_ticks (B's officers),
 # disposal_outside_cooldown_ticks (B's dump): 24 Nov
-DUMP_6298B4A = "19d567144f2cd7e64c5e6dd79845981cb881d5aaa86656364885c1eda5748608"
-KEYS_6298B4A = "13a776bbe5bfbf9eedf0585b158bddc087a209aa07489a6e39c45b354569057c"
-COUNT_6298B4A = 1299
+# (0.105.101) re-pinned after two deliberate keys: disposal_outside_danger_tiles,
+# disposal_outside_rearm_ticks (B's dump order kept off by far dangers): 24 Nov
+DUMP_6298B4A = "17cafd3c4a1ff65c653b0b55d73f4ea295d81b66904c0b6517d6087ea4793ef6"
+KEYS_6298B4A = "681b561fdc31fd5f91fa796b7cc499fb15500b95a2d4e2dc959e28223455b603"
+COUNT_6298B4A = 1301
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

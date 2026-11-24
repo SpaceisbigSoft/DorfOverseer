@@ -241,6 +241,29 @@ def _unknown_reachable(fb: dict, reason: dict) -> tuple[int, str]:
     return int(n), " and ".join(parts) if parts else "within the fort's reach (not in the caverns)"
 
 
+def _outside_danger(s: dict, dis: dict, cfg: dict) -> bool:
+    """(0.105.101) Is a danger near the haulers' outside work? The fort's alarm
+    up, or a threat that can reach the dwarves (or flies) within
+    disposal_outside_danger_tiles across and 10 levels of a dump zone. A threat
+    without a position counts as near."""
+    if s.get("civ_alert") is True:
+        return True
+    tiles = cfg.get("disposal_outside_danger_tiles", 40)
+    zones = [z for z in _l(dis.get("dump_zones")) if isinstance(z, dict)
+             and all(isinstance(z.get(k), int) for k in ("x", "y", "z"))]
+    for t in _l(_d(s.get("others_on_map")).get("threats")):
+        if not isinstance(t, dict) or not (t.get("can_reach_dwarves") or t.get("flier")):
+            continue
+        pos = _d(t.get("pos"))
+        if not zones or not all(isinstance(pos.get(k), int) for k in ("x", "y", "z")):
+            return True
+        for z in zones:
+            if (max(abs(pos["x"] - z["x"]), abs(pos["y"] - z["y"])) <= tiles
+                    and abs(pos["z"] - z["z"]) <= 10):
+                return True
+    return False
+
+
 def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None, rules: dict | None = None) -> None:
     """(0.105.27) Forbidden items (lock symbols) lie about everywhere: the
     game's standing orders forbid used ammo and the dead's things, and what it
@@ -338,7 +361,13 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
     # (B, 24 Nov: agitated giant birds and a hoary marmot killed four outside
     # that hour), and set back off by the AI itself once the outside is clear
     # of marked items or a danger comes: the haulers don't stay out for good
-    reach = bool(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"))
+    # (0.105.101) a danger near the work, not anywhere on the map: B (24 Nov)
+    # nearly always has a wild creature that can reach the dwarves somewhere,
+    # so the order was switched off at 11:10 and 11:56 and waited two days to
+    # come back each time; 1 of ~90 marked items reached the dump overnight.
+    # Now: one that can reach the dwarves (or flies) within
+    # disposal_outside_danger_tiles of a dump zone, or the fort's alarm up
+    reach = _outside_danger(s, dis, cfg)
     t_on, t_off = last("disposal_outside"), last("disposal_outside_off")
     ai_on = t_on is not None and (t_off is None or t_off < t_on)
     if okey is not None and st_.get(okey) and ai_on and (reach or out_n == 0):
@@ -351,7 +380,8 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
             and any(isinstance(z, dict) for z in _l(dis.get("dump_zones")))):
         # (merge) after the AI's own switch-off, two days clear before on again: a danger
         # seen and gone each cycle doesn't flip the order every cycle
-        if t_on is None or (t_off is not None and t_off >= t_on and not 0 <= now - t_off < 2 * 1200):
+        if t_on is None or (t_off is not None and t_off >= t_on
+                            and not 0 <= now - t_off < cfg.get("disposal_outside_rearm_ticks", 600)):
             proposals.append(Proposal("disposal_outside", {"type": "set_standing_orders", "orders": {okey: 1}},
                                       f"{out_n} items marked for the garbage dump lie outside and the game's "
                                       "standing order to gather refuse from outside is off, so no hauler takes "
