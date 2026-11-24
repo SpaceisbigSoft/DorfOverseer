@@ -348,6 +348,10 @@ env.dfhack = {
            removeJob = function(j)
                table.insert(removed, j)
                for _, u in ipairs(units) do if u.job.current_job == j then u.job.current_job = nil end end
+               return true end,
+           -- (0.105.93) a busy one's job given up: the worker taken off it
+           removeWorker = function(j, cd)
+               for _, u in ipairs(units) do if u.job.current_job == j then u.job.current_job = nil end end
                return true end},
     persistent = {getSiteData = function(k, default) return site_data[k] or default end,
                   saveSiteData = function(k, v) site_data[k] = v; table.insert(saved, k) end},
@@ -386,7 +390,7 @@ def health(units, beds=((1, 1, 0), (2, 1, 0), (3, 1, 0)), **kw):
 
 SICK = [{"id": 1, "infected": True, "load": 120, "x": 50, "diagnose": True},
         {"id": 2, "infected": True, "load": 400, "x": 50},                    # bleeding
-        {"id": 3, "infected": True, "load": 900, "x": 50, "busy": True},      # at work: not taken off it
+        {"id": 3, "infected": True, "load": 900, "x": 50, "busy": True},      # at work: (0.105.93) a heavy infection, taken off it
         {"id": 4, "infected": True, "load": 200, "x": 50, "asked": True},     # DF asks a treatment already
         {"id": 5, "infected": True, "load": 250, "x": 5},                     # in the hospital already
         {"id": 6, "infected": True, "load": 300, "x": 50, "squad": 9},        # a soldier
@@ -402,7 +406,7 @@ def _():
     s = env.survey()
     assert (s.infected, s.untreated, s.bleeding, s.in_hospital) == (8, 7, 4, 1), \
         (s.infected, s.untreated, s.bleeding, s.in_hospital)
-    assert s.idle_untreated == 2, s.idle_untreated                     # 1 and 2: idle, grown, no soldier, no mood
+    assert s.idle_untreated == 3, s.idle_untreated                     # 1 and 2 idle, (0.105.93) 3 busy but heavy
     assert s.worst[1].id == 3 and s.worst[1].load == 900 and len(list(s.worst.values())) == 5
     assert s.beds == 3 and s.free_beds == 2, (s.beds, s.free_beds)      # dwarf 5 lies in one; the unfinished isn't one
     assert s.cleaners == 6 and s.diagnosers == 1, (s.cleaners, s.diagnosers)   # soldiers and children not counted
@@ -439,19 +443,21 @@ def _():
     units_ = SICK + [{"id": 10, "x": 1, "y": 1}]                         # someone lies in bed (1,1)
     env, units, made, _, _ = health(units_, beds=BEDS4)
     d = env.rest_infected(3, True, None, 3, 2)
-    assert d.ok and d.dry_run and [x.unit_id for x in d.sent.values()] == [2, 1] and len(made) == 0, dict(d)
+    # (0.105.93) 3 (load 900, at work) first: a heavy infection is taken off its job
+    assert d.ok and d.dry_run and [x.unit_id for x in d.sent.values()] == [3, 2, 1] and len(made) == 0, dict(d)
     r = env.rest_infected(3, False, None, 3, 2)
-    assert r.ok and [x.unit_id for x in r.sent.values()] == [2, 1], dict(r)
-    assert len(made) == 2 and made[1].job_type == 7 and made[1].flags.special
+    assert r.ok and [x.unit_id for x in r.sent.values()] == [3, 2, 1], dict(r)
+    assert len(made) == 3 and made[1].job_type == 7 and made[1].flags.special
     assert (made[1].pos.x, made[1].pos.y) != (made[2].pos.x, made[2].pos.y)
     assert (made[1].pos.x, made[1].pos.y) != (1, 1) and (made[2].pos.x, made[2].pos.y) != (1, 1)
-    assert made[1].general_refs[0].unit_id == 2 and units[2].job.current_job.job_type == 7
+    assert made[1].general_refs[0].unit_id == 3 and units[3].job.current_job.job_type == 7
+    assert made[2].general_refs[0].unit_id == 2 and units[2].job.current_job.job_type == 7
     st = env.site_data["ai-overseer/infected-rest"]
     assert st.sent["2"].tick == 50 * 403200 + 1000 and st.sent["1"] is not None
     # a reload of the script forgets nobody (the save keeps them)
     again = env.reload()
     s = again.survey()
-    assert s.sleeping == 2 and s.failed == 0, (s.sleeping, s.failed)
+    assert s.sleeping == 3 and s.failed == 0, (s.sleeping, s.failed)
     r = again.rest_infected(3, False, None, 3, 2)
     assert not r.ok and r.rejected and "no idle infected" in r.error, dict(r)
 

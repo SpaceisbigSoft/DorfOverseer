@@ -645,13 +645,14 @@ def _():
     assert not by_rule(plan(guard_fort(loose=0), Memory())[0], "hospital_guard")
 
 
-@test("hospital guard: kept a day after the last tantrum loose; then off; off too after a week or with thirsty soldiers")
+@test("hospital guard: kept 3 days (0.105.93; was one) after the last tantrum loose; then off; off too after a week or "
+      "with thirsty soldiers")
 def _():
     s = guard_fort(loose=0, guards=[{"squad_id": 20, "zone_id": 50, "since": None}])
     m = Memory()
-    m.tantrum_book = {"loose_last": abs_tick(s) - 600}
+    m.tantrum_book = {"loose_last": abs_tick(s) - 1300}         # (0.105.93) B: ~1300 ticks a cycle, kept now
     assert not by_rule(plan(copy.deepcopy(s), m)[0], "hospital_guard")
-    m.tantrum_book = {"loose_last": abs_tick(s) - 1300}
+    m.tantrum_book = {"loose_last": abs_tick(s) - 3700}
     p = by_rule(plan(copy.deepcopy(s), m)[0], "hospital_guard")
     assert p and p[0].action == {"type": "hospital_guard", "squad_id": 20, "release": True}, p
     assert "no tantrum loose" in p[0].reason
