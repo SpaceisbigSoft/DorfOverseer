@@ -143,6 +143,25 @@ def mind_break_why(s: dict, memory, cfg: dict) -> str | None:
     return None
 
 
+def _guard_wanted_elsewhere(s: dict, cfg: dict, guards: set) -> bool:
+    """(0.105.96) Whether the hospital guard must go back to the military:
+    invaders, a great danger, or enemies that can reach the dwarves with no
+    other squad able to fight. B (23 Nov 20:01): a giant raven (wildlife)
+    took both hospital guards away; the free squads went at it anyway, and at
+    20:05 three patients were strangled in the unguarded second hospital
+    (zone 1342). A wild animal or two is the other squads' work."""
+    o = _d(s.get("others_on_map"))
+    rows = [t for t in _l(o.get("threats")) if isinstance(t, dict)]
+    if any(t.get("invader") or t.get("great_danger") for t in rows):
+        return True
+    if not o.get("threats_that_can_reach_dwarves"):
+        return False
+    from planner_core import can_fight
+    others = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict)
+              and q.get("id") not in guards and can_fight(q, cfg)]
+    return not others
+
+
 def _enemies_about(s: dict) -> bool:
     o = _d(s.get("others_on_map"))
     return bool(o.get("threats_that_can_reach_dwarves")) or any(
@@ -214,7 +233,7 @@ def _hospital_guard_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
         # once (it was refused while enemies were about but never lifted, so
         # the fort's largest calm squad could stand in the hospital through a
         # siege)
-        enemies = _enemies_about(s)
+        enemies = _guard_wanted_elsewhere(s, cfg, {g2["squad_id"] for g2 in guards})
         why = ("the hospital guard is switched off" if not cfg["hospital_guard_on"]
                else "enemies can reach the dwarves" if enemies
                else f"no tantrum loose for {cfg['hospital_guard_hold_ticks'] // TICKS_PER_DAY} day(s)" if quiet
@@ -228,7 +247,7 @@ def _hospital_guard_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
                                       f"{why}: squad {g['squad_id']} leaves its guard at the hospital",
                                       0 if enemies else 2))
             return
-    if not cfg["hospital_guard_on"] or not loose or _enemies_about(s):
+    if not cfg["hospital_guard_on"] or not loose or _guard_wanted_elsewhere(s, cfg, {g["squad_id"] for g in guards}):
         return
     guarded = {g.get("zone_id") for g in guards}
     used = {g["squad_id"] for g in guards}
