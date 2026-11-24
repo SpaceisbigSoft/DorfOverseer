@@ -398,7 +398,7 @@ function rest_infected(max, dry_run, txt, cap, keep_free)
     local picks = pick_patients(cands, #cands)
     if #picks == 0 then
         if not dry_run then save_state(d) end
-        return {ok = false, rejected = true, error = 'no idle (or badly infected) dwarf outside the hospital waits for care'}
+        return {ok = false, rejected = true, error = 'no idle infected dwarf (nor a badly infected one at work) outside the hospital waits for care'}
     end
     local sent, used = {}, {}
     for _, c in ipairs(picks) do
