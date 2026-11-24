@@ -39,7 +39,20 @@
 -- cleared when the map or world unloads. The brain's fight_watch rule arms it
 -- whenever the `fights` section says it is off.
 --
---   act(a)        the fight_watch action {on, ticks?, separate_ticks?, dry_run?}
+-- (item3, the player 24 Nov 16:50) A tantrum that attacks a citizen is ended
+-- at once: B's and E's tantrum-throwers strangled citizens with no Conflict
+-- activity DF opened for the watcher to see. Each pass also looks at the
+-- living citizens in a Tantrum or Enraged soldier mood; one whose Attack
+-- action targets a living citizen (or whose opponent is one, or who is in a
+-- Conflict with one) has its soldier_mood_countdown set to 1 (DF ends the
+-- mood itself next tick; soldier_mood is never written). Counted
+-- (tantrums_ended), logged (kind 'tantrum_ended', once a unit a
+-- TANTRUM_LOG_TICKS). The Rules switch end_tantrums (on by default) turns
+-- the ending off (then only logged). A calm citizen's Attack on a citizen
+-- is only logged (kind 'attack', once a pair a ATTACK_LOG_TICKS), sparring
+-- (a Horseplay/Training conflict) left out.
+--
+--   act(a)        the fight_watch action {on, ticks?, separate_ticks?, end_tantrums?, dry_run?}
 --   report()      the `fights` section
 --   pass(now)     one pass (the timer's; tests call it)
 --@ module = true
@@ -53,6 +66,9 @@ LOG_KEEP = 60                -- log entries kept in memory
 REPORT_LOG = 10              -- ...of which the section shows the last
 LOG_FILE_KEEP = 500          -- lines kept in fights.jsonl
 LOG_FILE_SLACK = 100         -- ...rewritten once it holds this many more
+TANTRUM_LOG_TICKS = 100      -- (item3) a tantrum ended is logged once a unit in this many ticks
+ATTACK_LOG_TICKS = 600       -- (item3) a calm citizen's attack on a citizen: once a pair in this many
+SPARRING_MAX = 2             -- (item3) a conflict no higher than Training is sparring
 STATE_KEY = 'ai_overseer_fight_watch'
 YEAR = 403200
 
@@ -64,9 +80,10 @@ local function game_tick()   -- (U.abs_tick's reading, here so the timer needs n
 end
 
 local function fresh_state()
-    return {on = false, ticks = FIGHT_WATCH_TICKS, separate_ticks = FIGHT_SEPARATE_TICKS,
-            counts = {seen = 0, capped = 0, separated = 0, reengaged = 0, passes = 0, errors = 0, died = 0},
-            seen = {}, recent = {}, log = {}, file_lines = nil}
+    return {on = false, ticks = FIGHT_WATCH_TICKS, separate_ticks = FIGHT_SEPARATE_TICKS, end_tantrums = true,
+            counts = {seen = 0, capped = 0, separated = 0, reengaged = 0, passes = 0, errors = 0, died = 0,
+                      tantrums_ended = 0, tantrum_attacks = 0, attacks = 0},
+            seen = {}, recent = {}, log = {}, file_lines = nil, tantrum_logged = {}, attack_logged = {}}
 end
 
 -- the one state table, global so a reload of this file finds it
@@ -362,6 +379,187 @@ local function halted()
     return ok and h == true
 end
 
+-- --- (item3) tantrums that attack citizens -------------------------------------
+
+local function bump(S, k, n)
+    S.counts[k] = (S.counts[k] or 0) + (n or 1)
+end
+
+-- the unit's Attack actions: {{target = id, attack = data.attack}, ...}
+local function attacks_of(u)
+    local out = {}
+    pcall(function()
+        local acts = u.actions
+        if acts == nil or #acts == 0 then return end
+        local AT = df.unit_action_type.Attack
+        for _, a in ipairs(acts) do
+            if a.type == AT then
+                local at = a.data.attack
+                local tid = at.target_unit_id
+                if type(tid) == 'number' and tid >= 0 then table.insert(out, {target = tid, attack = at}) end
+            end
+        end
+    end)
+    return out
+end
+
+local function living_citizen(id)
+    if type(id) ~= 'number' or id < 0 then return nil end
+    local t = find_unit(id)
+    if t and unit_kind(t) == 'citizen' then return t end
+    return nil
+end
+
+-- the conflicts by unit: {[id] = {{ev, max}, ...}} (from the pass's list)
+local function conflicts_by_unit(list)
+    local by = {}
+    for _, c in ipairs(list) do
+        local _, max = levels_of(c.ev)
+        for _, side in ipairs(vec_list(field(c.ev, 'sides'))) do
+            for _, id in ipairs(vec_list(field(side, 'unit_ids'))) do
+                by[id] = by[id] or {}
+                table.insert(by[id], {ev = c.ev, act = c.act, max = max})
+            end
+        end
+    end
+    return by
+end
+
+-- a living citizen on another side of one of the unit's conflicts: unit, activity id
+local function conflict_citizen(by, id)
+    for _, c in ipairs(by[id] or {}) do
+        for _, side in ipairs(vec_list(field(c.ev, 'sides'))) do
+            local ids = vec_list(field(side, 'unit_ids'))
+            local mine = false
+            for _, x in ipairs(ids) do if x == id then mine = true end end
+            if not mine then
+                for _, x in ipairs(ids) do
+                    local t = living_citizen(x)
+                    if t then return t, c.act end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function sparring(by, id)
+    for _, c in ipairs(by[id] or {}) do
+        if c.max ~= nil and c.max >= 1 and c.max <= SPARRING_MAX then return true end
+    end
+    return false
+end
+
+-- a few plain fields of the attack's wrestle info (nil when unreadable)
+local function wrestle_of(at)
+    local ok, out = pcall(function()
+        local wi = at.wrestle_info
+        if wi == nil then return nil end
+        local o, n = {}, 0
+        for k, v in pairs(wi) do
+            if (type(v) == 'number' or type(v) == 'boolean') and n < 8 then
+                o[tostring(k)] = v
+                n = n + 1
+            end
+        end
+        return n > 0 and o or nil
+    end)
+    return ok and out or nil
+end
+
+local function job_of(u)
+    local ok, j = pcall(function()
+        local cj = u.job.current_job
+        if cj == nil then return nil end
+        return df.job_type[cj.job_type] or cj.job_type
+    end)
+    return ok and j or nil
+end
+
+local function attack_row(at)
+    if at == nil then return nil end
+    return {wrestle = wrestle_of(at), body_part = field(at, 'attack_body_part_id'),
+            timer1 = field(at, 'timer1'), timer2 = field(at, 'timer2')}
+end
+
+-- one look at the living citizens: a tantrum that attacks a citizen ended,
+-- a calm citizen's attack on a citizen logged. Returns the tantrums ended.
+function scan_units(S, now, dry, list)
+    local units = {}
+    local ok = pcall(function() units = df.global.world.units.active end)
+    if not ok or units == nil then return 0 end
+    S.tantrum_logged = S.tantrum_logged or {}
+    S.attack_logged = S.attack_logged or {}
+    local on = S.end_tantrums ~= false
+    local by = nil
+    local ended = 0
+    for _, u in ipairs(units) do
+        local tantrum = in_tantrum(u)
+        local hits = attacks_of(u)
+        if (tantrum or #hits > 0) and unit_kind(u) == 'citizen' then
+            by = by or conflicts_by_unit(list)
+            if tantrum then
+                local target, how, at, act_id = nil, nil, nil, nil
+                for _, h in ipairs(hits) do
+                    target = living_citizen(h.target)
+                    if target then how, at = 'attack', h.attack; break end
+                end
+                if not target then
+                    target = living_citizen(field(field(u, 'opponent'), 'unit_id'))
+                    if target then how = 'opponent' end
+                end
+                if not target then
+                    target, act_id = conflict_citizen(by, u.id)
+                    if target then how = 'conflict' end
+                end
+                if target then
+                    local before = field(u.counters, 'soldier_mood_countdown')
+                    local done = false
+                    if on and not dry and type(before) == 'number' and before > 1 then
+                        done = pcall(function() u.counters.soldier_mood_countdown = 1 end)
+                        if done then
+                            ended = ended + 1
+                            bump(S, 'tantrums_ended')
+                        end
+                    end
+                    local last = S.tantrum_logged[u.id]
+                    if not (last and now - last >= 0 and now - last < TANTRUM_LOG_TICKS) then
+                        S.tantrum_logged[u.id] = now
+                        bump(S, 'tantrum_attacks')
+                        local mood = nil
+                        pcall(function() mood = df.soldier_mood_type[u.counters.soldier_mood] end)
+                        log(S, {kind = 'tantrum_ended', tick = now, id = u.id, name = unit_name(u),
+                                mood = mood, target = target.id, target_name = unit_name(target), how = how,
+                                countdown = before, ended = done, off = (not on) or nil, dry = dry or nil,
+                                suffocation = field(field(target, 'counters'), 'suffocation'),
+                                activity_id = act_id, opponent_timer = field(field(u, 'opponent'), 'timer'),
+                                attack = attack_row(at)})
+                    end
+                end
+            else
+                for _, h in ipairs(hits) do
+                    local target = living_citizen(h.target)
+                    if target and not sparring(by, u.id) then
+                        local key = tostring(u.id) .. '>' .. tostring(target.id)
+                        local last = S.attack_logged[key]
+                        if not (last and now - last >= 0 and now - last < ATTACK_LOG_TICKS) then
+                            S.attack_logged[key] = now
+                            bump(S, 'attacks')
+                            log(S, {kind = 'attack', tick = now, id = u.id, name = unit_name(u), target = target.id,
+                                    target_name = unit_name(target), job = job_of(u),
+                                    suffocation = field(field(target, 'counters'), 'suffocation'),
+                                    attack = attack_row(h.attack)})
+                        end
+                    end
+                end
+            end
+        end
+    end
+    for id, t in pairs(S.tantrum_logged) do if now - t >= TANTRUM_LOG_TICKS or now < t then S.tantrum_logged[id] = nil end end
+    for k, t in pairs(S.attack_logged) do if now - t >= ATTACK_LOG_TICKS or now < t then S.attack_logged[k] = nil end end
+    return ended
+end
+
 -- --- one pass ---------------------------------------------------------------
 
 -- opts: {dry = true: read and log, change nothing}. Returns what it did.
@@ -370,9 +568,17 @@ function pass(now, opts)
     opts = opts or {}
     now = now or game_tick()
     local dry = opts.dry == true or S.dry == true
-    local done = {conflicts = 0, ours = 0, capped = 0, separated = 0}
+    local done = {conflicts = 0, ours = 0, capped = 0, separated = 0, tantrums_ended = 0}
     local list = conflicts()
     S.counts.passes = S.counts.passes + 1
+    -- (item3) the tantrums that attack citizens, before the conflicts (and when there are none)
+    local okt, n = pcall(scan_units, S, now, dry, list)
+    if okt then
+        done.tantrums_ended = n or 0
+    else
+        S.error = 'tantrums: ' .. tostring(n):sub(1, 160)
+        S.counts.errors = S.counts.errors + 1
+    end
     if #list == 0 then
         S.seen = {}
         return done
@@ -560,7 +766,7 @@ end
 
 local function brief(S)
     return {ok = true, armed = alive(), on = S.on or false, ticks = S.ticks, separate_ticks = S.separate_ticks,
-            counts = S.counts}
+            end_tantrums = S.end_tantrums ~= false, counts = S.counts}
 end
 
 -- the fight_watch action
@@ -576,6 +782,9 @@ function act(a)
         sep = whole(a.separate_ticks, 0, 12000)
         if not sep then return {ok = false, rejected = true, error = 'fight_watch: separate_ticks is 0-12000'} end
     end
+    if a.end_tantrums ~= nil and type(a.end_tantrums) ~= 'boolean' then
+        return {ok = false, rejected = true, error = 'fight_watch: end_tantrums is true or false'}
+    end
     local S = state()
     if a.dry_run == true then
         local r = brief(S)
@@ -585,6 +794,7 @@ function act(a)
     if a.ticks ~= nil or S.ticks == nil then S.ticks = ticks end
     if a.separate_ticks ~= nil or S.separate_ticks == nil then S.separate_ticks = sep end
     if a.on then
+        S.end_tantrums = a.end_tantrums ~= false       -- (item3) on unless the action says false
         local was = alive()
         local started = arm(S)
         local r = brief(S)
@@ -602,7 +812,7 @@ end
 function report()
     local S = state()
     local out = {armed = alive(), on = S.on or false, ticks = S.ticks, separate_ticks = S.separate_ticks,
-                 counts = S.counts, error = S.error, log = {}, now = {}}
+                 end_tantrums = S.end_tantrums ~= false, counts = S.counts, error = S.error, log = {}, now = {}}
     for i = math.max(1, #S.log - REPORT_LOG + 1), #S.log do table.insert(out.log, S.log[i]) end
     local now = game_tick()
     for _, c in ipairs(conflicts()) do

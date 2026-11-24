@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.106'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.107'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -149,7 +149,7 @@ ACTIONS = {
     unstick_uniforms = act_unstick_uniforms,
     break_fights = act_break_fights,
     -- (item1) the in-game fight watcher: a fight among citizens capped at a brawl and
-    -- broken up every few ticks (lua/ai-fights.lua); {on, ticks?, separate_ticks?}
+    -- broken up every few ticks (lua/ai-fights.lua); {on, ticks?, separate_ticks?, end_tantrums?}
     fight_watch = function(a) return reqscript('ai-fights').act(a, a.dry_run == true) end,   -- (the dry run read from a too)
     free_stray_gear = act_free_stray_gear,   -- (0.104.58)
     assign_weapons = act_assign_weapons,     -- (0.104.60)

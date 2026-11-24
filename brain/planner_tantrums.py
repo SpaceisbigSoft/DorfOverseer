@@ -194,23 +194,32 @@ def _break_fights_report_rule(s: dict, memory, cfg: dict, proposals: list) -> No
 # The watcher caps a fight among citizens at Brawl and breaks it up every 10
 # ticks inside the game; it lives while the game runs, so a reload or a fresh
 # start loses it: armed again on every cycle the `fights` section says it is off.
-FIGHT_COUNTS = ("capped", "separated", "reengaged", "died")
+FIGHT_COUNTS = ("capped", "separated", "reengaged", "died", "tantrums_ended")   # (item3) the last
 
 
 def _fight_watch_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     """The fight watcher on whenever it is off (the Rules switch `fight_watch`,
     on by default); switched off, it is disarmed while the section says it is
-    on. Nothing without the section (an older bridge)."""
+    on. Nothing without the section (an older bridge). (item3) The action
+    carries the Rules switch `end_tantrums` (on by default: a tantrum that
+    attacks a citizen is ended in the game), and is sent again while armed
+    when the section's end_tantrums differs from the switch."""
     sec = _d(s.get("fights"))
     if not sec or "armed" not in sec:
         return
     armed = sec.get("armed") is True
-    if player_rules(s).get("fight_watch", True):
+    rules = player_rules(s)
+    if rules.get("fight_watch", True):
+        end = rules.get("end_tantrums", True) is not False
         if not armed:
-            proposals.append(Proposal("fight_watch", {"type": "fight_watch", "on": True},
+            proposals.append(Proposal("fight_watch", {"type": "fight_watch", "on": True, "end_tantrums": end},
                                       "the fight watcher is off (a reload or a fresh start): arm it again, so a "
                                       "fight among the fort's own is capped at a brawl and broken up within "
                                       "ticks, not a game day later", 0))
+        elif isinstance(sec.get("end_tantrums"), bool) and sec.get("end_tantrums") != end:
+            proposals.append(Proposal("fight_watch", {"type": "fight_watch", "on": True, "end_tantrums": end},
+                                      "the Rules switch 'End a tantrum that attacks' is " + ("on" if end else "off")
+                                      + ": the fight watcher told so", 0))
     elif armed or sec.get("on") is True:
         proposals.append(Proposal("fight_watch", {"type": "fight_watch", "on": False},
                                   "the fight watcher is switched off in the Rules: disarm it", 0))
@@ -236,12 +245,14 @@ def fight_journal(s: dict, memory) -> list[dict]:
     book = dict(book)
     book["fights"] = cur
     memory.tantrum_book = book
-    if grew["capped"] <= 0 and grew["separated"] <= 0:
+    if grew["capped"] <= 0 and grew["separated"] <= 0 and grew["tantrums_ended"] <= 0:
         return []
     log = [e for e in _l(sec.get("log")) if isinstance(e, dict)][-3:]
     text = (f"fight watcher: {grew['capped']} level(s) capped at a brawl, {grew['separated']} citizen(s) taken "
             f"out of a fight" + (f", {grew['reengaged']} re-engaged" if grew["reengaged"] > 0 else "")
-            + (f", {grew['died']} fight(s) with a death" if grew["died"] > 0 else ""))
+            + (f", {grew['died']} fight(s) with a death" if grew["died"] > 0 else "")
+            + (f", {grew['tantrums_ended']} tantrum(s) ended for attacking a citizen"
+               if grew["tantrums_ended"] > 0 else ""))
     return [{**grew, "totals": cur, "text": text,
              "last": [{k: e.get(k) for k in ("tick", "kind", "activity_id", "max", "units", "levels",
                                              "levels_after", "separated", "timers", "age")} for e in log]}]

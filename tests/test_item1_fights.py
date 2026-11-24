@@ -80,7 +80,16 @@ env.ipairs = function(t)
 end
 function W.unit(t)
     t.civ_id = t.civ_id or 7
-    t.counters = t.counters or {soldier_mood = t.tantrum and 2 or -1}
+    t.counters = t.counters or {soldier_mood = t.tantrum and 2 or -1, soldier_mood_countdown = t.countdown or -1,
+                                suffocation = t.suffocation or 0}
+    if t.attacks then   -- (item3) Attack actions on these target ids
+        local acts = {}
+        for _, tid in real(t.attacks) do
+            table.insert(acts, {id = #acts + 1, type = 1, data = {attack = {target_unit_id = tid, attack_body_part_id = 3,
+                                timer1 = 5, timer2 = 6, wrestle_info = {wrestle_type = 1, flags = 0}}}})
+        end
+        t.actions = vec(acts)
+    end
     t.mood = t.mood or -1
     t.race = t.race or 1
     t.enemy = t.enemy or {normal_race = -1}
@@ -120,10 +129,19 @@ env.df = {
                       if W.broken then error('activities unreadable') end
                       return {all = W.all}
                   end
+                  if k == 'units' then   -- (item3) the active units, by id
+                      local ids, l = {}, {}
+                      for id in pairs(W.units) do table.insert(ids, id) end
+                      table.sort(ids)
+                      for _, id in real(ids) do table.insert(l, W.units[id]) end
+                      return {active = vec(l)}
+                  end
               end})},
     activity_entry_type = {Conflict = CONFLICT_T},
     activity_event_type = {Conflict = CONFLICT_E},
-    soldier_mood_type = {[-1] = 'None', [1] = 'Enraged', [2] = 'Tantrum'},
+    unit_action_type = {Attack = 1},
+    job_type = {[5] = 'Strangle'},
+    soldier_mood_type = {[-1] = 'None', [0] = 'MartialTrance', [1] = 'Enraged', [2] = 'Tantrum', [3] = 'Depressed'},
     mood_type = {[7] = 'Berserk'},
     unit = {find = function(id) return W.units[id] end},
 }
@@ -392,6 +410,101 @@ return lines[#lines]
 """)
 
 
+# --- (item3) a tantrum that attacks a citizen ended ---------------------------
+
+case("a tantrum citizen attacking a citizen: countdown to 1, counted, logged once a 100 ticks", r"""
+local a = W.unit{id = 1, name = 'Ducim', tantrum = true, countdown = 1599, attacks = {2}}
+local b = W.unit{id = 2, name = 'Doctor', suffocation = 40}
+E.pass(5000)
+assert(a.counters.soldier_mood_countdown == 1, 'ended')
+assert(a.counters.soldier_mood == 2, 'the mood itself never written')
+local S = E.state()
+assert(S.counts.tantrums_ended == 1 and S.counts.tantrum_attacks == 1, 'counted')
+local e = S.log[#S.log]
+assert(e.kind == 'tantrum_ended' and e.id == 1 and e.name == 'Ducim' and e.target == 2 and e.target_name == 'Doctor', 'entry')
+assert(e.how == 'attack' and e.countdown == 1599 and e.ended == true and e.suffocation == 40 and e.tick == 5000, 'details')
+assert(e.mood == 'Tantrum' and e.attack.body_part == 3 and e.attack.wrestle.wrestle_type == 1, 'the attack')
+-- DF starts it again: ended every time, logged once a TANTRUM_LOG_TICKS
+a.counters.soldier_mood_countdown = 800
+E.pass(5050)
+assert(a.counters.soldier_mood_countdown == 1 and S.counts.tantrums_ended == 2, 'ended again')
+assert(#S.log == 1, 'not logged again so soon')
+a.counters.soldier_mood_countdown = 700
+E.pass(5101)
+assert(S.counts.tantrums_ended == 3 and #S.log == 2, 'logged again past the window')
+-- the section shows it
+local r = E.report()
+assert(r.end_tantrums == true and r.counts.tantrums_ended == 3, 'the section')
+""")
+
+case("a tantrum citizen attacking an invader: untouched; Enraged by opponent or conflict: ended", r"""
+local a = W.unit{id = 1, tantrum = true, countdown = 900, attacks = {3}}
+W.unit{id = 3, invader = true, citizen = false}
+E.pass(5000)
+assert(a.counters.soldier_mood_countdown == 900 and E.state().counts.tantrums_ended == 0 and #E.state().log == 0, 'untouched')
+-- an Enraged citizen whose opponent is a citizen
+local c = W.unit{id = 4, countdown = 500, counters = {soldier_mood = 1, soldier_mood_countdown = 500}}
+c.opponent = {timer = 10, unit_id = 5, unit_pos = {}}
+W.unit{id = 5}
+-- a tantrum citizen in a Conflict with a citizen (no Attack action read)
+local d = W.unit{id = 6, tantrum = true, countdown = 300}
+W.unit{id = 7}
+W.conflict(600, {{units = {6}, level = 3}, {units = {7}, level = 3}})
+E.pass(5010)
+assert(c.counters.soldier_mood_countdown == 1 and d.counters.soldier_mood_countdown == 1, 'both ended')
+assert(a.counters.soldier_mood_countdown == 900, 'still untouched')
+local how = {}
+for _, e in ipairs(E.state().log) do if e.kind == 'tantrum_ended' then how[e.id] = e.how end end
+assert(how[4] == 'opponent' and how[6] == 'conflict' and how[1] == nil, 'how found')
+-- a countdown already at 1: not written, not counted
+local n = E.state().counts.tantrums_ended
+E.pass(5020)
+assert(E.state().counts.tantrums_ended == n, 'already ending')
+""")
+
+case("a calm citizen attacking a citizen: logged 'attack' once a pair, nothing changed; sparring left out", r"""
+local a = W.unit{id = 1, name = 'Calm', countdown = 50, attacks = {2}}
+a.job = {current_job = {job_type = 5}}
+W.unit{id = 2, suffocation = 7}
+E.pass(5000); E.pass(5100)
+local S = E.state()
+assert(#S.log == 1 and S.counts.attacks == 1 and S.counts.tantrums_ended == 0, 'once')
+local e = S.log[1]
+assert(e.kind == 'attack' and e.id == 1 and e.target == 2 and e.job == 'Strangle' and e.suffocation == 7, 'entry')
+assert(a.counters.soldier_mood_countdown == 50, 'nothing changed')
+E.pass(5000 + E.ATTACK_LOG_TICKS)
+assert(S.counts.attacks == 2, 'again past the window')
+-- sparring: in a Training conflict
+E.reset()
+W.unit{id = 8, attacks = {9}}; W.unit{id = 9}
+W.conflict(610, {{units = {8}, level = 2}, {units = {9}, level = 2}})
+E.pass(6000)
+for _, x in ipairs(E.state().log) do assert(not (x.kind == 'attack' and x.id == 8), 'sparring not logged') end
+assert(E.state().log[1].id == 1, 'the other pair still logged')
+""")
+
+case("end_tantrums = false: logged, not ended; the action stores it, the section shows it", r"""
+assert(E.act({on = true, end_tantrums = 'no'}).rejected, 'a bool only')
+local r = E.act({on = true, end_tantrums = false})
+assert(r.ok and r.end_tantrums == false and E.state().end_tantrums == false)
+local a = W.unit{id = 1, tantrum = true, countdown = 1599, attacks = {2}}
+W.unit{id = 2}
+E.pass(5000)
+assert(a.counters.soldier_mood_countdown == 1599 and E.state().counts.tantrums_ended == 0, 'not ended')
+local e = E.state().log[#E.state().log]
+assert(e.kind == 'tantrum_ended' and e.ended == false and e.off == true, 'logged')
+assert(E.report().end_tantrums == false, 'the section')
+-- absent: on again
+assert(E.act({on = true}).end_tantrums == true and E.report().end_tantrums == true)
+E.pass(5200)
+assert(a.counters.soldier_mood_countdown == 1, 'ended now')
+-- a dry pass changes nothing
+a.counters.soldier_mood_countdown = 400
+E.pass(5400, {dry = true})
+assert(a.counters.soldier_mood_countdown == 400)
+""")
+
+
 @test("lua: the log line is valid JSON (encode)")
 def _():
     need_lua()
@@ -461,7 +574,7 @@ OFF = {"armed": False, "on": False, "ticks": 10, "counts": {"seen": 0, "capped":
 @test("rule: armed again whenever the section says it is off; not while armed; nothing without the section")
 def _():
     p = by_rule(plan(fort(OFF), Memory())[0], "fight_watch")
-    assert len(p) == 1 and p[0].action == {"type": "fight_watch", "on": True} and p[0].priority == 0, p
+    assert len(p) == 1 and p[0].action == {"type": "fight_watch", "on": True, "end_tantrums": True} and p[0].priority == 0, p
     assert not by_rule(plan(fort(ARMED), Memory())[0], "fight_watch")
     assert not by_rule(plan(fort(), Memory())[0], "fight_watch")               # an older bridge
     assert not by_rule(plan(fort({}), Memory())[0], "fight_watch")             # the digest's default
@@ -516,6 +629,44 @@ def _():
 def _():
     cyc = (ROOT / "brain" / "overseer_cycle.py").read_text(encoding="utf-8")
     assert "for e in fight_journal(state, memory):" in cyc and '"kind": "fight_watch"' in cyc
+
+
+# --- (item3) the end_tantrums switch ---------------------------------------------
+
+@test("settings: end_tantrums on by default, sent to the AI, on the Rules tab beside the fight watcher")
+def _():
+    st = src("ai-overseer-settings.lua")
+    assert "        end_tantrums = true," in st and "'end_tantrums'," in st and "end_tantrums = s.end_tantrums," in st
+    gui = src("gui/ai-overseer-rules.lua")
+    assert "view_id = 'end_tantrums'" in gui and "frame = {t = t + 13, l = 78, w = 40}" in gui
+    assert "self.subviews.end_tantrums:setOption(s.end_tantrums ~= false, false)" in gui
+    label = re.search(r"view_id = 'end_tantrums',.*?label = '([^']*)',\s*label_width = (\d+)", gui, re.S)
+    assert label and len(label.group(1)) < int(label.group(2)) <= 40 - 4, label
+    assert player_rules({"settings": {}})["end_tantrums"] is True
+    assert player_rules({})["end_tantrums"] is True
+    assert player_rules({"settings": {"end_tantrums": False}})["end_tantrums"] is False
+
+
+@test("rule: end_tantrums from the Rules sent when arming, and again while armed when the section differs")
+def _():
+    p = by_rule(plan(fort(OFF, end_tantrums=False), Memory())[0], "fight_watch")
+    assert len(p) == 1 and p[0].action == {"type": "fight_watch", "on": True, "end_tantrums": False}, p
+    p = by_rule(plan(fort(dict(ARMED, end_tantrums=True), end_tantrums=False), Memory())[0], "fight_watch")
+    assert len(p) == 1 and p[0].action == {"type": "fight_watch", "on": True, "end_tantrums": False}, p
+    p = by_rule(plan(fort(dict(ARMED, end_tantrums=False)), Memory())[0], "fight_watch")
+    assert len(p) == 1 and p[0].action == {"type": "fight_watch", "on": True, "end_tantrums": True}, p
+    assert not by_rule(plan(fort(dict(ARMED, end_tantrums=True)), Memory())[0], "fight_watch")
+    assert not by_rule(plan(fort(dict(ARMED, end_tantrums=False), end_tantrums=False), Memory())[0], "fight_watch")
+    assert not by_rule(plan(fort(ARMED, end_tantrums=False), Memory())[0], "fight_watch")   # an older bridge: no key
+
+
+@test("journal: a tantrum ended counts as news")
+def _():
+    m = Memory()
+    sec = {"armed": True, "counts": {"seen": 0, "capped": 0, "separated": 0, "tantrums_ended": 2}}
+    out = PT.fight_journal(fort(sec), m)
+    assert len(out) == 1 and out[0]["tantrums_ended"] == 2 and "tantrum" in out[0]["text"], out
+    assert PT.fight_journal(fort(sec), m) == []
 
 
 if __name__ == "__main__":

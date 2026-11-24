@@ -183,7 +183,7 @@ def big_fort(lua, w):
     kill(lua, w, 6, 26, cause=50)              # drained of blood
     unit(lua, w, id=7, name="Oldtimer", citizen=True)
     victim(lua, w, 27)
-    kill(lua, w, 7, 27, years_ago=2)           # outside the window
+    kill(lua, w, 7, 27, years_ago=4)           # outside the window (three years since 0.105.107)
     unit(lua, w, id=8, name="Bitten", citizen=True, syndromes={"active": [{"type": 77}]})
     w.syndromes[77] = T(lua, {"ce": [{"tags1": {"BLOODSUCKER": True}}]})
     unit(lua, w, id=9, name="Sipper", citizen=True)

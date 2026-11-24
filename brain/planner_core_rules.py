@@ -60,6 +60,8 @@ def player_rules(s: dict) -> dict:
             "calm_burrow": st.get("calm_burrow") is not False,
             # the in-game fight watcher (lua/ai-fights.lua): off only when the settings say so
             "fight_watch": st.get("fight_watch") is not False,
+            # (item3) the watcher ends a tantrum the moment that dwarf attacks a citizen: off only when the settings say so
+            "end_tantrums": st.get("end_tantrums") is not False,
             # (0.105.0) tribute a civilisation asks: 'small' (refuses while the sum can't be read, 0.105.48), pay / refuse
             "tribute": st.get("tribute") if st.get("tribute") in ("small", "pay", "refuse") else "small",
             # (0.105.41, item 8) a peace proposal: the AI decides (sieges, sliders) / accept / refuse

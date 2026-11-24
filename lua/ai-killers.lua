@@ -66,7 +66,11 @@ local U = reqscript('ai-util')
 SITE_KEY = 'ai-overseer/killers'
 CELL_PREFIX = 'AI killer cell '
 DAY = 1200
-WINDOW_TICKS = 403200      -- killings looked for a year back
+-- (0.105.107) killings looked for three years back, everyone's (was one year):
+-- B runs a game year in ~1.5-2 real hours, so a killer's older killing aged
+-- out and the cell let them go ("no longer needed", 24 Nov 16:36); Ducim
+-- strangled the doctor three minutes later (16:39), his third killing that day
+WINDOW_TICKS = 3 * 403200
 SCAN_MAX = 4000            -- incidents read at most (the newest)
 OLD_RUN = 200              -- this many older than the window in a row: the scan stops
 MAX_ROWS = 12

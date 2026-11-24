@@ -46,7 +46,7 @@ def kill(lua, w, killer, victim, year, tick=0):
                                                 "conflict_level": 0, "event_year": year, "event_time": tick})
 
 
-@test("killers: B's sheriff, kills 2.x and 1.x years ago: law_killer; a civilian's old kills don't count")
+@test("killers: B's sheriff, kills 2.x and 1.x years ago: law_killer; a civilian's kills count three years back too (0.105.107), older ones don't")
 def _():
     need_lua()
     lua, env, w = world()
@@ -54,8 +54,8 @@ def _():
     w.unit(T(lua, {"id": 6, "name": "Mason", "citizen": True}))
     for v in (20, 21, 22, 23):
         w.unit(T(lua, {"id": v, "name": f"V{v}", "is_dead": True}))
-    kill(lua, w, 6, 22, 298)              # now: y300 tick 0 (the fake)
-    kill(lua, w, 6, 23, 298, 200000)
+    kill(lua, w, 6, 22, 296)              # now: y300 tick 0 (the fake): past three years
+    kill(lua, w, 6, 23, 296, 200000)
     kill(lua, w, 5, 20, 298)
     kill(lua, w, 5, 21, 298, 200000)
     rows = {x["id"]: dict(x) for x in env.report()["list"].values()}

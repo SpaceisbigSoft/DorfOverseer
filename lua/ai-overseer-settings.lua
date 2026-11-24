@@ -367,6 +367,7 @@ function defaults()
         syndrome_care = true,      -- (0.105.41, item 11) contact-syndrome carriers kept in the hospital burrow, the material cleaned off
         calm_burrow = true,        -- (0.104.169) a dwarf in a tantrum kept in a free bedroom till calm (off: all let out)
         fight_watch = true,        -- (item1) a fight among citizens capped at a brawl and broken up in the game
+        end_tantrums = true,       -- (item3) a tantrum that attacks a citizen ended in the game
         prisoners = 'keep',        -- (0.105.0) caged invaders: keep | release | kill (PRISONER_CHOICES)
         moon_cells = true,         -- (0.105.0) werebeast citizens locked in a cell round the full moon
         seal_caverns = true,       -- (0.105.0) the way down locked while a beast the squads can't take is in a cavern
@@ -551,6 +552,7 @@ function sanitize(s)
                         'syndrome_care',            -- (0.105.41, item 11) syndrome carriers kept apart, cleaned
                         'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
                         'fight_watch',              -- (item1) the in-game fight watcher's switch
+                        'end_tantrums',             -- (item3) a tantrum that attacks a citizen ended
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
                         'make_contact',             -- (0.105.0) the messenger and Make contact
                         'send_messenger',           -- (0.105.24) the World screen driven to send it
@@ -674,6 +676,7 @@ function for_ai(s)
         syndrome_care = s.syndrome_care,           -- (0.105.41, item 11)
         calm_burrow = s.calm_burrow,               -- (0.104.169)
         fight_watch = s.fight_watch,               -- (item1)
+        end_tantrums = s.end_tantrums,             -- (item3)
         prisoners = s.prisoners,                   -- (0.105.0) round 3
         moon_cells = s.moon_cells,
         seal_caverns = s.seal_caverns,

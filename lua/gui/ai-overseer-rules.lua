@@ -7,7 +7,7 @@
 -- reqscript('gui/ai-overseer').name, as when it was one file.
 
 if not OVERSEER_PART_LOCALS then qerror('gui/ai-overseer-rules is a part of gui/ai-overseer; run gui/ai-overseer') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['gui/ai-overseer-rules'] = '0.105.106'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['gui/ai-overseer-rules'] = '0.105.107'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local widgets, S = OVERSEER_PART_LOCALS.widgets, OVERSEER_PART_LOCALS.S   -- (r9) the hub's locals
 
@@ -320,6 +320,16 @@ function RulesPage:init()
         label_width = 30,
         initial_option = p.settings.fight_watch ~= false,
         on_change = function(v) p:set_field('fight_watch', v) end,
+    })
+    -- (item3) a tantrum that attacks a citizen ended by the watcher: under the
+    -- fight watcher's switch, right of "Camera pace" (which ends at column 76)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'end_tantrums',
+        frame = {t = t + 13, l = 78, w = 40},
+        label = 'End a tantrum that attacks:',
+        label_width = 30,
+        initial_option = p.settings.end_tantrums ~= false,
+        on_change = function(v) p:set_field('end_tantrums', v) end,
     })
     -- (0.105.4 review) a cavern well may open a cavern nobody has found yet.
     -- (v35 fix) three-state: AI decides (the default: only when the fort is
@@ -742,6 +752,7 @@ function RulesPage:refresh()
     self.subviews.syndrome_care:setOption(s.syndrome_care ~= false, false)         -- (0.105.41, item 11)
     self.subviews.calm_burrow:setOption(s.calm_burrow ~= false, false)             -- (0.104.169)
     self.subviews.fight_watch:setOption(s.fight_watch ~= false, false)             -- (item1)
+    self.subviews.end_tantrums:setOption(s.end_tantrums ~= false, false)           -- (item3)
     self.subviews.tribute:setOption(s.tribute or 'small', false)                   -- (0.105.0)
     self.subviews.make_contact:setOption(s.make_contact ~= false, false)           -- (0.105.0)
     self.subviews.send_messenger:setOption(s.send_messenger == true, false)        -- (0.105.24)
