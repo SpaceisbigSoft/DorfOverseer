@@ -40,7 +40,7 @@
 --                   changed, child, squad_id, x, y, z, seen_ticks, cell}],
 --                   cells = [{unit_id, locked, out, kind, days, pile, drink,
 --                   food, pile_empty, let_outs, stocking, pile_error,
---                   pile_all_food, pile_fixed, pile_refound, pile_lost}]
+--                   pile_all_food, pile_fixed, pile_refound, pile_lost, fort_meals, meals_out}]
 --                   (0.105.97: the cell's pile; 0.105.98: its settings put
 --                   right, found again by its name, lost),
 --                   rooms (free jail zones and bedrooms), scanned}
@@ -474,7 +474,7 @@ local function let_out(uid, c, u, t, dry, memo)
     if not c.locked or not u then return false end
     local th, hu = need(u)
     local tl, hl = THIRST_OUT, HUNGER_OUT
-    pcall(function() tl, hl = out_levels(c, memo) end)
+    pcall(function() tl, hl = out_levels(c, memo, t) end)
     if th < tl and hu < hl then return false end
     if not dry then
         set_doors(c, false)
@@ -675,6 +675,13 @@ end
 
 local function larder_on(x) return x == true or x == 1 end
 
+-- (item 5) a switch written in the type it reads: DF's food lists read as
+-- 0/1, and a boolean written to a number errors (in a pcall: B's pile said
+-- pile_all_food, 24 Nov 16:46)
+local function larder_put(t, k, want)
+    if type(t[k]) == 'number' then t[k] = want and 1 or 0 else t[k] = want end
+end
+
 -- the lengths of the pile's food lists added up (a new pile's may be 0)
 function larder_size(sp)
     local n = 0
@@ -698,7 +705,7 @@ function larder_reads_right(sp, quick)
             local okv, v = pcall(function() return fl[k] end)
             if okv and type(v) == 'boolean' and v ~= (k == 'food') then return false end
         end
-        if fl.food ~= true or f.prepared_meals ~= true then return false end
+        if fl.food ~= true or not larder_on(f.prepared_meals) then return false end
         local drinks = 0
         for _, k in ipairs(larder_fields(f, LARDER_VECTORS)) do
             local okv, v = pcall(function() return f[k] end)
@@ -714,7 +721,8 @@ function larder_reads_right(sp, quick)
                     end
                 end
                 if want then drinks = drinks + n end
-            elseif type(v) == 'boolean' and v ~= (k == 'prepared_meals') then
+            elseif (type(v) == 'boolean' or (k == 'prepared_meals' and type(v) == 'number'))
+                    and larder_on(v) ~= (k == 'prepared_meals') then
                 return false
             end
         end
@@ -736,13 +744,13 @@ function larder_settings(sp)
                 local n = larder_len(v)
                 if n then
                     local want = LARDER_DRINK[k] == true
-                    for i = 0, n - 1 do pcall(function() v[i] = want end) end
+                    for i = 0, n - 1 do pcall(larder_put, v, i, want) end
                 elseif type(v) == 'boolean' then
                     f[k] = (k == 'prepared_meals')
                 end
             end)
         end
-        pcall(function() f.prepared_meals = true end)
+        pcall(larder_put, f, 'prepared_meals', true)
     end)
     pcall(function()
         local fl = sp.settings.flags
@@ -773,6 +781,16 @@ local function larder_at(x, y, zz)
     return best
 end
 
+-- (item 5) barrels: its tiles - 1 (at least 1): a tile holds one item or
+-- container, so 2 drink barrels could fill a 2-tile pile and leave the meals
+-- no tile. On creation and each cycle (B's were made with 2).
+function larder_barrels(sp)
+    local tiles = (sp.x2 - sp.x1 + 1) * (sp.y2 - sp.y1 + 1)
+    local want = math.max(1, tiles - 1)
+    if sp.storage.max_barrels ~= want then sp.storage.max_barrels = want end
+    return want
+end
+
 -- the pile made in the cell room (when none stands); the pile, or nil and why
 function larder_make(uid, c, z, dry)
     if not dry then c.pile_name = c.pile_name or (LARDER_PREFIX .. uid) end   -- (0.105.98) found again by it
@@ -791,7 +809,7 @@ function larder_make(uid, c, z, dry)
     local b = larder_at(r.x, r.y, r.z)
     if not b then return nil, 'the new pile was not found' end
     pcall(function() b.name = LARDER_PREFIX .. uid end)
-    pcall(function() b.storage.max_barrels = r.w * r.h end)
+    pcall(larder_barrels, b)
     pcall(function() b.storage.max_bins = 0 end)
     c.pile, c.pile_tries = b.id, nil
     c.pile_all_food = (not larder_settings(b)) or nil   -- the write didn't take: said in the report
@@ -861,19 +879,58 @@ function larder_stock(c, memo)
     return drink, food
 end
 
+-- (item 5) the fort's free prepared meals (at most FORT_MEALS_CAP counted),
+-- once a call; 0 when they can't be read
+FORT_MEALS_CAP = 20
+function fort_meals(memo)
+    if memo and memo.fort_meals ~= nil then return memo.fort_meals end
+    local n = 0
+    pcall(function()
+        for _, it in ipairs(df.global.world.items.other.FOOD) do
+            if U.item_free(it) then n = n + 1 end
+            if n >= FORT_MEALS_CAP then break end
+        end
+    end)
+    if memo then memo.fort_meals = n end
+    return n
+end
+
+-- (item 5) Live B, 24 Nov 16:46: Ducim's pile held 3 drink, no meal (the
+-- fort cooks ~110 a day); he was out (hunger 40000) and killed. The doors
+-- opened only while the pile had no drink, so meals never got in. Now low
+-- with no drink, or no meal while the fort has free ones (none: not opened).
 local function larder_low(c, memo)
     local drink, food = larder_stock(c, memo)
     if drink == nil then return false end
-    -- (0.105.97, merge) drink only: a fort with drink and no prepared meals
-    -- would open the cell 2 days in every 5 (meals' let-out stays at hunger 40000)
-    return drink <= 0
+    return drink <= 0 or (food <= 0 and fort_meals(memo) > 0)
+end
+
+-- (item 5) the meals' clock: c.meal_none, when the pile was first seen with
+-- no meal; c.meal_open, when the doors were first opened for the haulers
+-- after it (both cleared once a meal is in). Not in a dry run.
+MEAL_WAIT = 2 * DAY
+function larder_meal_track(c, t, memo)
+    local drink, food = larder_stock(c, memo)
+    if drink == nil or food > 0 then c.meal_none, c.meal_open = nil, nil; return end
+    c.meal_none = c.meal_none or t
+    if c.restock then c.meal_open = c.meal_open or t end
+end
+
+-- (item 5) no meal can reach the pile: the fort has none free, or the pile
+-- has held none for MEAL_WAIT since the doors were opened for the haulers
+function meals_unreachable(c, t, memo)
+    if fort_meals(memo) <= 0 then return true end
+    return c.meal_open ~= nil and t ~= nil and t - c.meal_open >= MEAL_WAIT
 end
 
 -- the levels a locked-in dwarf is let out at: the last-resort ones while
--- the pile holds drink (thirst) or meals (hunger)
-function out_levels(c, memo)
+-- the pile holds drink (thirst) or meals (hunger); (item 5) the hunger's
+-- last-resort one too while no meal is in but one may still come
+function out_levels(c, memo, t)
     local drink, food = larder_stock(c, memo)
-    return ((drink or 0) > 0) and THIRST_LAST or THIRST_OUT, ((food or 0) > 0) and HUNGER_LAST or HUNGER_OUT
+    local hl = HUNGER_OUT
+    if drink ~= nil and (food > 0 or not meals_unreachable(c, t, memo)) then hl = HUNGER_LAST end
+    return ((drink or 0) > 0) and THIRST_LAST or THIRST_OUT, hl
 end
 
 -- each cycle while the cell stands: the pile made if missing; a locked cell
@@ -892,6 +949,7 @@ local function larder_check(uid, c, z, t, dry, memo, u)
     local sp, why = larder_make(uid, c, z, dry)
     if not dry then c.pile_error = (not sp) and why or nil end
     pcall(larder_keep_right, c, sp, dry)       -- (0.105.98) drink and meals only, each cycle
+    if sp and not dry then pcall(larder_barrels, sp); pcall(larder_meal_track, c, t, memo) end   -- (item 5)
     if not sp or not c.locked or c.out then return nil end
     if not larder_low(c, memo) then return nil end
     -- (0.105.97, merge) never opened while the killer rages (B's killings were tantrums)
@@ -900,6 +958,7 @@ local function larder_check(uid, c, z, t, dry, memo, u)
     if not dry then
         set_doors(c, false)
         c.locked, c.doors, c.restock = false, {}, t
+        pcall(larder_meal_track, c, t, memo)      -- (item 5) the doors opened: the meals' clock
     end
     return 'open'
 end
@@ -927,9 +986,15 @@ function larder_row(row, c, memo)
     -- (0.105.97, verifier) locked, empty, inside RESTOCK_GAP: the cell action
     -- can do nothing until the gap is over, so the brain doesn't ask each cycle
     local okt, t = pcall(now_tick)
-    if okt and c.locked and not c.restock and c.restock_end and drink ~= nil and drink <= 0
+    if okt and c.locked and not c.restock and c.restock_end and drink ~= nil and larder_low(c, memo)
             and t - c.restock_end < RESTOCK_GAP then
         row.restock_wait = true
+    end
+    -- (item 5) the fort's free meals (capped), when the pile has none: the brain
+    -- waits for meals as for drink; meals_out: no meal can reach it (let out hungry)
+    if drink ~= nil and food <= 0 then
+        row.fort_meals = fort_meals(memo)
+        row.meals_out = (okt and meals_unreachable(c, t, memo)) or nil
     end
     row.pile_error = (drink == nil and c.pile_error) or nil
     row.pile_all_food = (drink ~= nil and c.pile_all_food) or nil
@@ -1182,6 +1247,7 @@ function report()
         if type(c) == 'table' and c.pile then
             c.pile_name = c.pile_name or (LARDER_PREFIX .. uid)
             pcall(function() larder_keep_right(c, larder_pile(c), false) end)
+            pcall(function() larder_barrels(larder_pile(c)) end)   -- (item 5)
         end
     end
     local ids = {}
@@ -1245,7 +1311,10 @@ function report()
     for uid, c in pairs(d.cells) do
         if type(c) == 'table' then
             local u = df.unit.find(tonumber(uid))
-            if u and not dead(u) then let_out(uid, c, u, t, false, memo) end
+            if u and not dead(u) then
+                if c.pile then pcall(larder_meal_track, c, t, memo) end      -- (item 5)
+                let_out(uid, c, u, t, false, memo)
+            end
             local crow = {unit_id = tonumber(uid), locked = c.locked or nil, out = c.out and true or nil,
                           kind = c.kind, days = c.tick and (t - c.tick) // DAY or nil}
             pcall(function() larder_row(crow, c, memo) end)                 -- (0.105.97)

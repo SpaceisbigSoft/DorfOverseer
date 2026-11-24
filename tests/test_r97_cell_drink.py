@@ -227,7 +227,7 @@ def _():
     m = re.search(r"THIRST_OUT, HUNGER_OUT = (\d+), (\d+)", SRC)
     assert m and (int(m.group(1)), int(m.group(2))) == (20000, 40000), m
     body = re.search(r"local function let_out\(.*?\nend\n", SRC, re.S).group(0)
-    assert "out_levels(c, memo)" in body and "c.let_outs" in body, body
+    assert "out_levels(c, memo, t)" in body and "c.let_outs" in body, body   # (item 5) t: the meals' clock
     # (0.105.94) the way back is unchanged: under the old levels
     assert re.search(r"if c\.out and \(th >= THIRST_OUT or hu >= HUNGER_OUT\) then", SRC)
 
@@ -236,7 +236,7 @@ def _():
 def _():
     # (0.105.98) DFHack's presets dropped (B, 23 Nov: both piles took every food)
     assert "'stockpiles', 'import'" not in SRC
-    assert "f.prepared_meals = true" in SRC
+    assert "pcall(larder_put, f, 'prepared_meals', true)" in SRC   # (item 5) in the type it reads
     assert "links" not in re.search(r"function larder_make\(.*?\nend\n", SRC, re.S).group(0)
     assert "pcall(larder_remove, c)" in re.search(r"local function free\(.*?\nend\n", SRC, re.S).group(0)
 
@@ -266,7 +266,7 @@ def _():
     assert len(w.piles) == 1, (r, py(w.qf))
     sp = w.piles[1]
     assert (sp.x1, sp.y1, sp.x2, sp.y2) == (21, 20, 21, 21), py(w.qf)  # 1x2, away from the bed and the door
-    assert sp.name == "AI cell larder 3" and sp.storage.max_barrels == 2 and sp.storage.max_bins == 0
+    assert sp.name == "AI cell larder 3" and sp.storage.max_barrels == 1 and sp.storage.max_bins == 0   # (item 5) tiles - 1: a tile for the meals
     assert not py(w.commands), py(w.commands)                       # (0.105.98) no presets: written by hand (an empty Lua table reads as {})
     f = sp.settings.food
     assert sp.settings.food.prepared_meals is True

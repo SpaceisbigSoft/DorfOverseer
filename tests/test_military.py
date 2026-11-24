@@ -849,11 +849,12 @@ def _():
     got = lambda: sorted(added[i] for i in range(1, len(added) + 1))
     # (0.105.99) out of crisis: the keen, but never the miserable (draft_bar: E, 24 Nov, Medtob drafted
     # miserable and slipping into depression, a tantrum among his squad 8 minutes later)
-    assert env.fill(10, 3, env.tostring).ok and got() == [2, 3, 4], got()
+    # (item4) nor the very unhappy, keen or not (draft_bar): the training squad is theirs
+    assert env.fill(10, 3, env.tostring).ok and got() == [3, 4], got()
     env, added = _fill_env()
     assert env.fill(10, 3, env.tostring, None, True).ok and got() == [3, 4], got()   # strict: never 1 or 2
     env, added = _fill_env()
-    assert env.fill(10, 3, env.tostring, None, True, True).ok and got() == [2, 3], got()  # (0.105.21) strict and keen only: the very unhappy keen too, never the miserable
+    assert env.fill(10, 3, env.tostring, None, True, True).ok and got() == [3], got()  # (item4) strict and keen only: the very unhappy keen no more (the training squad still takes them)
     c = env.CITIZENS
     mothers = env.nursing_mothers()
     yes = [i + 1 for i in range(6) if env.draftable(c[i + 1], mothers, True)]

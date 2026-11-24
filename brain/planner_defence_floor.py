@@ -29,6 +29,17 @@ slider only adds above it (its share stays the target when larger).
   184.3, a year gone, kept 46 for good; the soldiers being weak, the floor
   asked the 33% cap (35-44 soldiers of ~88 adults for years; the slider wants
   ~12-15), the soldiers missing friends and drink.
+- (item4) A peaceful fort hides from a beast rather than drafting against
+  it: below Militarism 0, while the threat on the map is a great danger and
+  no invasion, and it cannot reach the dwarves or the civilians are kept in
+  (the alarm's shelter, the shelter ready for the alarm, the weather
+  burrow), the cap stays at the Militarism share (hidden_from); only an
+  invasion or siege, or a danger that reaches the dwarves with no shelter,
+  lifts it to the third. B, 24 Nov (Militarism -60, a forgotten beast in
+  the caverns killing animals, an evil cloud on the surface): the floor's
+  third drafted the tavern keeper and two of the doctors; 14 of the 19
+  soldiers badly missed friends, a drink and prayer. The guard (3 soldiers
+  for 15+ adults, soldiers_wanted) stands.
 """
 
 from __future__ import annotations
@@ -39,7 +50,7 @@ from digest import _d, _l
 from planner_core import TICKS_PER_DAY, abs_tick, wildlife_threat
 
 __all__ = ["defence_floor", "note_defence_floor", "floor_note", "present_threat", "soldier_power_avg",
-           "history_threat", "peaceful_ranged", "floor_cap_share"]
+           "history_threat", "peaceful_ranged", "floor_cap_share", "hidden_from"]
 
 # the kinds whose learned factor (memory.fight_factor) a nominal beast takes
 BEAST_KEYS = ("ForgottenBeast", "Titan", "Megabeast", "Demon", "SemiMegabeast")
@@ -74,6 +85,47 @@ def present_threat(s: dict, memory, cfg: dict) -> tuple[float, str]:
     t = best_b[1]
     name = str(t.get("name") or "a great danger").split(",")[0][:40]
     return best_b[0], f"{name} on the map (strength {best_b[0]:.0f})"
+
+
+def hidden_from(s: dict, memory, cfg: dict) -> str:
+    """(item4) Why the civilians hide from the threat on the map rather than
+    being drafted against it ("" when they don't): Militarism below 0, a
+    great danger on the map and no invader, and the danger can't reach the
+    dwarves or the civilians are kept in (the alarm up, the shelter ready
+    for an alarm the player hasn't cleared, the weather burrow)."""
+    if not cfg.get("floor_hide_from_beasts", True):        # (not in PLANNER_CONFIG: its pin; a fort config may set it)
+        return ""
+    mil = float(_num(_d(_d(s.get("settings")).get("traits")).get("militarism")) or 0)
+    if mil >= 0:
+        return ""
+    rows = [t for t in _l(_d(s.get("others_on_map")).get("threats"))
+            if isinstance(t, dict) and not wildlife_threat(t, cfg)]
+    if any(t.get("invader") for t in rows):
+        return ""
+    great = [t for t in rows if _great(t)]
+    if not great:
+        return ""
+    name = str(great[0].get("name") or "a great danger").split(",")[0][:40]
+    what = name if len(great) == 1 else f"{len(great)} great dangers"
+    reach = [t for t in great if t.get("can_reach_dwarves") is True]
+    if not reach:
+        return f"{what}, no invasion, can't reach the dwarves: the civilians hide rather than being drafted"
+    if s.get("civ_alert") is True:
+        kept = "the alarm keeps the civilians in the shelter"
+    else:
+        try:
+            from planner_weather import keep_in_active
+            weather = keep_in_active(memory)
+        except Exception:  # noqa: BLE001
+            weather = False
+        cleared = set(_l(getattr(memory, "alert_suppressed", None))) if memory is not None else set()
+        if weather:
+            kept = "the civilians are kept inside (the weather burrow)"
+        elif s.get("civ_alert_ready") is True and any(t.get("id") not in cleared for t in reach):
+            kept = "the shelter is ready and the alarm sounds for it"
+        else:
+            return ""
+    return f"{what}, no invasion: {kept}, so they hide rather than being drafted"
 
 
 def _fade(age_days, cfg: dict) -> float:
@@ -235,13 +287,15 @@ def defence_floor(s: dict, memory, cfg: dict, citizens: int | None = None) -> di
     adults = int(adults or 0)
     if isinstance(citizens, int) and citizens > 0:
         adults = min(adults, citizens) if adults else citizens
-    share = floor_cap_share(s, cfg, pres)          # (0.105.97) by Militarism with no threat here now
+    # (item4) a peaceful fort hides from a great danger (no invasion) it is sheltered from or that can't reach it
+    hidden = hidden_from(s, memory, cfg) if pres > 0 else ""
+    share = floor_cap_share(s, cfg, 0.0 if hidden else pres)   # (0.105.97) by Militarism with no threat here now
     cap = int(adults * share)
     # (as soldiers_wanted) a handful of dwarves keep to their work unless a threat is on the map now
     if (citizens or adults) < cfg.get("squad_min_citizens", 0) and pres <= 0:
         cap = 0
     out.update({"soldiers": max(0, min(n, cap)), "wanted": n, "power": round(need, 1), "per_soldier": round(per, 1),
-                "per_known": known, "cap": cap, "cap_share": round(share, 3),
+                "per_known": known, "cap": cap, "cap_share": round(share, 3), "hidden": hidden or None,
                 "militarism": int(float(_num(_d(_d(s.get("settings")).get("traits")).get("militarism")) or 0))})
     return out
 
@@ -271,9 +325,12 @@ def floor_note(f: dict, have: int, militarism_want: int) -> str:
     sh = f.get("cap_share")
     if extra and isinstance(sh, (int, float)):
         extra = (f" (cap {f.get('cap')} = {sh * 100:.0f}% of the adults"
-                 + (" while a threat is on the map" if f.get("present", 0) > 0 else
+                 + (f" at Militarism {f.get('militarism', 0):+d}: {f['hidden']}" if f.get("hidden") else
+                    " while a threat is on the map" if f.get("present", 0) > 0 else
                     f" at Militarism {f.get('militarism', 0):+d}" if sh < 0.33 - 1e-6 else "")
                  + f"; {f.get('wanted')} to match)")
+    elif f.get("hidden"):
+        extra = f" (at Militarism {f.get('militarism', 0):+d}: {f['hidden']})"   # (item4) said even when not capped
     by = "" if f.get("per_known") else "?"
     return (f"Defence floor {f['soldiers']}{extra}: {f.get('why')}; even fight {f.get('power', 0):.0f} at "
             f"{f.get('per_soldier', 0):g}{by}/soldier; Militarism {militarism_want}; soldiers {have}")

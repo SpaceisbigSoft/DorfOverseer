@@ -161,7 +161,8 @@ def _():
     assert "DRAFT_BREAKDOWN = {Tantrum = true, Enraged = true, Depressed = true, Oblivious = true}" in d
     assert "if okc and cat == 0 then return 'miserable' end" in d
     assert "T.count(d, u.id, T.STAFF_DAYS, now) > 0" in d
-    assert "if draft_bar(c.unit) then barred = barred + 1" in d and "pcall(TSQ.marks)" in d
+    # (item4) the bar by reason; draft_bar but for the training squad, post_bar for every squad
+    assert "local why = (not training and draft_bar(c.unit)) or post_bar(c.unit, care)" in d and "pcall(TSQ.marks)" in d
     assert "function release(unit_id, dry_run, txt, mother, tantrum)" in d
     assert "if wants_fight(u) and not mother and not tantrum then" in d and "'not in a tantrum now'" in d
     c = src("ai-bridge-actions-civic.lua")
@@ -326,7 +327,7 @@ def _():
     assert "breakdown" in env.draft_bar(u(2, mood=3))
     assert "breakdown" in env.draft_bar(u(3, mood=2))
     assert env.draft_bar(u(4, cat=0)) == "miserable"
-    assert env.draft_bar(u(5, cat=1)) is None                # the very unhappy who long to fight: as before
+    assert env.draft_bar(u(5, cat=1)) == "very unhappy"      # (item4) the very unhappy too, longing or not
     ledger.units["6"] = T(lua, {"t": [1000000 - 10 * DAY]})
     assert "28 days" in env.draft_bar(u(6))
     ledger.units["7"] = T(lua, {"t": [1000000 - 300 * DAY, 1000000 - 200 * DAY, 1000000 - 100 * DAY]})

@@ -191,7 +191,7 @@ def _():
     u, sp = made(lua, env, w)
     ok, bad = exact(lua, sp)
     assert ok, bad
-    assert sp.storage.max_barrels == 2 and not py(w.commands)   # (an empty Lua table reads as {})
+    assert sp.storage.max_barrels == 1 and not py(w.commands)   # (item 5) tiles - 1   # (an empty Lua table reads as {})
     c = py(env.report())["cells"][0]
     assert "pile_all_food" not in c and "pile_fixed" not in c, c
 
@@ -209,7 +209,7 @@ def _():
     ok, bad = exact(lua, sp)
     assert ok, bad
     assert c["pile_fixed"] == 1 and "pile_all_food" not in c and c["pile"] == sp.id, c
-    assert sp.storage.max_barrels == 2                               # kept
+    assert sp.storage.max_barrels == 1                               # (item 5) tiles - 1, each cycle
     c = py(env.report())["cells"][0]
     assert c["pile_fixed"] == 1, c                                   # right now: not written again
 

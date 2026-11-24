@@ -61,9 +61,10 @@ def squad(sid, members, power):
             "routine": "Staggered training", "orders": 0, "ai_orders": 0, "power": {"power": power, "armed": members}}
 
 
-def beast(i=7000, size=60000 * 20):
+def beast(i=7000, size=60000 * 20, reach=True):
+    # (item4) reaching the dwarves, no shelter: the third; one that can't reach is hidden from
     return {"id": i, "name": 'Stuxul "The Vile", Forgotten Beast', "great_danger": True,
-            "kinds": ["ForgottenBeast"], "size": size, "layer": "cavern_1"}
+            "kinds": ["ForgottenBeast"], "size": size, "layer": "cavern_1", "can_reach_dwarves": reach}
 
 
 WEAK = [squad(1, 9, 18.0), squad(2, 9, 18.0)]      # B's soldiers: 2 a soldier, 18 in all
@@ -98,9 +99,10 @@ def _():
     assert DF.floor_cap_share(fort(mil=-100), CFG, 5.0) == CFG["floor_max_share"]
 
 
-@test("a beast on the map now: the full 33% cap at Militarism -60")
+@test("a beast on the map now that can reach the dwarves, no shelter: the full 33% cap at Militarism -60")
 def _():
     s = fort(threats=[beast()], squads=WEAK)
+    s["civ_alert_ready"] = False                     # (item4) no shelter to hide in
     f = DF.defence_floor(s, b_memory(s), CFG, 57)
     assert f["present"] > 0 and f["cap"] == int(57 * 0.33) == 18 and f["soldiers"] == 18, f
 

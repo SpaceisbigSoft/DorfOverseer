@@ -139,7 +139,19 @@ def _pile_waits(c: dict) -> bool:
     # it isn't asked every cycle (the rule is an emergency one: no back-off)
     if c.get("restock_wait"):
         return False
-    return bool(c.get("pile")) and c.get("drink") == 0
+    return bool(c.get("pile")) and (c.get("drink") == 0 or _meals_wait(c))
+
+
+def _meals_wait(c: dict) -> bool:
+    """(item 5) The cell's pile holds no meal while the fort has free ones
+    (`fort_meals`, from lua/ai-killers.lua): waited for as drink is. Live B,
+    24 Nov 16:46: Ducim's pile held 3 drink and no meal, the doors opened for
+    the haulers only for drink, and he was let out hungry and killed. A fort
+    with no meals (fort_meals 0, or an older bridge without the field) waits
+    for none."""
+    n = c.get("fort_meals")
+    return bool(c.get("pile")) and c.get("food") == 0 and isinstance(n, int) and n > 0
+
 
 
 def _larder_words(c: dict) -> str:
@@ -156,6 +168,10 @@ def _larder_words(c: dict) -> str:
         bits = [f"the cell's pile holds {c.get('drink') or 0} drink and {c.get('food') or 0} meal(s)"]
         if not c.get("drink"):
             bits.append("it waits for drink")
+        elif _meals_wait(c):
+            bits.append(f"it waits for meals ({c['fort_meals']}+ free in the fort)")
+    if c.get("meals_out"):
+        bits.append("no meal has reached it: let out when hungry")
     if c.get("restock_wait"):
         bits.append("the doors open for the haulers again after a short wait")
     if c.get("pile_all_food"):
@@ -335,5 +351,9 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
         if stale:
             why.append(f"{len(stale)} cell(s) no longer needed: let them out")
         if waits:
-            why.append(f"{len(waits)} cell(s): the cell's pile waits for drink")
+            # (item 5) drink, meals or both: what the waiting piles lack
+            lack = [w for w, f in (("drink", lambda c: c.get("drink") == 0), ("meals", _meals_wait))
+                    if any(f(held[i]) for i in waits)]
+            what = " and ".join(lack) or "drink"
+            why.append(f"{len(waits)} cell(s): the cell's pile waits for {what}")
         proposals.append(Proposal("killer", {"type": "killer_cell", "units": cell_ids}, "; ".join(why), 1))

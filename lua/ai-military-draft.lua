@@ -1,5 +1,6 @@
 -- ai-military-draft: who may be a soldier (nursing mothers, dwarves near a
--- breakdown, the fort's last farmers and brewers kept out), a squad filled,
+-- breakdown, the fort's last farmers and brewers, (item4) a location post's
+-- holders and the healers the fort needs kept out), a squad filled,
 -- trimmed and a soldier let go, the squad leader's seat, and a new squad made
 -- with a captain's post and a leader (make_squad).
 --
@@ -8,7 +9,7 @@
 -- reqscript('ai-military').name and a name swapped there reaches this file.
 
 if not MILITARY_PART_LOCALS then qerror('ai-military-draft is a part of ai-military; run ai-military') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-draft'] = '0.105.107'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-draft'] = '0.105.108'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, COMBAT_SKILLS, wants_fight, fight_focus = MILITARY_PART_LOCALS.U, MILITARY_PART_LOCALS.report_citizens, MILITARY_PART_LOCALS.COMBAT_SKILLS, MILITARY_PART_LOCALS.wants_fight, MILITARY_PART_LOCALS.fight_focus   -- (r8) the hub's locals
 
@@ -88,6 +89,9 @@ function draft_bar(u)
     if okm and DRAFT_BREAKDOWN[m] then return 'in a breakdown (' .. tostring(m) .. ')' end
     local okc, cat = pcall(dfhack.units.getStressCategory, u)
     if okc and cat == 0 then return 'miserable' end
+    -- (item4) the very unhappy too, whatever they long for (the training squad still takes them):
+    -- B, 24 Nov, 14 of 19 soldiers badly missing friends, a drink and prayer
+    if okc and cat == 1 then return 'very unhappy' end
     local okt, why = pcall(function()
         local T = reqscript('ai-tantrums')
         local now = U.abs_tick()
@@ -98,6 +102,74 @@ function draft_bar(u)
         return nil
     end)
     return okt and why or nil
+end
+
+-- (item4) Never drafted: a dwarf holding a location's post (u.occupations:
+-- the hospital's doctors, the tavern keeper, a temple's, library's or
+-- guildhall's staff), nor one with a hospital labour while the fort has
+-- HOSPITAL_FEW or fewer of them outside the squads or a patient waits for
+-- care (a treatment asked). B, 24 Nov 16:45-16:48 (Militarism -60, two
+-- doctors strangled that day, 2 patients waiting): the defence floor's fill
+-- drafted Fath (tavern keeper), Kadol (diagnoser) and Kosoth (bone doctor).
+HOSPITAL_LABORS = {'DIAGNOSE', 'SURGERY', 'BONE_SETTING', 'SUTURING', 'DRESSING_WOUNDS'}
+HOSPITAL_FEW = 3
+CARE_ASKED = {'rq_diagnosis', 'rq_immobilize', 'rq_dressing', 'rq_cleaning', 'rq_surgery', 'rq_suture',
+              'rq_setting', 'rq_traction', 'rq_crutch'}
+function hospital_hand(u)
+    local ok, yes = pcall(function()
+        for _, l in ipairs(HOSPITAL_LABORS) do
+            local id = df.unit_labor[l]
+            if id and u.status.labors[id] then return true end
+        end
+        return false
+    end)
+    return ok and yes == true
+end
+
+-- {hands = adults outside the squads with a hospital labour, waiting = citizens with a treatment asked}
+function care_need()
+    local out = {hands = 0, waiting = 0}
+    for _, u in ipairs(report_citizens(true)) do
+        pcall(function()
+            if dfhack.units.isAdult(u) and u.military.squad_id == -1 and hospital_hand(u) then
+                out.hands = out.hands + 1
+            end
+        end)
+        pcall(function()
+            for _, f in ipairs(CARE_ASKED) do
+                if u.health and u.health.flags[f] then out.waiting = out.waiting + 1 return end
+            end
+        end)
+    end
+    return out
+end
+
+function care_short(care)
+    return care ~= nil and ((care.hands or 0) <= HOSPITAL_FEW or (care.waiting or 0) > 0)
+end
+
+-- The reason a post or the hospital keeps `u` out (nil: neither). `care`: a care_need() read.
+function post_bar(u, care)
+    local okp, post = pcall(function()
+        if #u.occupations == 0 then return nil end
+        local t = df.occupation_type[u.occupations[0].type]
+        return t and tostring(t):lower():gsub('_', ' ') or 'a post'
+    end)
+    if okp and post then return 'holds a post (' .. post .. ')' end
+    if hospital_hand(u) and care_short(care) then
+        return ('a hospital hand (%d outside the squads, %d waiting for care)'):format(care.hands or 0, care.waiting or 0)
+    end
+    return nil
+end
+
+-- (item4) a bar's reason by kind, for the result's count
+function bar_kind(why)
+    why = tostring(why or '')
+    if why:find('^holds a post') then return 'a post' end
+    if why:find('^a hospital hand') then return 'the hospital' end
+    if why:find('breakdown') then return 'breaking down' end
+    if why:find('tantrum') then return 'a recent tantrum' end
+    return why
 end
 
 local function candidates(strict)
@@ -192,6 +264,16 @@ function last_hands()
     return out
 end
 
+-- (item4) "2 a post, 1 the hospital" (the reasons sorted, for the same words each time)
+function kept_words(by_why)
+    local ks = {}
+    for k in pairs(by_why or {}) do table.insert(ks, k) end
+    table.sort(ks)
+    local parts = {}
+    for _, k in ipairs(ks) do table.insert(parts, by_why[k] .. ' ' .. k) end
+    return table.concat(parts, ', ')
+end
+
 -- Fill up to `count` open positions of a squad (never the captain's seat).
 -- (0.104.138) `avoid`: unit ids not to draft (those the AI sent home lately)
 -- (0.104.168) `strict`: the fort in crisis (never the very unhappy);
@@ -216,8 +298,9 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
                     -- and the tantrum-throwers too (draft_bar), the training squad's as well: a seat is an office
                     local pool = {}
                     if pos then
+                        local care = care_need()          -- (item4) nor a post holder or a needed healer
                         for _, c in ipairs(candidates()) do
-                            if not draft_bar(c.unit) then table.insert(pool, c) end
+                            if not draft_bar(c.unit) and not post_bar(c.unit, care) then table.insert(pool, c) end
                         end
                     end
                     local pick = pos and pick_soldiers(pool, 1)[1]
@@ -257,18 +340,30 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
     end
     -- (0.105.99) the breaking-down and the tantrum-throwers kept out (draft_bar),
     -- but for the training squad
-    local barred = 0
+    -- (item4) and a post's holder or a healer the fort needs, the training squad too;
+    -- each one kept out counted by its reason and named (the journal shows the result)
+    local barred, by_why, kept_names = 0, {}, {}
+    local function bar(c, why)
+        barred = barred + 1
+        local k = bar_kind(why)
+        by_why[k] = (by_why[k] or 0) + 1
+        if #kept_names < 12 then
+            local okn, nm = pcall(function() return txt(dfhack.units.getReadableName(c.unit)) end)
+            table.insert(kept_names, (okn and nm or tostring(c.id)) .. ': ' .. why)
+        end
+    end
     local okts, TSQ = pcall(reqscript, 'ai-training-squad')
     local okm, tmarks = false, nil
     if okts and type(TSQ) == 'table' and type(TSQ.marks) == 'function' then okm, tmarks = pcall(TSQ.marks) end
     local training = okm and type(tmarks) == 'table' and tmarks[tostring(squad_id)] or false
-    if not training then
-        local kept_c = {}
-        for _, c in ipairs(cands) do
-            if draft_bar(c.unit) then barred = barred + 1 else table.insert(kept_c, c) end
-        end
-        cands = kept_c
+    local okcare, care = pcall(care_need)
+    if not okcare then care = nil end
+    local kept_c = {}
+    for _, c in ipairs(cands) do
+        local why = (not training and draft_bar(c.unit)) or post_bar(c.unit, care)
+        if why then bar(c, why) else table.insert(kept_c, c) end
     end
+    cands = kept_c
     local added = {}
     local tried, k = 0, 1
     local okh, hands = pcall(last_hands)          -- (0.105.54) never the last farmer or brewer
@@ -284,12 +379,16 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
         for _, tok in ipairs(mine or {}) do
             if (hands.n[tok] or 0) <= 1 then last = true end
         end
+        local healer = care and hospital_hand(c.unit)
         if last then
             kept = kept + 1
+        elseif healer and care_short(care) then
+            bar(c, post_bar(c.unit, care) or 'a hospital hand')    -- (item4) the healers drafted this call left too few
         elseif place and dfhack.military.addToSquad(c.id, squad_id, place) then
             table.insert(added, {unit_id = c.id, name = txt(dfhack.units.getReadableName(c.unit))})
             k = k + 1
             for _, tok in ipairs(mine or {}) do hands.n[tok] = (hands.n[tok] or 0) - 1 end
+            if healer then care.hands = care.hands - 1 end
         end
     end
     if #added == 0 then
@@ -297,10 +396,13 @@ function fill(squad_id, count, txt, avoid, strict, keen_only)
             or {ok = false, error = ('no suitable dwarves could be added (%d candidate(s), %d tried, %d open place(s)%s%s%s)'):format(
                 #cands, tried, open, sq.positions[0] and sq.positions[0].occupant == -1 and ', the leader\'s seat empty' or '',
                 kept > 0 and (', %d kept as the last farmer or brewer'):format(kept) or '',
-                barred > 0 and (', %d kept out: breaking down or a recent tantrum'):format(barred) or '')}
+                barred > 0 and (', %d kept out: %s'):format(barred, kept_words(by_why)) or ''),
+            kept_out = barred > 0 and by_why or nil, kept_names = barred > 0 and kept_names or nil}
     end
     return {ok = true, added = added, leader_seated = seated or nil, leader_appointed = appointed_leader,
-            kept_last_hands = kept > 0 and kept or nil, kept_out = barred > 0 and barred or nil}
+            kept_last_hands = kept > 0 and kept or nil, kept_out = barred > 0 and by_why or nil,
+            kept_names = barred > 0 and kept_names or nil,
+            kept_note = barred > 0 and ('%d kept out: %s'):format(barred, kept_words(by_why)) or nil}
 end
 
 -- (0.105.97) How badly a soldier is doing in the squad: the needs a soldier's
@@ -605,6 +707,15 @@ function make_squad(dry_run, txt, opts)
                 if c.fight_focus ~= nil and c.fight_focus <= KEEN_FOCUS then table.insert(keen, c) end
             end
             cands = keen
+        end
+        if okc then                         -- (item4) a leader is a soldier: none the fill would keep out
+            local okcare, care = pcall(care_need)
+            local fit = {}
+            if not okcare then care = nil end
+            for _, c in ipairs(cands) do
+                if (training or not draft_bar(c.unit)) and not post_bar(c.unit, care) then table.insert(fit, c) end
+            end
+            cands = fit
         end
         local pick = okc and pick_soldiers(cands, 1)[1]
         leader = pick and pick.unit
