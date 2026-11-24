@@ -267,6 +267,7 @@ LOOP_LIMITS = {"start_project": 12, "place_surface": 12, "place_well": 12, "make
                "deep_depot": 12,                                # (0.105.23) the underground depot's road
                "dismiss_alerts": 400, "answer_petition": 400}   # (0.105.9) residency batches by the hundred
 LOOP_LIMITS["break_fights"] = 400   # (0.105.47) now on every tantrum report too (harmless when nothing is wrong)
+LOOP_LIMITS["fight_watch"] = 400    # (item1) armed again after every reload (harmless when armed)
 LOOP_LIMIT_DEFAULT = 80
 LOOP_EXEMPT = {"entrances", "needs_trinkets", "trinket_orders", "excess_shops", "cistern", "call_trader", "open_trade",
                "trade_deal", "close_trade", "trade", "train", "water", "project"}

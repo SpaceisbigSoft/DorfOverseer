@@ -43,13 +43,14 @@ TRANSIENT_RULES = {
     "thirst", "drink_fruit", "water_traffic", "well_rescue", "well_lid", "well_parts", "well_shaft",
     "well_safety", "cistern_shut", "waterworks_shut", "magma_shut", "lure_shut", "stranded", "way_in",
     "way_out", "way_out_dig", "hospital", "hospital_burrow", "hospital_guard", "doctor_patient", "doctor_post",
-    "rescue_labor", "infected_rest", "traction_rest", "insane", "break_fights", "calm_burrow", "jail_urgent",
+    "rescue_labor", "infected_rest", "traction_rest", "insane", "break_fights", "fight_watch", "calm_burrow", "jail_urgent",
     "mood", "mood_shelter", "cave_in_dig_out", "prisoners_water", "tavern_urgent",
 }
 TRANSIENT_ACTIONS = {
     "civ_alert", "thirst_unforbid", "thirst_way", "thirst_patient", "thirst_probe", "open_entrance",
     "dig_way_in", "way_out_open", "way_out_leave", "well_rescue", "well_safety", "well_shaft",
-    "hospital_burrow", "calm_burrow", "break_fights", "insane_guard", "mood_free_items", "mood_shelter",
+    "hospital_burrow", "calm_burrow", "break_fights", "fight_watch", "insane_guard", "mood_free_items", "mood_shelter",
+    "hospital_release",   # (item2) a mood's thread; the hospital's quotas put back
     "unpause", "save_game", "report_status", "save_memory", "dismiss_alerts",
 }
 # drink and water: never held in a crisis (or on an urgent step)

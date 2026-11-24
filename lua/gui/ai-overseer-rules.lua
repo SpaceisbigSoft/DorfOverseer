@@ -7,7 +7,7 @@
 -- reqscript('gui/ai-overseer').name, as when it was one file.
 
 if not OVERSEER_PART_LOCALS then qerror('gui/ai-overseer-rules is a part of gui/ai-overseer; run gui/ai-overseer') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['gui/ai-overseer-rules'] = '0.105.104'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['gui/ai-overseer-rules'] = '0.105.105'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local widgets, S = OVERSEER_PART_LOCALS.widgets, OVERSEER_PART_LOCALS.S   -- (r9) the hub's locals
 
@@ -161,6 +161,16 @@ function RulesPage:init()
     })
     table.insert(views, widgets.Label{frame = {t = 5 + jrow, l = 58}, text = {
         {text = 'a free bedroom away from the patients, with drink, till calm', pen = COLOR_GREY}}})
+    -- (item1) the in-game fight watcher, under the calm burrow's help line (the
+    -- right-hand column's free row above the tribute; the left one ends at 59)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'fight_watch',
+        frame = {t = 6 + jrow, l = 62, w = 56},
+        label = 'Break up fights among citizens at once:',
+        label_width = 44,
+        initial_option = p.settings.fight_watch ~= false,
+        on_change = function(v) p:set_field('fight_watch', v) end,
+    })
     -- (0.105.0) the world outside: tribute asked of the fort, and Make contact
     -- (the right-hand column below the calm-down switch, clear of the left one's rows)
     table.insert(views, widgets.CycleHotkeyLabel{
@@ -731,6 +741,7 @@ function RulesPage:refresh()
     self.subviews.hospital_burrow:setOption(s.hospital_burrow ~= false, false)     -- (0.104.168)
     self.subviews.syndrome_care:setOption(s.syndrome_care ~= false, false)         -- (0.105.41, item 11)
     self.subviews.calm_burrow:setOption(s.calm_burrow ~= false, false)             -- (0.104.169)
+    self.subviews.fight_watch:setOption(s.fight_watch ~= false, false)             -- (item1)
     self.subviews.tribute:setOption(s.tribute or 'small', false)                   -- (0.105.0)
     self.subviews.make_contact:setOption(s.make_contact ~= false, false)           -- (0.105.0)
     self.subviews.send_messenger:setOption(s.send_messenger == true, false)        -- (0.105.24)

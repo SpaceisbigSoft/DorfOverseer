@@ -52,7 +52,7 @@ from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import (AGENDA_THEMES, Proposal, TICKS_PER_DAY, _has_shop, _traits, abs_tick, game_day,
-                          justice_held, queued)
+                          justice_held, queued, player_rules)
 
 # the season's agenda (planner_core agenda): these rules' themes
 AGENDA_THEMES["staff_tantrum"] = "no post in the hands of a dwarf in a tantrum"
@@ -62,7 +62,7 @@ AGENDA_THEMES["chronic_posts"] = AGENDA_THEMES["chronic_care"] = "care for the c
 AGENDA_THEMES["chronic_convict"] = "care for the chronic tantrum cases"
 
 __all__ = ["tantrum_section", "tantrum_rows", "guard_ids", "loose_tantrums", "note_tantrum_book",
-           "mind_break_why", "_break_fights_report_rule", "_staff_tantrum_rule", "_tantrum_soldier_rule",
+           "mind_break_why", "_break_fights_report_rule", "_fight_watch_rule", "fight_journal", "FIGHT_COUNTS", "_staff_tantrum_rule", "_tantrum_soldier_rule",
            "_hospital_guard_rule",
            "chronic_cases", "chronic_need_actions", "_chronic_rule", "_tantrum_rules", "NEED_WORDS"]
 
@@ -186,6 +186,65 @@ def _break_fights_report_rule(s: dict, memory, cfg: dict, proposals: list) -> No
     proposals.append(Proposal("break_fights", {"type": "break_fights"},
                               f"{why}: break up any fight among the fort's own before someone dies (DFHack "
                               "fix/loyaltycascade; it changes nothing when no fight is on)", 0))
+
+
+# (item1, 24 Nov) the in-game fight watcher (lua/ai-fights.lua): B lost seven
+# citizens strangled by citizens in three hours; break_fights (once a cycle,
+# about a game day) took 11 out of a fight ~600 ticks before two died in it.
+# The watcher caps a fight among citizens at Brawl and breaks it up every 10
+# ticks inside the game; it lives while the game runs, so a reload or a fresh
+# start loses it: armed again on every cycle the `fights` section says it is off.
+FIGHT_COUNTS = ("capped", "separated", "reengaged", "died")
+
+
+def _fight_watch_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
+    """The fight watcher on whenever it is off (the Rules switch `fight_watch`,
+    on by default); switched off, it is disarmed while the section says it is
+    on. Nothing without the section (an older bridge)."""
+    sec = _d(s.get("fights"))
+    if not sec or "armed" not in sec:
+        return
+    armed = sec.get("armed") is True
+    if player_rules(s).get("fight_watch", True):
+        if not armed:
+            proposals.append(Proposal("fight_watch", {"type": "fight_watch", "on": True},
+                                      "the fight watcher is off (a reload or a fresh start): arm it again, so a "
+                                      "fight among the fort's own is capped at a brawl and broken up within "
+                                      "ticks, not a game day later", 0))
+    elif armed or sec.get("on") is True:
+        proposals.append(Proposal("fight_watch", {"type": "fight_watch", "on": False},
+                                  "the fight watcher is switched off in the Rules: disarm it", 0))
+
+
+def fight_journal(s: dict, memory) -> list[dict]:
+    """One journal entry when the watcher's capped or separated counts grew
+    since the last report: {capped, separated, reengaged, died} (the growth),
+    the totals since the game loaded and the last log entries. The last
+    counts are kept in memory.tantrum_book["fights"] (a reload of the game
+    starts the watcher's counts again: then the counts themselves are new)."""
+    sec = _d(s.get("fights"))
+    counts = _d(sec.get("counts"))
+    if memory is None or not counts:
+        return []
+    cur = {k: counts.get(k) if isinstance(counts.get(k), int) and not isinstance(counts.get(k), bool) else 0
+           for k in FIGHT_COUNTS}
+    book = _d(getattr(memory, "tantrum_book", None))
+    last = _d(book.get("fights"))
+    if any(cur[k] < (last.get(k) if isinstance(last.get(k), int) else 0) for k in FIGHT_COUNTS):
+        last = {}                                    # the game was loaded again: its counts began at 0
+    grew = {k: cur[k] - (last.get(k) if isinstance(last.get(k), int) else 0) for k in FIGHT_COUNTS}
+    book = dict(book)
+    book["fights"] = cur
+    memory.tantrum_book = book
+    if grew["capped"] <= 0 and grew["separated"] <= 0:
+        return []
+    log = [e for e in _l(sec.get("log")) if isinstance(e, dict)][-3:]
+    text = (f"fight watcher: {grew['capped']} level(s) capped at a brawl, {grew['separated']} citizen(s) taken "
+            f"out of a fight" + (f", {grew['reengaged']} re-engaged" if grew["reengaged"] > 0 else "")
+            + (f", {grew['died']} fight(s) with a death" if grew["died"] > 0 else ""))
+    return [{**grew, "totals": cur, "text": text,
+             "last": [{k: e.get(k) for k in ("tick", "kind", "activity_id", "max", "units", "levels",
+                                             "levels_after", "separated", "timers", "age")} for e in log]}]
 
 
 def _post_words(p: dict) -> str:
@@ -447,6 +506,7 @@ def _chronic_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
 def _tantrum_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """Every rule here, in order (planner.py calls this once a cycle)."""
     _break_fights_report_rule(s, memory, cfg, proposals)
+    _fight_watch_rule(s, memory, cfg, proposals)          # (item1) the in-game fight watcher armed
     if not tantrum_section(s):
         return
     _staff_tantrum_rule(s, cfg, proposals)

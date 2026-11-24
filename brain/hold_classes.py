@@ -116,9 +116,9 @@ _SURVIVAL_RULES = {
     # the mind: needs, stress, tantrums, justice, moods
     "stress_care", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",
     "recreation", "calm_burrow", "free_time", "tavern", "tavern_chest", "tavern_urgent", "temple_chest",
-    "quick_temple", "quick_tavern", "break_fights", "convict", "chronic_care", "chronic_convict", "chronic_posts",
+    "quick_temple", "quick_tavern", "break_fights", "fight_watch", "convict", "chronic_care", "chronic_convict", "chronic_posts",
     "jail_urgent", "jail_size", "jail_more", "prisoners_water", "pit_prisoners", "mothers", "mood",
-    "mood_reserve", "mood_shelter", "instrument_orders", "join_levels",
+    "mood_reserve", "mood_shelter", "mood_hospital", "instrument_orders", "join_levels",
     # the fort's offices and people
     "appoint", "law_swap", "messenger", "office_swap", "office_free", "pop_cap", "recovery_migrants", "migrant_drought", "stuck_caravan", "census", "labor", "labor_trim", "petitions",
     "petition_retarget", "residency", "citizenship", "location_access",
@@ -199,10 +199,11 @@ _SURVIVAL_ACTIONS = {
     # health and care, the dead
     "hospital_burrow", "hospital_guard", "calm_burrow", "rest_infected", "traction_rest", "add_doctor_post",
     "vacate_post", "staff_location", "add_posts", "staff_labors", "mood_free_items", "mood_shelter",
+    "hospital_release",
     "allow_burial", "unforbid_dead", "coffins_anywhere", "engrave_memorials", "place_slabs", "free_slabs",
     "bench_jobs", "scrub_dead_units", "prune_remains", "pit_prisoners",
     # justice, tantrums, offices, people
-    "break_fights", "convict", "release_prisoners", "tantrum_step_down", "squad_release", "appoint",
+    "break_fights", "fight_watch", "convict", "release_prisoners", "tantrum_step_down", "squad_release", "appoint",
     "set_population_cap", "call_migrants", "free_caravan", "answer_petition", "petition_orders", "narrow_detail", "trim_labor",
     "assign_labor",
     # the work: orders, projects, stone, hauling, dumps, cleanup

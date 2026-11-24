@@ -24,7 +24,7 @@ from digest import _d, _l
 from planner_core import (LIMIT_EXEMPT, STEER_PROTECTED, PLANNER_CONFIG, Proposal, TICKS_PER_DAY, _has_shop,
                           abs_tick, mood_kind, mood_on_hand)
 
-__all__ = ["CANCEL_MATCH", "dead_order", "usable_thread", "webs_reach", "silk_route", "silk_wanted", "webs_hold",
+__all__ = ["CANCEL_MATCH", "dead_order", "usable_thread", "released_since", "webs_reach", "silk_route", "silk_wanted", "webs_hold",
            "mood_shelter_rule", "free_items_sig", "free_items_skip", "note_mood_help", "TRADE_IF", "request_detail"]
 
 # a gathering mood's tiles put in the shelter: a life on it, no action slot to wait for
@@ -66,6 +66,26 @@ def _cancels(s: dict) -> list:
     return [c for c in _l(_d(s.get("mood_help")).get("cancels")) if isinstance(c, dict)]
 
 
+WEAVE_FIBRE = {"weave_plant_cloth": "plant", "weave_silk_cloth": "silk", "weave_yarn_cloth": "yarn"}
+
+
+def _lack_cancels(s: dict, recipe: str) -> list:
+    """The bridge's cancel rows of this recipe's jobs for something missing."""
+    m = CANCEL_MATCH.get(recipe)
+    if not m:
+        return []
+    jobs, kinds = m
+    out = []
+    for c in _cancels(s):
+        job, reason = str(c.get("job") or "").lower(), str(c.get("why") or "")
+        if not any(j in job for j in jobs) or not _lacks(reason):
+            continue
+        if kinds and not any(k in job or k in reason.lower() for k in kinds):
+            continue
+        out.append(c)
+    return out
+
+
 def dead_order(s: dict, recipe: str, cfg: dict | None = None) -> str | None:
     """Why an order of this recipe is a failed route, in words (None: it
     isn't): its jobs were cancelled `mood_dead_cancels` times or more lately
@@ -73,19 +93,13 @@ def dead_order(s: dict, recipe: str, cfg: dict | None = None) -> str | None:
     "No creature", "Needs hair/wool", "Need valid, active sand collection
     zone")."""
     cfg = cfg or PLANNER_CONFIG
-    m = CANCEL_MATCH.get(recipe)
-    if not m:
-        return None
-    jobs, kinds = m
+    fibre = WEAVE_FIBRE.get(recipe)
+    if fibre and released_since(s, fibre, recipe):
+        return None                  # (item2) the cancels were for the hospital's thread, set out since
     n, why = 0, ""
-    for c in _cancels(s):
-        job, reason = str(c.get("job") or "").lower(), str(c.get("why") or "")
-        if not any(j in job for j in jobs) or not _lacks(reason):
-            continue
-        if kinds and not any(k in job or k in reason.lower() for k in kinds):
-            continue
+    for c in _lack_cancels(s, recipe):
         n += int(c.get("n") or 1)
-        why = why or reason
+        why = why or str(c.get("why") or "")
     if n >= int(cfg.get("mood_dead_cancels", 2)):
         return f"DF cancels the {recipe.replace('_', ' ')} jobs: \"{why}\" ({n} times lately)"
     return None
@@ -101,6 +115,20 @@ def usable_thread(s: dict, cfg: dict | None = None) -> dict:
         if d and "thread" in d.lower():
             th[k] = 0
     return th
+
+
+def released_since(s: dict, fibre: str, recipe: str) -> bool:
+    """(item2) The hospital's thread of this fibre was set out for a mood
+    (the bridge's `mood_help.hospital_hold.released`, a tick) after the last
+    of the recipe's jobs DF cancelled for want of thread: the cancels were for
+    the thread the hospital held, and the thread set out is woven
+    (dead_order, and so usable_thread, don't count that weave as failed)."""
+    rel = _d(_d(_d(s.get("mood_help")).get("hospital_hold")).get("released"))
+    at = [v for k, v in rel.items() if k in (fibre, "any") and isinstance(v, int) and not isinstance(v, bool)]
+    if not at:
+        return False
+    ticks = [int(c["tick"]) for c in _lack_cancels(s, recipe) if isinstance(c.get("tick"), int)]
+    return max(at) > max(ticks, default=-1)
 
 
 def webs_reach(s: dict) -> int | None:

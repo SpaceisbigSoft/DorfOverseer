@@ -52,7 +52,7 @@ WANTABLE = SECTIONS + (
             "alerts", "artifacts", "benches", "buildings", "captives", "citizens_taste", "civ_alert",
             "civ_alert_ready", "civ_alert_shelter", "cleanup", "constructions", "crossings", "date", "dead",
             "deep", "descent", "diplomacy", "disposal", "dwarves", "env_hazards", "events_waiting", "field_watch",
-            "floors", "food_store", "forestry", "fort", "founding", "garden_court", "hauling", "hazards", "herd",
+            "fights", "floors", "food_store", "forestry", "fort", "founding", "garden_court", "hauling", "hazards", "herd",
             "hunt", "industry", "insane", "jobs", "justice", "killers", "killzones", "labor", "landmarks",
             "leather_gear", "ledger", "lures", "mandates", "map", "miasma", "migration", "mood_help",
             "near_gates", "necro", "noble_demands", "noble_rooms", "nobles", "offices", "orders", "paper",

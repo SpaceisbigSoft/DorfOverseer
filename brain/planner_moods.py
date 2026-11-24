@@ -17,7 +17,8 @@ from planner_insane import INSANE_MOODS, insane_ids, insane_present  # (0.105.40
 from planner_mood_help import (dead_order, usable_thread, silk_route, webs_reach, free_items_skip,  # (0.105.47, J1)
                                TRADE_IF, request_detail)
 
-__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words", "MOOD_SHOP_KINDS", "mood_shops_missing"]
+__all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words", "MOOD_SHOP_KINDS", "mood_shops_missing",
+           "mood_hospital_rule", "stitch_waiting", "mood_urgency"]   # (item2)
 
 
 # A crafting mood's skill -> the workshop (or furnace) the dwarf must claim
@@ -1424,3 +1425,158 @@ def note_reserve_swap(p, r: dict, state: dict, memory) -> None:
 
 def farm_plots_any(s: dict) -> bool:
     return bool([p for p in _l(_d(s.get("farms")).get("plot_list")) if isinstance(p, dict) and not p.get("dead")])
+
+
+# --- (item2) the hospital's thread and cloth for a waiting mood ------------------------
+#
+# B (24 Nov) and others: every thread in the fort lay in the hospital's chests (its
+# location's supply quota), so a mood wanting cloth or thread never had it: the loom wove
+# nothing and the mood can't take the hospital's (lua/ai-moods.lua counts it 'hospital').
+# Edzul died of thirst in his mood, Udib went raving. While a mood waits and the hospital
+# holds the fort's only cloth or thread of its kind, the bridge (lua/ai-mood-help.lua
+# hospital_release) sets the hospital's thread (and cloth) quota to 0 and sets as much as
+# the mood lacks out of its chests: the cloth itself, or thread for the loom (the cloth
+# rules then weave it: usable_thread trusts thread set out after the weave's cancels). Once
+# no mood waits on cloth or thread the quotas are put back (from the save's site data, so a
+# reload doesn't leave them at 0). Patients waiting for sutures or dressings keep the
+# hospital's stock from a fresh mood; an urgent one (thirsty, or stalled MOOD_URGENT_DAYS)
+# still gets it.
+COOLDOWN_KEYS.setdefault("mood_hospital", "mood_cooldown_ticks")     # a quarter day: each step paces itself
+STEER_PROTECTED.add("mood_hospital")        # a life on it, and the quotas must come back
+LIMIT_EXEMPT.add("mood_hospital")
+AGENDA_THEMES.setdefault("mood_hospital", "materials for a strange mood")
+HOSPITAL_FIBRES = ("silk", "yarn", "plant")
+
+
+def _cloth_or_thread(x: dict) -> str | None:
+    """'cloth' or 'thread' for a mood request of either, else None."""
+    if mood_kind(x) == "cloth":
+        return "cloth"
+    return "thread" if str(_d(x).get("item") or "").upper() == "THREAD" else None
+
+
+def _fibre_of(x: dict) -> str:
+    flags = set(str(f) for f in _l(_d(x).get("flags")))
+    return next((f for f in HOSPITAL_FIBRES if f in flags), "any")
+
+
+def _by_fibre(counts, fibre: str) -> int:
+    c = _d(counts)
+    if fibre == "any":
+        return sum(int(v or 0) for v in c.values() if isinstance(v, int))
+    return int(c.get(fibre) or 0)
+
+
+def stitch_waiting(s: dict) -> int:
+    """Patients waiting for sutures or dressings now (the health report's
+    stitch_wait; the patient list from an older bridge)."""
+    h = _d(s.get("health"))
+    v = h.get("stitch_wait")
+    if isinstance(v, int) and not isinstance(v, bool):
+        return v
+    return sum(1 for p in _l(h.get("patients"))
+               if isinstance(p, dict) and {"suture", "dressing"} & set(_l(p.get("needs"))))
+
+
+def mood_urgency(s: dict, m: dict, memory, cfg: dict) -> tuple[bool, bool, int]:
+    """(urgent, thirsty, stalled days) for a mood, as _mood_rules and
+    _mood_materials read them (0.105.99): thirsty past `mood_thirst_urgent`
+    or stalled `mood_urgent_days`."""
+    now = abs_tick(s)
+    uid = str(m.get("unit_id"))
+    seen = _d(getattr(memory, "moods_seen", None)).get(uid, now)
+    days = (now - seen) // TICKS_PER_DAY if isinstance(seen, int) else 0
+    prog = _d(_d(getattr(memory, "mood_progress", None)).get(uid))
+    stalled = (now - prog["since"]) // TICKS_PER_DAY if isinstance(prog.get("since"), int) else days
+    thirst = m.get("thirst")
+    thirsty = (isinstance(thirst, int) and not isinstance(thirst, bool)
+               and thirst >= int(cfg.get("mood_thirst_urgent", MOOD_THIRST_URGENT)))
+    return thirsty or stalled >= int(cfg.get("mood_urgent_days", MOOD_URGENT_DAYS)), thirsty, stalled
+
+
+def _hospital_requests(s: dict) -> list:
+    """Every gathering crafting mood's cloth and thread requests: [(mood, request, 'cloth'|'thread')]."""
+    out = []
+    for m in _l(_d(s.get("moods")).get("list")):
+        if not (isinstance(m, dict) and m.get("craft") and m.get("workshop")):
+            continue
+        for x in _l(m.get("missing")):
+            what = _cloth_or_thread(x) if isinstance(x, dict) else None
+            if what:
+                out.append((m, x, what))
+    return out
+
+
+def _hospital_share(s: dict, x: dict, what: str, cfg: dict) -> dict | None:
+    """What the hospital is to set out for one request ({cloth: n} or
+    {thread: n}), None when the fort has its own or the hospital none."""
+    if mood_on_hand(x) is not False:
+        return None                              # on hand (or an older bridge: no count)
+    av = _d(x.get("avail"))
+    n = lambda k: int(av.get(k) or 0)            # noqa: E731
+    q = int(x.get("quantity") or 1)
+    if what == "cloth" and q >= 1000:
+        q = math.ceil(q / 10000)                 # an older bridge: DF's cloth units
+    lack = min(10, max(1, q)) - n("reach") - n("held") - n("forbidden_reach")   # the forbidden are freed
+    if lack <= 0:
+        return None
+    fibre = _fibre_of(x)
+    hosp = _d(_d(s.get("supplies")).get("hospital"))
+    if what == "thread":
+        return {"thread": min(lack, n("hospital"))} if n("hospital") > 0 else None
+    if n("hospital") > 0:
+        return {"cloth": min(lack, n("hospital"))}
+    free = _by_fibre(usable_thread(s, cfg), fibre)
+    if free >= lack:
+        return None                              # the fort's own thread: the loom weaves it
+    kinds = hosp.get("thread_kinds")
+    held = _by_fibre(kinds, fibre) if isinstance(kinds, dict) else int(hosp.get("thread") or 0)
+    if held <= 0 or not _has_shop(_d(s.get("buildings")), "Loom"):
+        return None                              # (no loom: the mood rule builds one first)
+    return {"thread": min(lack - free, held)}
+
+
+def mood_hospital_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(item2) A waiting mood's cloth or thread out of the hospital's stock,
+    the hospital's quotas at 0 meanwhile; put back once no mood waits."""
+    hold = _d(_d(s.get("mood_help")).get("hospital_hold"))
+    reqs = _hospital_requests(s)
+    if not reqs:
+        if int(hold.get("locations") or 0) > 0:
+            proposals.append(Proposal("mood_hospital", {"type": "hospital_release", "restore": True},
+                                      "no strange mood waits on cloth or thread now: the hospital's thread and "
+                                      "cloth quotas the AI set to 0 for one are put back as they were", 2))
+        return
+    if not _d(_d(s.get("locations")).get("count")).get("HOSPITAL") and not hold:
+        return
+    stitch = stitch_waiting(s)
+    found = []
+    for m, x, what in reqs:
+        share = _hospital_share(s, x, what, cfg)
+        if share:
+            urgent, thirsty, stalled = mood_urgency(s, m, memory, cfg)
+            found.append((not urgent, m, x, what, share, urgent, thirsty, stalled))
+    found.sort(key=lambda f: f[0])               # the urgent first
+    for _, m, x, what, share, urgent, thirsty, stalled in found:
+        name, mood = m.get("name") or "a dwarf", str(m.get("mood") or "strange").lower()
+        fibre = _fibre_of(x)
+        give = "thread" if "thread" in share else "cloth"
+        n = share[give]
+        why = (f"{name}'s {mood} mood waits for {mood_item_text(x)} and the hospital holds the fort's only "
+               f"{'' if fibre == 'any' else fibre + ' '}{give} the mood can use")
+        if stitch and not urgent:
+            notes.append(f"{why}, but {stitch} patient(s) wait for sutures or dressings: the hospital keeps it "
+                         f"while the mood is fresh (it is set out if the dwarf grows thirsty or the mood stalls "
+                         f"{int(cfg.get('mood_urgent_days', MOOD_URGENT_DAYS))} days)")
+            continue
+        a = {"type": "hospital_release", give: n, "kind": fibre}
+        proposals.append(Proposal(
+            "mood_hospital", a,
+            f"{why}: {n} {give} set out of its chests for it"
+            + (" (the loom weaves it)" if what == "cloth" and give == "thread" else "")
+            + f", and the hospital's thread{' and cloth' if give == 'cloth' else ''} quota set to 0 while it waits "
+              "(put back after)"
+            + (f"; {stitch} patient(s) wait for sutures or dressings, but the mood is urgent ("
+               + ("the dwarf is thirsty" if thirsty else f"stalled {stalled} days") + ")" if stitch else ""),
+            0 if urgent else 1))
+        return                                   # one a cycle: the next mood after the cooldown

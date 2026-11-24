@@ -29,6 +29,10 @@
 --                                while the alarm (or the evil weather's
 --                                keep-in) is up
 --   act_mood_shelter(a)          the `mood_shelter` action
+--   act_hospital_release(a)      the `hospital_release` action: the hospital's
+--                                thread or cloth for a waiting strange mood,
+--                                and the hospital's quotas lowered meanwhile
+--                                (restore = true puts them back)
 --@ module = true
 
 local U = reqscript('ai-util')
@@ -237,6 +241,8 @@ function report()
             out.shelter = {moods = #units, tiles = #spots, outside = n}
         end
     end
+    local okh, hh = pcall(hold_report)
+    if okh and hh then out.hospital_hold = hh end
     return out
 end
 
@@ -251,6 +257,313 @@ function act_mood_shelter(a)
     if r.added == 0 then
         r.ok, r.rejected = false, true
         r.error = 'the moods\' workshops and materials are inside the shelter already (' .. r.already .. ' tiles)'
+        return r
+    end
+    r.ok = true
+    return r
+end
+
+-- --- the hospital's thread and cloth for a strange mood (item2) -----------------------
+--
+-- B (24 Nov) and others: every thread in the fort lay in the hospital's
+-- chests (the hospital location's supply quota), so a mood wanting cloth or
+-- thread never had it: the loom wove nothing (no free thread), and a mood
+-- takes nothing of the hospital's (ai-moods counts it 'hospital'). Edzul died
+-- of thirst in his mood, Udib went raving. While a mood waits, the hospital's
+-- desired thread (and cloth, for a cloth mood) is set to 0 so it pulls no more
+-- back, the first values kept in the save's site data (HOSPITAL_HOLD_KEY), and
+-- as much of the mood's kind as it lacks is set on the ground just outside the
+-- hospital's zones (ai-moods counts an item on a hospital zone's floor as the
+-- hospital's too), unforbidden. restore puts the quotas back (after a reload
+-- too: read from the site data); the brain asks it once no mood waits.
+HOSPITAL_HOLD_KEY = 'ai-overseer/hospital-hold'
+RELEASE_MAX = 10                -- items released a call at most
+RELEASE_RADIUS = 12             -- tiles searched round an item for one outside the hospital
+THREAD_WHOLE = 15000            -- a whole spun thread (lua/ai-bridge-report-supplies.lua's)
+CLOTH_WHOLE = 10000             -- a whole cloth (ai-moods CLOTH_DIM)
+local FIBRES = {plant = true, silk = true, yarn = true, any = true}
+local QUOTAS = {'thread', 'cloth'}
+
+-- the site's hospital locations (DF's abstract buildings, type HOSPITAL), or the one of this id
+function hospital_locations(id)
+    local out = {}
+    pcall(function()
+        local site = dfhack.world.getCurrentSite()
+        for _, loc in ipairs(site and site.buildings or {}) do
+            local gone = false
+            pcall(function() gone = loc.flags.DOES_NOT_EXIST == true end)
+            local ok, yes = pcall(function() return df.abstract_building_type[loc:getType()] == 'HOSPITAL' end)
+            if not gone and ok and yes and (id == nil or loc.id == id) then table.insert(out, loc) end
+        end
+    end)
+    return out
+end
+
+-- the save's record: {locs = {{id, thread, cloth}...} (the first desired
+-- values, DF's units), at = tick lowered, released = {fibre = tick}}
+function hold_get()
+    local d = U.site_get(HOSPITAL_HOLD_KEY, {})
+    if type(d) ~= 'table' then d = {} end
+    if type(d.locs) ~= 'table' then d.locs = {} end
+    if type(d.released) ~= 'table' then d.released = {} end
+    return d
+end
+
+-- the section's part: nil while nothing is held
+function hold_report()
+    local d = hold_get()
+    if #d.locs == 0 and next(d.released) == nil then return nil end
+    local list = {}
+    for _, e in ipairs(d.locs) do
+        table.insert(list, {id = tonumber(e.id), thread = tonumber(e.thread), cloth = tonumber(e.cloth)})
+    end
+    return {locations = #d.locs, at = tonumber(d.at), released = d.released, list = list}
+end
+
+local function hold_entry(d, id)
+    for _, e in ipairs(d.locs) do
+        if tonumber(e.id) == id then return e end
+    end
+    return nil
+end
+
+-- the location's desired thread (and cloth) set to 0, the value before kept
+-- once (a value raised again while held, by DF or the player, is the one
+-- kept). Returns how many quotas were lowered now.
+local function lower(loc, d, what, dry_run)
+    local c = loc:getContents()
+    local e = hold_entry(d, loc.id)
+    local fresh = e == nil
+    e = e or {id = loc.id}
+    local n = 0
+    for _, k in ipairs(QUOTAS) do
+        if what[k] then
+            local cur = tonumber(c['desired_' .. k]) or 0
+            if cur > 0 then
+                e[k] = cur
+                n = n + 1
+                if not dry_run then
+                    c['desired_' .. k] = 0
+                    pcall(function() c.need_more[k] = false end)
+                end
+            end
+        end
+    end
+    if fresh and (e.thread or e.cloth) and not dry_run then table.insert(d.locs, e) end
+    return n
+end
+
+-- the quotas put back as they were (a quota the player set meanwhile, not 0,
+-- is left as it is); the record cleared
+function restore_quotas(dry_run)
+    local d = hold_get()
+    local r = {locations = #d.locs, restored = 0, gone = 0, dry_run = dry_run or nil}
+    for _, e in ipairs(d.locs) do
+        local loc = hospital_locations(tonumber(e.id))[1]
+        if not loc then
+            r.gone = r.gone + 1
+        else
+            pcall(function()
+                local c = loc:getContents()
+                for _, k in ipairs(QUOTAS) do
+                    local was = tonumber(e[k])
+                    if was and was > 0 and (tonumber(c['desired_' .. k]) or 0) == 0 then
+                        if not dry_run then c['desired_' .. k] = was end
+                        r.restored = r.restored + 1
+                    end
+                end
+            end)
+        end
+    end
+    if not dry_run and (#d.locs > 0 or next(d.released) ~= nil) then U.site_put(HOSPITAL_HOLD_KEY, {}) end
+    return r
+end
+
+-- an item kept in one of the hospital's chests (in a bag in one too); false
+-- for a container in a job (being hauled)
+local function in_box(it, set)
+    local up = dfhack.items.getContainer(it)
+    for _ = 1, 4 do
+        if not up then return false end
+        if up.flags.in_job then return false end
+        local b = dfhack.items.getHolderBuilding(up)
+        if b then return set[b.id] == true end
+        up = dfhack.items.getContainer(up)
+    end
+    return false
+end
+
+local function zone_ids(zones)
+    local ids = {}
+    for _, z in ipairs(zones or {}) do if z.id then ids[z.id] = true end end
+    return ids
+end
+
+-- a tile the item can lie on outside every hospital zone, reached from
+-- where it lies: walkable, the same walk group, no building on it but a
+-- zone or a stockpile (an item on a workshop's or furniture's tile may be
+-- taken for it)
+local FLOOR_OK = {Civzone = true, Stockpile = true}
+local function tile_ok(p, g0, ids)
+    local okg, g = pcall(dfhack.maps.getWalkableGroup, p)
+    if not okg or g ~= g0 then return false end
+    local okb, b = pcall(dfhack.buildings.findAtTile, p)
+    if not okb then return false end
+    if b ~= nil then
+        local okt, t = pcall(function() return df.building_type[b:getType()] end)
+        if not (okt and FLOOR_OK[t]) then return false end
+    end
+    local okz, zs = pcall(dfhack.buildings.findCivzonesAt, p)
+    if not okz then return false end
+    for _, z in ipairs(zs or {}) do
+        if ids[z.id] then return false end
+    end
+    return true
+end
+
+function outside_tile(x, y, z, ids)
+    local okg, g0 = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x, y, z))
+    if not okg or type(g0) ~= 'number' or g0 == 0 then return nil end
+    for r = 1, RELEASE_RADIUS do
+        for dx = -r, r do
+            for dy = -r, r do
+                if math.max(math.abs(dx), math.abs(dy)) == r then
+                    local p = xyz2pos(x + dx, y + dy, z)
+                    if tile_ok(p, g0, ids) then return p end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local UNFREE_OK = {forbid = true, dump = true}
+
+-- the hospital's items of a kind (THREAD or CLOTH) and fibre, whole, that no
+-- job, owner or carrier holds: in its chests or on its zones' floor
+local function hospital_items(M, tname, fibre, whole, want)
+    local out = {}
+    local set, zones = M.hospital_boxes()
+    if next(set or {}) == nil and #(zones or {}) == 0 then return out end
+    local okl, list = pcall(function() return df.global.world.items.other[tname] end)
+    if not okl or not list then return out end
+    for _, it in ipairs(list) do
+        if #out >= want then break end
+        local ok, take = pcall(function()
+            if U.item_unfree(it, UNFREE_OK) then return false end
+            if not (in_box(it, set or {}) or M.hospital_ground(it)) then return false end
+            if fibre ~= 'any' and M.cloth_kind(it) ~= fibre then return false end
+            local okd, d = pcall(function() return it:getTotalDimension() end)
+            if okd and type(d) == 'number' and d > 0 and d < whole then return false end   -- a used piece
+            return true
+        end)
+        if ok and take then table.insert(out, it) end
+    end
+    return out, zone_ids(zones)
+end
+
+-- the items set on the ground outside the hospital, unforbidden: (moved,
+-- names, kinds released, how many found no tile)
+local function release(M, tname, n, fibre, whole, dry_run, txt)
+    local moved, names, kinds, stuck = 0, {}, {}, 0
+    if n <= 0 then return moved, names, kinds, stuck end
+    local items, ids = hospital_items(M, tname, fibre, whole, n)
+    local spots = {}
+    for _, it in ipairs(items) do
+        local ok, done = pcall(function()
+            local x, y, z = dfhack.items.getPosition(it)
+            if not x then return false end
+            local key = x .. ',' .. y .. ',' .. z
+            if spots[key] == nil then spots[key] = outside_tile(x, y, z, ids or {}) or false end
+            local p = spots[key]
+            if not p then return false end
+            if dry_run then return true end
+            if dfhack.items.moveToGround(it, p) ~= true then return false end
+            it.flags.forbid = false
+            it.flags.dump = false
+            return true
+        end)
+        if ok and done then
+            moved = moved + 1
+            local okk, k = pcall(M.cloth_kind, it)
+            kinds[(okk and k) or fibre] = true
+            if #names < 5 then
+                local okd, d = pcall(dfhack.items.getReadableDescription, it)
+                table.insert(names, okd and type(d) == 'string' and txt(d) or tname:lower())
+            end
+        else
+            stuck = stuck + 1
+        end
+    end
+    return moved, names, kinds, stuck
+end
+
+local function count(v)
+    local n = math.tointeger(tonumber(v) or 0) or 0
+    return math.max(0, math.min(RELEASE_MAX, n))
+end
+
+-- the action. a: {thread = n, cloth = n (each 0-10), kind = plant|silk|yarn|any,
+-- location_id (one hospital; all of them when left out), restore, dry_run};
+-- restore_only (set while the AI is halted): only the quotas put back
+function act_hospital_release(a, txt)
+    a = a or {}
+    txt = txt or tostring
+    local dry = a.dry_run == true
+    if a.restore == true or a.restore_only == true then
+        local r = restore_quotas(dry)
+        if r.locations == 0 then
+            return {ok = false, rejected = true, error = 'no hospital quota was lowered by the AI: nothing to put back'}
+        end
+        r.ok = true
+        return r
+    end
+    local thread, cloth = count(a.thread), count(a.cloth)
+    if thread == 0 and cloth == 0 then
+        return {ok = false, rejected = true, error = 'hospital_release needs thread or cloth 1-10 (or restore)'}
+    end
+    local fibre = a.kind == nil and 'any' or tostring(a.kind)
+    if not FIBRES[fibre] then
+        return {ok = false, rejected = true, error = 'hospital_release kind is plant, silk, yarn or any'}
+    end
+    if #gathering_moods() == 0 then
+        return {ok = false, rejected = true, error = 'no dwarf in a strange mood with a job: nothing released'}
+    end
+    local okm, M = pcall(reqscript, 'ai-moods')
+    if not (okm and type(M) == 'table' and M.hospital_boxes and M.hospital_ground and M.cloth_kind) then
+        return {ok = false, rejected = true, error = 'ai-moods could not be read'}
+    end
+    local id = math.tointeger(tonumber(a.location_id))
+    local locs = hospital_locations(id)
+    if #locs == 0 then
+        return {ok = false, rejected = true, error = id and 'no such hospital' or 'the fort has no hospital'}
+    end
+    local d = hold_get()
+    local lowered = 0
+    for _, loc in ipairs(locs) do
+        local ok, n = pcall(lower, loc, d, {thread = true, cloth = cloth > 0}, dry)
+        if ok then lowered = lowered + n end
+    end
+    local mc, nc, kc, sc = release(M, 'CLOTH', cloth, fibre, CLOTH_WHOLE, dry, txt)
+    local mt, nt, kt, st = release(M, 'THREAD', thread, fibre, THREAD_WHOLE, dry, txt)
+    local names = nc
+    for _, v in ipairs(nt) do if #names < 5 then table.insert(names, v) end end
+    local now = U.now_tick(0)
+    if not dry then
+        for _, kinds in ipairs({kc, kt}) do
+            for k in pairs(kinds) do d.released[k] = now end
+        end
+        if lowered > 0 and not d.at then d.at = now end
+        if #d.locs > 0 or next(d.released) ~= nil then U.site_put(HOSPITAL_HOLD_KEY, d) end
+        -- the moods' counts read again (an item moved is no new item: their cache keeps it 'hospital')
+        if mc + mt > 0 then pcall(function() M.AVAIL_CACHE = {} end) end
+    end
+    local r = {cloth = mc, thread = mt, items = names, lowered = lowered, kind = fibre, dry_run = dry or nil}
+    if sc + st > 0 then r.no_tile = sc + st end
+    if mc + mt == 0 and lowered == 0 then
+        r.ok, r.rejected = false, true
+        r.error = 'nothing of that kind in the hospital that can be taken (whole, in no job, owned by nobody'
+            .. (sc + st > 0 and ', with a tile outside the hospital in reach' or '') .. '), and its quotas are 0 already'
         return r
     end
     r.ok = true

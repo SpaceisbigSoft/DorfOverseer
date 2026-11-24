@@ -49,7 +49,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.104'
+BRIDGE_VERSION = '0.105.105'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -237,6 +237,7 @@ BRIDGE_MODULES = {
     'ai-mood-help',   -- (0.105.47, J1) job cancels, webs, the moods' tiles in the shelter
     'ai-screen-buttons', 'ai-meeting-open',   -- (0.105.47) buttons kept for every save; the meeting opened
     'ai-tantrums',   -- (0.105.47) the tantrum ledger, posts, hospital guards
+    'ai-fights',     -- (item1) the in-game fight watcher
     'ai-mission-way',   -- (0.105.47) a mission's travellers' way off the map, the gate hold
     'ai-way-out',   -- (0.105.47, J16) the citizens' way off the map, the fort left open
     'ai-training-squad',   -- (0.105.47) the training squad

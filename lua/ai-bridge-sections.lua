@@ -10,7 +10,7 @@
 -- Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-sections is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.104'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.105'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- Run one section of the report; if it fails, keep the rest of the report
 -- and put the error where that section would have been.
@@ -403,6 +403,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- year), each thrower's posts, labours and unmet needs, the hospitals, the
     -- squads (calm or not) and the AI's hospital guards (lua/ai-tantrums.lua; in the pulse)
     tantrums = function() return safe(function() return reqscript('ai-tantrums').report(txt) end) end,
+    -- (item1) the in-game fight watcher: armed, its counts since the game loaded, its
+    -- last log entries, the citizens' conflicts now (lua/ai-fights.lua; in the pulse)
+    fights = function() return safe(function() return reqscript('ai-fights').report() end) end,
     -- (0.105.47, I7b) the coffins on the AI's other levels (placed, built, free),
     -- free coffins in store, the trainee cook (lua/ai-welfare.lua)
     welfare = function() return safe(function() return reqscript('ai-welfare').report() end) end,
@@ -469,6 +472,7 @@ PULSE_SECTIONS = {
     'thirst',        -- (0.105.46, I2) thirst kills in days: read each cycle
     'mood_help',     -- (0.105.47, J1) an alarm sounded while a mood gathers: read each cycle
     'tantrums',      -- (0.105.47) a tantrum is loose for hours: read each cycle
+    'fights',        -- (item1) the fight watcher re-armed on the next cycle after a reload
     'well_safety',   -- (0.105.47) a dwarf under a well, a shaft's next level: read each cycle
     'near_gates',    -- (0.105.47, I7d) a titan reaches the far-out workers in 500 ticks: read each cycle
     'way_out',       -- (0.105.47, J16) a fort sealed in: read each cycle (the edge groups cached)
@@ -539,6 +543,7 @@ CACHE_INVALIDATES = {
 CACHE_INVALIDATES.set_farm_crops = {'farms'}   -- (0.105.5) the plots' crops read again
 CACHE_INVALIDATES.accept_cups = {'needs'}       -- (0.104.168) the cups census shows what it changed
 CACHE_INVALIDATES.mood_free_items = {'moods'}  -- (0.105.24) what the mood can reach now
+CACHE_INVALIDATES.hospital_release = {'moods', 'locations'}  -- (item2) the moods' counts, the hospital's quotas
 CACHE_INVALIDATES.location_access = {'locations'}  -- (0.105.26) shut places read shut, not "opened by you"
 -- (0.105.27) the disposal section read again after each disposal action
 for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'place_dump'}) do

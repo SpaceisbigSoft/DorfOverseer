@@ -15,7 +15,7 @@ from dfhack import DFHackError
 from planner import NEEDS_YOU, PLANNER_CONFIG, abs_tick, effective_config, note_tantrums, select
 from planner_guards import guard_fail, guard_lines, guard_ok
 from planner_core import limit_exempt
-from planner_tantrums import note_tantrum_book
+from planner_tantrums import fight_journal, note_tantrum_book
 from planner_society import note_heists
 from planner_moods import mood_journal
 from planner_missions import mission_journal
@@ -297,6 +297,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 journal({"kind": "crisis", "fort": key, "date": state["date"], **e})
             for e in meeting_report_lines(events):    # (r5 p2) DF's word that the diplomats left
                 journal({"kind": "meeting", "fort": key, "date": state["date"], **e})
+            for e in fight_journal(state, memory):    # (item1) the fight watcher capped or broke up a fight
+                journal({"kind": "fight_watch", "fort": key, "date": state["date"], **e})
         cycle_step(memory, state, "journals", _journals)
         cycle_step(memory, state, "note_tantrums", lambda: note_tantrums(state, memory, events))   # (0.104.31) tantrums counted for the jail
         cycle_step(memory, state, "note_tantrum_book", lambda: note_tantrum_book(state, memory, events))   # (0.105.47) tantrum/berserk/possession reports

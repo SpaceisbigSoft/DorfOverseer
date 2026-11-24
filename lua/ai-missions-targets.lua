@@ -7,7 +7,7 @@
 -- short, int, ...) are in reach.
 
 if not MISSIONS_PART_LOCALS then qerror('ai-missions-targets is a part of ai-missions; run ai-missions') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-missions-targets'] = '0.105.104'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-missions-targets'] = '0.105.105'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- (r9) the hub's and earlier parts' locals used here
 local new_reader, short, enum_name, name_of, each, int, fort_ids, hostile = MISSIONS_PART_LOCALS.new_reader, MISSIONS_PART_LOCALS.short, MISSIONS_PART_LOCALS.enum_name, MISSIONS_PART_LOCALS.name_of, MISSIONS_PART_LOCALS.each, MISSIONS_PART_LOCALS.int, MISSIONS_PART_LOCALS.fort_ids, MISSIONS_PART_LOCALS.hostile

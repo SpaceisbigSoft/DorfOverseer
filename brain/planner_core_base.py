@@ -113,7 +113,7 @@ STUCK_HOLD_EXEMPT = {"drink", "drink_fruit", "food", "well_parts", "mood"}
 ORDER_HOLD_EXEMPT = {"mood"}
 # Also outside the per-cycle action limit: switching a squad's schedule (instant, undoable).
 # (0.104.169) calm_burrow too: a tantrum near the patients waits for no slot
-LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow", "join_levels", "census", "train", "shelter", "entrances", "labor",
+LIMIT_EXEMPT = EMERGENCY | {"break_fights", "fight_watch", "calm_burrow", "join_levels", "census", "train", "shelter", "entrances", "labor",
                             "gather", "stuck_order", "alerts",
                             "kitchen",   # (0.100) a kitchen setting, once per drink shortage: no slot of its own
                             "mood",      # (0.105.24) a strange mood's materials (a life on it; a handful of actions at most)
@@ -133,6 +133,7 @@ LIMIT_EXEMPT = EMERGENCY | {"break_fights", "calm_burrow", "join_levels", "censu
 # put in EMERGENCY (way_out, way_out_dig, well_rescue) missed them
 STEER_PROTECTED.update({"intruder_guard", "thief_watch", "destroyer_gate", "hospital_guard", "staff_tantrum", "chronic_posts",
                         "tantrum_soldier",   # (0.105.99)
+                        "fight_watch",       # (item1) the in-game fight watcher armed
                         "near_gates", "near_gates_refresh", "hunting_stop", "fire_guard", "magma_guard",
                         "magma_shut", "lure_shut", "mood_shelter", "well_rescue", "well_safety"})
 

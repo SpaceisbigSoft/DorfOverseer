@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.104'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.105'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
 
@@ -583,8 +583,16 @@ function get_supplies()
         local f = mat_flags(it)
         return f and (f.SILK and 'silk' or f.YARN and 'yarn' or f.THREAD_PLANT and 'plant') or nil
     end
+    -- (item2) and by fibre: a mood's cloth or thread may be all the hospital's (B's 15 thread);
+    -- the brain releases the mood's kind (lua/ai-mood-help.lua hospital_release)
+    out.hospital.cloth_kinds = {plant = 0, silk = 0, yarn = 0}
+    out.hospital.thread_kinds = {plant = 0, silk = 0, yarn = 0}
+    local function hosp_kind(what, it)
+        local k = kind_of(it)
+        if k then out.hospital[what][k] = out.hospital[what][k] + it:getStackSize() end
+    end
     each('CLOTH', function(it)
-        if in_hospital(it) then out.hospital.cloth = out.hospital.cloth + it:getStackSize() return end
+        if in_hospital(it) then out.hospital.cloth = out.hospital.cloth + it:getStackSize(); hosp_kind('cloth_kinds', it) return end
         local k = kind_of(it)
         if k then out.cloth_kinds[k] = out.cloth_kinds[k] + it:getStackSize() end
     end)
@@ -596,7 +604,7 @@ function get_supplies()
     -- look: F's 6 yarn thread "unused collected" DF wouldn't weave)
     out.thread_short = {plant = 0, silk = 0, yarn = 0}
     each('THREAD', function(it)
-        if in_hospital(it) then out.hospital.thread = out.hospital.thread + it:getStackSize() return end
+        if in_hospital(it) then out.hospital.thread = out.hospital.thread + it:getStackSize(); hosp_kind('thread_kinds', it) return end
         local k = kind_of(it)
         if k then
             out.thread_kinds[k] = out.thread_kinds[k] + it:getStackSize()

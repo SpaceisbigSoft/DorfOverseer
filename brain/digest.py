@@ -174,6 +174,7 @@ SECTION_DEFAULTS = {
     "shelter_plan": {},      # (0.105.45) the shelter away from the threat: ways in, levels, walks, chokes (lua/ai-shelter-plan.lua)
     "stuck": {},             # (0.105.45) the AI's things stuck "in progress", since when, their progress (lua/ai-stuck.lua)
     "thirst": {},            # (0.105.46, I2) the thirsty with why they don't drink; deaths of thirst with the last reason (lua/ai-thirst.lua)
+    "fights": {},            # (item1) the in-game fight watcher: armed, counts, its log, the citizens' conflicts now (lua/ai-fights.lua)
     "tantrums": {},          # (0.105.47) the tantrum ledger, each thrower's posts and needs, hospitals, squads, guards (lua/ai-tantrums.lua)
     "welfare": {},           # (0.105.47, I7b) coffins on the AI's other levels, free coffins, the trainee cook (lua/ai-welfare.lua)
     "well_safety": {},       # (0.105.47) cavern wells made safe: each shaft, who is in its column or under it, its door, the watcher's log, the one-at-a-time book (lua/ai-well-safety.lua)

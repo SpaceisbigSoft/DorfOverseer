@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.104'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.105'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -148,6 +148,9 @@ ACTIONS = {
     kitchen_brewables = act_kitchen_brewables,   -- (0.100) cooking keeps brewables while drink is short
     unstick_uniforms = act_unstick_uniforms,
     break_fights = act_break_fights,
+    -- (item1) the in-game fight watcher: a fight among citizens capped at a brawl and
+    -- broken up every few ticks (lua/ai-fights.lua); {on, ticks?, separate_ticks?}
+    fight_watch = function(a) return reqscript('ai-fights').act(a) end,
     free_stray_gear = act_free_stray_gear,   -- (0.104.58)
     assign_weapons = act_assign_weapons,     -- (0.104.60)
     assign_kit = act_assign_kit,             -- (0.105.8)
@@ -595,6 +598,10 @@ ACTIONS = {
     -- (0.105.47, J1) a gathering strange mood's workshop and materials put in the AI
     -- shelter while the alarm is up (lua/ai-mood-help.lua; I7a: 5 moods cancelled "Forbidden area")
     mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter({dry_run = a.dry_run == true}) end,
+    -- (item2) a waiting mood's cloth or thread out of the hospital's chests, the
+    -- hospital's thread (and cloth) quota at 0 meanwhile; restore puts it back
+    -- (lua/ai-mood-help.lua, brain/planner_moods.py mood_hospital_rule)
+    hospital_release = function(a) return reqscript('ai-mood-help').act_hospital_release(a, txt) end,
     -- (0.105.47) a meeting that waits behind DF's diplomacy light opened by
     -- clicking it (lua/ai-meeting-open.lua); sent by the overseer only unattended
     open_meeting = function(a)
@@ -755,6 +762,7 @@ for _, name in ipairs({
     -- (0.105.26) honoured all the way down, not listed before
     'accept_cups', 'add_doctor_post', 'allow_burial', 'answer_meeting', 'apply_preset', 'approve_orders',
     'assign_kit', 'assign_quivers', 'assign_weapons', 'bench_jobs', 'bootstrap_chair', 'break_fights',
+    'fight_watch',   -- (item1) its dry run says what it would do and changes nothing
     'build_crossing', 'build_gatehouse', 'calm_burrow', 'clear_orphan_jobs', 'clear_webs', 'close_meeting',
     'cut_entrance', 'dig_stairwell', 'fire_guard', 'fix_gear_gaps', 'free_slabs', 'free_stray_gear',
     'gate_dogs', 'guard_gate', 'hospital_burrow', 'house_dwarves', 'furnish_liked', 'join_levels', 'keep_mousers',
@@ -811,6 +819,7 @@ for _, name in ipairs({
     'free_caravan',    -- (r2 h9) its dry run counts the merchants and tells none to leave; (0.105.97) moves none,
                        -- runs only fix/stuck-merchants -n
     'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none
+    'hospital_release',   -- (item2) its dry run counts what it would lower and release, and changes nothing
     'open_meeting',    -- (0.105.47) its dry run finds the diplomacy light and clicks nothing
     'close_world',     -- (0.105.48, K9) its dry run says whether the World screen would be left, and presses nothing
     'hospital_guard', 'tantrum_step_down',   -- (0.105.47) each dry run checks and changes nothing
@@ -849,4 +858,6 @@ RELEASE_WHILE_HALTED = {insane_guard = 'release_only', killer_cell = 'release_on
                         -- the way out's leave only opens, lowers and lets out
                         civ_alert = 'release_only', weather_burrow = 'release_only',
                         recreation = 'release_only', hospital_burrow = 'release_only',
-                        calm_burrow = 'release_only', way_out_leave = 'release_only'}
+                        calm_burrow = 'release_only', way_out_leave = 'release_only',
+                        -- (item2) the hospital's quotas only put back (never lowered, nothing released)
+                        hospital_release = 'restore_only'}

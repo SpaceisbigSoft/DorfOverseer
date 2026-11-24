@@ -215,6 +215,7 @@ SHORT_WORDS = {
     "clear_webs": "clear the spider webs",  # (0.104.116)
     "remove_webs": "remove spider webs far from the fort",  # (0.105.3)
     "mood_shelter": "let a strange mood's workshop and materials into the shelter",  # (0.105.47, J1)
+    "hospital_release": "give a strange mood the hospital's thread or cloth (or put the hospital's quotas back)",  # (item2)
     "scrub_dead_units": "clear old dead creatures from the game's unit list",  # (0.104.158)
     # (0.105.40, 13e) world cleanup (brain/planner_cleanup.py)
     "cleanup_items": "delete items no dwarf has reached for a year",
@@ -301,6 +302,7 @@ SHORT_WORDS = {
     "set_standing_orders": "set the game's standing orders",
     # (13c) planner actions that had no words (the panel showed their type)
     "break_fights": "end the citizens' fights (fix/loyaltycascade)",
+    "fight_watch": "watch for fights among the citizens in the game (capped at a brawl, broken up)",   # (item1)
     "build_crossing": "build a bridge across a gap",
     "remove_crossing": "take down one of the AI's bridges",
     "free_dig_jobs": "free the workers held by a stalled level's dig jobs",
@@ -333,6 +335,8 @@ def short(a: dict) -> str:
     t = a.get("type")
     if t == "found_fort" and a.get("wide"):      # (0.105.35)
         return "dig the first staircase, further from the wagon"
+    if t == "fight_watch" and a.get("on") is False:   # (item1)
+        return "stop the in-game fight watcher"
     words = SHORT_WORDS.get(t)
     if words is not None:
         return words
