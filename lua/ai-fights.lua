@@ -218,6 +218,7 @@ function judge(ev)
                 local kind, why = unit_kind(u)
                 if not kind then
                     j.ours, j.why = false, why
+                    j.why_id = j.why_id or id   -- (0.105.106) the unit that made it not the fort's own
                 else
                     if kind == 'dead' then j.died = true end
                     table.insert(j.units, {id = id, u = u, kind = kind})
@@ -382,7 +383,12 @@ function pass(now, opts)
         local j = judge(c.ev)
         j.act, j.ev = c.act, c.ev
         table.insert(judged, j)
-        if not j.ours then for _, id in ipairs(j.ids) do foreign[id] = true end end
+        if not j.ours then
+            -- (0.105.106) why each unit is kept: the other conflict, its reason and the unit behind it
+            local who = j.why_id and find_unit(j.why_id) or nil
+            local note = {act = c.act, why = j.why, who = j.why_id, who_name = who and unit_name(who) or nil}
+            for _, id in ipairs(j.ids) do foreign[id] = foreign[id] or note end
+        end
     end
     local live = {}
     local mo = nil
@@ -472,7 +478,17 @@ function pass(now, opts)
                     entry.levels_after = (levels_of(j.ev))
                 end
                 if #removed > 0 then entry.separated = removed end
-                if #kept > 0 then entry.kept = kept end
+                if #kept > 0 then
+                    entry.kept = kept
+                    local why = {}
+                    for _, id in ipairs(kept) do
+                        local f = foreign[id]
+                        if type(f) == 'table' then
+                            table.insert(why, {id = id, act = f.act, why = f.why, who = f.who, who_name = f.who_name})
+                        end
+                    end
+                    if #why > 0 then entry.kept_why = why end
+                end
                 if reeng then entry.reengaged = true end
                 if dry then entry.dry = true end
                 log(S, entry)
