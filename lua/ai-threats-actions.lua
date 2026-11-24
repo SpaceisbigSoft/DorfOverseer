@@ -359,7 +359,8 @@ function moon_cell(ids, release, dry_run, txt)
             -- 23 Nov, B: the captain of the guard Mafol and the wrestler Ineth
             -- waited for their cells 4 cycles each, changed outside them and
             -- killed (a bone doctor) before the militia shot them
-            if u and not dfhack.units.isDead(u) and not changed(u) and u.military.squad_id ~= -1 then
+            local oksq, in_squad = pcall(function() return u.military.squad_id ~= -1 end)
+            if u and not dfhack.units.isDead(u) and not changed(u) and oksq and in_squad then
                 local name = name_of(u, txt)
                 if dry_run then
                     out.unsquad = out.unsquad or {}
