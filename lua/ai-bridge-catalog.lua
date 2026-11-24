@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.94'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.95'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -270,6 +270,12 @@ ACTIONS = {
         if type(a.on) ~= 'boolean' then return reject('garden_court_meeting: on is true or false') end
         if a.lock ~= nil and type(a.lock) ~= 'boolean' then return reject('garden_court_meeting: lock is true or false') end
         return reqscript('ai-builder').garden_court_meeting(a.dry_run == true, {on = a.on, lock = a.lock == true})
+    end,
+    -- (0.105.95) a secrets book or scroll forbidden (on) or let go: nobody reads it (lua/ai-secrets.lua)
+    forbid_secrets = function(a)
+        if type(a.ids) ~= 'table' or #a.ids == 0 or #a.ids > 20 then return reject('forbid_secrets needs ids: 1-20 item ids') end
+        if type(a.on) ~= 'boolean' then return reject('forbid_secrets: on is true or false') end
+        return reqscript('ai-secrets').forbid(a.ids, a.on, a.dry_run == true)
     end,
     thirst_unforbid = function(a)
         local id = type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or nil
@@ -797,6 +803,7 @@ for _, name in ipairs({
     'hunt_send', 'hunt_recall',   -- (0.105.45) each dry run checks the target and squads, and gives no order
     'build_killzone', 'reset_cage_traps',   -- (0.105.45) each dry run plans (or counts) and places nothing
     'thirst_unforbid',   -- (0.105.46, I2) its dry run counts the drinks and lets none go
+    'forbid_secrets',    -- (0.105.95) its dry run changes no flag
     'thirst_way', 'thirst_patient', 'thirst_probe',   -- (R1 g2) each dry run plans or counts and changes nothing
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
     'free_caravan',    -- (r2 h9) its dry run counts the merchants and tells none to leave

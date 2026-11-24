@@ -222,6 +222,7 @@ SHORT_WORDS = {
     "killer_cell": "lock a killer or a vampire among the fort's own in a cell (let out to eat and drink)",  # (item3)
     "stuck_reset": "take an AI lever's waiting pull job off (and ask the pull afresh)",  # (0.105.45)
     "thirst_unforbid": "let go the forbidden drink a parched dwarf can reach",  # (0.105.46, I2)
+    "forbid_secrets": "forbid (or let go) the books of the secrets of life and death",  # (0.105.95)
     "thirst_way": "open a parched dwarf's way to drink",  # (R1 g2)
     "thirst_patient": "get water to a parched patient",  # (R1 g2)
     "thirst_probe": "look into why a parched dwarf doesn't drink",  # (R1 g2)

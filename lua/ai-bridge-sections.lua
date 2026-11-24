@@ -10,7 +10,7 @@
 -- Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-sections is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.94'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.95'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- Run one section of the report; if it fails, keep the rest of the report
 -- and put the error where that section would have been.
@@ -368,7 +368,13 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- (item 12) the artifacts on the map (displayed, loose, claimed by other
     -- civs), the display furniture, the AI's rooms that could hold one
     -- (lua/ai-artifacts.lua; cached a day)
-    artifacts = function() return safe(function() return reqscript('ai-artifacts').report() end) end,
+    artifacts = function() return safe(function()
+        local r = reqscript('ai-artifacts').report()
+        -- (0.105.95) the secrets of life and death: slabs, books, necromancers (lua/ai-secrets.lua)
+        local oks, sec = pcall(function() return reqscript('ai-secrets').report() end)
+        if oks then r.secrets = sec end
+        return r
+    end) end,
     -- (0.105.45) hunting: the loose hostiles and beasts a squad could go after
     -- (the way there, workers near), the squads' strength, the AI's hunts and
     -- their history (lua/ai-hunt.lua)
@@ -562,6 +568,7 @@ CACHE_INVALIDATES.build_killzone = {'killzones', 'siege'}   -- (0.105.45) the zo
 CACHE_INVALIDATES.clear_miasma = {'disposal'}   -- (0.105.41, item 11) items marked for the dump
 CACHE_INVALIDATES.place_display = {'artifacts'}      -- (item 12)
 CACHE_INVALIDATES.display_artifact = {'artifacts'}
+CACHE_INVALIDATES.forbid_secrets = {'artifacts'}     -- (0.105.95)
 -- (fix41) a kitchen's or still's feeder pile is a food pile, and a storage
 -- level's furnish step lays its food piles: the food store read again
 CACHE_INVALIDATES.feeder_pile = {'logistics', 'food_store', 'pile_links'}

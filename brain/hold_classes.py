@@ -90,7 +90,7 @@ _SURVIVAL_RULES = {
     # water and wells
     "water", "water_traffic", "water_zone", "well", "well_dig", "well_lid", "well_parts", "well_rescue",
     "well_safety", "well_shaft", "cistern", "cistern_parts", "cistern_shut", "frost_water_zone", "frost_well",
-    "ice_shore_well", "ice_traffic", "ice_zones", "winter_water", "thirst", "waterworks_shut", "waterworks_check",
+    "ice_shore_well", "ice_traffic", "ice_zones", "winter_water", "thirst", "secrets", "waterworks_shut", "waterworks_check",
     "waterworks_power_run", "magma_guard", "magma_reclaim", "magma_shut", "lure_shut",
     # drink and food
     "drink", "drink_fruit", "booze_variety", "food", "food_barrels", "food_standing", "food_store",
@@ -182,7 +182,7 @@ _SURVIVAL_ACTIONS = {
     # water, wells, the waterworks' own steps, hazards
     "survey_water", "water_zone", "restrict_water", "place_well", "renew_well_dig", "seal_well_stairs",
     "well_shaft", "well_safety", "well_rescue", "cistern_step", "water_work", "retire_water_zones",
-    "magma_guard", "magma_reclaim", "lure_shut", "thirst_unforbid", "thirst_way", "thirst_patient", "thirst_probe", "clear_webs", "remove_webs", "clean_contaminants",
+    "magma_guard", "magma_reclaim", "lure_shut", "forbid_secrets", "thirst_unforbid", "thirst_way", "thirst_patient", "thirst_probe", "clear_webs", "remove_webs", "clean_contaminants",
     "quarantine_syndromes", "clear_miasma", "insane_guard",
     # ways in and out for the stranded
     "open_entrance", "dig_way_in", "way_out_open", "way_out_leave", "close_world", "redig_projects", "location_access",

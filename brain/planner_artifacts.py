@@ -92,6 +92,8 @@ def _artifact_rule(s: dict, cfg: dict, proposals: list, notes: list, rules_: dic
     a = _d(s.get("artifacts"))
     if not a:
         return
+    from planner_secrets import secrets_rule      # (0.105.95) the secrets of life and death
+    secrets_rule(s, cfg, proposals, notes)
     arts = [r for r in _l(a.get("artifacts")) if isinstance(r, dict)]
     # claimed by other civs: said while one lies anywhere but behind doors on display
     rooms_all = {r.get("zone_id"): r for r in _l(a.get("rooms")) if isinstance(r, dict)}
