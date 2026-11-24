@@ -237,7 +237,7 @@ def _():
 @test("the bridge: the action, its dry run, restore while halted, the caches; the supplies by fibre; sizes")
 def _():
     cat = (LUA / "ai-bridge-catalog.lua").read_text(encoding="utf-8")
-    assert "hospital_release = function(a) return reqscript('ai-mood-help').act_hospital_release(a, txt) end," in cat
+    assert "hospital_release = function(a) return reqscript('ai-mood-help').act_hospital_release(a, txt, a.dry_run == true) end," in cat
     dry = cat[cat.index("DRY_OK = {}"):cat.index("}) do DRY_OK[name] = true end")]
     assert "'hospital_release'," in dry
     assert "hospital_release = 'restore_only'" in cat[cat.index("RELEASE_WHILE_HALTED = {"):]

@@ -150,7 +150,7 @@ ACTIONS = {
     break_fights = act_break_fights,
     -- (item1) the in-game fight watcher: a fight among citizens capped at a brawl and
     -- broken up every few ticks (lua/ai-fights.lua); {on, ticks?, separate_ticks?}
-    fight_watch = function(a) return reqscript('ai-fights').act(a) end,
+    fight_watch = function(a) return reqscript('ai-fights').act(a, a.dry_run == true) end,   -- (the dry run read from a too)
     free_stray_gear = act_free_stray_gear,   -- (0.104.58)
     assign_weapons = act_assign_weapons,     -- (0.104.60)
     assign_kit = act_assign_kit,             -- (0.105.8)
@@ -601,7 +601,7 @@ ACTIONS = {
     -- (item2) a waiting mood's cloth or thread out of the hospital's chests, the
     -- hospital's thread (and cloth) quota at 0 meanwhile; restore puts it back
     -- (lua/ai-mood-help.lua, brain/planner_moods.py mood_hospital_rule)
-    hospital_release = function(a) return reqscript('ai-mood-help').act_hospital_release(a, txt) end,
+    hospital_release = function(a) return reqscript('ai-mood-help').act_hospital_release(a, txt, a.dry_run == true) end,
     -- (0.105.47) a meeting that waits behind DF's diplomacy light opened by
     -- clicking it (lua/ai-meeting-open.lua); sent by the overseer only unattended
     open_meeting = function(a)

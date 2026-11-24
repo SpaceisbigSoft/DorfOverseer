@@ -184,7 +184,7 @@ def _():
     assert env.cloth_kind(W.cloth(1, "YARN", 1)) == "yarn"
     assert env.cloth_kind(W.cloth(1, None, 1)) is None
     src = bridge_part_src("ai-bridge-report")
-    assert "MK.cloth_kind" in src and src.count("local k = kind_of(it)") == 2
+    assert "MK.cloth_kind" in src and src.count("local k = kind_of(it)") == 3   # (0.105.105) the hospital's by fibre too
     assert "out.shearable_ready" in src and "out.thread_short" in src
 
 

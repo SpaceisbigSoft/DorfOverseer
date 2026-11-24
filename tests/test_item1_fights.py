@@ -16,8 +16,12 @@ from __future__ import annotations
 
 import copy
 import json
+import atexit
+import os
 import re
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -147,7 +151,7 @@ env.dfhack = {
     end,
     timeout_active = function(id) return W.timers[id] ~= nil and W.timers[id].fn or nil end,
     getDFPath = function() if not W.dir then error('no DF path') end return W.dir end,
-    filesystem = {mkdir_recursive = function(p) os.execute('mkdir -p "' .. p .. '"') end},
+    filesystem = {mkdir_recursive = function(p) return true end},   -- (the test's folder made by Python: no shell, Windows too)
     onStateChange = {},
 }
 -- fire every pending timer once (as DF's ticks would)
@@ -192,7 +196,13 @@ return r == nil and 'ok' or r
 CASES = {}
 
 
+TMPDIR = tempfile.mkdtemp(prefix="item1-fights-")
+os.makedirs(os.path.join(TMPDIR, "dfhack-config", "ai-overseer"), exist_ok=True)
+atexit.register(shutil.rmtree, TMPDIR, True)
+
+
 def case(name: str, code: str):
+    code = code.replace("__TMPDIR__", TMPDIR.replace("\\", "/"))
     CASES[name] = code
 
     @test("lua: " + name)
@@ -201,7 +211,7 @@ def case(name: str, code: str):
         from lupa.lua53 import LuaRuntime
         lua = LuaRuntime(unpack_returned_tuples=True)
         r = lua.execute(FAKE, module_src("ai-fights.lua"), code)
-        assert r == "ok", r
+        assert r == "ok" or (isinstance(r, str) and r.startswith("{")), r   # (the log case hands its line on)
     return _
 
 
@@ -362,8 +372,7 @@ assert(#r.now == 1 and r.now[1].activity_id == 314 and r.now[1].max == 1 and r.n
 """)
 
 case("the log file: one JSON line an entry, trimmed to the last LOG_FILE_KEEP", r"""
-local dir = os.tmpname()
-os.remove(dir)
+local dir = [[__TMPDIR__]]
 W.dir = dir
 E.LOG_FILE_KEEP, E.LOG_FILE_SLACK = 5, 3
 W.unit{id = 1, name = 'Urist "Q" \\ McX'}; W.unit{id = 2}
@@ -379,7 +388,6 @@ f:close()
 assert(#lines >= 5 and #lines <= 8, #lines)
 assert(lines[#lines]:find('"activity_id":512', 1, true), lines[#lines])
 assert(lines[#lines]:find('Urist \\"Q\\" \\\\ McX', 1, true), lines[#lines])
-os.execute('rm -rf "' .. dir .. '"')
 return lines[#lines]
 """)
 
@@ -404,7 +412,7 @@ def src(name: str) -> str:
 @test("bridge: fight_watch in ACTIONS and DRY_OK, the fights section safe() and in the pulse, the module listed")
 def _():
     cat = src("ai-bridge-catalog.lua")
-    assert re.search(r"^\s+fight_watch = function\(a\) return reqscript\('ai-fights'\)\.act\(a\) end,", cat, re.M)
+    assert re.search(r"^\s+fight_watch = function\(a\) return reqscript\('ai-fights'\)\.act\(a, a\.dry_run == true\) end,", cat, re.M)
     dry = cat[cat.index("DRY_OK = {}"):]
     assert "'fight_watch'" in dry[:dry.index("}) do")]
     sec = src("ai-bridge-sections.lua")

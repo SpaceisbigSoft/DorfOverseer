@@ -161,16 +161,6 @@ function RulesPage:init()
     })
     table.insert(views, widgets.Label{frame = {t = 5 + jrow, l = 58}, text = {
         {text = 'a free bedroom away from the patients, with drink, till calm', pen = COLOR_GREY}}})
-    -- (item1) the in-game fight watcher, under the calm burrow's help line (the
-    -- right-hand column's free row above the tribute; the left one ends at 59)
-    table.insert(views, widgets.ToggleHotkeyLabel{
-        view_id = 'fight_watch',
-        frame = {t = 6 + jrow, l = 62, w = 56},
-        label = 'Break up fights among citizens at once:',
-        label_width = 44,
-        initial_option = p.settings.fight_watch ~= false,
-        on_change = function(v) p:set_field('fight_watch', v) end,
-    })
     -- (0.105.0) the world outside: tribute asked of the fort, and Make contact
     -- (the right-hand column below the calm-down switch, clear of the left one's rows)
     table.insert(views, widgets.CycleHotkeyLabel{
@@ -320,6 +310,16 @@ function RulesPage:init()
         label_width = 30,
         initial_option = p.settings.magma_reclaim ~= false,
         on_change = function(v) p:set_field('magma_reclaim', v) end,
+    })
+    -- (0.105.105) the in-game fight watcher: under "Dig out spilt magma's walls",
+    -- right of the camera switch (which ends at column 76)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'fight_watch',
+        frame = {t = t + 12, l = 78, w = 40},
+        label = 'Break up citizens\' fights:',
+        label_width = 30,
+        initial_option = p.settings.fight_watch ~= false,
+        on_change = function(v) p:set_field('fight_watch', v) end,
     })
     -- (0.105.4 review) a cavern well may open a cavern nobody has found yet.
     -- (v35 fix) three-state: AI decides (the default: only when the fort is

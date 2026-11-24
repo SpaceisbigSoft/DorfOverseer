@@ -58,7 +58,7 @@ YEAR = 403200
 
 local CODE = {}              -- this load of the file (a newer load takes the loop over)
 
-local function now_tick()
+local function game_tick()   -- (U.abs_tick's reading, here so the timer needs no other module)
     local ok, t = pcall(function() return df.global.cur_year * YEAR + df.global.cur_year_tick end)
     return ok and t or 0
 end
@@ -102,7 +102,7 @@ local function is(f, ...)
     return r == true
 end
 
-local function name_of(u)
+local function unit_name(u)   -- (U.name_of's reading; the timer needs no other module)
     local ok, nm = pcall(dfhack.units.getReadableName, u)
     if not ok or type(nm) ~= 'string' then return 'unit ' .. tostring(u and u.id) end
     if dfhack.df2utf then
@@ -320,7 +320,7 @@ end
 local function unit_rows(j)
     local out = {}
     for _, r in ipairs(j.units) do
-        table.insert(out, {id = r.id, name = name_of(r.u), dead = r.kind == 'dead' or nil,
+        table.insert(out, {id = r.id, name = unit_name(r.u), dead = r.kind == 'dead' or nil,
                            tantrum = (r.kind == 'citizen' and in_tantrum(r.u)) or nil,
                            berserk = (r.kind == 'citizen' and berserk(r.u)) or nil})
     end
@@ -367,7 +367,7 @@ end
 function pass(now, opts)
     local S = state()
     opts = opts or {}
-    now = now or now_tick()
+    now = now or game_tick()
     local dry = opts.dry == true or S.dry == true
     local done = {conflicts = 0, ours = 0, capped = 0, separated = 0}
     local list = conflicts()
@@ -588,7 +588,7 @@ function report()
     local out = {armed = alive(), on = S.on or false, ticks = S.ticks, separate_ticks = S.separate_ticks,
                  counts = S.counts, error = S.error, log = {}, now = {}}
     for i = math.max(1, #S.log - REPORT_LOG + 1), #S.log do table.insert(out.log, S.log[i]) end
-    local now = now_tick()
+    local now = game_tick()
     for _, c in ipairs(conflicts()) do
         local j = judge(c.ev)
         if j.ours then
