@@ -230,6 +230,7 @@ BRIDGE_MODULES = {
     'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
     'ai-lure',   -- (0.105.45)
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
+    'ai-secrets',   -- (0.105.95) the secrets of life and death
     'ai-recovery',   -- (0.105.46, I4)
     'ai-floorplan',   -- (layout B) the hallway-first floor plans
     'ai-slices', 'ai-cavern-scan',   -- (0.105.46, I6) walks spread over several reports; the caverns' seen samples
