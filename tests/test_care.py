@@ -390,7 +390,7 @@ def health(units, beds=((1, 1, 0), (2, 1, 0), (3, 1, 0)), **kw):
 
 SICK = [{"id": 1, "infected": True, "load": 120, "x": 50, "diagnose": True},
         {"id": 2, "infected": True, "load": 400, "x": 50},                    # bleeding
-        {"id": 3, "infected": True, "load": 900, "x": 50, "busy": True},      # at work: (0.105.93) a heavy infection, taken off it
+        {"id": 3, "infected": True, "load": 900, "x": 50, "busy": True, "burrow": True},   # at work, in a burrow: left
         {"id": 4, "infected": True, "load": 200, "x": 50, "asked": True},     # DF asks a treatment already
         {"id": 5, "infected": True, "load": 250, "x": 5},                     # in the hospital already
         {"id": 6, "infected": True, "load": 300, "x": 50, "squad": 9},        # a soldier
@@ -406,7 +406,7 @@ def _():
     s = env.survey()
     assert (s.infected, s.untreated, s.bleeding, s.in_hospital) == (8, 7, 4, 1), \
         (s.infected, s.untreated, s.bleeding, s.in_hospital)
-    assert s.idle_untreated == 3, s.idle_untreated                     # 1 and 2 idle, (0.105.93) 3 busy but heavy
+    assert s.idle_untreated == 2, s.idle_untreated                     # 1 and 2: idle, grown, no soldier, no mood
     assert s.worst[1].id == 3 and s.worst[1].load == 900 and len(list(s.worst.values())) == 5
     assert s.beds == 3 and s.free_beds == 2, (s.beds, s.free_beds)      # dwarf 5 lies in one; the unfinished isn't one
     assert s.cleaners == 6 and s.diagnosers == 1, (s.cleaners, s.diagnosers)   # soldiers and children not counted
@@ -438,26 +438,36 @@ def _():
     assert pure.room(3, 3, 2, 0, 2) == 0 and pure.room(3, 3, 2, 3, 10) == 0
 
 
+@test("(0.105.93) a heavy infection at work (B: load 118) is taken off its job and put to bed; a mild one at work isn't")
+def _():
+    rows = [{"id": 31, "infected": True, "load": 118, "x": 50, "busy": True},
+            {"id": 32, "infected": True, "load": 30, "x": 50, "busy": True}]
+    env, units, made, _, _ = health(rows, beds=BEDS4)
+    assert env.survey().idle_untreated == 1
+    r = env.rest_infected(3, False, None, 3, 2)
+    assert r.ok and [x.unit_id for x in r.sent.values()] == [31], dict(r)
+    by = {u.id: u for u in units.values()}
+    assert by[31].job.current_job.job_type == 7 and by[32].job.current_job.job_type == 1
+
+
 @test("rest_infected: the bleeding first, a free bed each (not one lain in), a special Rest job as dwarfvet makes; kept in the save")
 def _():
     units_ = SICK + [{"id": 10, "x": 1, "y": 1}]                         # someone lies in bed (1,1)
     env, units, made, _, _ = health(units_, beds=BEDS4)
     d = env.rest_infected(3, True, None, 3, 2)
-    # (0.105.93) 3 (load 900, at work) first: a heavy infection is taken off its job
-    assert d.ok and d.dry_run and [x.unit_id for x in d.sent.values()] == [3, 2, 1] and len(made) == 0, dict(d)
+    assert d.ok and d.dry_run and [x.unit_id for x in d.sent.values()] == [2, 1] and len(made) == 0, dict(d)
     r = env.rest_infected(3, False, None, 3, 2)
-    assert r.ok and [x.unit_id for x in r.sent.values()] == [3, 2, 1], dict(r)
-    assert len(made) == 3 and made[1].job_type == 7 and made[1].flags.special
+    assert r.ok and [x.unit_id for x in r.sent.values()] == [2, 1], dict(r)
+    assert len(made) == 2 and made[1].job_type == 7 and made[1].flags.special
     assert (made[1].pos.x, made[1].pos.y) != (made[2].pos.x, made[2].pos.y)
     assert (made[1].pos.x, made[1].pos.y) != (1, 1) and (made[2].pos.x, made[2].pos.y) != (1, 1)
-    assert made[1].general_refs[0].unit_id == 3 and units[3].job.current_job.job_type == 7
-    assert made[2].general_refs[0].unit_id == 2 and units[2].job.current_job.job_type == 7
+    assert made[1].general_refs[0].unit_id == 2 and units[2].job.current_job.job_type == 7
     st = env.site_data["ai-overseer/infected-rest"]
     assert st.sent["2"].tick == 50 * 403200 + 1000 and st.sent["1"] is not None
     # a reload of the script forgets nobody (the save keeps them)
     again = env.reload()
     s = again.survey()
-    assert s.sleeping == 3 and s.failed == 0, (s.sleeping, s.failed)
+    assert s.sleeping == 2 and s.failed == 0, (s.sleeping, s.failed)
     r = again.rest_infected(3, False, None, 3, 2)
     assert not r.ok and r.rejected and "no idle infected" in r.error, dict(r)
 
