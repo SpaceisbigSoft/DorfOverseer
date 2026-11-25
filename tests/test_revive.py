@@ -92,7 +92,7 @@ def _():
                 os.environ["APPDATA"] = old
 
 
-@test("revive: down 3 minutes -> started with df_launch (once in 15 min); at the title 2 minutes -> ai-title load")
+@test("revive (0.105.118): down -> started with df_launch, at most once in 2 minutes; at the title -> ai-title load")
 def _():
     t = [1000.0]
     logs, launched = [], []
@@ -100,12 +100,20 @@ def _():
     rv = revive.Reviver(logs.append, dfhack=df, launcher=launched.append, clock=lambda: t[0])
     revive.launch_command = lambda: "C:/DF/Dwarf Fortress.exe"
     rv.candidates = lambda: (["region2"], None)
-    for _ in range(4):                       # probes a minute apart: down since 1000
-        rv.tick(); t[0] += 60
-    assert launched == ["C:/DF/Dwarf Fortress.exe"], (launched, logs)
-    for _ in range(5):
-        rv.tick(); t[0] += 60
-    assert len(launched) == 1                 # not again within 15 minutes
+    rv.df_running = lambda: False             # no process of its own: a launch may go
+    rv.seen_up = True                         # it was up this run: DOWN_S (60 s) before a launch
+    rv.tick(); t[0] += 30
+    rv.tick()
+    assert launched == [], (launched, logs)   # 30 s down: not yet
+    t[0] += 40
+    rv.tick()
+    assert launched == ["C:/DF/Dwarf Fortress.exe"], (launched, logs)   # ~70 s down: started
+    t[0] += 61
+    rv.tick()
+    assert len(launched) == 1                 # not again within LAUNCH_EVERY_S (2 minutes)
+    t[0] += 61
+    rv.tick()
+    assert len(launched) == 2, (launched, logs)   # still down after 2 minutes: started again
     df.state = "title"
     for _ in range(4):
         rv.tick(); t[0] += 60

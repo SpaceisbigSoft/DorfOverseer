@@ -27,7 +27,7 @@
 -- data 'ai-overseer/garden_court'). The brain decides (planner_garden.py):
 -- {name, paths, statues} come in as opts; nothing here reads the sliders.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-court'] = '0.105.117'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-court'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 COURT_KEY = 'ai-overseer/garden_court'
 COURT_RADII = {5, 4}              -- the bigger first (the inside 9x9, then 7x7)
