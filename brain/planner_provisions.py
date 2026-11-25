@@ -198,6 +198,34 @@ def _butchery_rule(s, pv, cfg, citizens, proposals, notes, memory) -> None:
                      "left so, the AI never sends dwarves out to them; unforbid them if the ground is safe")
 
 
+def _fruit_pause_rule(s, f, cfg, proposals) -> bool:
+    """(item6) The AI's fruit zones paused while the fort has food to spare
+    (`fruit_pause_food_pd` a dwarf, drink not short) and more plant-gathering
+    jobs wait than a fed fort needs (`gather_jobs_max`), and set going again
+    under `fruit_resume_food_pd` a dwarf or when drink runs short. B, 24 Nov:
+    403 food a dwarf, 125 jobs of its one fruit zone (gather_trim can't cancel
+    them: DF makes them again), its 2-3 gatherers (the tavern keeper among
+    them) never idle, TakeItEasy and friends badly missed. True when proposed."""
+    from planner_farms import drink_short
+    paused, ai = _int(f.get("paused")), _int(f.get("ai_zones"))
+    fpd = food_per_dwarf(s)
+    short = drink_short(s, cfg)
+    if paused and (fpd < cfg["fruit_resume_food_pd"] or short):
+        why = (f"only {fpd:g} food a dwarf" if fpd < cfg["fruit_resume_food_pd"] else "drink runs short")
+        proposals.append(Proposal("fruit_resume", {"type": "fruit_zone", "pause": False},
+                                  f"{why}: the AI's {paused} paused fruit zone(s) set going again", 4))
+        return True
+    jobs = _int(_d(_d(s.get("jobs")).get("by_type")).get("GatherPlants"))
+    if (ai > paused and not short and fpd >= cfg["fruit_pause_food_pd"] and jobs > cfg["gather_jobs_max"]):
+        proposals.append(Proposal("fruit_pause", {"type": "fruit_zone", "pause": True},
+                                  f"{fpd:g} food a dwarf and {jobs} plant-gathering jobs wait (a fruit zone makes "
+                                  "them again): the AI's fruit zone(s) paused and their waiting jobs cancelled, so "
+                                  "the gatherers get time off (set going again under "
+                                  f"{cfg['fruit_resume_food_pd']} food a dwarf)", 5))
+        return True
+    return False
+
+
 def _fruit_rule(s, pv, cfg, citizens, proposals, notes, memory) -> None:
     f = _part(pv, "fruit")
     if f is None:
@@ -205,6 +233,10 @@ def _fruit_rule(s, pv, cfg, citizens, proposals, notes, memory) -> None:
     lb = _d(_d(s.get("labor")).get("jobs"))
     g = _d(lb.get("gathering"))
     if _int(f.get("zones")) > 0:
+        if _fruit_pause_rule(s, f, cfg, proposals):
+            return
+        if _int(f.get("paused")) > 0:
+            return                                    # (item6) paused: nobody put on picking
         if (_int(f.get("ai_zones")) > 0 and _int(g.get("doing")) == 0 and _int(g.get("candidates")) > 0
                 and g.get("mode") not in FIXED_MODES):
             n = cfg["fruit_pickers"]

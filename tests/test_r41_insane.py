@@ -51,7 +51,16 @@ DAY = 1200
 FAKE = r"""
 local src = ...
 local W = {units = {}, tiles = {}, doors = {}, hatches = {}, projects = {}, old_areas = {}, site = {},
-           citizens = {}, gates = {}, zones = {}, claimed = {}, adopted = {}}
+           citizens = {}, gates = {}, zones = {}, claimed = {}, adopted = {}, figs = {}}
+-- (item11) a historical figure's links: W.fig(hf, {{'CHILD', 200}, ...})
+function W.fig(hf, links)
+    local l = {}
+    for _, e in ipairs(links) do
+        local kind = e[1]
+        table.insert(l, {target_hf = e[2], getType = function() return kind end})
+    end
+    W.figs[hf] = {histfig_links = l}
+end
 local env = setmetatable({}, {__index = _G})
 local key = function(x, y, z) return x .. ',' .. y .. ',' .. z end
 local MOODS = {[0] = 'Fey', 'Secretive', 'Possessed', 'Macabre', 'Fell', 'Melancholy', 'Raving', 'Berserk',
@@ -83,6 +92,8 @@ env.df = {
                        buildings = {other = {DOOR = W.doors, HATCH = W.hatches}, all = {}}},
               plotinfo = {civ_id = 10}},
     mood_type = MOODS,
+    historical_figure = {find = function(id) return W.figs[id] end},
+    histfig_hf_link_type = setmetatable({}, {__index = function(_, k) return k end}),
     tiletype = {attrs = setmetatable({}, {__index = function(_, k) return {shape = k} end})},
     tiletype_shape = setmetatable({}, {__index = function(_, k) return k end}),
     building = {find = function(id)
@@ -100,6 +111,8 @@ env.dfhack = {
              getReadableName = function(u) return u.name or ('dwarf ' .. u.id) end,
              getPosition = function(u) return u.pos.x, u.pos.y, u.pos.z end,
              getStressCategory = function(u) return u.cat or 3 end,
+             isChild = function(u) return u.child == true end,
+             isBaby = function(u) return false end,
              getCitizens = function() return W.citizens end},
     maps = {getTileFlags = function(x, y, z)
                 local t = W.tiles[key(x, y, z)] or {}
@@ -424,6 +437,33 @@ def _():
     assert [x["id"] for x in py(env.report())["at_risk"]] == [2, 3, 1]
 
 
+@test("(item11) kin: an insane dwarf's mother, father, child, spouse or lover among the citizens, with their stress, "
+      "child, room and squad; a god and one not a citizen are no kin; none: no kin key")
+def _():
+    need_lua()
+    lua, env, w = world()
+    u, _ = fort(lua, w)
+    u.hist_figure_id = 100
+    def cit(i, hf, lt, cat, **kw):
+        t = {"id": i, "name": "C%d" % i, "citizen": True, "cat": cat, "own": True, "hist_figure_id": hf,
+             "child": kw.get("child", False),
+             "status": {"current_soul": {"personality": {"longterm_stress": lt}}},
+             "military": {"squad_id": kw.get("squad", -1), "squad_position": kw.get("pos", 1)},
+             "owned_buildings": [{"zone": True, "type": "Bedroom"}] if kw.get("bed") else []}
+        w.unit(T(lua, t))
+    cit(20, 200, 40000, 0, child=True)
+    cit(21, 201, 5000, 3, squad=4, pos=0, bed=True)
+    w.unit(T(lua, {"id": 22, "hist_figure_id": 202, "own": True}))      # on the map, not a citizen
+    lua.execute("local W = ...; W.fig(100, {{'CHILD', 200}, {'SPOUSE', 201}, {'DEITY', 999}, {'MOTHER', 202}})", w)
+    row = py(env.report())["list"][0]
+    assert row["kin"] == [{"id": 20, "name": "C20", "link": "child", "bedroom": False, "longterm": 40000,
+                           "stress": "miserable", "child": True},
+                          {"id": 21, "name": "C21", "link": "spouse", "bedroom": True, "longterm": 5000,
+                           "stress": "fine", "squad": True, "leader": True}], row
+    w.figs[100] = None
+    assert "kin" not in py(env.report())["list"][0]
+
+
 # --- 4. the bridge's wiring ---------------------------------------------------------------
 
 @test("bridge: the insane section (safe, in the pulse), the insane_guard action (its dry run, ids checked), the module listed")
@@ -583,6 +623,74 @@ def _():
     from planner import select
     allowed, _ = select(props, s, Memory())
     assert any(p.rule == "insane" for p in allowed)
+
+
+def kin_row(**kw):
+    row = {"id": 7, "name": "Urist", "kind": "raving", "hazards": {}, "doors": 0, "locked": 0,
+           "kin": [{"id": 20, "name": "Ast", "link": "child", "stress": "miserable", "longterm": 40000, "child": True},
+                   {"id": 21, "name": "Bim", "link": "spouse", "stress": "very_unhappy", "longterm": 10000,
+                    "bedroom": False},
+                   {"id": 22, "name": "Cog", "link": "mother", "stress": "unhappy", "longterm": 30000, "bedroom": True},
+                   {"id": 23, "name": "Dak", "link": "father", "stress": "unhappy", "longterm": 20000},
+                   {"id": 24, "name": "Eth", "link": "lover", "stress": "fine", "longterm": 90000}]}
+    row.update(kw)
+    return row
+
+
+@test("(item11) brain: the insane's kin very unhappy or worse, or unhappy with long-term stress 25000+, the most first; "
+      "off with insane_kin_care")
+def _():
+    s = state({"list": [kin_row()], "locks": 0, "at_risk": []})
+    k = PI.insane_kin(s, PLANNER_CONFIG)
+    assert [x["id"] for x in k] == [20, 22, 21], k
+    assert k[0]["kin_of"] == "Urist" and k[2]["longterm"] == 10000, k
+    # in insane_risk after the near-breaking, each once
+    s = state({"list": [kin_row()], "locks": 0,
+               "at_risk": [{"id": 22, "name": "Cog", "longterm": 120000, "stress": "unhappy"},
+                           {"id": 2, "name": "Near", "longterm": 60000, "stress": "miserable"}]})
+    assert [x["id"] for x in PI.insane_risk(s, PLANNER_CONFIG)] == [22, 2, 20, 21], PI.insane_risk(s, PLANNER_CONFIG)
+    assert PI.insane_kin(s, dict(PLANNER_CONFIG, insane_kin_care=False)) == []
+    assert [x["id"] for x in PI.insane_risk(s, dict(PLANNER_CONFIG, insane_kin_care=False))] == [22, 2]
+
+
+@test("(item11) brain: the note names the kin and says the stress care sees to the troubled; a troubled child only: "
+      "said it can't reach them; none troubled: said so; no kin: the note as before")
+def _():
+    props, notes = run_rule(state({"list": [kin_row()], "locks": 0}))
+    n = notes[0]
+    assert "their kin here, who will grieve them most: Ast (their child, miserable), Bim (their spouse, very " \
+           "unhappy), Cog (their mother, unhappy), Dak (their father, unhappy) and 1 more" in n, n
+    assert "stress care sees to the troubled among them first" in n and "not the children" in n, n
+    assert n.endswith("their room and things go back to the fort when they die"), n
+    only_child = kin_row(kin=[kin_row()["kin"][0]])
+    n = run_rule(state({"list": [only_child], "locks": 0}))[1][0]
+    assert "are children, whom the stress care can't reach" in n, n
+    calm = kin_row(kin=[kin_row()["kin"][4]])
+    n = run_rule(state({"list": [calm], "locks": 0}))[1][0]
+    assert "none of them troubled now" in n, n
+    n = run_rule(state({"list": [kin_row(kin=None)], "locks": 0}))[1][0]
+    assert "kin" not in n, n
+    # the near-breaking line counts only the near-breaking, not the kin
+    notes = run_rule(state({"list": [kin_row()], "locks": 0, "at_risk": []}))[1]
+    assert not any("near breaking" in x for x in notes), notes
+
+
+@test("(item11) brain: the stress care sees to an insane dwarf's troubled kin first (a room at the higher priority), "
+      "never a child")
+def _():
+    worst = [{"id": 1, "name": "Calm", "stress": "miserable", "bedroom": False},
+             {"id": 21, "name": "Bim", "stress": "very_unhappy", "bedroom": False}]
+    s = state({"list": [kin_row()], "locks": 0, "at_risk": []}, noble_rooms={"free": {"bedroom": 3}})
+    props = []
+    PS._stress_care(s, PLANNER_CONFIG, worst, props, Memory())
+    assert [(p.action["type"], p.action["unit_id"], p.priority) for p in props] == [("give_room", 21, 2)], props
+    # the child (id 20, miserable, no room) never: Calm, as before
+    worst = [{"id": 1, "name": "Calm", "stress": "miserable", "bedroom": False}]
+    s = state({"list": [kin_row(kin=[kin_row()["kin"][0]])], "locks": 0, "at_risk": []},
+              noble_rooms={"free": {"bedroom": 3}})
+    props = []
+    PS._stress_care(s, PLANNER_CONFIG, worst, props, Memory())
+    assert [(p.action["unit_id"], p.priority) for p in props] == [(1, 3)], props
 
 
 # --- (0.105.40b fix) the verifier's findings --------------------------------------------------

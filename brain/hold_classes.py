@@ -97,6 +97,7 @@ _SURVIVAL_RULES = {
     "food_store_level", "farms", "farm_crops", "surface_farm", "crops", "kitchen", "seed_reserve", "seed_brew", "fat_ban", "meal_variety",
     "good_cooks", "train_cook", "needs_meal", "dairy", "milking", "eggs", "nest_box_order", "fishery",
     "butchery_labor", "butchery_shop", "slaughter", "hunting", "hunting_stop", "fruit_pickers", "fruit_zone",
+    "fruit_pause", "fruit_resume",   # (item6)
     "gather", "gather_trim", "tree_quota", "vermin", "herd", "herd_cull", "herd_targets", "pasture",
     "new_pasture", "shearing", "tanning", "containers", "bags",
     # beds, rooms and homes
@@ -106,12 +107,13 @@ _SURVIVAL_RULES = {
     "hospital", "hospital_burrow", "hospital_guard", "doctor_patient", "doctor_post", "staff", "staff_tantrum",
     "tantrum_soldier",
     "care_clean", "care_diagnose", "care_feed", "infected_rest", "traction", "traction_parts", "traction_rest",
+    "bed_rest",   # (item5)
     "soap", "soap_rush", "syndrome_clean", "syndrome_quarantine", "miasma_clear", "miasma_dump", "miasma_refuse",
     "rescue_labor", "stranded", "insane", "cave_in_dig_out", "way_in", "way_out", "way_out_dig", "second_way",
     "webs", "remove_webs",
     # the dead
     "burial", "burial_coffins", "burial_corner", "burial_others", "coffins", "slabs", "slabs_free", "slabs_ahead",
-    "slabs_ahead_blanks", "slabs_ahead_place", "slabs_ghost", "tombs_ghosts", "ghost_mason", "ghost_masons", "dead_units",
+    "slabs_ahead_blanks", "slabs_ahead_place", "slabs_ghost", "slabs_orders", "tombs_ghosts", "ghost_mason", "ghost_masons", "dead_units",
     "necro_corpses",
     # the mind: needs, stress, tantrums, justice, moods
     "stress_care", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",
@@ -136,7 +138,7 @@ _SURVIVAL_RULES = {
     "smelt", "smelting", "steel", "cloth", "crafts", "hauling", "hauling_add", "hauling_back", "hauling_relieve",
     "hauling_shrink", "barrows", "barrow_order", "feeder", "feeder_link", "bench_caps", "excess_shops",
     "disposal_dump", "disposal_empty", "disposal_melt", "disposal_melt_order", "redig", "disposal_orders", "disposal_outside", "disposal_outside_off",
-    "disposal_place_dump",
+    "disposal_place_dump", "disposal_dump_near", "disposal_move_dump",
     "disposal_unforbid", "dump", "refuse", "prune", "prune_keep_parts", "depot", "traffic_audit", "traffic_paint",
     "cavern_logging_stop",
     # trade (the wealth DF sends migrants by)
@@ -198,9 +200,10 @@ _SURVIVAL_ACTIONS = {
     "recreation", "idle_crafting", "give_trinkets", "quick_location", "trim_instrument_orders",
     # health and care, the dead
     "hospital_burrow", "hospital_guard", "calm_burrow", "rest_infected", "traction_rest", "add_doctor_post",
+    "bed_rest",   # (item5)
     "vacate_post", "staff_location", "add_posts", "staff_labors", "mood_free_items", "mood_shelter",
     "hospital_release",
-    "allow_burial", "unforbid_dead", "coffins_anywhere", "engrave_memorials", "place_slabs", "free_slabs",
+    "allow_burial", "unforbid_dead", "coffins_anywhere", "engrave_memorials", "prune_memorial_orders", "place_slabs", "free_slabs",
     "bench_jobs", "scrub_dead_units", "prune_remains", "pit_prisoners",
     # justice, tantrums, offices, people
     "break_fights", "fight_watch", "convict", "release_prisoners", "tantrum_step_down", "squad_release", "appoint",

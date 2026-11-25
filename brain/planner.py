@@ -418,6 +418,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if can_use("infection"):
         _guard(_infection_rule, s, cfg, proposals, notes)       # (0.104.168)
         _guard(_traction_rest_rule, s, cfg, proposals, notes, memory)   # (0.105.24)
+        # (item5) the wounded up and working put to bed for the doctors (a local
+        # import: planner's own names are pinned, tests/test_r7_d2.py)
+        import planner_bedrest
+        _guard(planner_bedrest._bed_rest_rule, s, cfg, proposals, notes)
     # (0.104.167) the wounded kept inside; (review) outside the health gate:
     # a failed health section must not freeze the members (the rule reads it if there)
     _guard(_hospital_burrow_rule, s, cfg, proposals, memory)

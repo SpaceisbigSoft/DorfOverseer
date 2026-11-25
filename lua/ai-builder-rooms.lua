@@ -6,7 +6,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.109'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.110'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, ez = info, has, ez
 -- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
@@ -943,18 +943,22 @@ end
 -- "1 engraved memorial slab lies unbuilt" every cycle: a slab a planned Slab
 -- building already held was counted free and given to a new building.
 function slab_sites()
-    local held, dead = {}, {}
+    local held, dead, tops = {}, {}, {}   -- tops: the dead a Slab building names already (item7)
+    local function top(it)
+        local ok, t = pcall(function() return it.topic end)
+        if ok and t ~= nil then tops[t] = true end
+    end
     pcall(function()
         for _, b in ipairs(df.global.world.buildings.other.SLAB) do
             pcall(function()
                 local has = false
                 pcall(function()
-                    for _, ci in ipairs(b.contained_items) do held[ci.item.id] = b.id; has = true end
+                    for _, ci in ipairs(b.contained_items) do held[ci.item.id] = b.id; has = true; top(ci.item) end
                 end)
                 local asks, read = false, true
                 local okj = pcall(function()
                     for _, j in ipairs(b.jobs) do
-                        for _, ji in ipairs(j.items) do held[ji.item.id] = b.id; has = true end
+                        for _, ji in ipairs(j.items) do held[ji.item.id] = b.id; has = true; top(ji.item) end
                         -- DF 53: job_items holds its list in `elements`; a count
                         -- not read keeps the site (it may be a player's plan)
                         local okc, cnt = pcall(function() return #j.job_items.elements end)
@@ -973,7 +977,7 @@ function slab_sites()
             end)
         end
     end)
-    return held, dead
+    return held, dead, tops
 end
 
 -- Engraved memorial slabs nobody has put up yet: free, on no job, in no
@@ -981,7 +985,7 @@ end
 -- first (a slab for someone else lays no ghost), then the rest.
 function memorial_slabs()
     local out = {}
-    local held = slab_sites()
+    local held, _, tops = slab_sites()
     local ghosts = ghost_hfs()
     pcall(function()
         for _, it in ipairs(df.global.world.items.other.SLAB) do
@@ -1005,7 +1009,14 @@ function memorial_slabs()
         if g(a) ~= g(b) then return g(a) < g(b) end
         return a.id < b.id
     end)
-    return out
+    -- (item7) one slab a dead, and none for a dead a Slab building names
+    -- already: B (24 Nov) put up 136 slabs, 67 of them one dwarf's, as the
+    -- AI's EngraveSlab orders never ended; the ghost's own waited behind them
+    local one, seen = {}, {}
+    for _, it in ipairs(out) do
+        if not tops[it.topic] and not seen[it.topic] then seen[it.topic] = true; table.insert(one, it) end
+    end
+    return one
 end
 
 -- (r1g8) How many of the walking ghosts' own slabs wait to be put up, and how

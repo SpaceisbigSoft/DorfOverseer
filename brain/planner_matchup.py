@@ -369,7 +369,8 @@ def all_out(s: dict, memory, cfg: dict) -> str:
         if short:
             return f"the shelter runs short ({'; '.join(short)[:80]})"
     dead = [d for d in _l(_d(s.get("thirst")).get("deaths"))
-            if isinstance(d, dict) and isinstance(d.get("tick"), int) and d["tick"] >= since]
+            if isinstance(d, dict) and isinstance(d.get("tick"), int) and d["tick"] >= since
+            and d.get("reason") != "insane"]       # (0.105.110) an insane dwarf never drinks: no word on the shelter
     if dead:
         return f"{len(dead)} citizen(s) died of thirst during the siege"
     try:

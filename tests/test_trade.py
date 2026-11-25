@@ -424,5 +424,70 @@ def _():
     assert env.category(env.SOAP) == "SOAP" and env.category(env.TALLOW) == "TALLOW" and env.category(env.FAT) is None
 
 
+@test("(item9) deal_made: the goods gone, goods changing owner, or the merchants' Trade line is a deal; a seize never")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, *_ = lua.execute(SCREEN, SRC)
+    assert env.deal_made("Greet", "Trade", False, 0, 0) == (True, "answer")     # the live game: lists unchanged
+    assert env.deal_made("Greet", "Greet", True, 0, 0) == (True, "goods")
+    assert env.deal_made("Greet", "Greet", False, 3, 0) == (True, "owners")
+    assert env.deal_made("Greet", "Greet", False, 0, 2) == (True, "owners")
+    assert env.deal_made("Greet", "Haggle", False, 0, 0) == (False, None)       # an answer, not a yes
+    assert env.deal_made("Greet", "Weight1", False, 0, 0) == (False, None)
+    assert env.deal_made("Greet", "Seize", True, 0, 0) == (False, None)         # their goods taken: no deal
+    assert env.deal_made("Trade", "Trade", False, 0, 0) == (False, None)        # the line left from before
+
+
+PRESS_LIVE = r"""
+local env, flip = ...
+local t = env.df.global.game.main_interface.trade
+for i = 0, #t.good[0] - 1 do t.good[0][i].flags = {trader = true} end
+for i = 0, #t.good[1] - 1 do t.good[1][i].flags = {trader = false} end
+env.require = function(name)
+    if name == 'gui' then
+        return {simulateInput = function(_, key)
+            if key == 'LEAVESCREEN' then t.open = false; return end
+            -- (item9) as in the game, 23-24 Nov: the merchants answer Trade and
+            -- both lists and every tick stay as they were
+            if flip then
+                for i = 0, #t.goodflag[0] - 1 do
+                    if t.goodflag[0][i].selected then t.good[0][i].flags.trader = false end
+                end
+            else
+                t.talkline = 8
+            end
+        end}
+    end
+    return require(name)
+end
+"""
+
+
+@test("(item9) press: answered Trade with both lists unchanged (all six forts' 117 deals) is traded, by the answer")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, mf, ff, clicks = lua.execute(SCREEN, SRC)
+    t = lua.table_from
+    lua.execute(PRESS_LIVE, env, False)
+    env.deal(t([t({"key": "BAR:STEEL", "count": 1})]), 1.2, False, None)
+    env.calibrate("Trade")
+    p = env.press("Trade", None)
+    assert p.ok and p.answer == "Trade" and p.verdict == "worked", dict(p)
+    assert p.traded is True and p.traded_by == "answer" and p.moved is False, dict(p)   # before: traded false
+    assert p.bought_now == 0 and p.closed, dict(p)
+
+
+@test("(item9) press: the ticked goods changing owner with no answer read is traded, by the owners")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, mf, ff, clicks = lua.execute(SCREEN, SRC)
+    t = lua.table_from
+    lua.execute(PRESS_LIVE, env, True)
+    env.deal(t([t({"key": "BAR:STEEL", "count": 1})]), 1.2, False, None)
+    env.calibrate("Trade")
+    p = env.press("Trade", None)
+    assert p.traded is True and p.traded_by == "owners" and p.bought_now >= 1 and p.moved is False, dict(p)
+
+
 if __name__ == "__main__":
     finish()

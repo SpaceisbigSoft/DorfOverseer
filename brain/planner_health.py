@@ -106,12 +106,25 @@ def _doctor_patient_rule(s: dict, proposals: list) -> None:
             if isinstance(p, dict) and (p.get("in_hospital") or _l(p.get("needs")))}
     if not sick:
         return
+    # (item5) B, 24 Nov: the chief medical dwarf, both surgeons and the doctor
+    # all patients, nobody free to take a post ("staff: nobody free"): every
+    # post given back would leave the hospital with nobody. When every post
+    # holder is a patient, the healthiest one still up (not lying in the
+    # hospital, the fewest treatments asked) keeps his while he works; the
+    # bed-rest rule puts him to bed first among the healers, and once he lies
+    # there his post goes as before.
+    held = [_d(st).get("unit_id") for hosp in _l(h.get("hospital")) if isinstance(hosp, dict)
+            for st in _l(hosp.get("staff")) if _d(st).get("unit_id") is not None]
+    spared = None
+    up = [u for u in held if u in sick and not sick[u].get("in_hospital")]
+    if held and up and all(u in sick for u in held):
+        spared = min(up, key=lambda u: (len(_l(sick[u].get("needs"))), str(u)))
     for hosp in _l(h.get("hospital")):
         if not isinstance(hosp, dict) or not isinstance(hosp.get("id"), int):
             continue
         for st in _l(hosp.get("staff")):
             uid = _d(st).get("unit_id")
-            if uid in sick:
+            if uid in sick and uid != spared:
                 p = sick[uid]
                 post = str(_d(st).get("post") or "post").lower().replace("_", " ")
                 proposals.append(Proposal("doctor_patient", {"type": "vacate_post", "location_id": hosp["id"],

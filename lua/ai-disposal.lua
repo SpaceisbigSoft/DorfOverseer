@@ -190,6 +190,120 @@ local function zone_items(zn, fn)
     return true
 end
 
+-- ---------------------------------------------------------------------------
+-- (item8) Beside a dump zone: what DF dumped and left next to the zone.
+-- B (24 Nov 22:23): zone 228 (3x3 at x99-101 y157-159, level 170) held no
+-- item while 107 lay on the ramp just below its corner (x98 y156, level 169)
+-- and 26 on three more ramps there, all outside every zone and stockpile.
+-- A dwarf on a ramp a level below a dump tile is next to it, and the
+-- DumpItem job ends there: 25 of 31 such jobs were gone two minutes later
+-- with no item moved, and the 37 bodies burial_others had unforbidden and
+-- marked lay forbidden and unmarked again (what DF dumps lands forbidden),
+-- so it marked them again every cooldown (24-37 bodies a time). Earlier:
+-- "cancels Dump item: Drop-off inaccessible" (10 in the reports).
+-- ---------------------------------------------------------------------------
+NEAR_TILES = 2       -- how far across from a dump zone's tiles, on its level and the one below
+-- the refuse kinds taken beside a dump (never the fort's stock: no bar, log or stone)
+NEAR_KINDS = {CORPSE = true, CORPSEPIECE = true, REMAINS = true}
+for _, k in ipairs(JUNK) do NEAR_KINDS[k] = true end
+for _, k in ipairs(ROTS) do NEAR_KINDS[k] = true end
+
+local function shape_at(x, y, z)
+    local ok, s = pcall(function()
+        return df.tiletype_shape[df.tiletype.attrs[dfhack.maps.getTileType(x, y, z)].shape]
+    end)
+    return ok and s or nil
+end
+
+-- The tiles of the ring round the zone (its box) where a dwarf may stand a
+-- level off it, next to a dump tile: a ramp on the zone's level (its top is
+-- above) or one a level below. 0: a flat dump.
+function ramp_edge(zn)
+    local n = 0
+    for x = zn.x1 - 1, zn.x2 + 1 do
+        for y = zn.y1 - 1, zn.y2 + 1 do
+            if (x < zn.x1 or x > zn.x2 or y < zn.y1 or y > zn.y2)
+                    and (shape_at(x, y, zn.z) == 'RAMP' or shape_at(x, y, zn.z - 1) == 'RAMP') then
+                n = n + 1
+            end
+        end
+    end
+    return n
+end
+
+local function off_zones(x, y, z)
+    local ok, yes = pcall(function()
+        for _ in ipairs(dfhack.buildings.findCivzonesAt(xyz2pos(x, y, z)) or {}) do return false end
+        local b = dfhack.buildings.findAtTile(xyz2pos(x, y, z))
+        return not (b and b:getType() == df.building_type.Stockpile)
+    end)
+    return ok and yes ~= false
+end
+
+-- Beside the zone: within NEAR_TILES of its box, on its level or the one
+-- below, off its tiles and off every other zone and stockpile.
+local function beside_zone(zn, x, y, z)
+    if z ~= zn.z and z ~= zn.z - 1 then return false end
+    if x < zn.x1 - NEAR_TILES or x > zn.x2 + NEAR_TILES or y < zn.y1 - NEAR_TILES or y > zn.y2 + NEAR_TILES then
+        return false
+    end
+    return off_zones(x, y, z)
+end
+
+-- The dump zone a tile lies beside, or nil (dumps: dump_zones(), read once by the caller).
+function beside_dump(dumps, x, y, z)
+    if x == nil then return nil end
+    for _, zn in ipairs(dumps or {}) do
+        if beside_zone(zn, x, y, z) then return zn end
+    end
+    return nil
+end
+
+-- The dump zone a tile lies beside when that zone's edge is a ramp's
+-- (ramp_edge > 0), or nil: what lies there DF has dumped already and would
+-- only leave there again, so neither burial_others nor the junk marking
+-- marks it (the dead report's why.not_ours_beside counts the bodies by this
+-- too). edges: the caller's cache {zone id = ramp_edge}.
+function left_beside(dumps, x, y, z, edges)
+    local zn = beside_dump(dumps, x, y, z)
+    if not zn then return nil end
+    edges = edges or {}
+    if edges[zn.id] == nil then
+        local ok, n = pcall(ramp_edge, zn)
+        edges[zn.id] = ok and n or 0
+    end
+    return edges[zn.id] > 0 and zn or nil
+end
+
+-- The items lying beside one dump zone (on the ground), read through its
+-- map blocks: fn(it) for each, stops when fn returns false.
+function near_items(zn, fn)
+    local seen, tiles = {}, {}
+    local x1, x2, y1, y2 = zn.x1 - NEAR_TILES, zn.x2 + NEAR_TILES, zn.y1 - NEAR_TILES, zn.y2 + NEAR_TILES
+    for _, z in ipairs({zn.z, zn.z - 1}) do
+        for bx = x1 - x1 % 16, x2, 16 do
+            for by = y1 - y1 % 16, y2, 16 do
+                local ok, block = pcall(dfhack.maps.getTileBlock, math.max(bx, x1), math.max(by, y1), z)
+                if ok and block then
+                    for _, id in ipairs(block.items) do
+                        if not seen[id] then
+                            seen[id] = true
+                            local it = df.item.find(id)
+                            if it and it.flags.on_ground and not (it.flags.removed or it.flags.garbage_collect) then
+                                local p = it.pos
+                                local k = key(p.x, p.y, p.z)
+                                if tiles[k] == nil then tiles[k] = beside_zone(zn, p.x, p.y, p.z) end
+                                if tiles[k] and fn(it) == false then return false end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return true
+end
+
 local function built(b)
     local ok, yes = pcall(function() return b:getBuildStage() >= b:getMaxBuildStage() end)
     return not ok or yes
@@ -238,6 +352,7 @@ function context(opts)
     local ctx = U.forbid_context()
     ctx.spots, ctx.siege, ctx.sealed = U.danger_spots(), siege_state(), sealed_caverns() > 0
     ctx.dumps, ctx.player_items = dump_zones(), opts.player_items == true
+    ctx.edges = {}      -- (item8) {zone id = ramp_edge}, read on the first need (left_beside)
     ctx.in_dump = function(x, y, z) return in_dump(ctx.dumps, x, y, z) ~= nil end
     ctx.in_stockpile = function(x, y, z) return in_stockpile(ctx, x, y, z) end
     return ctx
@@ -590,6 +705,8 @@ function dump_bodies(ctx, want, max, res, dry_run)
         if not U.dumpable_other_body(it, kind, ctx) then return end
         local x, y, z = position(it)
         if x and in_dump(ctx.dumps, x, y, z) then return end
+        -- (item8) dumped already, beside a dump on a ramp's edge (left_beside)
+        if x and left_beside(ctx.dumps, x, y, z, ctx.edges) then skip(res, 'beside_dump'); return end
         if not outside then skip(res, 'no_outside_dump'); return end
         local reason = x and reason_of(it, kind, x, y, z, ctx) or 'unknown'
         -- (item4) forbidden_reason reads DF's dead_dwarf flag (or a dead
@@ -611,6 +728,44 @@ function dump_bodies(ctx, want, max, res, dry_run)
     end)
 end
 
+-- (item8) What lies beside a dump zone (near_items) of the refuse kinds
+-- (NEAR_KINDS) marked for the dump again (dump on, forbid and melt off): DF
+-- left it there forbidden and unmarked when the zone's tiles were full. Only
+-- beside a flat zone (ramp_edge 0): beside a ramp's edge DF ends the job a
+-- level off and leaves it there again (res.ramp_edge lists those zones).
+-- Never the fort's own remains (the burial's), nor what the masks keep.
+function dump_near(ctx, max, res, dry_run)
+    res.near = 0
+    for _, zn in ipairs(ctx.dumps) do
+        local ok, edge = pcall(ramp_edge, zn)
+        if not ok or edge > 0 then
+            res.ramp_edge = res.ramp_edge or {}
+            table.insert(res.ramp_edge, zn.id)
+        else
+            local go = near_items(zn, function(it)
+                local f = it.flags
+                if f.dump then return end
+                local kind = U.item_kind(it)
+                if not NEAR_KINDS[kind or ''] then skip(res, 'kind'); return end
+                if U.fort_remains(it, kind, ctx) then skip(res, 'own_remains'); return end
+                local x, y, z = it.pos.x, it.pos.y, it.pos.z
+                local why = blocked(it, x, y, z, 'dumped', ctx)
+                if why then skip(res, why); return end
+                if not dry_run then
+                    if f.melt then pcall(dfhack.items.cancelMelting, it) end
+                    f.dump = true
+                    f.forbid = false
+                    f.melt = false
+                end
+                count(res, 'near', kind)
+                res.near = res.near + 1
+                if res.n >= max then res.more = true; return false end
+            end)
+            if go == false then break end
+        end
+    end
+end
+
 -- Junk marked for the garbage dump (dump on, forbid and melt off), lying
 -- loose on the ground only: worn (wear >= 2) non-metal clothes and rags,
 -- rotten food, and a dead other's non-metal gear. opts: reasons (the forbidden reasons taken,
@@ -618,7 +773,9 @@ end
 -- other_dead; what isn't forbidden is taken whatever they say), max (default
 -- 50), player_items ('unknown' is taken only when both it is listed and
 -- player_items is true), bodies (0.105.51: true, the bodies DF never buries
--- too, dump_bodies), junk (false: those bodies alone). Refused (but in a dry run) when the fort has no dump zone.
+-- too, dump_bodies), junk (false: those bodies alone), near (item8: true,
+-- what lies beside a flat dump zone marked again, dump_near, and nothing
+-- else). Refused (but in a dry run) when the fort has no dump zone.
 function mark_dump(opts, dry_run)
     opts = opts or {}
     local ctx = context(opts)
@@ -636,6 +793,17 @@ function mark_dump(opts, dry_run)
     for _, k in ipairs(ROTS) do table.insert(kinds, k) end
     local rots = {}
     for _, k in ipairs(ROTS) do rots[k] = true end
+    -- (item8) opts.near: what lies beside the dumps, alone
+    if opts.near == true then
+        dump_near(ctx, max, res, dry_run)
+        res.marked = res.n
+        if res.n == 0 and not dry_run then
+            res.ok, res.rejected = false, true
+            res.error = res.ramp_edge and ('DF leaves what it dumps beside zone %d again (a ramp at its edge): '
+                .. 'nothing marked'):format(res.ramp_edge[1]) or 'nothing beside the dump may be marked again now'
+        end
+        return res
+    end
     -- (0.105.51) opts.bodies: the bodies DF never buries first (dump_bodies)
     if opts.bodies == true then dump_bodies(ctx, want, max, res, dry_run) end
     if res.n >= max or opts.junk == false then      -- junk false: the bodies alone
@@ -660,6 +828,8 @@ function mark_dump(opts, dry_run)
             if not junk and not metal and ENEMY_JUNK[kind] and f.forbid then junk = 'enemy' end
         end
         if not junk then return end
+        -- (item8) dumped already, beside a dump on a ramp's edge: DF leaves it there again
+        if x and left_beside(ctx.dumps, x, y, z, ctx.edges) then skip(res, 'beside_dump'); return end
         local reason = x and reason_of(it, kind, x, y, z, ctx) or 'unknown'
         if junk == 'enemy' and reason ~= 'other_dead' then return end
         if reason == 'dumped' then return end          -- in the dump already
@@ -691,7 +861,9 @@ end
 -- fort's own (a body or part of its race or its civ, or the dead_dwarf
 -- flag: a ghost waits on those), one in a container or a unit's hands, one
 -- that holds other items, an artifact, one a job holds, a building's part,
--- an owned one, or one the masks keep. opts: max (default 100).
+-- an owned one, or one the masks keep. opts: max (default 100), near
+-- (item8: true, what DF dumped beside a zone too: forbidden, unmarked, of
+-- the refuse kinds NEAR_KINDS, near_items; by_reason.near counts those).
 function empty_dump(opts, dry_run)
     opts = opts or {}
     local ctx = context(opts)
@@ -703,27 +875,37 @@ function empty_dump(opts, dry_run)
     local max = clamp_max(opts.max, 100)
     local res = new_result(dry_run)
     res.failed = 0
+    local function take(it, why0)
+        local f = it.flags
+        if not f.forbid then skip(res, 'not_forbidden'); return end
+        if not U.on_ground(it) then skip(res, 'held'); return end
+        if f.container then skip(res, 'container'); return end
+        local okc, inside = pcall(dfhack.items.getContainedItems, it)
+        if okc and type(inside) == 'table' and #inside > 0 then skip(res, 'container'); return end
+        local kind = U.item_kind(it)
+        if U.fort_remains(it, kind, ctx) then skip(res, 'own_remains'); return end
+        local x, y, z = it.pos.x, it.pos.y, it.pos.z
+        local why = blocked(it, x, y, z, 'dumped', ctx)
+        if why then skip(res, why); return end
+        if not dry_run then
+            local ok, r = pcall(dfhack.items.remove, it)
+            if not ok or r == false then res.failed = res.failed + 1; return end
+        end
+        count(res, why0 or 'dumped', 'any')
+        if res.n >= max then res.more = true; return false end
+    end
     for _, zn in ipairs(ctx.dumps) do
-        local go = zone_items(zn, function(it)
-            local f = it.flags
-            if not f.forbid then skip(res, 'not_forbidden'); return end
-            if not U.on_ground(it) then skip(res, 'held'); return end
-            if f.container then skip(res, 'container'); return end
-            local okc, inside = pcall(dfhack.items.getContainedItems, it)
-            if okc and type(inside) == 'table' and #inside > 0 then skip(res, 'container'); return end
-            local kind = U.item_kind(it)
-            if U.fort_remains(it, kind, ctx) then skip(res, 'own_remains'); return end
-            local x, y, z = it.pos.x, it.pos.y, it.pos.z
-            local why = blocked(it, x, y, z, 'dumped', ctx)
-            if why then skip(res, why); return end
-            if not dry_run then
-                local ok, r = pcall(dfhack.items.remove, it)
-                if not ok or r == false then res.failed = res.failed + 1; return end
-            end
-            count(res, 'dumped', 'any')
-            if res.n >= max then res.more = true; return false end
-        end)
-        if go == false then break end
+        if zone_items(zn, take) == false then break end
+    end
+    if opts.near == true and res.n < max then
+        for _, zn in ipairs(ctx.dumps) do
+            local go = near_items(zn, function(it)
+                if it.flags.dump then return end
+                if not NEAR_KINDS[U.item_kind(it) or ''] then skip(res, 'kind'); return end
+                return take(it, 'near')
+            end)
+            if go == false then break end
+        end
     end
     res.by_type = nil
     res.removed = res.n
@@ -803,14 +985,30 @@ end
 -- The report section
 -- ---------------------------------------------------------------------------
 
--- {dump_zones = [{id, x, y, z, inside, items}], dumped_items, marked_dump,
+-- {dump_zones = [{id, x, y, z, inside, items, near_items, near_unmarked,
+-- near_dumped, ramp_edge}], dumped_items, marked_dump,
 -- marked_melt, smelters, magma_smelters, sealed_caverns, siege, invaders}
 function report()
     local out = {dump_zones = {}, dumped_items = 0, marked_dump = 0, marked_melt = 0}
     for _, zn in ipairs(dump_zones()) do
         local n = 0
         zone_items(zn, function() n = n + 1 end)
-        table.insert(out.dump_zones, {id = zn.id, x = zn.x, y = zn.y, z = zn.z, inside = zn.inside, items = n})
+        -- (item8) and beside it: what DF left next to the zone (near_items),
+        -- those no longer marked, those of them forbidden (DF's dumped mark)
+        -- and of the refuse kinds (what empty_dump near takes), and the
+        -- ring's ramps (ramp_edge: DF ends the dump job a level off)
+        local near, unmarked, dumped = 0, 0, 0
+        pcall(near_items, zn, function(it)
+            near = near + 1
+            if not it.flags.dump then
+                unmarked = unmarked + 1
+                if it.flags.forbid and NEAR_KINDS[U.item_kind(it) or ''] then dumped = dumped + 1 end
+            end
+        end)
+        local okr, edge = pcall(ramp_edge, zn)
+        table.insert(out.dump_zones, {id = zn.id, x = zn.x, y = zn.y, z = zn.z, inside = zn.inside, items = n,
+                                      near_items = near, near_unmarked = unmarked, near_dumped = dumped,
+                                      ramp_edge = okr and edge or nil})
         out.dumped_items = out.dumped_items + n
     end
     -- the marks: one pass over the items in play

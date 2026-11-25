@@ -156,6 +156,8 @@ OUTDOOR_LABORS = {"gathering", "fishing", "woodcutting", "hunting", "GATHER_PLAN
 def is_outdoor(p: Proposal) -> bool:
     a = _d(p.action)
     t = a.get("type")
+    if t == "fruit_zone" and a.get("pause") is True:
+        return False                     # (item6) pausing the zones keeps the gatherers in
     if t in OUTDOOR_TYPES:
         return True
     if t == "keep_grove" and not a.get("guard"):

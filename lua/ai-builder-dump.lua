@@ -8,7 +8,7 @@
 -- quickfort_apply, ...) are in reach.
 
 if not PARTS then qerror('ai-builder-dump is a part of ai-builder; run ai-builder') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-dump'] = '0.105.109'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-dump'] = '0.105.110'   -- bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -170,27 +170,52 @@ local function dump_room_state(r)
     return 'digging', left
 end
 
-function place_dump_zone(inside, dry_run)
+-- (item8) opts.move_from: the id of the outside dump zone a new flat one
+-- (place_surface's dump: no ramp round it) takes the place of; that zone is
+-- removed once the new one stands (moved_from), never before. Outside only.
+function place_dump_zone(inside, dry_run, opts)
     OFFSET = elevation_offset()
     inside = inside == true
+    local move = not inside and type(opts) == 'table' and math.tointeger(opts.move_from) or nil
+    local old
     -- one dump on each side of the walls is enough
     for _, d in ipairs(dump_zones()) do
         if (d.inside == true) == inside then
-            return dump_out(inside, d.x1, d.y1, d.z, ('a garbage dump is already there (zone %d)'):format(d.id),
-                            {zone_id = d.id, existing = true})
+            if move and d.id == move and not old then
+                old = d
+            else
+                return dump_out(inside, d.x1, d.y1, d.z, ('a garbage dump is already there (zone %d)'):format(d.id),
+                                {zone_id = d.id, existing = true})
+            end
         end
     end
+    if move and not old then
+        return dump_fail(false, ('no garbage dump zone %d outside to move'):format(move), {rejected = true})
+    end
     if not inside then
-        local r = place_surface('dump', dry_run)
+        local r = place_surface('dump', dry_run, {flat_only = old ~= nil})
         if not r.ok then return dump_fail(false, r.error or 'no spot for a garbage dump outside',
                                           {waiting = r.waiting, timed_out = r.timed_out, rejected = r.rejected}) end
         if r.clearing then
             return dump_out(false, r.x, r.y, r.z, ('trees are felled first to make room for the dump (%d)'):format(r.trees),
                             {clearing = true, dry_run = dry_run or nil})
         end
-        return dump_out(false, r.x, r.y, r.z, 'a garbage dump on open ground outside',
-                        {zone_id = (not dry_run) and dump_zone_id_at(r.x + 1, r.y + 1, r.z) or nil,
-                         dry_run = dry_run or nil})
+        local id = (not dry_run) and dump_zone_id_at(r.x + 1, r.y + 1, r.z) or nil
+        local extra = {zone_id = id, dry_run = dry_run or nil}
+        local why = 'a garbage dump on open ground outside'
+        if old then
+            extra.moved_from = old.id
+            why = ('a garbage dump on flat open ground outside, in place of zone %d (a ramp at its edge)'):format(old.id)
+            if not dry_run then
+                local b = id and id ~= old.id and df.building.find(old.id)
+                if b then pcall(dfhack.buildings.deconstruct, b) end
+                if not b or df.building.find(old.id) ~= nil then      -- still there: kept, said
+                    extra.moved_from, extra.old_kept = nil, old.id
+                    why = why .. (': zone %d could not be removed and stays'):format(old.id)
+                end
+            end
+        end
+        return dump_out(false, r.x, r.y, r.z, why, extra)
     end
     -- a room dug for it earlier: the zone once it is dug
     local rooms = site_get(DUMP_ROOM_KEY)

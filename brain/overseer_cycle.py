@@ -530,7 +530,12 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                         outcome_txt = (f"ticked {len(r.get('bought') or [])} of their goods (value {r.get('buy_value')}) "
                                        f"for {r.get('given')} of ours (value {r.get('give_value')})")
                         if r.get("answer"):
-                            outcome_txt += f"; pressed Trade: {r.get('answer')}, " + ("traded" if r.get("traded") else "NOT traded")
+                            # (item9) how the deal was seen: their goods gone, changing owner, or the merchants' yes
+                            by = {"goods": "the goods left the lists", "owners": "the goods changed owner",
+                                  "answer": "the merchants said yes"}.get(
+                                str((r.get("press") if isinstance(r.get("press"), dict) else {}).get("traded_by")))
+                            outcome_txt += (f"; pressed Trade: {r.get('answer')}, "
+                                            + (("traded" + (f" ({by})" if by else "")) if r.get("traded") else "NOT traded"))
                             c = r.get("counter") or {}
                             if c:
                                 outcome_txt += (f" (they asked for {c.get('items')} more worth {c.get('value')}: "

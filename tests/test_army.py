@@ -140,6 +140,23 @@ def _():
     assert not by_rule(plan(teacheroar_gear(), Memory())[0], "quivers")
 
 
+@test("i10: a quiver on a place's field but not on its list to carry is put on the list (never fetched otherwise)")
+def _():
+    # D and F, 24 Nov: every place has a quiver, 3 of them not on the list: relisted
+    s = teacheroar_gear(ranged_places=9, quivers_assigned=9, quivers_free=0, quivers_unlisted=3)
+    q = by_rule(plan(s, Memory())[0], "quivers")
+    assert q and q[0].action == {"type": "assign_quivers", "limit": 3} and "never fetch" in q[0].reason, q
+    # places short of one too: one action for both
+    s = teacheroar_gear(ranged_places=10, quivers_assigned=8, quivers_free=4, quivers_unlisted=3)
+    q = by_rule(plan(s, Memory())[0], "quivers")
+    assert len(q) == 1 and q[0].action == {"type": "assign_quivers", "limit": 5}, q
+    # every quiver listed: nothing; an older bridge without the count: nothing
+    assert not by_rule(plan(teacheroar_gear(ranged_places=9, quivers_assigned=9, quivers_free=2,
+                                            quivers_unlisted=0), Memory())[0], "quivers")
+    assert not by_rule(plan(teacheroar_gear(ranged_places=9, quivers_assigned=9, quivers_free=2),
+                            Memory())[0], "quivers")
+
+
 @test("bolts: a squad with crossbows and no ammunition entry gets one; set but none handed out is noted")
 def _():
     s = teacheroar_gear()

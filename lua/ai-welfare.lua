@@ -223,6 +223,11 @@ local function slab_order(hf)
         o.job_type = df.job_type.EngraveSlab
         o.specdata.hist_figure_id = hf
     end)
+    -- (item7) once: a new manager_order's frequency is NONE (-1), and such
+    -- an order never ends (B, 24 Nov: 14 of them, all left 1, one dwarf's
+    -- slab engraved 71 times while the walking ghost's waited for a blank)
+    -- (item7) its own guard: a game (or a test's fake) without the enum keeps the order
+    if ok then pcall(function() o.frequency = df.workquota_frequency_type.OneTime end) end
     if not ok then
         pcall(function() o:delete() end)
         error(err)

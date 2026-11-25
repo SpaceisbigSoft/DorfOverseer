@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.109'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.110'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -77,6 +77,7 @@ ACTIONS = {
     accept_cups = act_accept_cups,           -- (0.104.168)
     rest_infected = act_rest_infected,       -- (0.104.168)
     traction_rest = act_traction_rest,       -- (0.105.24)
+    bed_rest = act_bed_rest,                 -- (item5) the wounded up and working put to bed
     mood_free_items = act_mood_free_items,   -- (0.105.24) a mood's forbidden or dumped materials freed
     add_doctor_post = act_add_doctor_post,   -- (0.104.168)
     squad_trim = act_squad_trim,
@@ -645,6 +646,9 @@ ACTIONS = {
         if not n then return reject('engrave_memorials: max is 1-10') end
         return reqscript('ai-welfare').engrave_memorials(n, a.dry_run == true, a.ghosts == true)   -- (r1g8) ghosts by name
     end,
+    -- (item7) EngraveSlab orders for a dead with a slab already taken off (they
+    -- never ended: frequency NONE), the rest made once, the ghosts' put first
+    prune_memorial_orders = function(a) return reqscript('ai-memorials').prune_orders(a.dry_run == true) end,
     train_cook = function(a)
         if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('train_cook: release is true or false') end
         return reqscript('ai-welfare').train_cook(a.dry_run == true, a.release == true)
@@ -770,7 +774,7 @@ for _, name in ipairs({
     'gate_dogs', 'guard_gate', 'hospital_burrow', 'house_dwarves', 'furnish_liked', 'join_levels', 'keep_mousers',
     'kitchen_fat', 'seed_reserve', 'ledger_set', 'location_access', 'mark_run', 'mood_free_items', 'moon_cell', 'nest_boxes',
     'order_instrument', 'order_slots', 'pair_chairs', 'place_gate_lever', 'prisoner_room', 'prune_remains',
-    'quick_location', 'recreation', 'remove_crossing', 'remove_webs', 'repair_rooms', 'rest_infected',
+    'quick_location', 'recreation', 'remove_crossing', 'remove_webs', 'repair_rooms', 'rest_infected', 'bed_rest',
     'restrict_water', 'scrub_dead_units', 'seal_cavern', 'seal_well_stairs', 'send_mission', 'shelter_squads',
     'slaughter_one', 'squad_bolts', 'assign_bolts', 'squad_release', 'squad_swap', 'squad_trim', 'sync_offices',
     'traction_rest', 'train_war', 'trim_instrument_orders', 'trim_labor', 'unforbid_dead',
@@ -827,6 +831,7 @@ for _, name in ipairs({
     'hospital_guard', 'tantrum_step_down',   -- (0.105.47) each dry run checks and changes nothing
     'training_squad',   -- (0.105.47) its dry run names the leader or counts the places and changes nothing
     'coffins_anywhere', 'engrave_memorials', 'train_cook',   -- (0.105.47) each dry run finds and names, and changes nothing
+    'prune_memorial_orders',   -- (item7) its dry run counts the orders and changes nothing
     'well_safety', 'well_rescue',   -- (0.105.47) each dry run plans and checks, and changes nothing
     'near_gates', 'retire_water_zones',   -- (0.105.47, I7d) each dry run counts and changes nothing
     'cross_cavern',    -- (0.105.47) its dry run plans the step (quickfort's dry run) and marks nothing

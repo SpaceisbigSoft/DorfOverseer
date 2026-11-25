@@ -49,7 +49,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.109'
+BRIDGE_VERSION = '0.105.110'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -250,6 +250,7 @@ BRIDGE_MODULES = {
     'ai-raids',   -- (0.105.47, J17) the raid policy's sites; the raid party's pets let out and put back
     'ai-floorunits',   -- (layout B) a level cut into room units for a floor
     'ai-nobles-swap',   -- (r11 n1) the interim messenger swapped out, a vastly better office holder
+    'ai-memorials',   -- (item7) memorial slab orders that never end taken off, the ghosts' first
 }
 -- the split-off modules that carry a version mark of their own
 MARKED_MODULES = {'ai-military-gear', 'ai-society-burrows', 'ai-constructions', 'ai-nobles-swap'}   -- (r11 n1 fixes)

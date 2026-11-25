@@ -22,7 +22,7 @@
 local N = reqscript('ai-nobles')
 local U = reqscript('ai-util')      -- (r11) the shared helpers
 
-PART_VERSIONS = {['ai-nobles-swap'] = '0.105.109'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-nobles-swap'] = '0.105.110'}   -- (r11 n1 fixes) bumped with BRIDGE_VERSION
 
 -- the civilian offices the AI may give to a better holder. (r11 n1 fixes)
 -- Not the sheriff nor the captain of the guard: their posts lead the fortress

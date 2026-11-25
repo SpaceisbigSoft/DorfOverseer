@@ -74,6 +74,7 @@ STEER_PROTECTED = EMERGENCY | {"shelter", "alerts", "squad_recall", "water", "we
                                # (0.105.26) a life on each: a held mood goes insane; the infected, the
                                # injured, the hospital's soap and staff; fights among the fort's own
                                "mood", "infected_rest", "traction_rest", "traction", "traction_parts",
+                               "bed_rest",   # (item5) the wounded put to bed for the doctors
                                "soap_rush", "break_fights", "hospital", "doctor_post", "doctor_patient",
                                "rescue_labor", "stress_care", "jail_urgent",
                                # thirst and water: the well's parts and lids, the cistern's shut, drownings

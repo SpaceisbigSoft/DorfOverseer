@@ -8,7 +8,7 @@
 -- and a name swapped there reaches this file.
 
 if not GEAR_PART_LOCALS then qerror('ai-military-gear-ammo is a part of ai-military-gear; run ai-military-gear') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear-ammo'] = '0.105.109'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear-ammo'] = '0.105.110'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, M, fort_squads, memo, eq_ids, gear_items, vec_remove, vec_add, is_ranged_spec = GEAR_PART_LOCALS.U, GEAR_PART_LOCALS.M, GEAR_PART_LOCALS.fort_squads, GEAR_PART_LOCALS.memo, GEAR_PART_LOCALS.eq_ids, GEAR_PART_LOCALS.gear_items, GEAR_PART_LOCALS.vec_remove, GEAR_PART_LOCALS.vec_add, GEAR_PART_LOCALS.is_ranged_spec   -- (r8) handed on by the files before
 
@@ -37,6 +37,14 @@ local function quiver_claims()
     end)
 end
 
+-- (i10) a unit carries it: `in_inventory` is also set on an item in a bin,
+-- so it alone kept every binned quiver off the free list (B: 25 on DF's
+-- unassigned list, 23 of them in bins, `quivers_free` 1)
+local function held_by_unit(it)
+    local ok, u = pcall(dfhack.items.getHolderUnit, it)
+    return ok and u ~= nil
+end
+
 local function free_quivers(claimed)
     local out = {}
     -- (0.105.0 review) only quivers on DF's unassigned list (as for weapons),
@@ -47,8 +55,8 @@ local function free_quivers(claimed)
         for _, it in ipairs(gear_items('QUIVER')) do
             local f = it.flags
             if una[it.id] and not (claimed[it.id] or f.forbid or f.owned or f.trader or f.removed or f.garbage_collect
-                    or f.dump or f.hostile or f.in_job or f.construction or f.in_inventory
-                    or f.in_building or f.artifact) then
+                    or f.dump or f.hostile or f.in_job or f.construction
+                    or f.in_building or f.artifact) and not (f.in_inventory and held_by_unit(it)) then
                 table.insert(out, it)
             end
         end
@@ -56,18 +64,57 @@ local function free_quivers(claimed)
     return out
 end
 
+-- (i10) The place's soldier is on the map (alive, active). DF clears the
+-- quiver field of a place whose soldier is away, so one given there is lost
+-- to the assigned list (B: the same 2 away soldiers' places given a quiver
+-- 80 times in 2 hours, the free ones 3 -> 0). Unreadable: taken as there.
+local function soldier_here(pos)
+    local hf = df.historical_figure.find(pos.occupant)
+    if not hf or hf.unit_id == nil or hf.unit_id == -1 then return false end
+    local u = df.unit.find(hf.unit_id)
+    if not u then return false end
+    local okd, dead = pcall(dfhack.units.isDead, u)
+    if okd and dead then return false end
+    local oka, active = pcall(dfhack.units.isActive, u)
+    if oka and active == false then return false end
+    return true
+end
+
+-- (i10) Is the place's quiver on its own list of items to carry
+-- (`assigned_items`)? A soldier fetches only what is there: in D and F
+-- (24 Nov, both crossbow squads training) every quiver on the list was
+-- carried and none of the 10 set on the place's field alone (as
+-- assign_quivers set them). nil when the list can't be read.
+local function quiver_listed(pos, qid)
+    local ok, r = pcall(function()
+        for _, id in ipairs(pos.equipment.assigned_items) do
+            if id == qid then return true end
+        end
+        return false
+    end)
+    if ok then return r end
+    return nil
+end
+
+-- (i10) `ranged_places` counts soldiers on the map only (`ranged_away` the
+-- others); `quivers_unlisted` the quivers on a place's field and not on its
+-- list of items to carry (assign_quivers puts them there).
 function quiver_report()
-    local out = {ranged_places = 0, quivers_assigned = 0, quivers_carried = 0, quivers_free = 0}
+    local out = {ranged_places = 0, quivers_assigned = 0, quivers_carried = 0, quivers_free = 0,
+                 quivers_unlisted = 0, ranged_away = 0}
     local fort = U.fort_entity()
     if not fort then return out end
     for _, sid in ipairs(fort.squads) do
         local sq = df.squad.find(sid)
         for _, pos in ipairs(sq and sq.positions or {}) do
-            if pos.occupant ~= -1 and ranged_place(pos) then
+            if pos.occupant ~= -1 and ranged_place(pos) and not soldier_here(pos) then
+                out.ranged_away = out.ranged_away + 1
+            elseif pos.occupant ~= -1 and ranged_place(pos) then
                 out.ranged_places = out.ranged_places + 1
                 local okq, qid = pcall(function() return pos.equipment.quiver end)
                 if okq and qid ~= nil and qid ~= -1 then
                     out.quivers_assigned = out.quivers_assigned + 1
+                    if quiver_listed(pos, qid) == false then out.quivers_unlisted = out.quivers_unlisted + 1 end
                     pcall(function()
                         local it = df.item.find(qid)
                         local u = it and dfhack.items.getHolderUnit(it)
@@ -106,7 +153,8 @@ function flask_report()
         for _, it in ipairs(gear_items('FLASK')) do
             local f = it.flags
             if una[it.id] and not (f.forbid or f.owned or f.trader or f.removed or f.garbage_collect or f.dump
-                    or f.hostile or f.in_job or f.construction or f.in_inventory or f.in_building or f.artifact) then
+                    or f.hostile or f.in_job or f.construction or f.in_building or f.artifact)
+                    and not (f.in_inventory and held_by_unit(it)) then     -- (i10) one in a bin is free
                 out.flasks_free = out.flasks_free + 1
             end
         end
@@ -115,20 +163,39 @@ function flask_report()
 end
 
 -- Give each crossbow soldier without one a free quiver: the place's quiver
--- field, and DF told to look at quivers again (its own update flags).
+-- field and (i10) its list of items to carry (`assigned_items`, where DF's
+-- own hand-out puts it and the soldier fetches from), and DF told to look
+-- at quivers again (its own update flags). (i10) A place whose quiver is on
+-- the field alone gets it put on the list (`relisted`); a soldier away
+-- from the map is given none (DF clears the field: the quiver was lost).
 function assign_quivers(dry_run, limit)
     local fort = U.fort_entity()
     if not fort then return {ok = false, rejected = true, error = 'no fort'} end
     limit = limit or 10
     local pool = free_quivers(quiver_claims())
     local eq = equipment_lists()
-    local n, squads, err = 0, {}, nil
+    local n, relisted, squads, err = 0, 0, {}, nil
     for _, sid in ipairs(fort.squads) do
         local sq = df.squad.find(sid)
         for _, pos in ipairs(sq and sq.positions or {}) do
-            if n >= limit or #pool == 0 or err then break end
+            if n + relisted >= limit or err then break end
             local okq, qid = pcall(function() return pos.equipment.quiver end)
-            if pos.occupant ~= -1 and okq and qid == -1 and ranged_place(pos) then
+            local here = pos.occupant ~= -1 and ranged_place(pos) and soldier_here(pos)
+            if here and okq and qid ~= nil and qid ~= -1 and quiver_listed(pos, qid) == false
+                    and df.item.find(qid) ~= nil then            -- (never a quiver that is gone)
+                if not dry_run then
+                    local okl = pcall(function()
+                        vec_add(pos.equipment.assigned_items, qid)
+                        if eq then
+                            vec_remove(eq.items_unassigned.QUIVER, qid)
+                            vec_add(eq.items_assigned.QUIVER, qid)
+                        end
+                    end)
+                    if okl then squads[sid] = true; relisted = relisted + 1 end
+                else
+                    relisted = relisted + 1
+                end
+            elseif here and okq and qid == -1 and #pool > 0 then
                 local it = table.remove(pool, 1)
                 if not dry_run then
                     -- (0.105.0 review) the field's name is read from df-structures, not
@@ -136,6 +203,7 @@ function assign_quivers(dry_run, limit)
                     -- moves to the assigned list as assign_weapons moves a weapon
                     local okw, werr = pcall(function()
                         pos.equipment.quiver = it.id
+                        vec_add(pos.equipment.assigned_items, it.id)
                         if eq then
                             vec_remove(eq.items_unassigned.QUIVER, it.id)
                             vec_add(eq.items_assigned.QUIVER, it.id)
@@ -148,18 +216,18 @@ function assign_quivers(dry_run, limit)
             end
         end
     end
-    if err and n == 0 then
+    if err and n == 0 and relisted == 0 then
         return {ok = false, error = "this DF's squad places take no quiver this way: " .. err}
     end
-    if n == 0 then
+    if n == 0 and relisted == 0 then
         return {ok = false, rejected = true, error = #pool == 0 and 'no free quiver' or 'every crossbow soldier has a quiver'}
     end
-    if dry_run then return {ok = true, dry_run = true, would_assign = n} end
+    if dry_run then return {ok = true, dry_run = true, would_assign = n, would_relist = relisted} end
     for sid in pairs(squads) do
         pcall(function() df.squad.find(sid).ammo.update.quiver = true end)      -- (0.105.0 review: in a pcall)
     end
     pcall(function() df.global.plotinfo.equipment.update.quiver = true end)
-    return {ok = true, assigned = n, left = #pool, error = err}
+    return {ok = true, assigned = n, relisted = relisted, left = #pool, error = err}
 end
 
 -- (r2h4) the bolts a list of item ids holds (stack sizes summed; an id

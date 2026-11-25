@@ -10,7 +10,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-fort is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.109'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.110'   -- bumped with BRIDGE_VERSION
 
 -- DFHack's own work-order libraries (conditioned orders, e.g. smelting
 -- whenever bars run low). Only these ones.
@@ -1072,4 +1072,16 @@ function act_seed_reserve(a)
     for _ in pairs(bans) do res.held = res.held + 1 end
     if #res.unknown == 0 then res.unknown = nil end
     return res
+end
+
+-- (item5) The wounded who are up and working put to bed in the hospital, for
+-- DF's doctors (a patient DF asked a treatment for; with `rediag`, one heavy
+-- chronic infection's re-diagnosis trial), and one dwarf kept able to
+-- diagnose (lua/ai-health.lua bed_rest).
+function act_bed_rest(a)
+    local n = int_in(a.max or 2, 1, 5)
+    local cap, keep = int_in(a.cap or 3, 1, 10), int_in(a.keep_free or 2, 0, 20)
+    if not n or not cap or not keep then return reject('bed_rest: max 1-5, cap 1-10, keep_free 0-20') end
+    if a.rediag ~= nil and type(a.rediag) ~= 'boolean' then return reject('bed_rest: rediag is true or false') end
+    return reqscript('ai-health').bed_rest(n, a.dry_run == true, txt, cap, keep, a.rediag == true)
 end

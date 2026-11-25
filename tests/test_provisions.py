@@ -442,6 +442,77 @@ def _():
     assert py(env2.fruit_zone(T(lua2, {}), False))["rejected"]
 
 
+PAUSE_SETUP = r"""
+local env, W = ...
+-- (item6) the AI's fruit zone (active), a zone of the player's, and DF's job list:
+-- two waiting GatherPlants jobs in the AI's zone (one on the floor, one in a crown
+-- above), one taken, one outside every zone
+local function zone(x1, y1, x2, y2, z)
+    local b = {kind = 'Civzone', type = 'PlantGathering', x1 = x1, y1 = y1, x2 = x2, y2 = y2, z = z,
+               spec_sub_flag = {active = true}, getType = function(self) return 'Civzone' end}
+    table.insert(W.buildings, b)
+    return b
+end
+W.ai_zone = zone(40, 40, 50, 50, 100)
+W.their_zone = zone(70, 70, 75, 75, 100)
+W.site['ai-overseer/fruit-zones'] = {{x = 40, y = 40, z = 100, w = 11, h = 11}}
+local jobs = {
+    {id = 1, job_type = 'GatherPlants', pos = {x = 41, y = 41, z = 100}},
+    {id = 2, job_type = 'GatherPlants', pos = {x = 45, y = 45, z = 104}},
+    {id = 3, job_type = 'GatherPlants', pos = {x = 42, y = 42, z = 100}, worker = true},
+    {id = 4, job_type = 'GatherPlants', pos = {x = 90, y = 90, z = 100}},
+}
+local link = nil
+for i = #jobs, 1, -1 do link = {item = jobs[i], next = link} end
+env.df.global.world.jobs = {list = {next = link}}
+W.removed_jobs = {}
+env.dfhack.job.getWorker = function(j) return j.worker end
+env.dfhack.job.removeJob = function(j) table.insert(W.removed_jobs, j.id); return true end
+local L = env.labor()
+function L.in_gather_zone(zones, x, y, z)
+    for _, b in ipairs(zones) do
+        if x >= b.x1 and x <= b.x2 and y >= b.y1 and y <= b.y2 and z >= b.z and z <= b.z + 12 then return true end
+    end
+    return false
+end
+"""
+
+
+@test("(item6) fruit_pause: the AI's fruit zone made inactive and its waiting jobs (floor and crowns, none "
+      "taken) cancelled; reported paused; active again on resume; the player's zone never touched; one the "
+      "player made active again after a pause is the player's")
+def _():
+    need_lua()
+    lua, env, w = world()
+    lua.execute(PAUSE_SETUP, env, w)
+    r = py(env.fruit_pause(True, True))
+    assert r["ok"] and r["dry_run"] and w.ai_zone.spec_sub_flag.active is True, r
+    r = py(env.fruit_pause(True, False))
+    assert r["ok"] and r["zones"] == 1 and r["cancelled"] == 2, r
+    assert sorted(py(w.removed_jobs)) == [1, 2], py(w.removed_jobs)
+    assert w.ai_zone.spec_sub_flag.active is False and w.their_zone.spec_sub_flag.active is True
+    f = py(env.report())["fruit"]
+    assert f["paused"] == 1 and f["ai_zones"] == 1, f
+    assert py(env.fruit_pause(True, False))["rejected"]               # nothing left active of the AI's
+    r = py(env.fruit_pause(False, False))
+    assert r["ok"] and r["zones"] == 1 and w.ai_zone.spec_sub_flag.active is True, r
+    assert py(env.report())["fruit"]["paused"] == 0
+    assert py(env.fruit_pause(False, False))["rejected"]
+    # paused again, then the player sets it going: theirs, never paused again
+    assert py(env.fruit_pause(True, False))["ok"]
+    w.ai_zone.spec_sub_flag.active = True
+    r = py(env.fruit_pause(True, False))
+    assert r["rejected"] and w.ai_zone.spec_sub_flag.active is True, r
+
+
+@test("(item6) bridge: fruit_zone with pause goes to fruit_pause (true or false only)")
+def _():
+    src = bridge_part_src("ai-bridge-actions-civic")
+    body = src[src.index("function act_fruit_zone(a)"):]
+    body = body[:body.index("\nend\n")]
+    assert "fruit_pause(a.pause, a.dry_run == true)" in body and "type(a.pause) ~= 'boolean'" in body, body
+
+
 def cave_floor(w, x1, y1, x2, y2, z=80, mat="SOIL"):
     for x in range(x1, x2 + 1):
         for y in range(y1, y2 + 1):

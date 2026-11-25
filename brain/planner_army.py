@@ -147,13 +147,24 @@ def _quiver_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
     if not isinstance(g.get("ranged_places"), int) or "error" in g:
         return
     need = g["ranged_places"] - int(g.get("quivers_assigned") or 0)
+    # (i10) quivers set on a place but not on its list of items to carry:
+    # never fetched (D and F, 24 Nov: none of 10 such carried, every listed
+    # one carried); assign_quivers puts them on the list
+    unlisted = g.get("quivers_unlisted")
+    unlisted = unlisted if isinstance(unlisted, int) and not isinstance(unlisted, bool) and unlisted > 0 else 0
+    free = int(g.get("quivers_free") or 0)
+    if unlisted and not (need > 0 and free > 0):
+        proposals.append(Proposal("quivers", {"type": "assign_quivers", "limit": min(10, unlisted)},
+                                  f"{unlisted} crossbow soldier(s) given a quiver they never fetch (it isn't on "
+                                  "their list of gear to carry): put it there", 3))
     if need <= 0:
         return
-    free = int(g.get("quivers_free") or 0)
     if free > 0:
-        proposals.append(Proposal("quivers", {"type": "assign_quivers", "limit": min(10, need)},
+        proposals.append(Proposal("quivers", {"type": "assign_quivers", "limit": min(10, need + unlisted)},
                                   f"{need} crossbow soldier(s) without a quiver (they can't carry bolts) and "
-                                  f"{free} free: give them one", 3))
+                                  f"{free} free: give them one"
+                                  + (f" ({unlisted} more given one they never fetch: put on their list)"
+                                     if unlisted else ""), 3))
     short = need - free - queued(s, {"leather_quiver"})
     # the AI's own crossbow squad has its quivers ordered by the 0.100 rule
     # (planner_military _ranged_squad_rule): only a squad it doesn't cover

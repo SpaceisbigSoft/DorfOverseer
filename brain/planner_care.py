@@ -56,7 +56,9 @@ def _infection_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         text += (f"; {not_pat} of them DF doesn't count as patients"
                  + (f" ({chronic} with every infected wound already diagnosed: DF counts them treated)"
                     if chronic else "")
-                 + ", so no doctor sees them and the AI can't put them to bed")
+                 + ", so no doctor sees them"
+                 + (" (the AI's re-diagnosis trial puts the heaviest to bed, one at a time: the bed-rest note)"
+                    if isinstance(inf.get("bed"), dict) else " and the AI can't put them to bed"))
     notes.append(text)
     if inf.get("cleaners") == 0:
         # (0.105.35) given by the AI (was a Needs you): the work detail's own

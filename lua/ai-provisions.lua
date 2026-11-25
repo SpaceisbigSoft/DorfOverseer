@@ -25,6 +25,8 @@
 --                      (the player) is never set again
 --   fruit_zone(o, dry) a fruit-gathering zone over the densest stand of fruit
 --                      trees near the fort (quickfort 'g', dry run first)
+--   fruit_pause(pause, dry)  (item6) the AI's fruit zones made inactive (and
+--                      their waiting jobs cancelled) or active again
 --   cavern_farm(o, dry)  farm plots on soil floor in a known cavern, near
 --                      o.at (where the dwarves' ground meets it), walkable
 --                      from there, no danger near; quickfort 'p', dry run first
@@ -510,9 +512,21 @@ local function centre()
     return ok and c or nil
 end
 
+-- (item6) a zone's active flag (DF's zone screen: active / inactive), or nil unread
+local function zone_active(b)
+    local ok, v = pcall(function() return b.spec_sub_flag.active end)
+    if ok and type(v) == 'boolean' then return v end
+    return nil
+end
+
 local function fruit_report()
     local out = {zones = #zone_list()}
     out.ai_zones = #standing(FRUIT_KEY, function(r) return zone_at(r.x, r.y, r.z) ~= nil end)
+    -- (item6) the AI's zones it paused (and still inactive)
+    out.paused = #standing(FRUIT_KEY, function(r)
+        local b = r.paused and zone_at(r.x, r.y, r.z)
+        return b and zone_active(b) == false or false
+    end)
     local c = centre()
     local now = now_tick()
     local where = c and ((c.x // 20) .. ',' .. (c.y // 20) .. ',' .. c.z) or '-'
@@ -590,6 +604,70 @@ function fruit_zone(o, dry_run)
     while #l > 20 do table.remove(l, 1) end
     U.site_put(FRUIT_KEY, l)
     return out
+end
+
+-- (item6) The AI's fruit zones paused while the fort has food to spare, and
+-- set going again when it runs short. B "Monastery", 24 Nov: 403 food a
+-- dwarf, 125 plant-gathering jobs of its one fruit zone (DF makes them again,
+-- so trim_gathering can't cancel them), and its 2-3 gatherers, the tavern
+-- keeper among them, never idle: TakeItEasy 11,000-23,000 below, friends
+-- badly missed. pause: each AI zone still active made inactive (one the
+-- player made active again after a pause is the player's: never paused
+-- again), and the waiting jobs over it (its floor and crowns) that nobody
+-- has taken cancelled; else each zone the AI paused made active again.
+-- {ok, zones, cancelled}.
+function fruit_pause(pause, dry_run)
+    local l = remembered(FRUIT_KEY)
+    local hit, boxes = {}, {}
+    for _, r in ipairs(l) do
+        local b = type(r) == 'table' and r.x and zone_at(r.x, r.y, r.z) or nil
+        local act = b and zone_active(b)
+        if b and r.paused and act == true then
+            if not dry_run then r.paused, r.player_on = nil, true end   -- the player's again
+        elseif b and pause and act == true and not r.player_on then
+            table.insert(hit, {r = r, b = b})
+        elseif b and not pause and r.paused and act == false then
+            table.insert(hit, {r = r, b = b})
+        end
+    end
+    if #hit == 0 then
+        if not dry_run then U.site_put(FRUIT_KEY, l) end
+        return {ok = false, rejected = true,
+                error = pause and "no fruit zone of the AI's is active (or the player keeps it so)"
+                        or 'no fruit zone the AI paused is waiting'}
+    end
+    if dry_run then return {ok = true, dry_run = true, zones = #hit, pause = pause} end
+    local n = 0
+    for _, h in ipairs(hit) do
+        pcall(function() h.b.spec_sub_flag.active = not pause end)
+        if zone_active(h.b) == not pause then
+            n = n + 1
+            h.r.paused = pause or nil
+            table.insert(boxes, {x1 = h.b.x1, y1 = h.b.y1, x2 = h.b.x2, y2 = h.b.y2, z = h.b.z})
+        end
+    end
+    U.site_put(FRUIT_KEY, l)
+    if n == 0 then return {ok = false, error = 'the game would not change the fruit zones'} end
+    local cut = 0
+    if pause then
+        local drop = {}
+        pcall(function()
+            local GATHER = df.job_type.GatherPlants
+            local link = df.global.world.jobs.list.next
+            while link do
+                local j = link.item
+                if j and j.job_type == GATHER and not dfhack.job.getWorker(j)
+                        and labor().in_gather_zone(boxes, j.pos.x, j.pos.y, j.pos.z) then
+                    table.insert(drop, j)
+                end
+                link = link.next
+            end
+        end)
+        for _, j in ipairs(drop) do
+            if pcall(dfhack.job.removeJob, j) then cut = cut + 1 end
+        end
+    end
+    return {ok = true, zones = n, pause = pause, cancelled = pause and cut or nil}
 end
 
 -- --- cavern soil farms -----------------------------------------------------------------

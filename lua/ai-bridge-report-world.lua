@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-world is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.109'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.110'   -- bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 local inc, TICKS_PER_DAY = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.TICKS_PER_DAY
@@ -454,6 +454,22 @@ function get_deep()
                                                layer = layer_at(pos, layers),
                                                can_reach_dwarves = (g ~= 0) and (groups[g] == true) or nil,
                                                caged = (u.flags1.caged or u.flags1.chained) or nil})
+                end
+            else
+                -- (item7) a great danger on tiles the fort hasn't seen yet (DF
+                -- announced its coming): kept apart, never read as seen. B (24
+                -- Nov): three forgotten beasts, all hidden, so `dangers` was empty
+                -- and a seal would have been opened "no beast left" with them below
+                local kind = kind_of(u)
+                if kind and not (u.flags1.caged or u.flags1.chained) and #(out.unseen or {}) < 10 then
+                    local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
+                    local g = dfhack.maps.getWalkableGroup(pos)
+                    local okf, fl = pcall(function() return u.enemy.caste_flags.FLIER end)
+                    out.unseen = out.unseen or {}
+                    table.insert(out.unseen, {id = u.id, name = txt(dfhack.units.getReadableName(u)), kind = kind,
+                                              layer = layer_at(pos, layers),
+                                              can_reach_dwarves = (g ~= 0) and (groups[g] == true) or nil,
+                                              flier = (okf and fl) and true or nil})
                 end
             end
         end

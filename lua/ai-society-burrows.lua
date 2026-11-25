@@ -16,7 +16,7 @@ local function report_units(...) return U.report_units(...) end   -- (r6) ai-uti
 local S = reqscript('ai-society')   -- find_burrow, new_burrow
 -- (r9) the hub's and its parts' version marks; started afresh at each load, so a part
 -- that failed to load shows as unmarked (as ai-gates does)
-PART_VERSIONS = {['ai-society-burrows'] = '0.105.109'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-society-burrows'] = '0.105.110'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- (0.104.78) the recreation burrow ----------------------------------------
 --
@@ -24,6 +24,7 @@ PART_VERSIONS = {['ai-society-burrows'] = '0.105.109'}   -- (0.105.26) bumped wi
 -- a burrow over the taverns, temples and library, the low-mood moved in, so
 -- they take no work and spend their time where the friends, the drink and the
 -- gods are. Enxah: 42 badly wanting friends, 18 miserable, hardly anyone idle.
+-- (item6) One tavern and one temple, so its members meet one another there.
 -- The burrow also covers the dining halls, the bedrooms and the food and
 -- drink piles (never the hospital: 0.104.127), so nobody in it goes hungry, thirsty or sleepless.
 -- At most `max` dwarves at a time: very unhappy or worse, not a soldier, not
@@ -94,8 +95,9 @@ local function zone_tiles(b, burrow)
     return n
 end
 
--- The burrow's tiles: every zone of the fort's locations (tavern, temple,
--- library...), the meeting, dining, bedroom and hospital zones, and the
+-- The burrow's tiles: the zones of one tavern and one temple (item6:
+-- rec_gathering; every location's and every meeting hall when the fort has
+-- no tavern), the dining and bedroom zones (never a hospital's), and the
 -- stockpiles that take food or drink.
 -- (0.105.33, L6) Drink in the burrow: 'drink' when (not forbidden) drink
 -- lies on one of its tiles; else the 3x3 of the working well nearest the
@@ -155,25 +157,100 @@ local function rec_water(burrow, cx)
     return 'well'
 end
 
+-- (item6) The burrow's gathering place: one tavern and one temple, not every
+-- location and meeting hall. B "Monastery", 24 Nov: 15 locations for 36
+-- dwarves (3 taverns, 5 temples, 2 guildhalls, a library, 4 hospitals); the
+-- burrow's 7 members idled in 7 different ones (DF's idle area is a location),
+-- 30 of 36 badly missed friends while only 2 missed company at all (they
+-- talked, seldom to a friend), and a performance (MakeMerry, TakeItEasy)
+-- wants an audience. Pure: from {id, kind, keeper, goblets, instruments,
+-- value, any_deity} (kind DF's abstract building type) the ids of the tavern
+-- kept (a keeper, goblets and instruments first, then the most valuable,
+-- then the lowest id) and of the temple (to all gods first, then the most
+-- valuable); nil for either when the fort has none.
+function rec_gathering(locs)
+    local tav, tav_k, tem, tem_k
+    local function better(k, best_k)
+        if not best_k then return true end
+        for i = 1, #k do
+            if k[i] ~= best_k[i] then return k[i] > best_k[i] end
+        end
+        return false
+    end
+    for _, l in ipairs(locs or {}) do
+        local id = tonumber(l.id)
+        local v = tonumber(l.value) or 0
+        if id and l.kind == 'INN_TAVERN' then
+            local s = (l.keeper and 4 or 0) + ((tonumber(l.goblets) or 0) > 0 and 2 or 0)
+                      + ((tonumber(l.instruments) or 0) > 0 and 2 or 0)
+            local k = {s, v, -id}
+            if better(k, tav_k) then tav, tav_k = id, k end
+        elseif id and l.kind == 'TEMPLE' then
+            local k = {l.any_deity and 1 or 0, v, -id}
+            if better(k, tem_k) then tem, tem_k = id, k end
+        end
+    end
+    return tav, tem
+end
+
+-- (item6) bumped when the burrow's layout rule changes: a burrow filled by
+-- an older rule is filled again at the next tick, not at its weekly refill
+REC_FILL_V = 2
+
+-- The fort's locations as rec_gathering reads them (never a hospital: it is
+-- left out of the burrow anyway), and each one's zones.
+local function rec_locations()
+    local out = {}
+    pcall(function()
+        for _, b in ipairs(dfhack.world.getCurrentSite().buildings) do
+            pcall(function()
+                local gone = false
+                pcall(function() gone = b.flags.DOES_NOT_EXIST end)
+                if gone then return end
+                local c = b:getContents()
+                local e = {id = b.id, kind = df.abstract_building_type[b:getType()], zones = {}}
+                pcall(function()
+                    e.value, e.goblets, e.instruments = c.location_value, c.count_goblets, c.count_instruments
+                end)
+                for _, bid in ipairs(c.building_ids) do table.insert(e.zones, bid) end
+                pcall(function()
+                    for _, o in ipairs(b.occupations) do
+                        if df.occupation_type[o.type] == 'TAVERN_KEEPER' and o.histfig_id ~= -1 then e.keeper = true end
+                    end
+                end)
+                if e.kind == 'TEMPLE' then
+                    pcall(function()
+                        local dt = df.religious_practice_type[b.deity_type]
+                        e.any_deity = dt ~= 'WORSHIP_HFID' and dt ~= 'RELIGION_ENID'
+                    end)
+                end
+                table.insert(out, e)
+            end)
+        end
+    end)
+    return out
+end
+
 function fill_recreation(burrow)
     dfhack.burrows.clearTiles(burrow)
     local n, loc_zone, hosp_zone = 0, {}, {}
     local cx = {x = 0, y = 0, z = 0, n = 0}
-    pcall(function()
-        for _, b in ipairs(dfhack.world.getCurrentSite().buildings) do
-            pcall(function()
-                local hosp = df.abstract_building_type[b:getType()] == 'HOSPITAL'
-                for _, bid in ipairs(b:getContents().building_ids) do
-                    if hosp then hosp_zone[bid] = true else loc_zone[bid] = true end
-                end
-            end)
+    local locs = rec_locations()
+    -- (item6) one tavern and one temple when the fort has a tavern; else (as
+    -- before) every location's zones and every meeting hall
+    local tav, tem = rec_gathering(locs)
+    for _, e in ipairs(locs) do
+        local zs = e.kind == 'HOSPITAL' and hosp_zone or loc_zone
+        if e.kind == 'HOSPITAL' or not tav or e.id == tav or e.id == tem then
+            for _, bid in ipairs(e.zones) do zs[bid] = true end
         end
-    end)
+    end
     for _, b in ipairs(df.global.world.buildings.all) do
         local t = b:getType()
         if t == df.building_type.Civzone then
             local kind = df.civzone_type[b.type] or ''
-            if not hosp_zone[b.id] and kind ~= 'Hospital' and (loc_zone[b.id] or REC_ZONES[kind]) then
+            local plain = REC_ZONES[kind] and (kind ~= 'MeetingHall' or not tav)
+            if not hosp_zone[b.id] and kind ~= 'Hospital' and (loc_zone[b.id] or plain) then
                 n = n + zone_tiles(b, burrow)
                 cx.x, cx.y, cx.z, cx.n = cx.x + (b.x1 + b.x2) / 2, cx.y + (b.y1 + b.y2) / 2, cx.z + b.z, cx.n + 1
             end
@@ -185,7 +262,7 @@ function fill_recreation(burrow)
             if okf and food and not (okc and larder) then n = n + zone_tiles(b, burrow) end
         end
     end
-    return n, rec_water(burrow, cx)
+    return n, rec_water(burrow, cx), tav and {tavern = tav, temple = tem} or nil
 end
 
 -- (0.104.168) never a noble: the burrow covers no office, and a noble's
@@ -396,6 +473,8 @@ function recreation_status(txt)
         if next(sq) ~= nil then out.squads = sq end
     end)
     if d.water ~= nil then out.water = d.water end
+    -- (item6) the tavern (and temple) the burrow keeps its members in
+    if type(d.gathering) == 'table' then out.gathering = d.gathering end
     return out
 end
 
@@ -429,11 +508,12 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release,
     -- (0.105.36, D5) a dry burrow is looked at again each day: drink brought
     -- in is seen then, not at the weekly refill
     if made or not d.filled or now - d.filled >= 7 * 1200
-            or (d.water == false and now - d.filled >= 1200) then
+            or (d.water == false and now - d.filled >= 1200) or d.fill_v ~= REC_FILL_V then
         if not dry_run then
-            local water
-            tiles, water = fill_recreation(b)
+            local water, place
+            tiles, water, place = fill_recreation(b)
             d.filled, d.water = now, water ~= nil and water or false
+            d.fill_v, d.gathering = REC_FILL_V, place     -- (item6)
         end
     end
     if not dry_run then d.ticked, d.days, d.friend_days, d.soldier_days = now, days, friend_days, soldier_days end

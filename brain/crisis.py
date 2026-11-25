@@ -10,7 +10,7 @@ from planner_core import TICKS_PER_DAY, _d, abs_tick, tantrums_recent
 
 # rules that put a fort back on its feet
 RECOVERY_RULES = {
-    "burial", "tombs_ghosts", "slabs", "slabs_free", "slabs_ghost", "coffins", "hospital", "doctor_patient", "staff",
+    "burial", "tombs_ghosts", "slabs", "slabs_free", "slabs_ghost", "slabs_orders", "coffins", "hospital", "doctor_patient", "staff",
     "stress_care", "soap", "cloth", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",
     "needs_meal", "good_cooks", "recreation", "hospital_burrow", "tavern", "tavern_chest", "temple_chest",
     "tavern_urgent", "jail_urgent", "jail_size", "jail_more", "break_fights", "convict", "mood", "rooms", "drink", "drink_fruit",
@@ -20,6 +20,7 @@ RECOVERY_RULES = {
 # (0.104.168) the infected put to bed, soap two steps a cycle, more doctors,
 # and the offices the dead held filled again
 RECOVERY_RULES |= {"infected_rest", "soap_rush", "doctor_post", "appoint"}
+RECOVERY_RULES |= {"bed_rest"}   # (item5) the wounded up and working put to bed for the doctors
 # (0.104.169) the barrels and pots the crisis's brewing waits for
 RECOVERY_RULES |= {"containers"}
 # (0.104.169) calm_burrow was here. (0.105.47, R2 item 3) Dropped from the

@@ -1162,7 +1162,9 @@ def ghost_work_blocked(s: dict, memory=None, slabs: bool = True) -> list[str]:
     if ghosts <= 0:
         return []
     slabs, ms = su.get("slabs"), su.get("memorial_slabs")
-    slabs_short = (ai_slabs and isinstance(slabs, int) and slabs < ghosts
+    un = su.get("ghosts_unslabbed")      # (item7) only the ghosts with no slab yet want a blank
+    want = un if isinstance(un, int) and not isinstance(un, bool) else ghosts
+    slabs_short = (ai_slabs and isinstance(slabs, int) and slabs < want
                    and not (isinstance(ms, int) and ms > 0))
     coffins = sum(int(_d(_d(p.get("furnish")).get("waiting")).get("Coffin") or 0)
                   for p in _l(_d(s.get("projects")).get("open")) if isinstance(p, dict))
@@ -1219,6 +1221,10 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
             # DFHack's autoslab engraves the slabs; it needs blank ones in stock
             slabs = _d(s.get("supplies")).get("slabs")
             ms = _d(s.get("supplies")).get("memorial_slabs")
+            # (item7) blanks for the ghosts with no slab yet (B: one ghost's
+            # slab was made and still "need memorial slabs, 0 blank" each cycle)
+            un = _d(s.get("supplies")).get("ghosts_unslabbed")
+            need = un if isinstance(un, int) and not isinstance(un, bool) else d["ghosts"]
             # (0.104.42) slabs made but held: forbidden, or their building's
             # job suspended (Enxah: 9 of 9 ghosts' slabs so, 25 dead of fright)
             stuck = [g for g in _l(d.get("ghost_list")) if isinstance(g, dict)
@@ -1252,26 +1258,26 @@ def _dead_notes(s: dict, notes: list, proposals: list | None = None, rules_: dic
                                           f"{d['ghosts']} ghost(s){who} walk the fort and {ms} engraved memorial "
                                           "slab(s) lie unbuilt" + (f" ({mine})" if mine else "")
                                           + ": put them up so the dead rest", 3 if gs != 0 else 4))
-            elif (proposals is not None and isinstance(slabs, int) and slabs < d["ghosts"]
+            elif (proposals is not None and isinstance(slabs, int) and slabs < need
                     and queued(s, {"stone_slab"}) == 0 and stone_short(s, 1)):
                 # (0.104.14) no stone the masons may use: an order would only
                 # stand still and be cancelled as stuck (the quarry comes first)
                 pass                     # (0.105.26) said in Needs you below (ghost_work_blocked)
-            elif (proposals is not None and isinstance(slabs, int) and slabs < d["ghosts"]
+            elif (proposals is not None and isinstance(slabs, int) and slabs < need
                     and masons_jammed(s)):
                 # (0.104.32) autoslab's engrave jobs fill the mason's list
                 # waiting for the very slabs a work order can't get on to it:
                 # blank slabs straight on the bench, room made by lifting some
-                n = min(5, d["ghosts"] - slabs)
+                n = min(5, need - slabs)
                 proposals.append(Proposal(
                     "slabs", {"type": "bench_jobs", "kind": "slab", "count": n, "make_room": True},
                     f"{d['ghosts']} ghost(s){who} need memorial slabs, {slabs} blank, and autoslab's "
                     f"{masons_jammed(s)} engrave jobs fill the mason's bench waiting for them: put {n} blank "
                     "slab(s) straight on the bench", 3))
-            elif (proposals is not None and isinstance(slabs, int) and slabs < d["ghosts"]
+            elif (proposals is not None and isinstance(slabs, int) and slabs < need
                     and queued(s, {"stone_slab"}) == 0):
                 proposals.append(Proposal(
-                    "slabs", {"type": "work_order", "recipe": "stone_slab", "amount": d["ghosts"] - slabs + 1},
+                    "slabs", {"type": "work_order", "recipe": "stone_slab", "amount": need - slabs + 1},
                     f"{d['ghosts']} ghost(s){who} need memorial slabs and there are {slabs} blank ones", 3, True))
     # (0.105.26) a slab or coffin for the ghosts that can't be made: said, with why
     if d.get("ghosts"):

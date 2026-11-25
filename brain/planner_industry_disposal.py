@@ -486,11 +486,55 @@ def _disposal_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=Non
                                       + f": mark up to {most} (rags, rotten and worn non-metal things) for the "
                                       "garbage dump", 7))
 
+    # 4b. (item8) What DF dumped beside a zone: the disposal report's near_*
+    # (within 2 tiles of it, on its level or the one below, off every zone
+    # and stockpile) and ramp_edge (ramps in the ring round it). B (24 Nov
+    # 22:23): zone 228 held nothing while 133 items lay on the ramps under
+    # its corner; DF ends the DumpItem job on a ramp a level below a dump
+    # tile and leaves the item there forbidden and unmarked, so burial_others
+    # marked the same 24-37 bodies again every cooldown. Beside a flat dump
+    # what DF left is marked again (mark_dump near); beside a ramp's edge
+    # marking only repeats: the dump is moved to flat ground (place_dump
+    # move; dump_move_ramp_edge) or, with that off, it is said.
+    near_dumped = 0
+    for z in zones:
+        if z.get("ramp_edge") is None:
+            continue                        # a bridge before item8
+        edge = int(z.get("ramp_edge") or 0)
+        if edge:
+            near_dumped += int(z.get("near_dumped") or 0)
+        near = int(z.get("near_unmarked") or 0)
+        if near < cfg["disposal_near_min"]:
+            continue
+        zid = z.get("id")
+        if not edge:
+            if not any(p.rule == "disposal_dump_near" for p in proposals):
+                most = min(cfg["disposal_near_max"], DISPOSAL_ACTION_MAX)
+                proposals.append(Proposal("disposal_dump_near", {"type": "mark_dump", "near": True, "max": most},
+                                          f"{near} items lie beside the garbage dump (zone {zid}), left there "
+                                          "unmarked: the refuse among them (bodies, rags, rotten and worn things) "
+                                          f"marked for the dump again, up to {most}", 7))
+        elif z.get("inside") is False and cfg["dump_move_ramp_edge"]:
+            if not any(p.rule == "disposal_move_dump" for p in proposals):
+                proposals.append(Proposal("disposal_move_dump", {"type": "place_dump", "inside": False, "move": True},
+                                          f"{near} items lie unmarked beside the garbage dump (zone {zid}, "
+                                          f"{int(z.get('items') or 0)} in it): ramps at its edge, where the haulers "
+                                          "stop a level below and leave what they dump: a flat dump made on open "
+                                          "ground in its place (the old zone removed once it stands)", 6))
+        else:
+            notes.append(f"{near} items lie unmarked beside the garbage dump (zone {zid}): ramps at its edge, where "
+                         "the haulers stop a level below and leave what they dump, so nothing there is marked "
+                         "again; a dump on flat ground away from ramps would hold them")
+
     # 5. destroy: what piles up in the dump past the limit, removed by DFHack (never artifacts)
-    dumped = int(dis.get("dumped_items") or 0)
+    # (item8) and what DF dumped beside a zone on a ramp's edge (near_dumped: forbidden, of the refuse kinds)
+    dumped = int(dis.get("dumped_items") or 0) + near_dumped
     if level >= 3 and zones and dumped >= cfg["disposal_destroy_min"]:
         most = min(cfg["disposal_empty_max"], DISPOSAL_ACTION_MAX, dumped)
-        proposals.append(Proposal("disposal_empty", {"type": "empty_dump", "max": most},
-                                  f"{dumped} items lie in the garbage dump (past {cfg['disposal_destroy_min']}): "
+        proposals.append(Proposal("disposal_empty", dict({"type": "empty_dump", "max": most},
+                                                         **({"near": True} if near_dumped else {})),
+                                  f"{dumped} items lie in the garbage dump"
+                                  + (f" ({near_dumped} of them beside it, where DF left them)" if near_dumped else "")
+                                  + f" (past {cfg['disposal_destroy_min']}): "
                                   f"remove up to {most} of them for good (DFHack's autodump destroy; never "
                                   "artifacts), so they no longer slow the game", 8))

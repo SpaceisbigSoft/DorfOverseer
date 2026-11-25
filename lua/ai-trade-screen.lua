@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-trade-screen is a part of ai-trade; run ai-trade') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-trade-screen'] = '0.105.109'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-trade-screen'] = '0.105.110'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_units, depot, GOOD_TYPE, is_artifact, goods, trade_screen, perceived, ready, clear = PART_LOCALS.U, PART_LOCALS.report_units, PART_LOCALS.depot, PART_LOCALS.GOOD_TYPE, PART_LOCALS.is_artifact, PART_LOCALS.goods, PART_LOCALS.trade_screen, PART_LOCALS.perceived, PART_LOCALS.ready, PART_LOCALS.clear   -- (r9) the hub's locals
 
@@ -145,6 +145,51 @@ function ticked_set(trade, side)
     return set
 end
 
+-- (item9) the ticked goods of one side with their owner flag (flags.trader:
+-- the merchants'), read before a press; nil where the game gives no flags
+function ticked_owners(trade, side)
+    local list = {}
+    for i = 0, #trade.goodflag[side] - 1 do
+        if trade.goodflag[side][i].selected then
+            local it = trade.good[side][i]
+            local ok, tr = pcall(function() return it.flags.trader end)
+            if ok and type(tr) == 'boolean' then table.insert(list, {it = it, trader = tr}) end
+        end
+    end
+    return list
+end
+
+-- (item9) how many of those goods changed hands since: theirs now the fort's
+-- (bought), the fort's now theirs (sold)
+function owner_changes(mer, fort)
+    local bought, sold = 0, 0
+    for _, e in ipairs(mer) do
+        local ok, tr = pcall(function() return e.it.flags.trader end)
+        if ok and e.trader and tr == false then bought = bought + 1 end
+    end
+    for _, e in ipairs(fort) do
+        local ok, tr = pcall(function() return e.it.flags.trader end)
+        if ok and not e.trader and tr == true then sold = sold + 1 end
+    end
+    return bought, sold
+end
+
+-- (item9) Pure: whether a press made a deal. The goods leaving the lists
+-- (moved), the ticked goods changing owner, or the merchants' "Trade" line
+-- (their yes: in all six forts, 23-24 Nov, 117 presses were answered
+-- "Trade" with both lists and every tick unchanged, and the fort had the
+-- goods bought afterwards: foreign cloth, leather and fruit matching the
+-- deals' lists). Before, only `moved` counted, so every deal was logged "NOT
+-- traded" (the audit's "no deal in ~40 fort-years"). A gift's or a seize's
+-- line is never a deal.
+function deal_made(talk_before, talk, moved, bought, sold)
+    if WRONG_REPLIES[talk] then return false, nil end
+    if moved then return true, 'goods' end
+    if (bought or 0) > 0 or (sold or 0) > 0 then return true, 'owners' end
+    if talk == 'Trade' and talk_before ~= 'Trade' then return true, 'answer' end
+    return false, nil
+end
+
 function ticked_value(trade, side)
     local v = 0
     for i = 0, #trade.goodflag[side] - 1 do
@@ -233,6 +278,7 @@ function press(name, txt)
     -- goods?" on a click there (seen in game, 0.56.0): turned off for this one
     -- click only (in memory, its settings file untouched), then back on
     local fort_before = ticked_set(trade, FORT)
+    local mer_owners, fort_owners = ticked_owners(trade, MERCHANT), ticked_owners(trade, FORT)
     local talk_before = df.talk_line_type[trade.talkline] or tostring(trade.talkline)
     local okk, err = without_confirm('trade-confirm-trade', click, x, y)
     if not okk then return {ok = false, error = 'the click failed: ' .. tostring(err):sub(1, 200)} end
@@ -271,7 +317,11 @@ function press(name, txt)
     local focus
     pcall(function() focus = table.concat(dfhack.gui.getFocusStrings(dfhack.gui.getCurViewscreen(true)), ' ') end)
     local after = {ticked(MERCHANT), ticked(FORT), #trade.good[MERCHANT], #trade.good[FORT]}
-    local traded = after[3] < before[3] or after[4] < before[4]
+    local moved = after[3] < before[3] or after[4] < before[4]
+    -- (item9) a counter-offer's extra goods weren't ticked before: only the
+    -- first ticks are followed, which is enough to see goods change hands
+    local bought_n, sold_n = owner_changes(mer_owners, fort_owners)
+    local traded, traded_by = deal_made(talk_before, talk, moved, bought_n, sold_n)
     -- (0.105.47) a guessed button checked: only the Trade button makes the
     -- merchants answer (their talk line; in October they answered "Trade"
     -- with both lists unchanged). Goods gone with no answer is some other
@@ -281,7 +331,7 @@ function press(name, txt)
     -- nothing (a seize answered too): worked only when the merchants answered
     -- a trade (TRADE_REPLIES) or a counter-offer came up; a gift's or a
     -- seize's line (or goods gone with no trade answer) retires the place at once
-    local verdict = after_verdict(talk_before, talk, traded, counter ~= nil or trade.counter_offer == true)
+    local verdict = after_verdict(talk_before, talk, moved, counter ~= nil or trade.counter_offer == true)
     if how == 'guess' then
         if verdict == 'worked' then
             guess_result(name, b, true)
@@ -295,7 +345,7 @@ function press(name, txt)
     -- done: close the screen (the game goes on; nothing is ticked, so
     -- DFHack's "leave the screen?" question wouldn't come up anyway)
     local closed
-    if traded or talk ~= 'NONE' then
+    if traded or moved or talk ~= 'NONE' then
         without_confirm('trade-cancel', function()
             require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN')
         end)
@@ -305,10 +355,11 @@ function press(name, txt)
     -- (a click that got no answer at all, e.g. a dialog in the way, isn't a refusal)
     -- (0.105.48, K9) the screen closed after the press: this caravan done for the
     -- visit (before, a miss on Greet closed it unmarked: open, press, close each cycle)
-    if traded or (talk ~= 'NONE' and talk ~= 'Greet' and talk ~= 'HarshGreet') or closed then mark_done(trade.mer) end
+    if traded or moved or (talk ~= 'NONE' and talk ~= 'Greet' and talk ~= 'HarshGreet') or closed then mark_done(trade.mer) end
     local wrong_line = WRONG_REPLIES[talk] == true
     return {ok = not wrong_line, pressed = name, at = {x, y}, answer = talk, answer_before = talk_before,
-            traded = traded, screen_now = focus, guessed = (how == 'guess') or nil, how = how, verdict = verdict,
+            traded = traded, traded_by = traded_by, moved = moved,
+            bought_now = bought_n, sold_now = sold_n, screen_now = focus, guessed = (how == 'guess') or nil, how = how, verdict = verdict,
             error = wrong_line and ('the merchants answered "' .. tostring(talk) .. '": not a trade') or nil,
             counter = counter, closed = closed,
             counter_offer = trade.counter_offer or nil,

@@ -124,6 +124,11 @@ PART = {
     "disposal_dump_backlog": 300,                # ...none while this many marked wait for the haulers
     "disposal_dump_cooldown_ticks": 7 * 1200,
     "disposal_place_dump_cooldown_ticks": 7 * 1200,   # a garbage dump asked for a week apart (refusals back off)
+    "disposal_near_min": 10,                     # (item8) items left unmarked beside a dump zone before the AI acts on them...
+    "disposal_near_max": 200,                    # ...marked again (beside a flat dump) at most this many a call
+    "disposal_dump_near_cooldown_ticks": 7 * 1200,
+    "dump_move_ramp_edge": True,                 # (item8) a dump with ramps at its edge moved to flat ground (off: said)
+    "disposal_move_dump_cooldown_ticks": 2 * 1200,   # (item8) asked again while trees are felled for the new spot
     "disposal_destroy_min": 150,                 # items lying in the dump before DFHack removes them...
     "disposal_empty_max": 500,                   # ...at most this many a call (<= DISPOSAL_ACTION_MAX)
     "disposal_empty_cooldown_ticks": 7 * 1200,
@@ -384,6 +389,11 @@ PART = {
     "soap_rush_infected": 20, "soap_rush_batch": 5, "soap_rush_cooldown_ticks": 2 * 1200,
     "infected_rest_max": 3, "infected_rest_cooldown_ticks": 1200, "infected_rest_give_up": 3,
     "infected_rest_cap": 3, "infected_rest_keep_free": 2,   # (review) sleepers at once; beds left for DF's patients
+    # (item5) the wounded up and working put to bed for the doctors (a treatment
+    # asked; a heavy chronic infection's re-diagnosis as a trial, stopped after
+    # this many failed with none helped), a dwarf kept able to diagnose; a day apart
+    "bed_rest_cooldown_ticks": 1200, "bed_rest_max": 2, "bed_rest_cap": 3, "bed_rest_keep_free": 2,
+    "bed_rest_rediag": True, "bed_rest_rediag_give_up": 3,
     "doctor_post_per_diagnoser": 3, "doctor_post_cooldown_ticks": 3 * 1200,
     "noble_rooms_cooldown_ticks": 1200,
     # (0.105.41) a noble's room under its office's value: a step a day (a statue,

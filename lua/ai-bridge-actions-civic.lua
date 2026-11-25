@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-civic is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.109'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.110'   -- bumped with BRIDGE_VERSION
 
 local string_list = ACTIONS_PART_LOCALS.string_list
 
@@ -780,7 +780,7 @@ local function disposal_opts(a, allowed, name)
         o.max = int_in(a.max, 1, DISPOSAL_MAX)
         if not o.max then return nil, ('%s: max is 1-%d'):format(name, DISPOSAL_MAX) end
     end
-    for _, k in ipairs({'player_items', 'keep_masterwork', 'keep_enemy_gear', 'bodies', 'junk'}) do   -- (0.105.51) bodies, junk: mark_dump's
+    for _, k in ipairs({'player_items', 'keep_masterwork', 'keep_enemy_gear', 'bodies', 'junk', 'near'}) do   -- (0.105.51) bodies, junk: mark_dump's; (item8) near: mark_dump's and empty_dump's
         if a[k] ~= nil and type(a[k]) ~= 'boolean' then return nil, ('%s: %s is true or false'):format(name, k) end
         o[k] = a[k]
     end
@@ -827,13 +827,22 @@ end
 -- place_dump_zone(inside, dry_run) is expected to return a table as
 -- place_surface does: {ok = true, kind = 'dump', x, y, z or elevation,
 -- inside, dry_run} or {ok = false, rejected?, waiting?, error}.
+-- (item8) move = true (outside only): the outside dump whose edge is a
+-- ramp's (ai-disposal ramp_edge > 0; DF leaves what it dumps on the ramp)
+-- replaced by a flat one, the old zone removed once the new one stands.
 function act_place_dump(a)
     if a.inside ~= nil and type(a.inside) ~= 'boolean' then return reject('place_dump: inside is true or false') end
+    if a.move ~= nil and type(a.move) ~= 'boolean' then return reject('place_dump: move is true or false') end
     local inside = a.inside == true
+    if a.move and inside then return reject('place_dump: move is for the dump outside') end
     local okz, zones = pcall(function() return reqscript('ai-disposal').dump_zones() end)
+    local move_from
     if okz then
         for _, zn in ipairs(zones) do
-            if zn.inside == inside then
+            local oke, edge = pcall(function() return reqscript('ai-disposal').ramp_edge(zn) end)
+            if a.move and not move_from and zn.inside == false and oke and edge > 0 then
+                move_from = zn.id
+            elseif zn.inside == inside then
                 return {ok = false, rejected = true, nothing_to_do = true, stale = {'disposal'}, zone_id = zn.id,
                         error = ('the fort has a garbage dump %s already (zone %d at x%d y%d)')
                             :format(inside and 'inside' or 'outside', zn.id, zn.x, zn.y)}
@@ -844,7 +853,11 @@ function act_place_dump(a)
     if not okb or type(B) ~= 'table' or type(B.place_dump_zone) ~= 'function' then
         return {ok = false, error = 'the builder has no place_dump_zone (ai-builder-dump.lua is older than this bridge)'}
     end
-    local ok, r = pcall(B.place_dump_zone, inside, a.dry_run == true)
+    if a.move and not move_from then
+        return {ok = false, rejected = true, nothing_to_do = true, stale = {'disposal'},
+                error = 'place_dump: no dump outside has a ramp at its edge (nothing to move)'}
+    end
+    local ok, r = pcall(B.place_dump_zone, inside, a.dry_run == true, move_from and {move_from = move_from} or nil)
     if not ok then return {ok = false, error = 'place_dump_zone failed: ' .. tostring(r):sub(1, 300)} end
     if type(r) ~= 'table' then return {ok = false, error = 'place_dump_zone returned ' .. type(r) .. ', not a table'} end
     if r.ok == nil then r.ok = false end
@@ -1029,6 +1042,11 @@ function act_food_standing(a)
 end
 
 function act_fruit_zone(a)
+    -- (item6) pause = true / false: the AI's fruit zones paused (food to spare) or set going again
+    if a.pause ~= nil then
+        if type(a.pause) ~= 'boolean' then return reject('fruit_zone: pause is true or false') end
+        return reqscript('ai-provisions').fruit_pause(a.pause, a.dry_run == true)
+    end
     local o = {}
     if a.min_trees ~= nil then
         o.min_trees = int_in(a.min_trees, 1, 50)

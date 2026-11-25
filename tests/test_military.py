@@ -1374,6 +1374,36 @@ def _():
     assert r.ok is False and "quiver" in r.error and "no field" in r.error, dict(r)
 
 
+@test("i10: a quiver goes on the place's list to carry; one on the field alone is listed; none for a soldier away; binned ones are free")
+def _():
+    lua, n, env, eq, sq7, sq8 = army()
+    seq = lambda v: [v[i] for i in range(n(v))]
+    # quiver 81 lies in a bin (in_inventory, nobody holds it); soldier 105 is away from the map
+    lua.execute("""local env = ...
+        env.df.global.world.items.other.QUIVER[0].flags.in_inventory = true
+        env.df.unit.find = function(id) if id == 105 then return nil end return {id = id} end""", env)
+    rep = env.quiver_report()
+    assert (rep.ranged_places, rep.ranged_away, rep.quivers_free, rep.quivers_unlisted) == (1, 1, 2, 0), dict(rep)
+    r = env.assign_quivers(False, 10)
+    assert r.ok and r.assigned == 1 and r.relisted == 0, dict(r)
+    p104, p105 = sq8.positions[0].equipment, sq8.positions[1].equipment
+    assert p104.quiver == 81 and seq(p104.assigned_items) == [81], (p104.quiver, seq(p104.assigned_items))
+    assert p105.quiver == -1 and seq(p105.assigned_items) == []          # away: given none
+    # the field alone (as the AI set them before): reported, then put on the list
+    lua.execute("""local env, p = ...
+        p.assigned_items:erase(0)
+        env.df.item.find = function(id) return {id = id, flags = {}} end""", env, p104)
+    rep = env.quiver_report()
+    assert rep.quivers_unlisted == 1 and rep.quivers_assigned == 1, dict(rep)
+    d = env.assign_quivers(True, 10)
+    assert d.ok and d.would_relist == 1 and seq(p104.assigned_items) == [], dict(d)
+    r = env.assign_quivers(False, 10)
+    assert r.ok and r.relisted == 1 and r.assigned == 0 and seq(p104.assigned_items) == [81], dict(r)
+    assert 81 in seq(eq.items_assigned.QUIVER) and sq8.ammo.update.quiver
+    again = env.assign_quivers(False, 10)
+    assert not again.ok and again.rejected, dict(again)
+
+
 @test("0.105.0 review: 'any' weapon entries are never loosened; a training weapon is never 'any'; a held item isn't stale")
 def _():
     lua, n, env, eq, sq7, sq8 = army()

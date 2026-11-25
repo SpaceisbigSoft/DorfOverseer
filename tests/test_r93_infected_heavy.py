@@ -58,7 +58,7 @@ def _():
     body = HEALTH[HEALTH.index("function rest_infected"):]
     i = body.index("dfhack.job.removeWorker(u.job.current_job, 0)")
     assert "goto next_pick" in body[i:i + 200]
-    assert i < body.index("job.job_type = df.job_type.Rest")
+    assert i < body.index("give_rest(u, b)")       # (item5) the Rest job made by give_rest (dwarfvet's job)
 
 
 @test("ai-health.lua compiles under Lua 5.3")

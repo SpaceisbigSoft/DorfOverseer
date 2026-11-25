@@ -70,7 +70,9 @@
   "quivers_assigned": 0,
   "quivers_carried": 0,
   "quivers_free": 1,
+  "quivers_unlisted": 0,
   "ranged_armed": 0,
+  "ranged_away": 0,
   "ranged_places": 1,
   "shielded": 0,
   "shields": {

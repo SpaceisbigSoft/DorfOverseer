@@ -45,7 +45,9 @@
 --                    x, y, z, place, hazards = {water, magma, drop} (the
 --                    nearest of each, in tiles), doors (the AI's doors
 --                    between them and it the guard would lock now),
---                    locked (held for them)}],
+--                    locked (held for them), kin (item11: their close
+--                    kin among the citizens, see kin_of; left out when
+--                    none)}],
 --                    locks (held in all), at_risk = [{id, name, longterm,
 --                    stress, bedroom, squad, leader}], at_risk_total}
 --   guard(o, dry)    lock and free the doors (o.units: the guarded ids; nil
@@ -630,6 +632,57 @@ function at_risk()
     return rows, total
 end
 
+-- (item11) the insane dwarf's close kin among the living citizens: their
+-- mother, father, children, spouse or lover (the dwarf's historical figure's
+-- links). DF gives a death in the family the heaviest grief, and every kind of
+-- insanity ends in death: both of B's insane mothers' children went mad
+-- later too. Listed so the brain's stress care sees to them first, in the weeks
+-- before the death comes. {id, name, link (what they are to the insane one),
+-- longterm, stress, child, bedroom, squad, leader}; {} without links.
+KIN_LINKS = {MOTHER = 'mother', FATHER = 'father', CHILD = 'child', SPOUSE = 'spouse', LOVER = 'lover'}
+KIN_MAX = 6
+
+local function kin_of(u, by_hf)
+    local out = {}
+    pcall(function()
+        local hf = df.historical_figure.find(u.hist_figure_id)
+        if not hf then return end
+        for _, l in ipairs(hf.histfig_links) do
+            local okt, t = pcall(function() return df.histfig_hf_link_type[l:getType()] end)
+            local link = okt and KIN_LINKS[t] or nil
+            local c = link and by_hf[l.target_hf] or nil
+            if c and c ~= u then
+                local e = {id = c.id, name = name_of(c), link = link, bedroom = bedroom_of(c)}
+                pcall(function() e.longterm = c.status.current_soul.personality.longterm_stress end)
+                local okc, cat = pcall(dfhack.units.getStressCategory, c)
+                if okc and type(cat) == 'number' then e.stress = STRESS_LABELS[cat] end
+                pcall(function() if dfhack.units.isChild(c) or dfhack.units.isBaby(c) then e.child = true end end)
+                pcall(function()
+                    if c.military.squad_id ~= -1 then
+                        e.squad = true
+                        if c.military.squad_position == 0 then e.leader = true end
+                    end
+                end)
+                table.insert(out, e)
+                if #out >= KIN_MAX then break end
+            end
+        end
+    end)
+    return out
+end
+
+-- the living citizens by historical figure id (once per report, only with
+-- someone insane)
+local function citizens_by_hf()
+    local by = {}
+    local okc, cits = pcall(U.citizens)
+    for _, c in ipairs(okc and cits or {}) do
+        local ok, hf = pcall(function() return c.hist_figure_id end)
+        if ok and type(hf) == 'number' and hf >= 0 then by[hf] = c end
+    end
+    return by
+end
+
 -- --- the report ------------------------------------------------------------
 
 local function place_at(x, y, z)
@@ -646,7 +699,7 @@ function report()
     local st = state()
     local rows = {}
     local insane = insane_units()
-    local ctx
+    local ctx, by_hf
     -- (0.105.40b fix) the stale locks freed here too (held too long, nobody
     -- guarded near, claimed since): never left on while the guard can't run
     if next(st.locks) ~= nil then
@@ -677,6 +730,9 @@ function report()
         local held = 0
         for _, l in pairs(st.locks) do if l.unit == u.id then held = held + 1 end end
         row.locked = held
+        by_hf = by_hf or citizens_by_hf()
+        local kin = kin_of(u, by_hf)
+        if #kin > 0 then row.kin = kin end
         table.insert(rows, row)
     end
     local risk, total = at_risk()

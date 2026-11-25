@@ -7,7 +7,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-surface'] = '0.105.109'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-surface'] = '0.105.110'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -25,6 +25,22 @@ function is_tree(t)
     return t ~= nil and t.material == 'TREE' and (t.shape == 'WALL' or t.shape == 'TRUNK_BRANCH')
 end
 
+-- (item8) No ramp in the ring round a w x h spot at (x, y, z), on its level or
+-- the one below (find_surface_rect's `flat`).
+function flat_ring(x, y, z, w, h)
+    for yy = y - 1, y + h do
+        for xx = x - 1, x + w do
+            if xx < x or xx >= x + w or yy < y or yy >= y + h then
+                for _, zz in ipairs({z, z - 1}) do
+                    local t = tile_info(xx, yy, zz)
+                    if t and t.shape == 'RAMP' then return false end
+                end
+            end
+        end
+    end
+    return true
+end
+
 -- shapes: which tile shapes may lie under it (what quickfort's own check
 -- for a building or stockpile accepts: floor, boulders, pebbles, twigs,
 -- saplings, shrubs). Tree trunks are in the way but can be felled: up to
@@ -32,7 +48,10 @@ end
 -- them as trees = {{x, y, z}, ...}. (13c) Out of time with nothing found:
 -- nil, 'search cut short: ...', true.
 -- (0.105.27 fixes) `empty`: no tile with an item on it (a garbage dump's spot).
-function find_surface_rect(w, h, min_d, reserved, shapes, max_trees, empty)
+-- (item8) `flat`: no ramp in the ring round it, on its level or the one below
+-- (a garbage dump's: DF ends a DumpItem job on a ramp a level off the dump
+-- and leaves the item there, B 24 Nov: 133 items on the ramps by zone 228).
+function find_surface_rect(w, h, min_d, reserved, shapes, max_trees, empty, flat)
     shapes = shapes or {FLOOR = true}
     max_trees = max_trees or 0
     local anchors = pasture_anchors()
@@ -86,6 +105,7 @@ function find_surface_rect(w, h, min_d, reserved, shapes, max_trees, empty)
                             if not fits or #trees > max_trees then fits = false break end
                         end
                         if fits and open == 0 then fits = false end
+                        if fits and flat and not flat_ring(x, y, z, w, h) then fits = false end
                         d = d + SURFACE_TREE_COST * #trees
                         -- and nothing of it within min_d of the way in
                         if fits then
@@ -140,7 +160,7 @@ local SURFACE_THINGS = {
     -- (0.105.27 fixes) on tiles with no item on them (empty): what lies in a
     -- dump zone may be removed by DFHack's empty_dump
     dump = {w = 3, h = 3, min_d = 8, mode = 'zone', text = 'd(3x3)', what = 'a garbage dump', shapes = GROUND,
-            empty = true},
+            empty = true, flat = true},     -- (item8) flat: no ramp round it
     -- an animal stockpile: full cages from the cage traps go there, so the
     -- traps are loaded with empty cages again (prisoners stay in their cages)
     cages = {w = 3, h = 3, min_d = 6, mode = 'place', text = 'a(3x3)', what = 'a stockpile for full cages',
@@ -186,7 +206,9 @@ function clearing_status()
     return out
 end
 
-function place_surface(kind, dry_run)
+-- (item8) opts.flat_only: a thing with `flat` (the dump) only on a flat spot;
+-- without it, a fort with no flat spot gets one anyway (as before).
+function place_surface(kind, dry_run, opts)
     OFFSET = elevation_offset()
     local k = SURFACE_THINGS[kind]
     if not k then return {ok = false, rejected = true, error = 'unknown surface thing: ' .. tostring(kind)} end
@@ -213,7 +235,10 @@ function place_surface(kind, dry_run)
         end
     end
     if not spot then
-        spot, why, cut = find_surface_rect(k.w, k.h, k.min_d, reserved, k.shapes, SURFACE_MAX_TREES, k.empty)
+        spot, why, cut = find_surface_rect(k.w, k.h, k.min_d, reserved, k.shapes, SURFACE_MAX_TREES, k.empty, k.flat)
+        if not spot and not cut and k.flat and not (type(opts) == 'table' and opts.flat_only) then
+            spot, why, cut = find_surface_rect(k.w, k.h, k.min_d, reserved, k.shapes, SURFACE_MAX_TREES, k.empty)
+        end
     end
     -- (0.105.27 fixes) a spot that must be empty (the dump), cleared of trees:
     -- the logs and whatever else lies there hauled away first

@@ -550,6 +550,7 @@ AGENDA_THEMES["vermin"] = "keep cats against the vermin"     # (0.104.168)
 AGENDA_THEMES["food_store"] = AGENDA_THEMES["food_barrels"] = AGENDA_THEMES["food_store_level"] = "keep the food from rotting"   # (0.105.40b)
 AGENDA_THEMES["artifact_display"] = AGENDA_THEMES["artifact_furniture"] = AGENDA_THEMES["artifact_pedestals"] = "show the fort's artifacts"   # (item 12)
 AGENDA_THEMES["traction_rest"] = "care for the injured"       # (0.105.24)
+AGENDA_THEMES["bed_rest"] = "care for the injured"            # (item5)
 
 AGENDA_THEMES["cups_home"] = "shoes and cups for the fort"      # (0.104.168)
 

@@ -199,6 +199,7 @@ SHORT_WORDS = {
     "make_pit": "a pit zone for the prisoners over a deep drop already there",  # (item6)
     "pit_prisoners": "send caged prisoners to the AI's pit",  # (item6)
     "traction_rest": "get a patient who needs traction out of an ordinary bed, so the game lays him on the traction bench",  # (0.105.24)
+    "bed_rest": "put the wounded who are up and working to bed in the hospital, for the doctors",  # (item5)
     "mood_free_items": "free the forbidden materials a strange mood is waiting for",  # (0.105.24)
     "add_doctor_post": "add a second doctor's post at a hospital",  # (0.104.168)
     "recreation": "move the unhappiest into the recreation burrow, the recovered back to work",  # (0.104.78)
@@ -262,6 +263,7 @@ SHORT_WORDS = {
     "training_squad": "a squad that only trains, for the civilians who badly want to fight (made, filled with volunteers, or let go)",  # (0.105.47)
     "coffins_anywhere": "coffins with a tomb each on the AI's other levels, when no tomb level comes",  # (0.105.47, I7b)
     "engrave_memorials": "memorial slabs for the dead nobody can reach, before their ghosts rise",  # (0.105.47, I7b)
+    "prune_memorial_orders": "end the memorial slab orders that never end",  # (item7)
     "train_cook": "keep one cook at the kitchens so they learn",  # (0.105.47, I7b)
     "near_gates": "keep the civilians' work outside near the gates (or let it go anywhere again)",  # (0.105.47, I7d)
     "retire_water_zones": "take down the AI's water zones on surface water before the ice",  # (0.105.47, I7d)
@@ -339,6 +341,9 @@ def short(a: dict) -> str:
         return "stop the in-game fight watcher"
     if t == "thirst_patient" and a.get("get_up"):    # (item2) the patient's Rest ended: they walk to drink
         return "get a parched patient who can stand up from rest to walk to a drink"
+    if t == "fruit_zone" and isinstance(a.get("pause"), bool):     # (item6)
+        return ("pause the fruit-gathering zones (food to spare)" if a["pause"]
+                else "set the paused fruit-gathering zones going again")
     words = SHORT_WORDS.get(t)
     if words is not None:
         return words
@@ -490,6 +495,10 @@ def short(a: dict) -> str:
         return f"unlock the way down to {a.get('layer')}" if a.get("open") else f"lock the way down to {a.get('layer')}"
     if t == "rest_infected":     # (0.104.168)
         return f"put up to {a.get('max', 3)} dwarves with infected wounds to bed in the hospital, for the doctors"
+    if t == "bed_rest":          # (item5)
+        return (f"put up to {a.get('max', 2)} wounded dwarves who are up and working to bed in the hospital, for the "
+                "doctors" + (" (a heavy old infection diagnosed again, as a trial)" if a.get("rediag") else "")
+                + ", and keep a dwarf able to diagnose")
     # (0.105.0, round 2) an army that can fight
     if t == "fix_gear_gaps":
         return "mend the uniforms so the soldiers get weapons" + (" and shields" if a.get("shields") else "")

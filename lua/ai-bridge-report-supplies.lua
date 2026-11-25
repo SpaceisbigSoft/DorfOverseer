@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.109'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.110'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
 
@@ -370,10 +370,16 @@ function get_supplies()
     -- (r1g8) of them the walking ghosts' own; and the ghosts with no memorial
     -- slab at all and no open order of the AI's for one (engrave_memorials ghosts)
     pcall(function()
-        local w = reqscript('ai-builder').ghost_slab_counts()
+        local w, none = reqscript('ai-builder').ghost_slab_counts()
         out.ghost_slabs = w
+        out.ghosts_unslabbed = none      -- (item7) no memorial slab at all, ordered or not
     end)
     pcall(function() out.ghosts_no_slab = #reqscript('ai-welfare').ghost_scan() end)
+    -- (item7) EngraveSlab orders for a dead with a slab already, or that never end (lua/ai-memorials.lua)
+    pcall(function()
+        local m = reqscript('ai-memorials').order_scan()
+        out.memorial_orders_stale, out.memorial_orders_endless = m.stale, m.endless
+    end)
     -- (0.83) good meals: EatGoodMeal is met by a preferred food or a meal
     -- worth over 20 (DF wiki, Needs): servings of prepared meals and those
     -- worth more than GOOD_MEAL_VALUE each
@@ -863,7 +869,7 @@ function get_dead()
     -- standing order, or by hand), marked for dumping, out of the dwarves'
     -- reach, or already on someone's job.
     local why = {forbidden = 0, dump = 0, in_job = 0, unreachable = 0, outside = 0, carried = 0,
-                 not_ours = 0, free = 0}
+                 not_ours = 0, free = 0, not_ours_loose = 0}  -- (item8) loose 0 said: none (B: both marked, read as an old bridge)
     local samples = {}
     local side_ctx
     pcall(function()
@@ -874,6 +880,8 @@ function get_dead()
         end
     end)
     local from = from0      -- where the first citizen stands (13c: found once, above)
+    local D, dumps, edges = nil, nil, {}    -- (item8) the dumps, for left_beside
+    pcall(function() D = reqscript('ai-disposal'); dumps = D.left_beside and D.dump_zones() end)
     for _, it in ipairs(df.global.world.items.other.CORPSE) do
         local ok, r = pcall(function() return it.race end)
         if ok and r == race and not it.flags.in_building and not it.flags.removed then
@@ -915,6 +923,11 @@ function get_dead()
                                 if zn.type == df.civzone_type.Dump then loose = false end
                             end
                         end)
+                    end
+                    -- (item8) beside a dump on a ramp's edge: DF dumped it there, as dump_bodies says
+                    if loose and x and dumps and D.left_beside(dumps, x, y, z, edges) then
+                        loose = false
+                        why.not_ours_beside = (why.not_ours_beside or 0) + 1
                     end
                     if loose then why.not_ours_loose = (why.not_ours_loose or 0) + 1 end
                     -- (0.105.99) of the loose, those dump_bodies takes (the same

@@ -567,7 +567,12 @@ local function squad_training(u)
             local month = math.floor(df.global.cur_year_tick / MONTH)
             local TRAIN = df.squad_order_type.TRAIN
             local pos = u.military.squad_position
-            for _, so in ipairs(sq.schedule[idx][month].orders) do
+            -- (0.105.110) this DF: sq.schedule.routine[idx].month[m] (item10's probe);
+            -- the older path kept for another DF version
+            local mo = nil
+            pcall(function() mo = sq.schedule.routine[idx].month[month] end)
+            if mo == nil then mo = sq.schedule[idx][month] end
+            for _, so in ipairs(mo.orders) do
                 local okt, ty = pcall(function() return so.order:getType() end)
                 if okt and ty == TRAIN then
                     local okp, mine = pcall(function() return so.positions[pos] end)

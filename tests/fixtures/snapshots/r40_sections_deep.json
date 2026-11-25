@@ -143,5 +143,13 @@
    "name": "Unit 25"
   }
  },
- "dangers_total": 3
+ "dangers_total": 3,
+ "unseen": {
+  "1": {
+   "can_reach_dwarves": true,
+   "id": 26,
+   "kind": "demon",
+   "name": "Unit 26"
+  }
+ }
 }

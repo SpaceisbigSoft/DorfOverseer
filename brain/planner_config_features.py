@@ -30,6 +30,10 @@ PART = {
     "fruit_pickers": 1,                   # gatherers wanted while a fruit zone stands and nobody gathers
     "fruit_zone_cooldown_ticks": 28 * 1200,
     "fruit_pickers_cooldown_ticks": 7 * 1200,
+    # (item6) the AI's fruit zones paused at this much food a dwarf (more gathering jobs than gather_jobs_max
+    # waiting, drink not short), set going again under the second
+    "fruit_pause_food_pd": 150, "fruit_resume_food_pd": 60,
+    "fruit_pause_cooldown_ticks": 7 * 1200, "fruit_resume_cooldown_ticks": 3 * 1200,
     "meal_variety_min_pd": 2,             # meals a dwarf before their kinds are looked at (the food rule fills short stores)
     "meal_variety_share": 0.75,           # one kind this much of the servings...
     "meal_variety_low": 0.15,             # ...and another under this much: a few jobs of it

@@ -756,6 +756,16 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                          "locked until they can")
         return
     great = cavern_great(s)
+    # (item7) the great dangers below on tiles the fort hasn't seen (B: three
+    # forgotten beasts, none in `dangers`): one that can walk to the dwarves is
+    # sealed out as a seen one is; any of them keeps the seal on
+    from planner_unseen import unseen_great, unseen_words
+    unseen = unseen_great(s)
+    from_unseen = False
+    if not great:
+        walkers = [x for x in unseen if x.get("can_reach_dwarves") is True]
+        if walkers:
+            great, from_unseen = walkers, True
     caverns = [c for c in _l(d.get("caverns")) if isinstance(c, dict)]
     ops = [o for o in _l(_d(t.get("openings")).get("list")) if isinstance(o, dict)]
     off = _d(s.get("map")).get("elevation_offset")
@@ -763,7 +773,8 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
     if great:
         beast = great[0]
         who = f"{beast.get('name') or 'a great beast'} ({beast.get('kind')}" + (
-            f", in {beast['layer']})" if beast.get("layer") else ")")
+            f", in {beast['layer']}" if beast.get("layer") else "") + (
+            ", not yet seen, its way open to the dwarves)" if from_unseen else ")")
         tiles, seen = [], set()
         for c in caverns:
             if c.get("open"):
@@ -842,7 +853,9 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
         # (0.105.54) the kill plan: the seal held open for a fight under way
         hunting = False
         try:
-            hunting = _beast_hunt(s, cfg, memory, t, great, ops, down, sealed, unlocked, proposals, notes)
+            # (item7) no kill plan for a beast not yet seen: sealed out first
+            if not from_unseen:
+                hunting = _beast_hunt(s, cfg, memory, t, great, ops, down, sealed, unlocked, proposals, notes)
         except Exception as e:  # noqa: BLE001  (the seal as before)
             notes.append(f"the beast plan failed ({type(e).__name__}: {str(e)[:80]})")
         if hunting:
@@ -941,12 +954,19 @@ def _cavern_beasts(s, cfg, memory, t, rules, proposals, notes):
                              "source meanwhile, and another well is placed when it can be")
     else:
         _hunt_over(s, memory, notes)
-        if ALL_CAVERNS in sealed:
+        if unseen:
+            # (item7) below and not yet seen, none able to walk to the dwarves
+            # (B: three forgotten beasts): the ways down stay locked; said
+            notes.append(f"{len(unseen)} great beast(s) below the fort not yet seen ({unseen_words(unseen)}): "
+                         "none can walk to the dwarves (no cavern ground joins the fort's)"
+                         + ("; the ways into the caverns stay locked while they live" if sealed else
+                            "; nothing to lock now, and a cavern well's shaft gate shuts as one comes near"))
+        elif ALL_CAVERNS in sealed:
             proposals.append(Proposal("seal_cavern", {"type": "seal_cavern", "layer": ALL_CAVERNS, "open": True},
                                       "no forgotten beast or other great danger left in the caverns: the ways "
                                       "into them opened again", 3))
     # seals from before 0.105.26, one per layer: opened once no great beast is in that layer
-    here = {x.get("layer") for x in great}
+    here = {x.get("layer") for x in great} | {x.get("layer") for x in unseen}
     names = {c.get("name") for c in caverns}
     for name, rec in sealed.items():
         if name == ALL_CAVERNS:

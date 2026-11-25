@@ -146,6 +146,10 @@ PART = {
     # while unhappy or worse, first in the stress care
     "insane_risk_longterm": 50000,
     "insane_risk_harrowed": 100000,
+    # (item11) the close kin of the living insane cared for first too (planner_insane.insane_kin):
+    # very unhappy or worse, or unhappy with long-term stress this high
+    "insane_kin_care": True,
+    "insane_kin_longterm": 25000,
     # (0.105.40, 13e) world cleanup (brain/planner_cleanup.py), only past these
     # counts; while the game runs slowly each threshold is divided by
     # cleanup_slow_factor, and the item one grows with the items on the map

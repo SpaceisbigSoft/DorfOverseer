@@ -196,7 +196,7 @@ def _():
 
 @test("1. the bridge passes mark_dump's bodies and junk through (booleans only)")
 def _():
-    assert "'keep_enemy_gear', 'bodies', 'junk'}) do" in ACTS
+    assert "'keep_enemy_gear', 'bodies', 'junk', 'near'}) do" in ACTS      # (item8) near: mark_dump's and empty_dump's
 
 
 # E's own rows (states/254-autumn.json): 10 unburied, all not_ours, 3 outside; one dump outside

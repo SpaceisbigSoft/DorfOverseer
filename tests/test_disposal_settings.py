@@ -258,7 +258,7 @@ def _():
 
 @wtest("place_dump_zone: the function is in ai-builder-dump.lua and returns the contract's fields")
 def _():
-    assert code_has(SURFACE, "function place_dump_zone(inside, dry_run)")
+    assert code_has(SURFACE, "function place_dump_zone(inside, dry_run, opts)")
     r = B.place_dump_zone(True, True)
     for k in ("ok", "x", "y", "z", "inside", "why"):
         assert r[k] is not None, k

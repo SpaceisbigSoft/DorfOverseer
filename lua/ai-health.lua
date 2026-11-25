@@ -395,7 +395,30 @@ function survey(txt)
     out.helped = count(d.helped)
     out.rest_days = REST_DAYS
     pcall(function() out.traction = traction_survey(zones) end)     -- (0.105.24)
+    -- (item5) the wounded up and working: who waits for bed rest and why
+    local okb, bed = pcall(bed_survey, zones, staff, citizens, txt)
+    out.bed = okb and bed or {error = tostring(bed)}
     return out
+end
+
+-- The special Rest job DFHack's dwarfvet gives an injured animal, on bed
+-- `b` ({x, y, z}): DF's doctors come to a patient resting in a hospital bed.
+-- Returns whether it was made, and the job's id.
+local function give_rest(u, b)
+    local job_id
+    local done = pcall(function()
+        local job = df.job:new()
+        dfhack.job.linkIntoWorld(job, true)
+        job.pos.x, job.pos.y, job.pos.z = b.x, b.y, b.z
+        job.flags.special = true
+        job.job_type = df.job_type.Rest
+        local gref = df.new(df.general_ref_unit_workerst)
+        gref.unit_id = u.id
+        job.general_refs:insert('#', gref)
+        u.job.current_job = job
+        job_id = job.id
+    end)
+    return done, job_id
 end
 
 -- Put idle infected citizens DF asks no treatment for to rest in a free
@@ -454,18 +477,7 @@ function rest_infected(max, dry_run, txt, cap, keep_free)
             local name = (txt or tostring)(dfhack.units.getReadableName(u))
             local done, job_id = dry_run, nil
             if not dry_run then
-                done = pcall(function()
-                    local job = df.job:new()
-                    dfhack.job.linkIntoWorld(job, true)
-                    job.pos.x, job.pos.y, job.pos.z = b.x, b.y, b.z
-                    job.flags.special = true
-                    job.job_type = df.job_type.Rest
-                    local gref = df.new(df.general_ref_unit_workerst)
-                    gref.unit_id = u.id
-                    job.general_refs:insert('#', gref)
-                    u.job.current_job = job
-                    job_id = job.id
-                end)
+                done, job_id = give_rest(u, b)
                 if done then d.sent[tostring(u.id)] = {tick = t, job = job_id} end
             end
             if done then
@@ -632,7 +644,8 @@ end
 -- infected wounds' diagnosed flags (the wound's and its parts') and set the
 -- patient's rq_diagnosis and needs_healthcare, as a new wound does. Unproven:
 -- run a live trial on one dwarf (a save first) before any use. With
--- dry_run (the default, anything but false) it only reports.
+-- dry_run (the default, anything but false) it only reports. (item5) The
+-- live trial, bounded and undone when it fails, is bed_rest's 'rediag'.
 function rediagnose(ids, dry_run, min_load)
     dry_run = dry_run ~= false
     min_load = min_load or HEAVY_LOAD
@@ -669,6 +682,455 @@ function rediagnose(ids, dry_run, min_load)
             end
         end
         table.insert(out.units, row)
+    end
+    return out
+end
+
+-- --- (item5) bed rest for the wounded who are up and working --------------------
+--
+-- B, 24 Nov: Zutthan waited 126 days "for immobilize, dressing, surgery",
+-- walking about and working, and died; the chief medical dwarf, two surgeons,
+-- a doctor and the militia captain all walk about with infected wounds (live,
+-- probe i5-health-flags: every infected wound and its parts flagged diagnosed
+-- years ago, sutured, no rq_ flag, needs_healthcare false: DF counts them
+-- treated; loads 1-105). DF's doctors treat a patient resting in a bed; one up
+-- and working is passed by. What DF/DFHack offer, and why this way:
+--   * a special Rest job on a free hospital bed, as DFHack's dwarfvet gives an
+--     injured animal so DF's doctors treat it (the job rest_infected makes):
+--     DF's own job, undone by dfhack.job.removeJob, nothing else written. Chosen.
+--   * the hospital burrow only keeps a walking patient inside the zones (he
+--     works on there); needs_healthcare alone asks nothing of a dwarf already
+--     diagnosed (DF's doctors go by the rq_ flags, asked at a diagnosis, and a
+--     wound flagged diagnosed is not diagnosed again).
+-- So (a) 'treat': a citizen DF asked a treatment for (any rq_ flag) who isn't
+-- resting gets that Rest job; kept in bed while treatments go on, got up after
+-- TREAT_DAYS with none given, or once none is left. (b) 'rediag', a trial (one
+-- dwarf at a time): a heavy chronic infection (every infected wound diagnosed,
+-- nothing asked, load REDIAG_LOAD or more) has its infected wounds' diagnosed
+-- flags cleared and rq_diagnosis + needs_healthcare set, as a fresh wound has
+-- them, then the Rest job; if DF asks no treatment within REDIAG_DAYS, every
+-- flag is put back as it was and he is got up (the planner stops trying after
+-- a few such failures). Never sent: the thirsty or hungry (and a sleeper is got
+-- up once thirst or hunger pass BED_THIRST_UP / BED_HUNGER_UP: B's patients
+-- died of thirst in bed), a soldier, one in a mood, a tantrum, mad or caged,
+-- nor the last dwarf able to diagnose. When no dwarf with the DIAGNOSE labour
+-- is both able and healthy, the able citizen best at it is given the labour
+-- (through the work details, ai-labor give_labor).
+BED_KEY = 'ai-overseer/bed-rest'
+TREAT_DAYS = 14              -- in bed this long with no treatment given: got up
+REDIAG_DAYS = 3              -- a trial with nothing asked after this long: undone
+REDIAG_LOAD = HEAVY_LOAD
+BED_COOLDOWN_DAYS = 28       -- not sent again for this long after a failure
+BED_SHORT_DAYS = 3           -- ...after getting up to drink, or DF ending the rest
+BED_THIRST_UP = 30000        -- a sleeper this thirsty (or hungry) is got up to drink and eat
+BED_HUNGER_UP = 50000
+
+local function rq_list(u)
+    local out = {}
+    pcall(function()
+        local f = u.health and u.health.flags
+        if not f then return end
+        for _, k in ipairs(RQ) do if f[k] then table.insert(out, k) end end
+    end)
+    return out
+end
+
+local function bed_state()
+    local d = U.site_get(BED_KEY, {})
+    for _, k in ipairs({'sent', 'cooldown', 'stats'}) do
+        d[k] = type(d[k]) == 'table' and d[k] or {}
+    end
+    return d
+end
+
+local function bump(d, k) d.stats[k] = (tonumber(d.stats[k]) or 0) + 1 end
+
+local function bed_sig(d)
+    local n, kinds = 0, ''
+    for sid, e in pairs(d.sent) do n = n + 1; kinds = kinds .. sid .. (type(e) == 'table' and tostring(e.kind) .. tostring(e.sig) or '') end
+    local s = 0
+    for _, v in pairs(d.stats) do s = s + (tonumber(v) or 0) end
+    return n .. '/' .. count(d.cooldown) .. '/' .. s .. '/' .. kinds
+end
+
+-- the trial's flags: each infected, diagnosed wound (and its diagnosed parts)
+-- made undiagnosed, rq_diagnosis and needs_healthcare set; the record says
+-- what to put back
+local function trial_start(u, rec)
+    for _, w in ipairs(u.body.wounds) do
+        if w.flags.infection and w.flags.diagnosed then
+            local r = {id = w.id, parts = {}}
+            table.insert(rec, r)                  -- recorded first: a failure part-way is undone too
+            for i, p in ipairs(w.parts) do
+                local ok, v = pcall(function() return p.flags1.diagnosed end)
+                if ok and v then
+                    table.insert(r.parts, i)
+                    p.flags1.diagnosed = false
+                end
+            end
+            w.flags.diagnosed = false
+        end
+    end
+    u.health.flags.rq_diagnosis = true
+    u.health.flags.needs_healthcare = true
+end
+
+local function trial_undo(u, rec)
+    pcall(function()
+        local by = {}
+        for _, r in ipairs(rec or {}) do if type(r) == 'table' then by[tonumber(r.id)] = r end end
+        for _, w in ipairs(u.body.wounds) do
+            local r = by[w.id]
+            if r then
+                local parts = {}
+                for _, i in ipairs(r.parts or {}) do parts[tonumber(i)] = true end
+                for i, p in ipairs(w.parts) do
+                    if parts[i] then pcall(function() p.flags1.diagnosed = true end) end
+                end
+                w.flags.diagnosed = true
+            end
+        end
+        u.health.flags.rq_diagnosis = false
+        u.health.flags.needs_healthcare = false
+    end)
+end
+
+local function too_dry(u, thirst, hunger)
+    local ok, dry = pcall(function()
+        return u.counters2.thirst_timer >= thirst or u.counters2.hunger_timer >= hunger
+    end)
+    return ok and dry
+end
+
+-- The AI's bed-rest sleepers tended (see the top). Returns the counts;
+-- `dry_run` changes nothing.
+local function bed_tend(d, t, dry_run)
+    local out = {sleeping = 0, trials = 0}
+    for sid, e in pairs(d.sent) do
+        e = type(e) == 'table' and e or {}
+        local u = df.unit.find(tonumber(sid))
+        local oka, alive = pcall(function() return dfhack.units.isAlive(u) end)
+        local when = tonumber(e.tick) or t
+        local function drop(days, stat)
+            if dry_run then return end
+            d.sent[sid] = nil
+            if days then d.cooldown[sid] = t + days * DAY end
+            if stat then bump(d, stat) end
+        end
+        if not u or (oka and not alive) or t < when then
+            drop()
+        else
+            local rq = rq_list(u)
+            local j = rest_job(u)
+            local mine = tonumber(e.job)
+            local own = j ~= nil and mine ~= nil and j.id == mine
+            local function get_up() if own and not dry_run then pcall(dfhack.job.removeJob, j) end end
+            local sig = table.concat(rq, ',')
+            if e.kind == 'rediag' and sig ~= '' and sig ~= 'rq_diagnosis' then
+                -- DF diagnosed him and asked a treatment: a patient now
+                if not dry_run then
+                    bump(d, 'rediag_helped')
+                    e.kind, e.sig, e.last, e.wounds = 'treat', sig, t, nil
+                end
+                out.sleeping = out.sleeping + 1
+            elseif e.kind == 'rediag' and sig == '' then
+                -- diagnosed again, nothing asked: the old flags put back as they were
+                if not dry_run then trial_undo(u, e.wounds) end
+                get_up()
+                drop(BED_COOLDOWN_DAYS, 'rediag_failed')
+            elseif e.kind == 'rediag' and (not j or t - when >= REDIAG_DAYS * DAY
+                                           or too_dry(u, BED_THIRST_UP, BED_HUNGER_UP)) then
+                -- never diagnosed (or up to drink, or DF ended the rest): undone
+                if not dry_run then trial_undo(u, e.wounds) end
+                get_up()
+                local failed = t - when >= REDIAG_DAYS * DAY
+                drop(failed and BED_COOLDOWN_DAYS or BED_SHORT_DAYS, failed and 'rediag_failed' or 'trial_cut')
+            elseif e.kind == 'rediag' then
+                out.sleeping, out.trials = out.sleeping + 1, out.trials + 1
+            elseif sig == '' then
+                get_up()                              -- every treatment given
+                drop(nil, 'treated')
+            elseif j and not own then
+                drop()                                -- DF rests him itself now
+            elseif not j then
+                drop(BED_SHORT_DAYS, 'ended')         -- DF ended the rest
+            elseif too_dry(u, BED_THIRST_UP, BED_HUNGER_UP) then
+                get_up()
+                drop(BED_SHORT_DAYS, 'drink_up')
+            else
+                if sig ~= e.sig and not dry_run then e.sig, e.last = sig, t end   -- a treatment given
+                if t - (tonumber(e.last) or when) >= TREAT_DAYS * DAY and sig == e.sig then
+                    get_up()
+                    drop(BED_COOLDOWN_DAYS, 'stalled')
+                else
+                    out.sleeping = out.sleeping + 1
+                end
+            end
+        end
+    end
+    if not dry_run then
+        for sid, w in pairs(d.cooldown) do
+            if t >= (tonumber(w) or 0) or (tonumber(w) or 0) - t > BED_COOLDOWN_DAYS * DAY then d.cooldown[sid] = nil end
+        end
+    end
+    return out
+end
+
+local function bed_cand(u, zones, staff, d, t)
+    local c = {id = u.id, unit = u, rq = rq_list(u), load = load_of(u), infected = infected(u)}
+    pcall(function() c.care = u.health ~= nil and u.health.flags.needs_healthcare == true end)
+    c.chronic = c.infected and #c.rq == 0 and not c.care and diagnosed_only(u)
+    c.resting = rest_job(u) ~= nil
+    pcall(function() c.job = u.job.current_job and tostring(df.job_type[u.job.current_job.job_type]) or nil end)
+    c.soldier = false
+    pcall(function() c.soldier = u.military.squad_id ~= -1 end)
+    pcall(function() c.child = not dfhack.units.isAdult(u) end)
+    pcall(function() c.mood = u.mood ~= nil and u.mood ~= -1 end)
+    c.tantrum = in_tantrum(u)
+    pcall(function() c.insane = dfhack.units.isSane(u) == false end)
+    pcall(function() c.restrained = u.flags1.caged or u.flags1.chained end)
+    pcall(function() c.down = u.flags1.on_ground == true end)    -- where he fell: DF's rescuers carry him
+    pcall(function() local cat = dfhack.units.getStressCategory(u); c.miserable = type(cat) == 'number' and cat <= 1 end)
+    c.thirsty = too_dry(u, REST_THIRST, REST_HUNGER)
+    c.sent = d.sent[tostring(u.id)] ~= nil
+    local cd = tonumber(d.cooldown[tostring(u.id)])
+    c.cooldown = cd ~= nil and t < cd
+    pcall(function() c.diagnoser = u.status.labors[df.unit_labor.DIAGNOSE] == true end)
+    pcall(function() c.skill = dfhack.units.getNominalSkill(u, df.job_skill.DIAGNOSE, true) end)
+    c.staff = staff[u.id] == true
+    return c
+end
+
+-- Pure: the kind of bed rest a citizen waits for ('treat', 'rediag') or nil;
+-- with a kind, the bar that keeps him from it (nil if none).
+BED_BARS = {'resting', 'sent', 'down', 'soldier', 'mood', 'tantrum', 'insane', 'restrained', 'thirsty', 'cooldown'}
+function bed_kind(c, rediag)
+    local kind
+    if #(c.rq or {}) > 0 then kind = 'treat'
+    elseif rediag and c.chronic and (c.load or 0) >= REDIAG_LOAD then kind = 'rediag'
+    else return nil end
+    for _, k in ipairs(BED_BARS) do if c[k] then return kind, k end end
+    return kind, nil
+end
+
+-- Pure: one who can do a diagnosis now (the labour, up, sane, no soldier)
+function able_diagnoser(c)
+    return c.diagnoser == true and not (c.soldier or c.child or c.resting or c.sent or c.insane or c.tantrum
+                                        or c.mood or c.restrained or c.down)
+end
+
+function healthy_diagnoser(c)
+    return able_diagnoser(c) and #(c.rq or {}) == 0 and (c.load or 0) < REDIAG_LOAD
+end
+
+-- Pure: who goes to bed, at most `max`: those DF asked a treatment for
+-- first, then the trials (one at a time, `trials` already in bed); among
+-- them the healers first, the healthiest of them first (soonest back at
+-- work), the others by the heavier infection and the more treatments. The
+-- last dwarf able to diagnose stays up (returned as kept).
+function bed_picks(cands, max, rediag, trials)
+    local able = 0
+    for _, c in ipairs(cands) do if able_diagnoser(c) then able = able + 1 end end
+    local list = {}
+    for _, c in ipairs(cands) do
+        local kind, bar = bed_kind(c, rediag)
+        if kind and not bar then c.kind = kind; table.insert(list, c) end
+    end
+    local function healer(c) return (c.diagnoser or c.staff) and true or false end
+    table.sort(list, function(a, b)
+        if (a.kind == 'treat') ~= (b.kind == 'treat') then return a.kind == 'treat' end
+        local ha, hb = healer(a), healer(b)
+        if ha ~= hb then return ha end
+        local la, lb, na, nb = a.load or 0, b.load or 0, #(a.rq or {}), #(b.rq or {})
+        if ha then
+            if na ~= nb then return na < nb end
+            if la ~= lb then return la < lb end
+        else
+            if la ~= lb then return la > lb end
+            if na ~= nb then return na > nb end
+        end
+        return a.id < b.id
+    end)
+    local out, kept = {}, {}
+    trials = trials or 0
+    for _, c in ipairs(list) do
+        if #out >= (max or 0) then break end
+        if able_diagnoser(c) and able <= 1 then
+            table.insert(kept, c)
+        elseif c.kind == 'rediag' and trials >= 1 then
+            -- one trial at a time
+        else
+            if able_diagnoser(c) then able = able - 1 end
+            if c.kind == 'rediag' then trials = trials + 1 end
+            table.insert(out, c)
+        end
+    end
+    return out, kept
+end
+
+-- Pure: the citizen given the DIAGNOSE labour when no able dwarf with it is
+-- healthy: up, grown, sane, no soldier, not miserable, no treatment asked,
+-- no heavy infection; the best at diagnosing, ties to the lower id. nil if a
+-- healthy diagnoser stands or nobody fits.
+function healer_pick(cands)
+    for _, c in ipairs(cands) do if healthy_diagnoser(c) then return nil end end
+    local best
+    for _, c in ipairs(cands) do
+        local fit = not (c.diagnoser or c.child or c.soldier or c.insane or c.tantrum or c.mood or c.restrained
+                         or c.resting or c.sent or c.miserable or c.down) and #(c.rq or {}) == 0 and (c.load or 0) < REDIAG_LOAD
+        if fit and (not best or (c.skill or 0) > (best.skill or 0)
+                    or ((c.skill or 0) == (best.skill or 0) and c.id < best.id)) then
+            best = c
+        end
+    end
+    return best
+end
+
+local BAR_WORDS = {resting = 'resting already', sent = 'put to bed by the AI', soldier = 'a soldier',
+                   down = 'lying where he fell (for DF\'s rescuers)',
+                   mood = 'in a strange mood', tantrum = 'in a tantrum', insane = 'mad', restrained = 'caged or chained',
+                   thirsty = 'thirsty or hungry (drink first)', cooldown = 'got up lately (waits a while)'}
+
+-- The report's part: who waits for bed rest and why, the healers, the
+-- AI's sleepers (tended here, as survey tends rest_infected's).
+function bed_survey(zones, staff, citizens, txt)
+    local d = bed_state()
+    local t = now_tick()
+    local before = bed_sig(d)
+    local tended = bed_tend(d, t, false)
+    if bed_sig(d) ~= before then save_state_bed(d) end
+    local out = {treat_waiting = 0, rediag_waiting = 0, ready_treat = 0, ready_rediag = 0, able_diagnosers = 0,
+                 healthy_diagnosers = 0, sleeping = tended.sleeping, trials = tended.trials, who = {},
+                 stats = d.stats, treat_days = TREAT_DAYS, rediag_days = REDIAG_DAYS, rediag_load = REDIAG_LOAD}
+    local cands, rows = {}, {}
+    for _, u in ipairs(citizens) do
+        local c = bed_cand(u, zones, staff, d, t)
+        table.insert(cands, c)
+        if able_diagnoser(c) then out.able_diagnosers = out.able_diagnosers + 1 end
+        if healthy_diagnoser(c) then out.healthy_diagnosers = out.healthy_diagnosers + 1 end
+        local kind, bar = bed_kind(c, true)
+        if kind and bar ~= 'resting' and bar ~= 'sent' then
+            out[kind .. '_waiting'] = out[kind .. '_waiting'] + 1
+            if not bar then out['ready_' .. kind] = out['ready_' .. kind] + 1 end
+            table.insert(rows, {c = c, kind = kind, bar = bar})
+        end
+    end
+    table.sort(rows, function(a, b)
+        if (a.kind == 'treat') ~= (b.kind == 'treat') then return a.kind == 'treat' end
+        if (a.c.load or 0) ~= (b.c.load or 0) then return (a.c.load or 0) > (b.c.load or 0) end
+        return a.c.id < b.c.id
+    end)
+    for i = 1, math.min(6, #rows) do
+        local r = rows[i]
+        local needs = {}
+        for _, k in ipairs(r.c.rq) do table.insert(needs, (k:gsub('^rq_', ''))) end
+        table.insert(out.who, {id = r.c.id, name = (txt or tostring)(dfhack.units.getReadableName(r.c.unit)),
+                               kind = r.kind, load = r.c.load, needs = needs, healer = (r.c.diagnoser or r.c.staff) or nil,
+                               why = r.bar and BAR_WORDS[r.bar] or (r.c.job and ('up, at work (' .. r.c.job .. ')')
+                                                                   or 'up, idle')})
+    end
+    local h = healer_pick(cands)
+    if h then out.healer_candidate = {id = h.id, skill = h.skill or 0} end
+    return out
+end
+
+function save_state_bed(d) U.site_put(BED_KEY, d) end
+
+-- Put up to `max` of the wounded up and working to bed (see the top): at most
+-- `cap` of the AI's sleepers (this and rest_infected's) at once, `keep_free`
+-- beds left; `rediag` allows the trial. First, when no healthy dwarf able to
+-- diagnose stands, one is given the labour.
+function bed_rest(max, dry_run, txt, cap, keep_free, rediag)
+    cap, keep_free = cap or 3, keep_free or 2
+    local d = bed_state()
+    local t = now_tick()
+    local tended = bed_tend(d, t, dry_run)
+    local zones, staff = hospitals()
+    if next(zones) == nil then
+        if not dry_run then save_state_bed(d) end
+        return {ok = false, rejected = true, error = 'the fort has no hospital zone'}
+    end
+    local cands = {}
+    for _, u in ipairs(report_citizens(true)) do table.insert(cands, bed_cand(u, zones, staff, d, t)) end
+    local out = {ok = true, dry_run = dry_run or nil, sent = {}, kept = {}}
+    local h = healer_pick(cands)
+    if h then
+        local given = dry_run
+        if not dry_run then
+            local ok, r = pcall(function() return reqscript('ai-labor').give_labor(h.unit, 'DIAGNOSE') end)
+            given = ok and r == true
+        end
+        if given then
+            h.diagnoser = true
+            out.healer = {unit_id = h.id, name = (txt or tostring)(dfhack.units.getReadableName(h.unit)), skill = h.skill or 0}
+        end
+    end
+    local beds = free_beds(zones)
+    local others = count(load_state().sent)              -- rest_infected's sleepers share the cap
+    local n = room(max, cap, keep_free, tended.sleeping + others, #beds)
+    local picks, kept = bed_picks(cands, n, rediag, tended.trials)
+    for _, c in ipairs(kept) do
+        table.insert(out.kept, {unit_id = c.id, name = (txt or tostring)(dfhack.units.getReadableName(c.unit))})
+    end
+    local used = {}
+    for _, c in ipairs(picks) do
+        local u = c.unit
+        if u.job.current_job and not dry_run then
+            pcall(function() dfhack.job.removeWorker(u.job.current_job, 0) end)
+            if u.job.current_job then goto next_pick end
+        end
+        do
+            local bed
+            for i, b in ipairs(beds) do
+                if not used[i] then
+                    local ok, walk = pcall(dfhack.maps.canWalkBetween, u.pos, xyz2pos(b.x, b.y, b.z))
+                    if ok and walk then bed = i break end
+                end
+            end
+            if bed then
+                local done, job_id, rec = dry_run, nil, nil
+                if not dry_run then
+                    if c.kind == 'rediag' then
+                        rec = {}
+                        done = pcall(trial_start, u, rec)
+                        if not done then trial_undo(u, rec) end
+                    else
+                        done = true
+                    end
+                    if done then
+                        done, job_id = give_rest(u, beds[bed])
+                        if not done and rec then trial_undo(u, rec) end
+                    end
+                    if done then
+                        d.sent[tostring(u.id)] = {tick = t, job = job_id, kind = c.kind, sig = table.concat(c.rq, ','),
+                                                  last = t, wounds = rec}
+                        if c.kind == 'rediag' then bump(d, 'rediag_tried') end
+                    end
+                end
+                if done then
+                    used[bed] = true
+                    local needs = {}
+                    for _, k in ipairs(c.rq) do table.insert(needs, (k:gsub('^rq_', ''))) end
+                    table.insert(out.sent, {unit_id = u.id, name = (txt or tostring)(dfhack.units.getReadableName(u)),
+                                            kind = c.kind, load = c.load, needs = needs})
+                end
+            end
+        end
+        ::next_pick::
+    end
+    if not dry_run then save_state_bed(d) end
+    if #out.sent == 0 and not out.healer then
+        local why
+        if n == 0 then
+            why = ('no room: %d of the AI\'s sleepers in bed (at most %d), %d bed(s) free (%d kept for the doctors\' '
+                   .. 'own patients)'):format(tended.sleeping + others, cap, #beds, keep_free)
+        elseif #picks == 0 then
+            why = #kept > 0 and 'the only one waiting is the last dwarf able to diagnose: kept up'
+                  or 'nobody up and working waits for a treatment (or each is barred: thirsty, a soldier, raging...)'
+        else
+            why = 'no free hospital bed they can walk to'
+        end
+        return {ok = false, rejected = true, error = why, kept = out.kept}
     end
     return out
 end
