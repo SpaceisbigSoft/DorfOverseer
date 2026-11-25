@@ -253,6 +253,7 @@ One line per version, newest first (0.105.95 and older: the archive file, "Chang
 
 | Version | Date | What changed | Status |
 | --- | --- | --- | --- |
+| 0.105.118 | Nov 25 | A closed game started again 60 s after it went down (`DOWN_S`, was 180), at most once every 2 minutes (`LAUNCH_EVERY_S`, was 900; the player's ask); never while its own process still runs | delivered 25 Nov 14:59 |
 | 0.105.117 | Nov 25 | A game the keeper started loads its save ~15 s after the title screen shows (`TITLE_OWN_S`; was 2-3 min); a title the player opened keeps 2 minutes. B restarted fresh 14:50 (the cistern); C's DF crashed loading `autosave 1` at 14:53 (DF's own `length_error` in drawing) | delivered 25 Nov 14:56 |
 | 0.105.116 | Nov 25 | Moods get their bar and their shop: any metal bar and an anvil asked of caravans, a smelter kept standing, a mood's shop placed on free floor first; the winter cistern never seals its digger in or sits by the stairs; a dwarf sealed in a dug pocket dug out | delivered 25 Nov 14:40 |
 | 0.105.115 | Nov 25 | Were cells behind raised drawbridges, the cursed moved in, cell doors guarded; DF's beatings of convicts spared, killing officers swapped; the recreation burrow only the tavern and temple, labours off, friends together; the fort's goods out of the depot; refusals paced in real minutes; Room size in the Monastery and Merchant city | delivered 25 Nov 11:27; the fresh run from 11:40 |
