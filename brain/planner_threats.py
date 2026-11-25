@@ -40,7 +40,7 @@ from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, ask_player,
                           can_fight, crowded_thief, player_rules, reachable_threats, thief_rows, _traits)
 
-__all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "moon_phase_due", "moon_clearly_past", "MOON_PHASES", "WERE_FULL_PHASE", "PRISONER_CHOICES", "THREAT_CONFIG",
+__all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "moon_phase_due", "moon_clearly_past", "moon_change_close", "MOON_PHASES", "WERE_FULL_PHASE", "PRISONER_CHOICES", "THREAT_CONFIG",
            "note_intrusions", "unseen_intrusion", "lone_sneaker", "watch_spots", "thief_watchers"]
 
 PRISONER_CHOICES = ("keep", "release", "kill")
@@ -63,6 +63,8 @@ THREAT_CONFIG = {
     "moon_before_days": 3,                   # in the cell this long before the expected change...
     "moon_after_days": 2,                    # ...and this long after
     "moon_cell_cooldown_ticks": 300,
+    "were_cells_cooldown_ticks": 1200,       # (0.105.115 item24) the cells' level and their links: a day apart
+    "were_cells_max": 16,                    # ...and no more cells than this in all
     "seal_cavern_cooldown_ticks": 600,
     "seal_missing_days": 7,                  # (0.105.0 review) a sealed layer gone from the report: unlocked after
     "threat_alarm_max_days": 7,              # (0.105.0 review) the threats round holds the alarm this long at most
@@ -76,12 +78,13 @@ PLANNER_CONFIG.update({k: v for k, v in THREAT_CONFIG.items() if k not in PLANNE
 
 # (0.105.0) the fire guard and the moon cells wait for no action slot, and the strategist never holds them
 LIMIT_EXEMPT.update({"fire_guard", "moon_cell"})
-STEER_PROTECTED.update({"fire_guard", "moon_cell", "seal_cavern"})
+STEER_PROTECTED.update({"fire_guard", "moon_cell", "seal_cavern", "were_cells"})
 
 AGENDA_THEMES.update({"fire_guard": "keep the dwarves away from the fire", "prisoners": "a cage room for prisoners",
                       "thieves": "keep thieves and snatchers out", "undead": "keep the dwarves in from the dead",
                       "reanimation": "rot the bodies an evil land would raise",
                       "moon_cell": "lock the werebeasts in for the full moon",
+                      "were_cells": "werebeast cells behind drawbridges",
                       "seal_cavern": "seal the cavern against a beast", "rescue_labor": "fetch the wounded",
                       "cavern_openings": "doors on the ways into the caverns",
                       "beast_hunt": "kill the great beast in the caverns"})
@@ -191,6 +194,7 @@ MOON_PHASES = 28        # DF's world_data.moon_phase runs 0..27 (one turn ~25.5 
 WERE_FULL_PHASE = 27    # (verifier) vanilla interaction_werebeast: [CE:PERIODIC:MOON_PHASE:27:0]
 WERE_LEAD_PHASES = 8    # (0.105.96) the cursed into their cells this many phases (~days) before the change
 WERE_PAST_PHASES = 2    # (0.105.114) let out only this many phases (~days) past every change phase, at the least
+WERE_MOVE_PHASES = 3    # (0.105.115 item18) this close to the change (or in it), a cursed dwarf outside the cell is moved in
 
 
 def moon_phase_due(changes: list, phase, cfg: dict) -> bool | None:
@@ -228,6 +232,22 @@ def moon_clearly_past(changes: list, phase, cfg: dict) -> bool:
         if d < past or d >= MOON_PHASES - lead:
             return False
     return True
+
+
+def moon_change_close(changes: list, phase, cfg: dict) -> bool:
+    """(0.105.115 item18) Is DF's moon phase within WERE_MOVE_PHASES before a
+    change phase (or in the change's own window)? Then a cursed dwarf still
+    outside their cell is moved in (the bridge's move_in). E, 25 Nov: Dodók
+    and the child Uzol waited 14+ days for their cells and turned outside.
+    No change seen: DF's own full moon (WERE_FULL_PHASE). Unread: False."""
+    if not _num(phase):
+        return False
+    phases = [int(c["phase"]) for c in changes if isinstance(c, dict) and _num(c.get("phase"))] or [WERE_FULL_PHASE]
+    for at in set(phases):
+        d = (int(phase) - at) % MOON_PHASES
+        if d >= MOON_PHASES - WERE_MOVE_PHASES or d <= _c(cfg, "moon_after_days"):
+            return True
+    return False
 
 
 def moon_due(changes: list, now: int, cfg: dict) -> bool | None:
@@ -544,13 +564,57 @@ def _were_outsiders(s, cfg, w, proposals, notes):
                               f"send {q.get('name') or 'the squad'} before the full moon changes them", 0))
 
 
+def were_cells_rule(s, cfg, w, rows, rules, proposals, notes):
+    """(0.105.115 item24) Cells a changed werebeast can't break. A werebeast in
+    its beast form is a building destroyer (level 2): it breaks the door of a
+    jail or bedroom cell. Walls and a raised drawbridge hold, so the cells of
+    the were_cells level (2x2, off a corridor) each have a 1-tile drawbridge
+    for their only way in, its lever in front. A werebeast citizen known and
+    too few such cells (none, or fewer than the cursed, up to were_cells_max):
+    the level, urgent (as jail_urgent), unless one is being built. Its levers,
+    once built, are linked to their bridges (the were_cells action). moon_cell
+    takes these cells first and raises the bridge once the cursed is inside."""
+    wc = _d(w.get("were_cells"))
+    n = int(wc.get("n") or 0) if _num(wc.get("n")) else 0
+    if _num(wc.get("unlinked")) and wc["unlinked"] > 0:
+        proposals.append(Proposal("were_cells", {"type": "were_cells"},
+                                  f"{wc['unlinked']} werebeast cell lever(s) built and not linked to their "
+                                  "drawbridges: a mechanic links each (2 mechanisms)", 2))
+    if not rules["moon_cells"] or not rows:
+        return
+    building = [p for p in _l(_d(s.get("projects")).get("open"))
+                if isinstance(p, dict) and p.get("kind") == "were_cells"]
+    if building:
+        if n == 0:
+            notes.append(f"{len(rows)} werebeast citizen(s): their cells behind drawbridges are being built; "
+                         "until then a jail or a free bedroom (a changed werebeast can break its door)")
+        return
+    want = min(8, max(2, len(rows) + 1) if n == 0 else len(rows) - n, int(cfg["were_cells_max"]) - n)
+    if want <= 0 or (n > 0 and len(rows) <= n):
+        return
+    names = ", ".join(str(x.get("name")) for x in rows[:3])
+    proposals.append(Proposal("were_cells", {"type": "start_project", "kind": "were_cells", "cells": want,
+                                             "urgent": True},
+                              (f"{names}: werebeast citizen(s) and no cell a changed one can't break (it breaks "
+                               f"doors): dig {want} cells, each behind a drawbridge on a lever, now") if n == 0 else
+                              (f"{len(rows)} werebeast citizens and {n} cells behind drawbridges: dig {want} more"),
+                              2))
+
+
 def _were(s, cfg, t, rules, proposals, notes):
     w = _d(t.get("were"))
     rows = [x for x in _l(w.get("list")) if isinstance(x, dict) and x.get("id") is not None]
     cells = [x for x in _l(w.get("cells")) if isinstance(x, dict)]
     _were_outsiders(s, cfg, w, proposals, notes)
+    were_cells_rule(s, cfg, w, rows, rules, proposals, notes)    # (0.105.115 item24)
     if not rows and not cells and not (_num(w.get("dead_cells")) and w["dead_cells"] > 0):
         return
+    # (0.105.115 item18) another rule tried to unlock a locked cell's door (refused)
+    guard = _d(w.get("door_guard"))
+    refused = _d(guard.get("refused"))
+    if refused:
+        notes.append("a locked werebeast cell's door: unlock refused for "
+                     + ", ".join(f"{k} x{v}" for k, v in sorted(refused.items())[:5]))
     # (0.105.103) someone else in a locked cell (E, 24 Nov 08:31: four killed in Urvad's)
     living = {x.get("id") for x in rows}
     for c in cells:
@@ -589,9 +653,20 @@ def _were(s, cfg, t, rules, proposals, notes):
         if want and not locked:
             # (0.105.0 review) the changed ones' ids sent too, so their cells are kept
             ids = want + [x["id"] for x in rows if x.get("changed") and x.get("cell")]
-            proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": ids},
+            act = {"type": "moon_cell", "ids": ids}
+            # (0.105.115 item18) the change close: anyone not inside yet is moved in now
+            close = moon_change_close(_l(w.get("changes")), w.get("moon_phase"), wcfg)
+            if close:
+                act["move_in"] = True
+            proposals.append(Proposal("moon_cell", act,
                                       f"the full moon is near: {', '.join(str(x.get('name')) for x in rows[:3])} "
-                                      "into a cell (a jail or a free bedroom, locked once inside)", 1))
+                                      + ("into a cell (behind a drawbridge, raised once inside, else a jail or a free "
+                                         "bedroom, locked" if _num(_d(w.get("were_cells")).get("free"))
+                                         and w["were_cells"]["free"] > 0 else
+                                         "into a cell (a jail or a free bedroom, locked")
+                                      + " once inside"
+                                      + ("; the change is close: moved in now if still outside)" if close else
+                                         "; moved in if still outside after a day)"), 1))
     elif live_cells or _num(w.get("dead_cells")) and w["dead_cells"] > 0:
         # (0.105.103) let out only when DF's moon phase was read and says the
         # moon is past: an unread phase or the tick count's guess (it slips

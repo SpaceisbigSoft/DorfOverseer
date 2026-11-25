@@ -8,7 +8,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-layouts-kinds is a part of ai-layouts; run ai-layouts') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-layouts-kinds'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-layouts-kinds'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local clamp, new_layout, dig_rect, dig_rect_except, mark, corners_of, add, rot_rect, virtual_slot, hall_open, own_pillar, hall_statues, hall_close, finish = PART_LOCALS.clamp, PART_LOCALS.new_layout, PART_LOCALS.dig_rect, PART_LOCALS.dig_rect_except, PART_LOCALS.mark, PART_LOCALS.corners_of, PART_LOCALS.add, PART_LOCALS.rot_rect, PART_LOCALS.virtual_slot, PART_LOCALS.hall_open, PART_LOCALS.own_pillar, PART_LOCALS.hall_statues, PART_LOCALS.hall_close, PART_LOCALS.finish   -- (r9) the hub's and earlier parts' locals
 
@@ -312,6 +312,32 @@ function jail(p)
         add(L, 'zone', s.x, s.y, 'j(3x3)')
     end
     L.summary = {cells = #slots, restraints = #slots}
+    return finish(L)
+end
+
+-- (0.105.115 item24) were_cells{cells = 1-8}: 2x2 cells off a corridor for
+-- werebeast citizens. Changed, a werebeast breaks doors (a building
+-- destroyer, level 2); walls and a raised drawbridge hold. Each cell's only
+-- way in is a 1-tile drawbridge on its doorway (raised, it is a wall), its
+-- lever on the corridor tile in front, and a bed inside. No zone: a bedroom
+-- would be claimed and a jail chained (ai-werecells finds the cells by
+-- rooms_at: wereN(2x2), werebridgeN, wereleverN, turned with the level).
+-- A plain corridor (no cross or ring arms): the lever stays in front.
+function were_cells(p)
+    local n = clamp(p.cells, 1, 8)
+    local L = new_layout('were_cells', p)
+    local slots = corridor_rooms(L, n, 2)
+    for i, s in ipairs(slots) do
+        local far_y = corners(s)
+        local out_y = s.side == 'N' and s.door.y + 1 or s.door.y - 1
+        add(L, 'build', s.door.x, s.door.y, s.side == 'N' and 'gw(1x1)' or 'gx(1x1)', 'Bridge')
+        add(L, 'build', s.door.x, out_y, 'Tl', 'Lever')
+        add(L, 'build', s.x + 1, far_y, 'b', 'Bed')
+        add(L, 'rooms_at', s.x, s.y, ('were%d(%dx%d)'):format(i, s.size, s.size))
+        add(L, 'rooms_at', s.door.x, s.door.y, 'werebridge' .. i)
+        add(L, 'rooms_at', s.door.x, out_y, 'werelever' .. i)
+    end
+    L.summary = {cells = #slots}
     return finish(L)
 end
 
@@ -808,7 +834,7 @@ end
 
 local MAKERS = {farms = farms, bedrooms = sleeping, suites = suites, dining = dining, storage = storage,
                 workshops = workshops, temple = temple, memorial = memorial, hospital = hospital,
-                barracks = barracks, tombs = tombs, tavern = tavern, library = library, jail = jail,
+                barracks = barracks, tombs = tombs, tavern = tavern, library = library, jail = jail, were_cells = were_cells,
                 archery = archery, garden = garden}
 
 -- Build the level, then turn it as the style says.

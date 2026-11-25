@@ -1114,7 +1114,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # newcomers and no new luxury levels until it recovers
     if s.get("fps_low"):
         def _slow_game_hold(proposals):
-            keep = ("bedrooms", "dining", "storage", "workshops", "tombs", "hospital", "barracks", "memorial")
+            keep = ("bedrooms", "dining", "storage", "workshops", "tombs", "hospital", "barracks", "memorial",
+                    "were_cells")   # (item24) werebeast cells
             dropped = [p for p in proposals if p.action.get("type") == "start_project"
                        and p.action.get("kind") not in keep and p.rule != "mood"]
             if dropped:

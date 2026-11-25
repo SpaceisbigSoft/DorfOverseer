@@ -8,7 +8,8 @@ from digest import _d, _l
 from planner_config import PLANNER_CONFIG
 from planner_core_base import EMERGENCY, TICKS_PER_DAY, TICKS_PER_YEAR, watch_since
 from planner_backoff import (WAIT_BACKOFF_TYPES, WAIT_BACKOFF_MAX_DAYS, NO_EFFECT_COUNT,  # noqa: F401
-                             NO_EFFECT_DROP, _no_effect_same, CARE_POST_MAX_DAYS, care_post)
+                             NO_EFFECT_DROP, _no_effect_same, CARE_POST_MAX_DAYS, care_post,
+                             care_cap_ticks)
 
 
 # One back-off for everything the game refuses: the same action refused
@@ -142,7 +143,9 @@ def _refused_wait(memory: Memory, p: Proposal, now: int, bridge: str | None = No
         return None
     until = r.get("until")
     if isinstance(until, int) and isinstance(r.get("at"), int) and care_post(p):
-        until = min(until, r["at"] + CARE_POST_MAX_DAYS * TICKS_PER_DAY)   # (item7) patients wait now
+        # (item7) patients wait now: a day; (item20) or the real minutes booked with it (a fast fort)
+        cap = r.get("care_cap") if isinstance(r.get("care_cap"), int) else CARE_POST_MAX_DAYS * TICKS_PER_DAY
+        until = min(until, r["at"] + max(CARE_POST_MAX_DAYS * TICKS_PER_DAY, cap))
     if isinstance(until, int) and 0 <= now < until:
         return max(1, -(-(until - now) // TICKS_PER_DAY))
     return None
@@ -209,9 +212,11 @@ def note_zone_full(memory, p: Proposal, r: dict, now: int) -> None:
         memory.place_full.pop(z, None)
 
 
-def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | None = None) -> None:
+def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | None = None,
+                 state: dict | None = None) -> None:
     """Book a refusal (or clear the count after a success), with the bridge
-    version that refused it."""
+    version that refused it. (item20) state: the fort's fps, for a care post's
+    cap in real minutes."""
     if not isinstance(memory.refusals, dict):
         memory.refusals = {}
     key = refusal_key(p)
@@ -267,10 +272,17 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
         days = REFUSAL_IDLE_DAYS   # (0.104.138) the goal is met: a year, not a loop
     if p.action.get("type") == "squad_release" and "longs to fight or train" in str(r.get("error") or ""):
         days = max(days, 56)       # (0.104.34) a need that lasts: Enxah asked 368 times, 10 dwarves, all refused
+    ticks = days * TICKS_PER_DAY
+    care_cap = None
     if care_post(p):
-        days = min(days, CARE_POST_MAX_DAYS)   # (item7) patients wait: a free dwarf is looked for once a game day
-    memory.refusals[key] = {"n": n, "until": now + days * TICKS_PER_DAY, "at": now,
+        # (item7) patients wait: a free dwarf is looked for once a game day; (item20) or once
+        # REAL_CAP_MINUTES real minutes where a day is less (E, 25 Nov: 217 asks in 2.5 h)
+        care_cap = care_cap_ticks(state, TICKS_PER_DAY)
+        ticks = min(ticks, care_cap)
+    memory.refusals[key] = {"n": n, "until": now + ticks, "at": now,
                             "why": str(r.get("error") or "")[:120]}
+    if care_cap is not None and care_cap > CARE_POST_MAX_DAYS * TICKS_PER_DAY:
+        memory.refusals[key]["care_cap"] = care_cap
     if r.get("timed_out"):
         memory.refusals[key]["t"] = int(old.get("t") or 0) + 1   # still cut short: the streak goes on
     if bridge:
@@ -279,10 +291,16 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
     # (0.104.38) but not one still waiting out its back-off: a 56-84 day wait
     # was forgotten at 60 and began again at 1 day (feeder piles refused 120
     # times overnight, squad releases 78)
+    # (item20) nor, for four times its last wait (at most a year), one that waited long: C, 25 Nov:
+    # a storage level refused 6 times, its 32-day wait ended, and when it was asked again 113 days
+    # after the last refusal the record was gone: the back-off began again at a day
     for k in [k for k, v in memory.refusals.items()
               if not isinstance(v, dict) or not isinstance(v.get("at"), int)
               or (now - v["at"] > 60 * TICKS_PER_DAY
-                  and not (isinstance(v.get("until"), int) and now < v["until"] + 30 * TICKS_PER_DAY))]:
+                  and not (isinstance(v.get("until"), int)
+                           and now < v["until"] + 30 * TICKS_PER_DAY)
+                  and not (isinstance(v.get("until"), int)
+                           and now - v["at"] <= min(TICKS_PER_YEAR, 4 * (v["until"] - v["at"]))))]:
         memory.refusals.pop(k, None)
 
 

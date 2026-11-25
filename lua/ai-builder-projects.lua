@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -66,6 +66,8 @@ function save_projects(data)
         -- (0.104.152, review) a cavern well is never dropped: its shaft gate and
         -- stair lid are run from its project for as long as the well stands
         local cavern_well = p.kind == 'well' and (type(p.shaft_stairs) == 'table' or p.shaft_gate ~= nil)
+        -- (0.105.115 item24) nor a werebeast cell level: its cells are run from it
+        cavern_well = cavern_well or (p.kind == 'were_cells' and p.phase ~= 'cancelled')
         -- (0.105.54) a finished workshops level with free rooms stays (WORKSHOP_KEEP_FREE at most):
         -- the next workshops go into it (join_workshop_level)
         local free_level = p.kind == 'workshops' and p.phase == 'done' and p.parent == nil
@@ -896,7 +898,8 @@ function start_project(params, now, dry_run)
         floor = site.floor,               -- (layout B) {id, slots, hall, piles}: the floor this level is part of
         -- the exact cells, so later steps never depend on regenerating the layout
         cells = {dig = dig, build = build, place = L.place, zone = L.zone,
-                 smooth = decor.smooth, engrave = decor.engrave},
+                 smooth = decor.smooth, engrave = decor.engrave,
+                 were = kind == 'were_cells' and L.rooms_at or nil},   -- (0.105.115 item24) ai-werecells' cells
         started = now, designated = result,
         plan = plan, in_district = site.in_district,   -- the overseer's hint, and whether it was met
         -- (0.105.54) its free rooms; (V4) none on a floor: unit_params drops the spares there and

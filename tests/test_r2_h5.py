@@ -253,10 +253,9 @@ end
 for i = 1, ours do
   table.insert(dep.contained_items, {use_mode = 0, item = {id = 1000 + i, flags = {in_building = true}}})
 end
-env.dfhack.items.moveToGround = function(item, pos)
-  if item.flags.trader then return false end
-  item.flags.in_building = false; table.insert(moved, item.id); return true
-end
+-- (0.105.115 item19) taken out of the depot by hand onto its tile's block (moveToGround refused them in
+-- the game); these fake goods have no general_refs or pos: out_of_depot copes (a real item may lack them)
+env.dfhack.maps.getTileBlock = function() return {items = moved, occupancy = {}} end
 return moved"""
 
 

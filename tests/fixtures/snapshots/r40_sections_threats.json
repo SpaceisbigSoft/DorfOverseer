@@ -136,6 +136,9 @@
    }
   },
   "count": 1,
+  "door_guard": {
+   "held": 0
+  },
   "list": {
    "1": {
     "changed": true,

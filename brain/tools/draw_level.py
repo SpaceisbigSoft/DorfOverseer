@@ -59,6 +59,7 @@ DEFAULTS: dict[str, dict] = {
     "library": {"bookcases": 8},
     "archery": {"lanes": 2, "length": 12},
     "garden": {"name": "Copper"},
+    "were_cells": {"cells": 2},     # (0.105.115 item24)
     "farms": {"plots": 4},          # make() knows it, though it is not in KINDS
 }
 # rooms=N for these kinds: the first N of this list
@@ -76,6 +77,7 @@ FURNITURE = {
     "f": ("cabinet", "f"), "h": ("chest", "h"), "n": ("coffin", "n"), "r": ("weapon rack", "r"),
     "a": ("armor stand", "a"), "s": ("statue", "s"), "v": ("chain", "v"), "A": ("archery target", "A"),
     "p": ("farm plot", "p"), "~c": ("bookcase", "k"),
+    "gw": ("drawbridge", "="), "gx": ("drawbridge", "="), "Tl": ("lever", "l"),   # (0.105.115) were_cells
 }
 # Quickfort stockpile keys -> the glyph a pile of that kind would like (upper case)
 PILE_GLYPHS = {"food": "F", "stone": "S", "wood": "W", "furniture": "U", "bars_blocks": "B",

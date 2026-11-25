@@ -66,8 +66,10 @@ FLOOR_OF: dict[str, tuple[str, str, str]] = {
     "archery": ("defence", "guard", "far"),
     "jail": ("defence", "guard", "far"),
 }
-# kinds that never go on a floor (and any kind not in FLOOR_OF)
-CLASSIC_KINDS = frozenset({"farms", "landmark", "well", "way_in", "cistern"})
+# kinds that never go on a floor (and any kind not in FLOOR_OF). (0.105.115)
+# were_cells: each cell's lever stands on the corridor tile in front of its
+# drawbridge, which a floor's cut drops (ai-floorunits refuses it too)
+CLASSIC_KINDS = frozenset({"farms", "landmark", "well", "way_in", "cistern", "were_cells"})
 # a workshops level's role, by its first shop's group (planner_shopslots.WORKSHOP_GROUPS)
 ROLE_OF_GROUP = {"crafts": "crafts", "cloth": "crafts", "soap": "crafts", "smithing": "forges", "food": "kitchens"}
 # the order of the roles inside a district (role i gets the district's levels turned i places)

@@ -18,7 +18,8 @@
 --@ module = true
 
 KINDS = {'bedrooms', 'suites', 'jail', 'dining', 'storage', 'workshops', 'temple', 'memorial', 'hospital', 'barracks',
-         'tombs', 'tavern', 'library', 'archery', 'garden'}
+         'tombs', 'tavern', 'library', 'archery', 'garden',
+         'were_cells'}   -- (0.105.115 item24) werebeast cells behind drawbridges
 -- (D0 G4, the Design track) four new hall shapes beside today's three; see hall_mask
 HALLS = {plain = true, rounded = true, pillared = true,
          octagonal = true, round = true, cruciform = true, nave = true}
@@ -729,7 +730,7 @@ PART_LOCALS = {clamp = clamp, new_layout = new_layout, dig_rect = dig_rect, dig_
 PARTS = {'kinds'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-layouts'] = '0.105.114'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-layouts'] = '0.105.115'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

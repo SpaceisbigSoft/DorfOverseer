@@ -614,7 +614,9 @@ def _():
 @test("G7 at Architect, design_ai off: a god's hall from the library, sites -> build -> dug -> built, on the real bridge part")
 def _():
     reset_pd()
-    s, m, seen = fort("architect", {"grandeur": 40, "militarism": 20}), Memory(), []
+    # (0.105.115) Piety 60: grandeur 40 + militarism 20 alone tied the War-hold and the Monastery (cosine 0.1202
+    # each) until item23 gave the Monastery Room size -50; then the War-hold's gate hall came first
+    s, m, seen = fort("architect", {"grandeur": 40, "militarism": 20, "piety": 60}), Memory(), []
     p1, _ = game_cycle(s, m, seen)
     assert [p.action["type"] for p in p1] == ["blueprint_sites"], [p.action for p in p1]
     assert seen[-1][1]["ok"] and seen[-1][1]["sites"], seen[-1][1]

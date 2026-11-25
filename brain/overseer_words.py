@@ -227,6 +227,7 @@ SHORT_WORDS = {
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
     "killer_cell": "lock a killer or a vampire among the fort's own in a cell (let out to eat and drink)",  # (item3)
+    "were_cells": "link the werebeast cells' levers to their drawbridges",  # (0.105.115 item24)
     "stuck_reset": "take an AI lever's waiting pull job off (and ask the pull afresh)",  # (0.105.45)
     "thirst_unforbid": "let go the forbidden drink a parched dwarf can reach",  # (0.105.46, I2)
     "forbid_secrets": "forbid (or let go) the books of the secrets of life and death",  # (0.105.95)
@@ -570,6 +571,7 @@ def short(a: dict) -> str:
                 + (" (or dig a farm level)" if a.get("dig") else ""))
     if t == "start_project":
         what = a.get("name") and f"memorial for {a['name']}" or a.get("kind")
+        what = "werebeast cell" if what == "were_cells" else what     # (0.105.115 item24)
         return f"dig a new {what} level"
     if t == "finish_project" and a.get("leave_planned"):       # (r2h7)
         return f"close level #{a.get('project_id')}, its waiting pieces left planned"

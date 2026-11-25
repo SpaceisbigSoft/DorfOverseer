@@ -115,11 +115,15 @@ def _():
 
 @test("B10: INSTRUCTIONS lists every level kind the bridge builds, and no longer says 'by the main staircase'")
 def _():
-    assert len(KINDS) == 15, KINDS
+    assert len(KINDS) == 16 and "were_cells" in KINDS, KINDS
+    # (0.105.115) were_cells: the planner's alone (strategist.PLANNER_ONLY_KINDS), never in INSTRUCTIONS
+    mine = [k for k in KINDS if k not in strategist.PLANNER_ONLY_KINDS]
+    assert set(strategist.PLANNER_ONLY_KINDS) <= set(KINDS) and len(mine) == 15, mine
     block = INSTRUCTIONS[INSTRUCTIONS.index('"type":"start_project"'):INSTRUCTIONS.index('"type":"cancel_project"')]
-    for k in KINDS:
+    for k in mine:
         assert f'"{k}" ' in block, k
-    assert set(strategist.PROJECT_KINDS) == set(KINDS)
+    assert '"were_cells"' not in INSTRUCTIONS
+    assert set(strategist.PROJECT_KINDS) == set(mine)
     assert "main staircase" not in INSTRUCTIONS
     assert "main hall" in INSTRUCTIONS
 
@@ -145,6 +149,9 @@ def _():
         assert not a.actions and a.rejected, (act, a.actions)
     # a kind the bridge has that the strategist's list doesn't (a new one): refused, never sent bare
     a = one({"kind": "observatory"}, dict(BUILD, level_kinds=KINDS + ["observatory"]))
+    assert not a.actions and "not one the strategist may start" in a.rejected[0], a.rejected
+    # (0.105.115) nor a kind only the planner starts
+    a = one({"kind": "were_cells", "cells": 2})
     assert not a.actions and "not one the strategist may start" in a.rejected[0], a.rejected
 
 

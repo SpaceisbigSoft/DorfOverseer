@@ -390,7 +390,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         brief_timeout_now = bool(_hook("brief_timeout", brief_timeout, memory, p, r))   # (0.105.26) a search cut short
         _hook("note_labor_given", note_labor_given, memory, p, r, now)              # (v35 fix) LABOR_CAPS
         _hook("record_outcome", _record_any_outcome, p.action, r, state, memory, now, brief=brief_timeout_now)
-        _hook("note_refusal", note_refusal, memory, p, r, now, state.get("bridge_version"))
+        _hook("note_refusal", note_refusal, memory, p, r, now, state.get("bridge_version"), state=state)
         _hook("note_refusal_streak", refusal_streak.note, memory, p, r, state, now, cfg,
               brief=brief_timeout_now)                                               # (r5 p3) the same no in a row
         _hook("note_no_effect", note_no_effect, memory, p, ok, now)                 # (0.105.24)

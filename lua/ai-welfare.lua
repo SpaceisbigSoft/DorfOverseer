@@ -52,7 +52,7 @@ CORNER_MAX = 40            -- corner coffins kept in the save, at most
 CORNER_KINDS = {tombs = 1, storage = 2, workshops = 3, hall = 4, stairwell = 4, landmark = 5, industry = 5}
 CORNER_NEVER = {bedrooms = true, suites = true, hospital = true, dining = true, tavern = true, temple = true,
                 well = true, cistern = true, farms = true, jail = true, way_in = true, library = true,
-                barracks = true, noble = true, office = true}
+                barracks = true, noble = true, office = true, were_cells = true}
 TOMB_ZONE = 'T{citizens=true}'
 
 local function state()

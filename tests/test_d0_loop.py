@@ -363,6 +363,7 @@ def _():
         [p.action.get("type") for p in design_props(ps)]
     # the next cycle keeps it (no rewrite while the sliders are as they were)
     written = rec["written"]
+    hall0 = rec["lang"].get("hall")     # (item23) the language this cycle's levels were planned under
     s["date"]["tick"] += TICKS_PER_DAY
     plan(s, m)
     assert m.culture["design"]["written"] == written
@@ -381,10 +382,13 @@ def _():
         print("  (G1's layout_style(profile, kind) not here yet: the style keys are checked after the merge)")
     else:
         assert style.get("hall") == lang.get("hall") or lang.get("hall") not in getattr(culture, "HALLS", ()), (style, lang)
+        # (0.105.115 item23) the levels of the first cycle carry the first language (the
+        # fort's sliders {grandeur 40, militarism 20} are a near-tie of War-hold, Monastery
+        # and Garden fort: Room size in the Monastery's preset made it War-hold's)
         starts = [p for p in ps if p.action.get("type") == "start_project"]
         for p in starts:
             st = p.action.get("style") or {}
-            assert st.get("hall") == style.get("hall"), (p.action, style)
+            assert st.get("hall") == hall0 or hall0 not in getattr(culture, "HALLS", ()), (p.action, hall0)
 
 
 @test("Guided: a new era revises the language (rules), the old one kept in `old`")

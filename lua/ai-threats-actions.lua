@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-actions is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, now_tick, name_of, save_state, unkey, is, citizens, fire_points, each_job, changed, okey, watcher_held, lure_open_ids = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.unkey, PART_LOCALS.is, PART_LOCALS.citizens, PART_LOCALS.fire_points, PART_LOCALS.each_job, PART_LOCALS.changed, PART_LOCALS.okey, PART_LOCALS.watcher_held, PART_LOCALS.lure_open_ids   -- (r8) the hub's and earlier parts' locals
 
@@ -173,7 +173,18 @@ local function burrow_named(name, make)
     return b
 end
 
+-- (0.105.115 item24) the werebeast cells behind drawbridges (lua/ai-werecells.lua)
+local function W() return reqscript('ai-werecells') end
+local function were_zone(key)
+    local ok, z = pcall(function()
+        local c = W().find(key)
+        return c and W().zone_of(c)
+    end)
+    return ok and z or nil
+end
+
 local function zone_by_id(id)
+    if type(id) == 'string' then return were_zone(id) end   -- (item24) a were cell's key
     for _, b in ipairs(df.global.world.buildings.all) do
         if b.id == id then return b end
     end
@@ -181,6 +192,7 @@ end
 
 local function in_zone(z, x, y, zz)
     if zz ~= z.z or x < z.x1 or x > z.x2 or y < z.y1 or y > z.y2 then return false end
+    if z.were then return true end       -- (item24) a were cell: its box
     local ok, yes = pcall(dfhack.buildings.containsTile, z, x, y)
     return not ok or yes
 end
@@ -231,12 +243,22 @@ end
 -- own bedroom too (a fort without a jail or a free bedroom had no cell)
 local function cell_room(pos, taken, uid)
     local best, bd
-    local function try(z)
+    local function try(z, were)
         if taken[z.id] then return end
-        if next(zone_doors(z)) == nil then return end
+        if not were and next(zone_doors(z)) == nil then return end
         local dd = math.abs(z.x1 - pos.x) + math.abs(z.y1 - pos.y) + 3 * math.abs(z.z - pos.z)
         if not bd or dd < bd then best, bd = z, dd end
     end
+    -- (0.105.115 item24) a were cell first: built, its lever linked, its bridge
+    -- down, nobody inside (a changed werebeast breaks doors; a raised bridge holds)
+    pcall(function()
+        local links = W().lever_links()
+        for _, c in ipairs(W().cells()) do
+            local z = W().zone_of(c)
+            if not taken[z.id] and W().ready(c, links) and not other_in_zone(z, uid) then try(z, true) end
+        end
+    end)
+    if best then return best, 'were' end
     pcall(function() for _, z in ipairs(df.global.world.buildings.other.ZONE_DUNGEON) do try(z) end end)
     if best then return best, 'jail' end
     pcall(function()
@@ -298,6 +320,8 @@ function claimed_doors()
         end
     end
     for id in pairs(watcher_held()) do out[id] = true end
+    -- (0.105.115 item24) the were cells' bridges and levers: never opened by another rule
+    pcall(function() for id in pairs(W().piece_ids()) do out[id] = true end end)
     return out
 end
 
@@ -309,6 +333,14 @@ end
 -- for a cell it reads locked. A cell whose doors aren't held counts as not
 -- locked, and is locked again.
 function cell_doors_held(c)
+    -- (0.105.115 item24) a were cell is held by its raised bridge
+    if type(c) == 'table' and c.kind == 'were' then
+        local ok, up = pcall(function()
+            local wc = W().find(c.zone)
+            return wc and W().cell_state(wc).raised
+        end)
+        return (ok and up) and true or false
+    end
     if type(c) ~= 'table' or type(c.doors) ~= 'table' or #c.doors == 0 then return false end
     for _, id in ipairs(c.doors) do
         local b = df.building.find(tonumber(id) or id)
@@ -325,7 +357,7 @@ end
 -- the next full moon shows how they get in.
 function cell_others(c, uid, txt)
     if type(c) ~= 'table' or not c.zone then return nil end
-    local z = df.building.find(c.zone)
+    local z = type(c.zone) == 'string' and zone_by_id(c.zone) or df.building.find(c.zone)
     if not z then return nil end
     local out = {}
     pcall(function()
@@ -338,11 +370,113 @@ function cell_others(c, uid, txt)
     return #out > 0 and out or nil
 end
 
+-- (0.105.115 item18) the doors of every locked cell, handed to ai-util's
+-- door guard: no other rule unlocks them (lock_door refuses its unlock)
+function hold_cell_doors(d)
+    local ids = {}
+    for _, c in pairs((d or load_state()).cells or {}) do
+        if type(c) == 'table' and c.locked then
+            for _, id in ipairs(type(c.doors) == 'table' and c.doors or {}) do
+                local n = tonumber(id)
+                if n then ids[n] = true end
+            end
+        end
+    end
+    pcall(function() U.hold_cell_doors(ids) end)
+    return ids
+end
+
+-- (0.105.115 item18) A cursed dwarf confined to the cell: the cell's burrow
+-- is their only one (taken out of every other burrow, the burrows kept on
+-- the cell's record to give back at the release). E, 25 Nov: Dodók and the
+-- child Uzol "waited" for their cells 14+ days, worked outside them and
+-- turned there. DF's civilian alarm sends every civilian to its burrows
+-- whatever they belong to, so the move below (CELL_MOVE_TICKS) is what
+-- gets them in at last.
+CELL_MOVE_TICKS = 1200        -- a day placed and still outside: moved in
+local function confine(u, c)
+    local own = CELL_PREFIX .. tostring(u.id)
+    c.burrows_left = type(c.burrows_left) == 'table' and c.burrows_left or {}
+    local n = 0
+    pcall(function()
+        for _, b in ipairs(df.global.plotinfo.burrows.list) do
+            if tostring(b.name) ~= own then
+                local okm, member = pcall(dfhack.burrows.isAssignedUnit, b, u)
+                if okm and member then
+                    if pcall(dfhack.burrows.setAssignedUnit, b, u, false) then
+                        table.insert(c.burrows_left, b.id)
+                        n = n + 1
+                    end
+                end
+            end
+        end
+    end)
+    return n
+end
+
+-- the burrows a released dwarf was taken out of, given back (those still there)
+local function unconfine(u, c)
+    if not u or type(c.burrows_left) ~= 'table' then return end
+    for _, bid in ipairs(c.burrows_left) do
+        pcall(function()
+            for _, b in ipairs(df.global.plotinfo.burrows.list) do
+                if b.id == tonumber(bid) then dfhack.burrows.setAssignedUnit(b, u, true) end
+            end
+        end)
+    end
+end
+
+-- a floor tile of the cell a dwarf can stand on (no building but the zone
+-- and its bed, chest or cabinet), the zone's own walk group: nil if none
+local CELL_FURNITURE = {Bed = true, Box = true, Cabinet = true, Chair = true, Table = true}
+local function cell_spot(z)
+    local best
+    for y = z.y1, z.y2 do
+        for x = z.x1, z.x2 do
+            if not best and in_zone(z, x, y, z.z) then pcall(function()
+                local tt = dfhack.maps.getTileType(x, y, z.z)
+                local a = tt and df.tiletype.attrs[tt]
+                if not a or df.tiletype_shape[a.shape] ~= 'FLOOR' then return end
+                local p = xyz2pos(x, y, z.z)
+                if dfhack.maps.getWalkableGroup(p) == 0 then return end
+                local b = dfhack.buildings.findAtTile(p)
+                if b and b:getType() ~= df.building_type.Civzone
+                        and not CELL_FURNITURE[df.building_type[b:getType()]] then return end
+                best = p
+            end) end
+        end
+    end
+    return best
+end
+
+-- (0.105.115 item18) Moved into the cell at once (DFHack's units.teleport: a
+-- direct move, not a walk; the same call the caravans' 'edge' step uses):
+-- a cursed dwarf placed CELL_MOVE_TICKS ago and still outside, or any once
+-- the brain says the change is close (move_in). Never one in beast form, in
+-- a fight, caged or chained; never with anyone else in the cell. Their job is
+-- dropped first (DF's removeWorker) so they don't walk off to it.
+-- Returns true when moved, or nil and why not.
+local function move_in(u, z, uid)
+    if changed(u) then return nil, 'in beast form' end
+    local okf, fight = pcall(function() return u.opponent.unit_id ~= -1 end)
+    if okf and fight then return nil, 'in a fight' end
+    local okc, held = pcall(function() return u.flags1.caged or u.flags1.chained end)
+    if okc and held then return nil, 'caged' end
+    if other_in_zone(z, uid) then return nil, 'someone else in the cell' end
+    local p = cell_spot(z)
+    if not p then return nil, 'no floor in the cell to stand on' end
+    pcall(function() if u.job.current_job then dfhack.job.removeWorker(u.job.current_job, 0) end end)
+    local ok, done = pcall(dfhack.units.teleport, u, p)
+    if not ok or done == false then return nil, 'the move was refused: ' .. tostring(done):sub(1, 60) end
+    return true
+end
+
 -- Werebeasts in cells for the full moon: each id given gets a burrow on its
 -- room (a jail, else a free bedroom); once the dwarf is inside, the room's
 -- doors are locked. release: unlocked (only the doors the AI locked), the
 -- dwarf out of the burrow, every cell not in `ids` let out too.
-function moon_cell(ids, release, dry_run, txt)
+function moon_cell(ids, release, dry_run, txt, opts)
+    opts = type(opts) == 'table' and opts or {}
     local d = load_state()
     local t = now_tick()
     local want = {}
@@ -385,6 +519,21 @@ function moon_cell(ids, release, dry_run, txt)
                 return
             end
         end
+        -- (0.105.115 item24) a were cell: its bridge lowered first; not lowered
+        -- (someone on the tile, the lever unlinked), the cell is kept as it is
+        if c.kind == 'were' then
+            local okr, down, why = pcall(function()
+                local wc = W().find(c.zone)
+                if not wc then return true end
+                return W().set_raised(wc, false, dry_run)
+            end)
+            if not (okr and down) then
+                out.errors = out.errors or {}
+                table.insert(out.errors, 'the drawbridge of ' .. (u and name_of(u, txt) or ('unit ' .. tostring(uid))) .. '\'s cell stays up: '
+                    .. tostring(okr and why or down):sub(1, 100))
+                return
+            end
+        end
         local pre = {}
         for _, id in ipairs(type(c.pre) == 'table' and c.pre or {}) do pre[tostring(id)] = true end
         if not dry_run then
@@ -408,6 +557,7 @@ function moon_cell(ids, release, dry_run, txt)
                     if u then dfhack.burrows.setAssignedUnit(b, u, false) end
                     dfhack.burrows.clearTiles(b)
                 end
+                if u and not dead_or_gone(u) then unconfine(u, c) end   -- (0.105.115 item18) their burrows back
             end)
             if not okb then failed('cell burrow ' .. tostring(uid), err) end
             d.cells[uid] = nil
@@ -420,6 +570,22 @@ function moon_cell(ids, release, dry_run, txt)
     end
     for uid, c in pairs(d.cells) do
         if type(c) == 'table' and (release or not want[uid]) then free(uid, c) end
+    end
+    -- (0.105.115 item18) a cursed dwarf outside the cell moved in (said either way)
+    local function try_move(u, z)
+        if dry_run then
+            out.would_move = out.would_move or {}
+            table.insert(out.would_move, name_of(u, txt))
+            return
+        end
+        local moved, why = move_in(u, z, u.id)
+        if moved then
+            out.moved = out.moved or {}
+            table.insert(out.moved, name_of(u, txt))
+        else
+            out.not_moved = out.not_moved or {}
+            table.insert(out.not_moved, name_of(u, txt) .. ': ' .. tostring(why))
+        end
     end
     if not release then
         local taken = {}
@@ -478,6 +644,8 @@ function moon_cell(ids, release, dry_run, txt)
                             c = {zone = z.id, kind = kind, tick = t, doors = {}}
                             d.cells[uid] = c
                             taken[z.id] = true
+                            local n = confine(u, c)
+                            if n > 0 then out.unburrowed = (out.unburrowed or 0) + n end
                         else
                             out.error = 'the cell\'s burrow could not be made: ' .. tostring(eb)
                             out.ok = #out.placed + #out.locked > 0
@@ -485,9 +653,37 @@ function moon_cell(ids, release, dry_run, txt)
                         end
                     end
                     if z then table.insert(out.placed, name_of(u, txt)) end
+                    -- (0.105.115 item18) the change close: the new cell's dwarf moved in at once
+                    -- (locked by the next call, once they are seen inside and alone)
+                    if z and c and opts.move_in and not in_zone(z, u.pos.x, u.pos.y, u.pos.z) then try_move(u, z) end
                 elseif not c.locked then
+                    -- (0.105.115 item18) outside their cell: out of every other burrow
+                    -- (one given since), and moved in once they've waited CELL_MOVE_TICKS
+                    -- or the brain says the change is close
+                    if not in_zone(z, u.pos.x, u.pos.y, u.pos.z) then
+                        if not dry_run then
+                            local n = confine(u, c)
+                            if n > 0 then out.unburrowed = (out.unburrowed or 0) + n end
+                        end
+                        if t - (tonumber(c.tick) or t) >= CELL_MOVE_TICKS or opts.move_in then try_move(u, z) end
+                    end
                     if in_zone(z, u.pos.x, u.pos.y, u.pos.z) and other_in_zone(z, u.id) then
                         table.insert(out.waiting, name_of(u, txt))       -- (0.105.0 review) someone else inside
+                    elseif in_zone(z, u.pos.x, u.pos.y, u.pos.z) and c.kind == 'were' then
+                        -- (0.105.115 item24) alone inside a were cell: its bridge raised (a wall)
+                        local okr, up, why = pcall(function()
+                            local wc = W().find(c.zone)
+                            if not wc then return false, 'the cell is gone' end
+                            return W().set_raised(wc, true, dry_run)
+                        end)
+                        if okr and up then
+                            if not dry_run then c.locked = true end
+                            table.insert(out.locked, name_of(u, txt))
+                        else
+                            table.insert(out.waiting, name_of(u, txt))
+                            out.not_raised = out.not_raised or {}
+                            table.insert(out.not_raised, name_of(u, txt) .. ': ' .. tostring(okr and why or up):sub(1, 100))
+                        end
                     elseif in_zone(z, u.pos.x, u.pos.y, u.pos.z) then
                         local insane = insane_held()
                         c.doors = type(c.doors) == 'table' and c.doors or {}
@@ -521,8 +717,11 @@ function moon_cell(ids, release, dry_run, txt)
             end
         end
     end
-    if not dry_run then save_state(d) end
-    if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) + #(out.relock or {}) + (out.dead or 0) == 0 and not out.error then   -- (0.105.96, verifier) a squad left counts
+    if not dry_run then
+        save_state(d)
+        hold_cell_doors(d)       -- (0.105.115 item18) the locked cells' doors: no other rule unlocks them
+    end
+    if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) + #(out.relock or {}) + (out.dead or 0) + #(out.moved or {}) == 0 and not out.error and not out.errors then   -- (0.105.96, verifier) a squad left counts
         return {ok = false, rejected = true, nothing_to_do = true, error = 'every cell is as it should be'}
     end
     return out

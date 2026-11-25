@@ -373,6 +373,8 @@ def journal_counts(entries: list[dict], date: dict, timeline: list | None = None
             levels.append({"kind": r.get("kind") or a.get("kind"), "z": r.get("z"),
                            "tiles": r.get("tiles") or r.get("designated"),
                            "corridor": _num_or_none(cor), "rooms": _num_or_none(rooms),
+                           # (0.105.115 item23) the side of a room asked for (bedrooms 2-4: Room size)
+                           "room_size": _num_or_none(a.get("room_size")),
                            "customs": [c for c in _l(a.get("customs")) if isinstance(c, str)],
                            # (D0) the level's style (its design signature) and when it began
                            "style": _d(a.get("style")),
@@ -696,6 +698,17 @@ def measures(s: dict, j: dict) -> dict:
         # (0.105.33) Spacing: the new corridor a level, and tiles a bedroom (room count taken out)
         "corridor_mean": round(sum(cor) / len(cor), 1) if cor else None,
         "bedroom_tiles": round(sum(lv["tiles"] for lv in beds) / sum(lv["rooms"] for lv in beds), 1)
+        if beds else None,
+        # (0.105.115 item23) Spacing without Room size: the tiles a bedroom beyond the room
+        # itself (room_size x room_size, 3x3 when the action did not say), a floor's new hall
+        # taken out (the floor lines judge the hall): the doors and the gaps between rooms
+        "bedroom_spare_tiles": round(sum(max(0, lv["tiles"] - (_num_or_none(_d(lv.get("floor")).get("hall_new")) or 0)
+                                             - lv["rooms"] * (lv.get("room_size") or 3) ** 2)
+                                         for lv in beds) / sum(lv["rooms"] for lv in beds), 1)
+        if beds else None,
+        # (0.105.115 item23) Room size: tiles a bedroom, a floor's new hall taken out
+        "bedroom_room_tiles": round(sum(max(0, lv["tiles"] - (_num_or_none(_d(lv.get("floor")).get("hall_new")) or 0))
+                                        for lv in beds) / sum(lv["rooms"] for lv in beds), 1)
         if beds else None,
         "stockpiles": b.get("stockpiles"),
         "stores_pd": per((stocks.get("drink") or 0) + (meals or 0), total),
@@ -1152,7 +1165,9 @@ LINES = [
     ("Deference", "offices", "offices", {W, ME}, {H}),
     # (0.105.33) "tiles a level" measured the mix of level kinds
     ("Spacing", "new corridor tiles a level (fewest wins)", "-corridor_mean", {W, D}, set()),
-    ("Spacing", "tiles a bedroom (smallest wins)", "-bedroom_tiles", {W, D}, set()),
+    # (0.105.115 item23) "tiles a bedroom" grew with Room size too (the Monastery's -50 cells
+    # would have won it): now the tiles a bedroom beyond the room's own room_size x room_size
+    ("Spacing", "tiles a bedroom beyond the room (fewest wins)", "-bedroom_spare_tiles", {W, D}, set()),
     # (0.105.47) "stockpiles" counted pile buildings: a 1-tile feeder by a still and
     # a 9x9 vault alike, and the Deep mine's ore pile by every workshop (its
     # custom) and Industriousness's stone storage made E the fort with most (81).
@@ -1202,10 +1217,13 @@ FLOOR_LINES = [
     # fort at 0, so it is not named there).
     ("Spacing", "rock between rooms on a floor (least wins)", "-floor_gap_mean", {W, D}, set()),
     ("Spacing", "hall before the first room on a floor (least wins)", "-floor_lead_mean", {W}, set()),
-    # (option B) Room size's line. No built-in preset moves Room size (`size` is in none of
-    # BUILTIN_PRESETS), so no preset is named to win or lose: the forts' numbers are shown and
-    # the line is never judged (it reads "no data") until a preset carries the slider.
-    ("Room size", "tiles a room on a floor", "floor_room_tiles", set(), set()),
+    # (option B) Room size's line. (0.105.115 item23) It read "tiles a room on a floor"
+    # (floor_room_tiles), which mostly measured which kinds of level a fort had (B's temples
+    # gave 48). The slider sizes the bedrooms (room_size: 2x2 at -50 or lower, 4x4 at 50+),
+    # so the line is the fort's mean tiles a bedroom (bedroom_room_tiles: a floor's new hall
+    # taken out); the player gave the Monastery -50 (cells) and the Merchant city +50 (roomy
+    # suites), the four others 0.
+    ("Room size", "tiles a bedroom", "bedroom_room_tiles", {ME}, {M}),
 ]
 
 

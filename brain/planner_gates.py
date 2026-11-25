@@ -299,6 +299,7 @@ def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, no
     is put to the player. (0.105.35) Then its suspended building jobs are
     resumed (free_gate_jobs); still waiting two weeks: Needs you, kept (what
     holds it is past what the AI can see)."""
+    from planner_gate_jobs import gate_jobs_paced   # (item20) paced when DF suspends the job again
     parts = _d(ent.get("parts"))
     jobs_freed = False
     want: dict = {}
@@ -327,7 +328,9 @@ def _gate_parts_rule(s: dict, ent: dict, es: list, off: int, proposals: list, no
                     w = want.setdefault(what, [0, where])
                     w[0] += n
                     w.append(ek)
-                if not jobs_freed and isinstance(e.get("id"), int):
+                if not jobs_freed and isinstance(e.get("id"), int) and gate_jobs_paced(s, e, memory):
+                    jobs_freed = True       # (item20) resumed lately and suspended again: later
+                elif not jobs_freed and isinstance(e.get("id"), int):
                     act = {"type": "free_gate_jobs", "entrance_id": e["id"]}
                     # (0.105.36, D2) the AI fortified it: a piece it planned before v35's records is its own
                     if memory is not None and _near_spot(e, getattr(memory, "gates_fortified", None) or {}):

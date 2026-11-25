@@ -230,10 +230,11 @@ def _():
         env.df.building_item_role_type = {TEMP = 0, PERM = 2}
         local dep = env.df.global.world.buildings.other.TRADE_DEPOT[1]
         local moved = {}
-        local function it(id) return {id = id, flags = {in_building = true}} end
+        -- (0.105.115 item19) out of the depot by hand (moveToGround refused them)
+        local blk = {items = moved, occupancy = {}}
+        env.dfhack.maps.getTileBlock = function() return blk end
+        local function it(id) return {id = id, flags = {in_building = true}, general_refs = {}, pos = {}} end
         dep.contained_items = {{use_mode = 2, item = it(1)}, {use_mode = 0, item = it(2)}, {use_mode = 0, item = it(3)}}
-        env.dfhack.items.moveToGround = function(item, pos)
-            item.flags.in_building = false; table.insert(moved, item.id); return true end
         return moved""", env)
     r = env.unload(50, True)
     assert r.ok and r.dry_run and r["items"] == 2 and len(moved) == 0, dict(r)

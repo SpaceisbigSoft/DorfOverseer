@@ -10,7 +10,7 @@
 -- The top-level locals the ai-builder-landmarks files share come through
 -- LANDMARKS_PART_LOCALS (the same functions).
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-landmarks-stages'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-landmarks-stages'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, add = info, add
 local save_landmarks, find_landmark = LANDMARKS_PART_LOCALS.save_landmarks, LANDMARKS_PART_LOCALS.find_landmark

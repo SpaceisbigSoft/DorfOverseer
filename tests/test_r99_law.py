@@ -98,11 +98,12 @@ def _():
     assert [x.action["office"] for x in p] == ["SHERIFF"], p
 
 
-@test("a convict's death by the law is lawful: said apart, not counted")
+@test("a convict's death by the law is lawful (never a cell) but (item21) costs the post")
 def _():
     r = law_row(kills=0, law_kills=0, law_killer=None, punished=3, confidence="weak")
     p, n = run(state({"list": [r], "cells": [], "rooms": 2}))
-    assert p == [] and "3 convict(s) died of DF's punishment" in n[0], n
+    assert [x.rule for x in p] == ["law_swap"] and "beat 3 convict(s) to death" in p[0].reason, p
+    assert 17199 not in PK.held_killer_ids(state({"list": [r], "cells": []}))
 
 
 @test("first seen, appointing off, or an older bridge (no law_kills): a note only")
@@ -175,7 +176,7 @@ def _():
     rows = {x["id"]: x for x in [dict(r) for r in env.report()["list"].values()]}
     r = rows[5]
     assert (r.get("law"), r.get("law_kills"), r.get("punished"), r.get("kills")) == (True, 1, 1, 1), r
-    assert r.get("law_killer") is None, r
+    assert r.get("law_killer") is True, r            # (item21) a convict beaten to death: the post goes
     assert list(r["law_codes"].values()) == ["SHERIFF"]
     kill(lua, w, 5, 21, conflict=4)       # a second, a brawl
     r = {x["id"]: dict(x) for x in env.report()["list"].values()}[5]

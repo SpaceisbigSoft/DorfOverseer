@@ -766,6 +766,9 @@ def _names(v, allowed, most):
 # kind the bridge has but this list lacks (a new one) is refused, never sent bare
 PROJECT_KINDS = ("bedrooms", "suites", "jail", "dining", "storage", "workshops", "temple", "hospital",
                  "barracks", "tombs", "tavern", "library", "memorial", "archery", "garden")
+# (0.105.115) level kinds the bridge builds that only the planner starts: werebeast
+# cells come when a werebeast citizen is known (planner_threats), never on advice
+PLANNER_ONLY_KINDS = ("were_cells",)
 
 
 def _check_project(act, build) -> tuple[dict | None, str]:

@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, add, overlaps, ez = info, has, add, overlaps, ez
 
@@ -334,7 +334,7 @@ end
 -- saved cells (never regenerated: a level already dug keeps its shape):
 -- bedroom, office and cell zones, stockpiles and workshops (their 5x5
 -- room) on room levels, and the crypts' tomb zones.
-ROOM_KINDS = {bedrooms = true, suites = true, jail = true, storage = true, workshops = true, tombs = true}
+ROOM_KINDS = {bedrooms = true, suites = true, jail = true, storage = true, workshops = true, tombs = true, were_cells = true}   -- (0.105.115 item24) its cells (cells.were)
 local ROOM_ZONES = {b = true, o = true, j = true}
 function room_tiles(z, data)
     local out = {}
@@ -373,6 +373,10 @@ function room_tiles(z, data)
             end
             for _, c in ipairs(type(cells.build) == 'table' and cells.build or {}) do
                 if p.kind == 'workshops' and shop_keys[c.text] then rect(ax, ay, c.x - 2, c.y - 2, 5, 5) end
+            end
+            for _, c in ipairs(p.kind == 'were_cells' and type(cells.were) == 'table' and cells.were or {}) do
+                local w, h = tostring(c.text):match('^were%d+%((%d+)x(%d+)%)$')
+                if w then rect(ax, ay, c.x, c.y, tonumber(w), tonumber(h)) end
             end
         end
     end

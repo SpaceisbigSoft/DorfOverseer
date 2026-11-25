@@ -8,7 +8,7 @@
 -- the helpers defined there and in the parts before it are in reach.
 
 if not PARTS then qerror('ai-util-doors is a part of ai-util; run ai-util') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-doors'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-doors'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- doors, hatches and the walk map (0.105.47, J16) ------------------------------
 --
@@ -63,9 +63,50 @@ local function set_door_flag(b, name, v, why)
     return ok and changed or false, ok
 end
 
+-- (0.105.115 item18) The doors of the werebeast moon cells while a cell is
+-- locked: no other rule unlocks one. E, 25 Nov 07:31:55: Litast's cell was
+-- locked and read unlocked 29 s later with no rule logged (the cell's doors
+-- touch corridors, other rooms and entrances that the gate watcher, the
+-- insane guard, the killers' cells, thirst and the unstick step also work).
+-- ai-threats sets the list (hold_cell_doors) at each report and each
+-- moon_cell; an unlock by any other `why` is refused (changed false, ok
+-- false) and counted by who asked (cell_door_guard()). Only 'cell' (the
+-- moon cell's own release) unlocks them.
+CELL_HELD = CELL_HELD or {ids = {}, refused = {}, n = 0}
+
+function hold_cell_doors(ids)
+    local set = {}
+    for id in pairs(type(ids) == 'table' and ids or {}) do
+        local n = tonumber(id)
+        if n then set[n] = true end
+    end
+    CELL_HELD.ids = set
+end
+
+function cell_door_held(b)
+    local ok, id = pcall(function() return b.id end)
+    return ok and id ~= nil and CELL_HELD.ids[id] == true or false
+end
+
+function cell_door_guard()
+    local n = 0
+    for _ in pairs(CELL_HELD.ids or {}) do n = n + 1 end
+    return {held = n, refused = next(CELL_HELD.refused or {}) and CELL_HELD.refused or nil,
+            last = CELL_HELD.last}
+end
+
 -- Lock (true) or unlock (false) a door or hatch: (changed, ok). ok false:
 -- the building or its flags couldn't be read or written (nothing changed).
-function lock_door(b, locked, why) return set_door_flag(b, 'forbidden', locked, why) end
+function lock_door(b, locked, why)
+    if not locked and why ~= 'cell' and b and cell_door_held(b) then
+        local w = tostring(why or '?'):sub(1, 20)
+        CELL_HELD.refused[w] = (CELL_HELD.refused[w] or 0) + 1
+        local okt, t = pcall(abs_tick)
+        CELL_HELD.last = {why = w, id = b.id, tick = okt and t or nil}
+        return false, false
+    end
+    return set_door_flag(b, 'forbidden', locked, why)
+end
 
 -- Set a door or hatch shut (true) or open (false) by its flag: (changed, ok).
 function shut_door(b, closed, why) return set_door_flag(b, 'closed', closed, why) end

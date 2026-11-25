@@ -989,6 +989,8 @@ local function were_report(d, t, txt)
         while #ch > 6 do table.remove(ch, 1) end
     end
     out.changes = ch
+    -- (0.105.115 item24) the were cells behind drawbridges (lua/ai-werecells.lua)
+    pcall(function() out.were_cells = reqscript('ai-werecells').report(d.cells) end)
     for uid, c in pairs(d.cells) do
         -- (0.105.114) a dead (or gone) werebeast's cell is said as such: E,
         -- 25 Nov, 40 cells of the dead counted as werebeasts to let out, the
@@ -1006,13 +1008,20 @@ local function were_report(d, t, txt)
             end
             -- (0.105.103) locked only while its doors are held in the game
             local row = {unit_id = tonumber(uid), locked = (c.locked and held) or nil, doors = #(c.doors or {}),
-                         days = c.tick and (t - c.tick) // DAY or nil, unlocked = (c.locked and not held) or nil}
+                         days = c.tick and (t - c.tick) // DAY or nil, unlocked = (c.locked and not held) or nil,
+                         were = (c.kind == 'were') or nil}     -- (item24) behind a drawbridge
             -- (0.105.103) anyone else inside a locked cell (ai-threats-actions cell_others)
             if c.locked and type(cell_others) == 'function' then
                 pcall(function() row.others = cell_others(c, uid, txt) end)
             end
             table.insert(out.cells, row)
         end
+    end
+    -- (0.105.115 item18) the locked cells' doors held against every other
+    -- rule's unlock (ai-util's door guard), and who tried since the load
+    if type(hold_cell_doors) == 'function' then
+        pcall(hold_cell_doors, d)
+        pcall(function() out.door_guard = U.cell_door_guard() end)
     end
     return out
 end
@@ -1081,7 +1090,7 @@ PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = report_u
 PARTS = {'survey', 'actions'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-threats'] = '0.105.114'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-threats'] = '0.105.115'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

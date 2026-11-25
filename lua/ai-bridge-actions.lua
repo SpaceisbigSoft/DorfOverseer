@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local json = require('json')
 local utils = require('utils')
@@ -469,6 +469,9 @@ function act_start_project(a)
     elseif a.kind == 'jail' then
         p.cells = int_in(a.cells, 1, 8)
         if not p.cells then return reject('jail needs cells 1-8') end
+    elseif a.kind == 'were_cells' then       -- (0.105.115 item24) werebeast cells behind drawbridges
+        p.cells = int_in(a.cells, 1, 8)
+        if not p.cells then return reject('were_cells needs cells 1-8') end
     elseif a.kind == 'dining' then
         p.tables = int_in(a.tables, 4, 90)
         if not p.tables then return reject('dining needs tables 4-90') end

@@ -364,6 +364,8 @@ function cut(L, params)
     end
     if (L.orient or 0) ~= 0 then return nil, 'not cuttable: a turned level (make it with unit_params)' end
     if L.soil then return nil, 'not cuttable: farms follow the soil' end
+    -- (0.105.115) were cells' levers stand in the corridor, which a cut drops
+    if L.kind == 'were_cells' then return nil, 'not cuttable: were cells keep their levers in the corridor' end
     if L.virtual then return nil, 'not cuttable: rooms on turned arms' end
     local entry_door = L.style.entry_door == true
         or (type(params) == 'table' and type(params.style) == 'table' and params.style.entry_door == true)

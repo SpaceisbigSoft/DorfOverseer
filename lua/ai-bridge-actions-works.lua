@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-works is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.114'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.115'   -- bumped with BRIDGE_VERSION
 
 -- (0.99.7) Soldiers who don't pick up their uniforms: DFHack's
 -- uniform-unstick frees items assigned to one soldier but held by another
@@ -182,7 +182,9 @@ function act_moon_cell(a)
     end
     if #ids > 60 then return reject('moon_cell: at most 60 ids') end   -- (0.105.114) E had 30+ cursed at once
     if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('moon_cell: release is true or false') end
-    return reqscript('ai-threats').moon_cell(ids, a.release == true, a.dry_run == true, txt)
+    -- (0.105.115 item18) move_in: the change is close, a cursed dwarf outside the cell is moved in now
+    if a.move_in ~= nil and type(a.move_in) ~= 'boolean' then return reject('moon_cell: move_in is true or false') end
+    return reqscript('ai-threats').moon_cell(ids, a.release == true, a.dry_run == true, txt, {move_in = a.move_in == true})
 end
 
 -- (0.105.0) The way down to a cavern locked (its doors and hatches), or unlocked (open).

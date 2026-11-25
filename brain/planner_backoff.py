@@ -49,3 +49,51 @@ def care_post(p) -> bool:
     a = a if isinstance(a, dict) else {}
     return (a.get("type") == "staff_location" and str(a.get("post") or "").upper() in CARE_POSTS
             and "need care" in str(getattr(p, "reason", "") or ""))
+
+
+# (0.105.115 item20) waits measured in real time too. A game day is 1200
+# ticks; at the 100+ fps of a small fort (E, 25 Nov: perf.fps 109, a game day
+# ~15-25 s) a cap of a day or a week asked the game again every few seconds:
+# E's hospital asked "nobody free" for its doctor 217 times in 2.5 h, once a
+# game day. A short cap (a care post, an answer to wait, a defence step in
+# peace) is now the longer of its game days and REAL_CAP_MINUTES real minutes,
+# at the fps the bridge measured (state perf.fps); without a measure, game days only.
+REAL_CAP_MINUTES = 10
+FPS_MAX = 1000          # a reading past this is taken as this (a paused or odd frame)
+
+
+def fps(state) -> float | None:
+    """The game's frames (ticks) a real second, as the bridge read it, or None."""
+    perf = state.get("perf") if isinstance(state, dict) else None
+    v = perf.get("fps") if isinstance(perf, dict) else None
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
+        return None
+    return float(min(v, FPS_MAX))
+
+
+def real_ticks(state, minutes: float) -> int:
+    """Ticks in `minutes` real minutes at the fort's fps (0 when unknown)."""
+    f = fps(state)
+    return int(f * 60 * minutes) if f else 0
+
+
+def care_cap_ticks(state, ticks_per_day: int, days: float = CARE_POST_MAX_DAYS) -> int:
+    """(item20) A hospital post's longest wait while patients wait: a game day,
+    or REAL_CAP_MINUTES real minutes in a fort fast enough that a day is less."""
+    return max(int(days * ticks_per_day), real_ticks(state, REAL_CAP_MINUTES))
+
+
+def repeat_book(memory, name: str) -> dict:
+    """(item20) A rule's own record of what it tried (Memory.repeat_book[name])."""
+    if memory is None:
+        return {}
+    b = getattr(memory, "repeat_book", None)
+    if not isinstance(b, dict):
+        b = {}
+        try:
+            memory.repeat_book = b
+        except AttributeError:
+            return {}
+    if not isinstance(b.get(name), dict):
+        b[name] = {}
+    return b[name]

@@ -849,6 +849,19 @@ function house(n_house, n_upgrade, dry_run, txt, units, place)
             if type(m) == 'table' and m.room then calm[tonumber(m.room)] = true end
         end
     end)
+    -- (0.105.115 item18) never a room a werebeast's moon cell or a killer's
+    -- cell holds (E, 25 Nov 07:31:56: a free bedroom held as a cell was handed
+    -- out as a better room the cycle the cell was locked)
+    pcall(function()
+        for _, c in pairs(reqscript('ai-threats').load_state().cells or {}) do
+            if type(c) == 'table' and tonumber(c.zone) then calm[tonumber(c.zone)] = true end
+        end
+    end)
+    pcall(function()
+        for _, c in pairs(reqscript('ai-killers').state().cells or {}) do
+            if type(c) == 'table' and tonumber(c.zone) then calm[tonumber(c.zone)] = true end
+        end
+    end)
     local loc = location_zone_ids()
     for _, z in ipairs(bedroom_zones()) do
         if z.assigned_unit_id == -1 and not calm[z.id] and not loc[z.id] then
@@ -1018,7 +1031,7 @@ PART_LOCALS = {U = U, location_zone_ids = location_zone_ids, load_liked_statues 
 PARTS = {'furnish'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-homes'] = '0.105.114'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-homes'] = '0.105.115'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

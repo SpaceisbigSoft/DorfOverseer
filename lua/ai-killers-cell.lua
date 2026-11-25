@@ -8,7 +8,7 @@
 -- names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-killers-cell is a part of ai-killers; run ai-killers') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-killers-cell'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-killers-cell'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, assign, burrow_named, changed, citizen, count_rooms, dead, free, in_zone, larder_by_name, larder_check, larder_low, let_out, mood_name, name_of, need, now_tick, other_in_zone, resident, restocking, save, taken_zones, zone_by_id = PART_LOCALS.U, PART_LOCALS.assign, PART_LOCALS.burrow_named, PART_LOCALS.changed, PART_LOCALS.citizen, PART_LOCALS.count_rooms, PART_LOCALS.dead, PART_LOCALS.free, PART_LOCALS.in_zone, PART_LOCALS.larder_by_name, PART_LOCALS.larder_check, PART_LOCALS.larder_low, PART_LOCALS.let_out, PART_LOCALS.mood_name, PART_LOCALS.name_of, PART_LOCALS.need, PART_LOCALS.now_tick, PART_LOCALS.other_in_zone, PART_LOCALS.resident, PART_LOCALS.restocking, PART_LOCALS.save, PART_LOCALS.taken_zones, PART_LOCALS.zone_by_id   -- (0.105.113) the hub's locals
 
@@ -267,6 +267,8 @@ function report()
         local kind = curse_kind(u, tags)
         local k, cr = kills[id], crime[id]
         local conf = confidence(kind, k, cr)
+        -- (item21) the law that beat a convict to death: a row (weak), so its office can go to a calm dwarf
+        if not conf and k and (k.punished or 0) >= LAW_PUNISHED and law(u) then conf = 'weak' end
         if conf then
             local key = tostring(id)
             local s = type(d.seen[key]) == 'table' and d.seen[key] or {tick = t}
@@ -295,6 +297,8 @@ function report()
                 -- LAW_KILLS the office may go to a calmer dwarf (ai-nobles-swap)
                 row.law_kills = k and (k.kills + k.brawls) or 0
                 if row.law_kills >= LAW_KILLS and row.kind == 'killer' then row.law_killer = true end
+                -- (item21) B and D, 25 Nov: four convicts strangled in DF's beatings by the guard
+                if (row.punished or 0) >= LAW_PUNISHED and row.kind == 'killer' then row.law_killer = true end
             end
             s.law_killer = row.law_killer
             s.exempt = (row.child or (row.law and row.kind == 'killer')) or nil   -- (0.105.97) held_ids: never held

@@ -741,9 +741,11 @@ BUILTIN_PRESETS = {
                     deference = 40, outsiders = -80, grandeur = -40, welfare = -40, piety = -30,
                     spacing = -60, mining = 40},
     ['Monastery'] = {piety = 150, welfare = 80, outsiders = 60, grandeur = 60, craftsmanship = 40,
-                     militarism = -60, justice = -60, greed = -60, trade = -30, industriousness = -20},
+                     militarism = -60, justice = -60, greed = -60, trade = -30, industriousness = -20,
+                     size = -50},   -- (0.105.115) cells
     ['Merchant city'] = {trade = 120, greed = 80, outsiders = 100, craftsmanship = 60, stockpile = 40,
-                         growth = 60, surface = 40, deference = 40},
+                         growth = 60, surface = 40, deference = 40,
+                         size = 50},    -- (0.105.115) roomy suites
     ['Hermit hold'] = {outsiders = -150, trade = -100, growth = -60, caution = 60, surface = -60, fortification = 100,
                        deference = -60, greed = 40, stockpile = 60},
     ['Deep mine'] = {mining = 150, verticality = 120, surface = -100, engineering = 60, industriousness = 60,

@@ -103,6 +103,8 @@ def evidence_words(r: dict) -> str:
         bits.append(f"{brawls} died after a fight or a beating with them" + (f" ({vic})" if vic and not kills else ""))
     if r.get("drained"):
         bits.append("a victim drained of blood")
+    if int(r.get("punished") or 0) and r.get("law") and not kills and not brawls:
+        bits.append(f"{int(r['punished'])} convict(s) died in DF's beatings at their hands")   # (item21)
     crimes = _d(r.get("crimes"))
     if crimes:
         bits.append("DF holds " + ", ".join(f"{n} {k}" for k, n in sorted(crimes.items())) + " against them")
@@ -225,7 +227,9 @@ def _law_row(s: dict, cfg: dict, r: dict, head: str, proposals: list, notes: lis
     punished = int(r.get("punished") or 0)
     pun = f"; {punished} convict(s) died of DF's punishment at their hands (lawful)" if punished else ""
     need = int(cfg.get("law_killer_kills", 2))
-    if n < need and not r.get("law_killer"):
+    # (item21) one convict dead in a beating at their hands is enough too
+    beat = punished >= int(cfg.get("law_punished_kills", 1))
+    if n < need and not r.get("law_killer") and not beat:
         notes.append(f"{head}: the fort's sheriff or captain of the guard; {n} killing(s) outside a punishment"
                      f"{pun}: watched (the office goes to a calmer dwarf at {need}); the AI doesn't lock away the law")
         return
@@ -245,11 +249,16 @@ def _law_row(s: dict, cfg: dict, r: dict, head: str, proposals: list, notes: lis
         return
     code = codes[0]
     word = code.lower().replace("_", " ")
+    if n < need:
+        # (item21, B and D 25 Nov) four convicts strangled in DF's beatings by the guard
+        # captain and the sheriff: one death in a beating is enough to lose the post
+        why = (f"the {word} beat {punished} convict(s) to death in DF's punishment: the post goes to a calm free "
+               "dwarf (the fight watcher spares the beatings now; a beating's death is lawful, never a cell)")
+    else:
+        why = (f"the {word} killed {n} of the fort's own outside a punishment (fights, not DF's sentences){pun}: "
+               "the post goes to a calm free dwarf; out of office, the killer rule holds them as any other")
     proposals.append(Proposal("law_swap", {"type": "appoint", "office": code, "replace": True, "killer_out": True,
-                                           "unit_id": r["id"]},
-                              f"{head}: the {word} killed {n} of the fort's own outside a punishment (fights, not "
-                              f"DF's sentences){pun}: the post goes to a calm free dwarf; out of office, the killer "
-                              "rule holds them as any other", 2))
+                                           "unit_id": r["id"]}, f"{head}: {why}", 2))
 
 
 def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:

@@ -99,12 +99,16 @@ def _():
 @test("a stock that could not be set out is not asked for again until it changes")
 def _():
     s = fort(locs=[hosp(3, thread=30000, cloth=20000)], items_thread=6, items_cloth=2)
+    from planner_core import abs_tick
     s["mood_help"]["hospital_cap"] = {"list": [{"id": 3, "thread": 30000, "cloth": 20000}],
-                                      "tried": {"thread": 6, "cloth": 2, "moved": 0, "at": 5}}
+                                      "tried": {"thread": 6, "cloth": 2, "moved": 0, "at": abs_tick(s)}}
     assert rule(s) == []
+    # (item20) one more is the same stock give or take a piece; two more is a change
     s["supplies"]["hospital"]["thread"] = 7
+    assert rule(s) == []
+    s["supplies"]["hospital"]["thread"] = 8
     props = rule(s)
-    assert props and props[0].action["set_out"] == {"thread": 5}, props[0].action
+    assert props and props[0].action["set_out"] == {"thread": 6}, props[0].action
 
 
 @test("while hospital_release holds a quota at 0: the value kept for the restore is lowered, not the live 0")

@@ -54,7 +54,8 @@ def _():
     rows = [{"id": 18102, "name": "Urist", "by_syndrome": True}]
     s = fort({"list": rows, "changes": E_CHANGES, "moon_phase": 26, "cells": []})
     props = [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
-    assert props and props[0].action == {"type": "moon_cell", "ids": [18102]}, props
+    # (0.105.115 item18) phase 26 is a phase before the change: moved in if still outside (move_in)
+    assert props and props[0].action == {"type": "moon_cell", "ids": [18102], "move_in": True}, props
     s = fort({"list": rows, "changes": E_CHANGES, "moon_phase": 18, "cells": []})   # (0.105.96) the lead is 8 phases
     assert not [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
 

@@ -1236,7 +1236,8 @@ def _():
 
 # The six presets' grammars, written out by hand from the contract's table ("How the hint is filled") for the
 # sliders of lua/ai-overseer-settings.lua BUILTIN_PRESETS (Spacing, Depth = verticality, Fortification,
-# Grandeur, Reserves = stockpile; Room size 0 in all six). `stagger` is the fort seed's pick of (0, 2, 3):
+# Grandeur, Reserves = stockpile, Room size = size: Monastery -50, Merchant city +50 (0.105.115), the rest 0).
+# `stagger` is the fort seed's pick of (0, 2, 3):
 # here the one floor_grammar picks for the preset's name as seed (test 15 checks the brain gives these).
 PRESET_HINTS = {
     # Spacing -60 (tight: no lead, no kind gap, nothing ahead); Fortification 120: dog-leg run 30 x 0.6 = 18,
@@ -1244,14 +1245,14 @@ PRESET_HINTS = {
     "War-hold": dict(gap=1, kind_gap=0, lead=0, ahead=0, run_max=18, run_min=10, arms_max=2, sides="both",
                      stagger=0, bay=0, node=3, grow=["arm", "turn"], turns="alternate", balance=False,
                      axial=False, neck=True, pile_w=5, piles_new=1, full_retry_days=28),
-    # Grandeur 60: a 5x5 square where a hall turns
-    "Monastery": dict(gap=1, kind_gap=1, lead=2, ahead=1, run_max=30, run_min=10, arms_max=2, sides="both",
+    # Grandeur 60: a 5x5 square where a hall turns; Room size -50: the run 15% shorter (26)
+    "Monastery": dict(gap=1, kind_gap=1, lead=2, ahead=1, run_max=26, run_min=10, arms_max=2, sides="both",
                       stagger=0, bay=0, node=5, grow=["arm", "turn"], turns="alternate", balance=False,
                       axial=False, neck=False, pile_w=5, piles_new=1, full_retry_days=28),
-    # every slider between the bars (Reserves 40 < 50)
-    "Merchant city": dict(gap=1, kind_gap=1, lead=2, ahead=1, run_max=30, run_min=10, arms_max=2, sides="both",
+    # Reserves 40 < 50; Room size +50: the run 15% longer (35), 7-wide pile rooms
+    "Merchant city": dict(gap=1, kind_gap=1, lead=2, ahead=1, run_max=35, run_min=10, arms_max=2, sides="both",
                           stagger=0, bay=0, node=3, grow=["arm", "turn"], turns="alternate", balance=False,
-                          axial=False, neck=False, pile_w=5, piles_new=1, full_retry_days=28),
+                          axial=False, neck=False, pile_w=7, piles_new=1, full_retry_days=28),
     # Fortification 100: dog-leg 18, the neck; Reserves 60: one more pile room
     "Hermit hold": dict(gap=1, kind_gap=1, lead=2, ahead=1, run_max=18, run_min=10, arms_max=2, sides="both",
                         stagger=2, bay=0, node=3, grow=["arm", "turn"], turns="alternate", balance=False,
@@ -1260,7 +1261,7 @@ PRESET_HINTS = {
     "Deep mine": dict(gap=1, kind_gap=1, lead=2, ahead=1, run_max=14, run_min=10, arms_max=1, sides="both",
                       stagger=3, bay=0, node=3, grow=["arm", "turn"], turns="alternate", balance=False,
                       axial=False, neck=False, pile_w=5, piles_new=1, full_retry_days=28),
-    # Grandeur 40 (< 60: no square); otherwise as the Merchant city, its own stagger
+    # Grandeur 40 (< 60: no square); every slider between the bars, its own stagger
     "Garden fort": dict(gap=1, kind_gap=1, lead=2, ahead=1, run_max=30, run_min=10, arms_max=2, sides="both",
                         stagger=3, bay=0, node=3, grow=["arm", "turn"], turns="alternate", balance=False,
                         axial=False, neck=False, pile_w=5, piles_new=1, full_retry_days=28),

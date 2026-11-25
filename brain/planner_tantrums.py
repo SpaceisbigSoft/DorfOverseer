@@ -194,7 +194,8 @@ def _break_fights_report_rule(s: dict, memory, cfg: dict, proposals: list) -> No
 # The watcher caps a fight among citizens at Brawl and breaks it up every 10
 # ticks inside the game; it lives while the game runs, so a reload or a fresh
 # start loses it: armed again on every cycle the `fights` section says it is off.
-FIGHT_COUNTS = ("capped", "separated", "reengaged", "died", "tantrums_ended")   # (item3) the last
+FIGHT_COUNTS = ("capped", "separated", "reengaged", "died", "tantrums_ended",   # (item3) the last
+                "beatings_spared", "beatings_stopped")                          # (item21)
 
 
 def _fight_watch_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
@@ -245,14 +246,19 @@ def fight_journal(s: dict, memory) -> list[dict]:
     book = dict(book)
     book["fights"] = cur
     memory.tantrum_book = book
-    if grew["capped"] <= 0 and grew["separated"] <= 0 and grew["tantrums_ended"] <= 0:
+    if (grew["capped"] <= 0 and grew["separated"] <= 0 and grew["tantrums_ended"] <= 0
+            and grew["beatings_spared"] <= 0 and grew["beatings_stopped"] <= 0):
         return []
     log = [e for e in _l(sec.get("log")) if isinstance(e, dict)][-3:]
     text = (f"fight watcher: {grew['capped']} level(s) capped at a brawl, {grew['separated']} citizen(s) taken "
             f"out of a fight" + (f", {grew['reengaged']} re-engaged" if grew["reengaged"] > 0 else "")
             + (f", {grew['died']} fight(s) with a death" if grew["died"] > 0 else "")
             + (f", {grew['tantrums_ended']} tantrum(s) ended for attacking a citizen"
-               if grew["tantrums_ended"] > 0 else ""))
+               if grew["tantrums_ended"] > 0 else "")
+            + (f", {grew['beatings_spared']} DF beating(s) of a convict spared (prison time kept)"
+               if grew["beatings_spared"] > 0 else "")
+            + (f", {grew['beatings_stopped']} beating(s) stopped with the convict in danger"
+               if grew["beatings_stopped"] > 0 else ""))
     return [{**grew, "totals": cur, "text": text,
              "last": [{k: e.get(k) for k in ("tick", "kind", "activity_id", "max", "units", "levels",
                                              "levels_after", "separated", "timers", "age")} for e in log]}]
@@ -452,6 +458,11 @@ def _convict_blockers(s: dict, cfg: dict, r: dict) -> list:
         out.append("someone is wounded")
     if int(_d(_d(s.get("justice")).get("punish")).get("beatings") or 0):
         out.append("a beating waits")
+    # (item21) D, 25 Nov 07:21: Gulfcopper convicted, beaten to death by the sheriff a minute later
+    # (BeatCriminal, suffocated): only while the fight watcher spares DF's beatings
+    fights = _d(s.get("fights"))
+    if "armed" in fights and not (fights.get("armed") is True and fights.get("spare_beatings") is True):
+        out.append("DF's beating could kill them (the fight watcher is not sparing beatings)")
     if _free_chains(s) <= 0:
         out.append("no free jail chain")
     if not justice_held(s):

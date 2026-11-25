@@ -116,8 +116,10 @@ def _():
         return sent, m
     on, m = autumns(CFG)
     off, _ = autumns(dict(CFG, r5p3_refusal_backoff=False))
-    assert off >= 30, off                         # main: seven an autumn (B: 92 in 13 years)
-    assert on <= 20 and on < off, (on, off)
+    # main before item20: seven an autumn (B: 92 in 13 years), off >= 30; (item20) the general
+    # back-off now keeps a long wait's record for four times that wait, so it too asks far less
+    assert off <= 20, off
+    assert on <= 20 and on <= off, (on, off)
     rec = next(iter(m.refusal_streaks.values()))
     assert rec["n"] == on and rec["days"] == 28, rec
 

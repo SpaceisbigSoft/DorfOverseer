@@ -6,7 +6,7 @@
 -- and the names defined there and in the parts before it are in reach.
 
 if not SOCIETY_PART_LOCALS then qerror('ai-society-posts is a part of ai-society; run ai-society') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-posts'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-posts'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units = SOCIETY_PART_LOCALS.U, SOCIETY_PART_LOCALS.report_citizens, SOCIETY_PART_LOCALS.report_units   -- (r8) the hub's locals
 
@@ -473,7 +473,8 @@ for _, name in ipairs({'fill_recreation', 'badly_wants_friends', 'recreation_sta
                        'calm_burrow_tick', 'weather_keep_in', 'weather_keep_in_status',
                        'release_ai_burrows', 'in_mood',
                        'recreation_release_squad', 'soldier_leisure_want', 'killer_held', 'rec_gathering',
-                       'gather_key', 'loc_inactive', 'social_keep', 'social_retired', 'social_consolidate'}) do   -- (0.105.48, K3); (0.105.51) in_mood; (0.105.97) the soldiers, the held killers; (0.105.110) rec_gathering
+                       'gather_key', 'loc_inactive', 'social_keep', 'social_retired', 'social_consolidate',
+                       'close_friends', 'rec_labors_off', 'rec_labors_back'}) do   -- (0.105.48, K3); (0.105.51) in_mood; (0.105.97) the soldiers, the held killers; (0.105.110) rec_gathering
     _ENV[name] = function(...) return burrows()[name](...) end
 end
 

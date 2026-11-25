@@ -180,7 +180,14 @@ def _():
         assert fr["units"] == 4 + n and n >= 1, (name, fr)
         rec = F.floor_rec(ROCK_Z)
         rows = {(s["run"], s["side"]) for s in rec["slots"] if s.get("pid") == r.project_id}
-        assert len(rows) >= 2, (name, "five rooms of 5 columns never fit one side of these runs", rows)
+        # (0.105.115) split only where one side is too short: the Merchant city's Room size +50 gives runs of
+        # 35 (32 columns a side), where four shops and one 7-wide pile room (31 with the gaps) fit one row
+        G = lua_grammar(dict(g, elevs=[ROCK_Z]))
+        need = 4 * 5 + n * int(G.pile_w) + (4 + n - 1) * int(G.gap)
+        if need > shop_room(G):
+            assert len(rows) >= 2, (name, "these rooms never fit one side of these runs", need, rows)
+        else:
+            assert len(rows) >= 1, (name, rows)
         F.check_floor(ROCK_Z, what=f"F3 four shops {name}")
         # and a one-shop level after it still finds room on the floor
         r2 = F.start(kind="workshops", shops=["Jewelers"], floor=dict(g, elevs=[ROCK_Z]))

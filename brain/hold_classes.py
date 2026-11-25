@@ -77,6 +77,7 @@ _DEFENCE_RULES = {
     "threat_alert", "alerts", "gate", "gates", "gate_guard", "gate_doors", "gate_lever", "gate_parts", "gate_jobs",
     "gate_stuck", "gate_dogs", "entrances", "cavern_openings", "cavern_scan", "seal_cavern", "destroyer_gate",
     "intruder_guard", "thief_watch", "traps", "cages", "near_gates", "near_gates_refresh", "fire_guard", "moon_cell",
+    "were_cells",   # (0.105.115 item24) werebeast cells behind drawbridges: the level and its links
     "squad_make", "squad_fill", "squad_trim", "squad_attack", "squad_recall", "soldier_swap", "train",
     "uniform", "uniform_adopt", "unstick_uniforms", "assign_kit", "assign_weapons", "barracks_assign", "kit",
     "arms", "arms_forge", "anvil", "bolts", "crossbow_shop", "quivers", "quivers_order", "gear_fix", "gear_fix_order", "stray_gear",
@@ -175,7 +176,7 @@ _DEFENCE_ACTIONS = {
     "fix_gear_gaps", "assign_quivers", "squad_bolts", "assign_bolts", "squad_fill", "squad_swap", "squad_trim", "make_squad",
     "squad_orders", "squad_routine", "squad_station", "squad_barracks", "hunt_recall", "set_uniform",
     "set_uniform_weapon", "adopt_uniform", "assign_weapons", "assign_kit", "unstick_uniforms", "free_stray_gear",
-    "fire_guard", "moon_cell", "seal_cavern", "prisoner_room", "killer_cell", "archer_post", "remove_crossing",
+    "fire_guard", "moon_cell", "were_cells", "seal_cavern", "prisoner_room", "killer_cell", "archer_post", "remove_crossing",
     "garden_court_meeting",   # (r9 c1)
 }
 

@@ -144,6 +144,7 @@ class Memory:
     idle_hands: bool = False                             # many idle adults: every squad trains (0.83)
     idle_avg: float | None = None                        # running average of the idle share (0.84)
     refusals: dict = field(default_factory=dict)         # action key -> {"n": times refused in a row, "until": tick}
+    repeat_book: dict = field(default_factory=dict)      # (item20) {rule: {...}}: what a rule tried, so it isn't asked again pointlessly (planner_backoff.repeat_book)
     refusal_streaks: dict = field(default_factory=dict)  # (r5 p3) action key -> {n, why, sig, at, until, days, rule, type, say}: the same no in a row (planner_refusal_streak)
     climate_freezes: bool = False                         # ice has been seen near the fort (water freezes in winter)
     trouble_seen: str = ""                                # the last "fort in trouble" signs printed

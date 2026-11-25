@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-survey is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-survey'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-survey'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units, DAY, now_tick, name_of, save_state, is, outside_at, citizens, dist_to, reaches, fire_report, prisoners_report, thieves_report, undead_report, were_report, surface_report, rescue_report = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.report_units, PART_LOCALS.DAY, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.is, PART_LOCALS.outside_at, PART_LOCALS.citizens, PART_LOCALS.dist_to, PART_LOCALS.reaches, PART_LOCALS.fire_report, PART_LOCALS.prisoners_report, PART_LOCALS.thieves_report, PART_LOCALS.undead_report, PART_LOCALS.were_report, PART_LOCALS.surface_report, PART_LOCALS.rescue_report   -- (r8) the hub's and earlier parts' locals
 
@@ -84,9 +84,9 @@ function gather_openings(d, t, data)
     -- (0.105.47) each cavern well's door at its gallery's fort end (a hatch over
     -- its stair top in a hall): a way into the caverns the seal locks
     pcall(function()
-        local W = reqscript('ai-well-safety')
+        local WSAFE = reqscript('ai-well-safety')
         local doors
-        if data ~= nil then doors = W.fort_doors(data) else doors = W.fort_doors() end
+        if data ~= nil then doors = WSAFE.fort_doors(data) else doors = WSAFE.fort_doors() end
         for _, w in ipairs(doors or {}) do
             note_opening(d, w.x, w.y, w.z, 'gate', 'cavern well ' .. tostring(w.project_id) .. ' door', t)
         end
@@ -142,13 +142,13 @@ function seal_lockable(o, row, ctx)
             nil, 'none'
     end
     if type(o.source) == 'string' and o.source:find('^cavern well') then
-        local okw, W = pcall(reqscript, 'ai-well-safety')
-        if okw and W then
+        local okw, WSAFE = pcall(reqscript, 'ai-well-safety')
+        if okw and WSAFE then
             local data, cits
             if type(ctx) == 'table' then
                 data = ctx.data
-                if ctx.cits == nil and W.citizens then
-                    local okc, l = pcall(W.citizens)
+                if ctx.cits == nil and WSAFE.citizens then
+                    local okc, l = pcall(WSAFE.citizens)
                     ctx.cits = (okc and type(l) == 'table') and l or false
                 end
                 cits = ctx.cits or nil
@@ -156,17 +156,17 @@ function seal_lockable(o, row, ctx)
             end
             -- (the extra arguments only when there are any: a stand-in that takes one still works)
             local okb, who = pcall(function()
-                if data ~= nil then return W.door_blocked(o, cits, data) end
-                if cits ~= nil then return W.door_blocked(o, cits) end
-                return W.door_blocked(o)
+                if data ~= nil then return WSAFE.door_blocked(o, cits, data) end
+                if cits ~= nil then return WSAFE.door_blocked(o, cits) end
+                return WSAFE.door_blocked(o)
             end)
             if okb and who then
                 local name = tostring(who)
                 return false, name .. ' is beyond the cavern well\'s door', name, 'blocked'
             end
             local oks, why
-            if data ~= nil then oks, why = pcall(W.door_seal_skip, o, data)
-            else oks, why = pcall(W.door_seal_skip, o) end
+            if data ~= nil then oks, why = pcall(WSAFE.door_seal_skip, o, data)
+            else oks, why = pcall(WSAFE.door_seal_skip, o) end
             if oks and type(why) == 'string' then return false, why, nil, 'skip' end
         end
     end

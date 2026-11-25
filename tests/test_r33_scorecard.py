@@ -247,11 +247,35 @@ def _():
         dec("start_project", {"kind": "bedrooms", "tiles": 60, "corridor": 2}, kind="bedrooms", rooms=6)], NOW)
     m = scorecard.measures(copy.deepcopy(BASE), j)
     assert m["corridor_mean"] == round((4 + 8 + 2) / 3, 1) and m["bedroom_tiles"] == 10.0, m
+    assert m["bedroom_spare_tiles"] == 1.0, m       # (100 - 90) + (60 - 54) over 16 rooms (3x3 unsaid)
     lines = {k for _, _, k, _, _ in scorecard.LINES}
     for k in ("-gems_set", "gems_kept_pct", "treasures_kept", "welcome_pct", "stairwells_dug", "polish_runs",
-              "-corridor_mean", "-bedroom_tiles"):
+              "-corridor_mean", "-bedroom_spare_tiles"):
         assert k in lines, k
     assert "wealth_pd" not in lines and "gems" not in lines and "-level_tiles" not in lines
+
+
+@test("(item23) Spacing's bedroom line is not moved by Room size: 2x2 cells and 4x4 suites at the same spacing read the same")
+def _():
+    def fort(rs, spare):
+        return scorecard.measures(copy.deepcopy(BASE), scorecard.journal_counts([
+            dec("start_project", {"kind": "bedrooms", "tiles": 8 * (rs * rs + spare), "summary": {"rooms": 8}},
+                kind="bedrooms", rooms=8, room_size=rs)], NOW))
+    mona, merch, war = fort(2, 2), fort(4, 2), fort(3, 1)
+    assert mona["bedroom_spare_tiles"] == merch["bedroom_spare_tiles"] == 2.0, (mona, merch)
+    assert mona["bedroom_tiles"] < war["bedroom_tiles"] < merch["bedroom_tiles"]       # Room size's own measure
+    key = "-bedroom_spare_tiles"
+    line = next(ln for ln in scorecard.LINES if ln[2] == key)
+    vals = {scorecard.M: -mona[key[1:]], scorecard.ME: -merch[key[1:]], scorecard.W: -war[key[1:]],
+            scorecard.G: -fort(3, 2)[key[1:]]}
+    assert scorecard.judge(vals, line[3], line[4]) == "pass", vals     # the War-hold's tighter rooms win, not the cells
+    vals[scorecard.W] = vals[scorecard.G]
+    assert scorecard.judge(vals, line[3], line[4]) == "flat", vals     # the same spacing everywhere: flat, whatever the sizes
+    # and Room size's line does see them
+    rs = next(ln for ln in scorecard.FLOOR_LINES if ln[0] == "Room size")
+    sizes = {scorecard.M: mona["bedroom_room_tiles"], scorecard.ME: merch["bedroom_room_tiles"],
+             scorecard.W: war["bedroom_room_tiles"]}
+    assert scorecard.judge(sizes, rs[3], rs[4]) == "pass", sizes
 
 
 if __name__ == "__main__":

@@ -131,6 +131,12 @@ def _():
     assert not set(NEW) & set(a) and set(NEW) & set(b)
     old = set(a) - set(NEW)
     assert old == set(b) - set(NEW)
+    # (item23) Room size's tiles a bedroom takes a floor's new hall out: 80 - 39 over 4 rooms
+    assert a["bedroom_room_tiles"] == 20.0 and b["bedroom_room_tiles"] == 10.2, (a, b)
+    old.discard("bedroom_room_tiles")
+    # and Spacing's tiles a bedroom beyond its 3x3: (80 - 36) / 4; on the floor (80 - 39 - 36) / 4
+    assert a["bedroom_spare_tiles"] == 11.0 and b["bedroom_spare_tiles"] == 1.2, (a, b)
+    old.discard("bedroom_spare_tiles")
     assert {k: a[k] for k in old} == {k: b[k] for k in old}, {k: (a[k], b[k]) for k in old if a[k] != b[k]}
     # the old corridor line still reads the old key (old and new runs stay comparable)
     assert a["corridor_mean"] == 10.0 and a["levels"] == 2 and a["bedroom_tiles"] == 20.0, a
@@ -167,16 +173,19 @@ def _():
     for _sl, what, key, _hi, _lo in lines:
         r = next(x for x in rows if x["line"] == what)
         assert r["result"] == "no data", r
+        if key.lstrip("-") not in NEW:      # (item23) Room size's tiles a bedroom: no level here has rooms
+            assert all(v is None for v in r["values"].values()), r
+            continue
         assert r["values"]["A"] is None and r["values"]["G"] is None and r["values"]["D"] is not None, r
         assert re.search(r"\| " + re.escape(what) + r" \| - \| [0-9.]+ \| - \|", md), what
     # each new line stands after the last old line of its slider; Room size after Spacing's
     order = [(r["slider"], r["key"].lstrip("-")) for r in rows]
     assert order[order.index(("Verticality", "depth")) + 1:][:2] == [("Verticality", "floors"),
                                                                      ("Verticality", "floor_arm_max")], order
-    assert order[order.index(("Spacing", "bedroom_tiles")) + 1:][:3] == [
-        ("Spacing", "floor_gap_mean"), ("Spacing", "floor_lead_mean"), ("Room size", "floor_room_tiles")], order
+    assert order[order.index(("Spacing", "bedroom_spare_tiles")) + 1:][:3] == [
+        ("Spacing", "floor_gap_mean"), ("Spacing", "floor_lead_mean"), ("Room size", "bedroom_room_tiles")], order
     # the old lines keep their order around them
-    assert [x for x in order if x[1] not in NEW] == [(ln[0], ln[2].lstrip("-")) for ln in scorecard.LINES]
+    assert [x for x in order if x[1] not in NEW and x[0] != "Room size"] == [(ln[0], ln[2].lstrip("-")) for ln in scorecard.LINES]
 
 
 # ------------------------------------------------------------------ 2. the numbers, by hand
@@ -310,7 +319,7 @@ def _():
 # line key -> (the slider's id in BUILTIN_PRESETS, +1 when the measure rises with the slider, -1 when it falls)
 EFFECT = {"floor_gap_mean": ("spacing", 1), "floor_lead_mean": ("spacing", 1),
           "floors": ("verticality", 1), "floor_arm_max": ("verticality", -1),
-          "floor_room_tiles": ("size", 1)}
+          "bedroom_room_tiles": ("size", 1)}     # (item23) Room size: tiles a bedroom
 SLIDER_OF = {"Spacing": "spacing", "Verticality": "verticality", "Room size": "size"}
 
 
@@ -370,10 +379,10 @@ def fort_state(count, arm, rooms, hall, fallbacks=0, why=None):
     return state(sec)
 
 
-@test("report: the Deep mine wins the floor lines, the War-hold the lead; the gap is flat; Room size is shown, not judged")
+@test("report: the Deep mine wins the floor lines, the War-hold the lead; the gap is flat; Room size is shown, not judged without its presets")
 def _():
     def j(gap, lead, units_tiles):
-        return [level(1, "bedrooms", tiles=units_tiles * 4 + 30,
+        return [level(1, "bedrooms", tiles=units_tiles * 4 + 30, summary={"rooms": 4},
                       floor=answer_floor(gap=gap, lead=lead, hall_new=30, units=4))]
     md, rows = report([("A", "War-hold", fort_state(2, 30, 16, 180), j(1, 0, 9)),
                        ("D", "Deep mine", fort_state(5, 14, 20, 210), j(1, 2, 9)),
@@ -386,11 +395,12 @@ def _():
     assert r["values"] == {"A": 0.0, "D": 2.0, "G": 2.0} and r["result"] == "pass", r
     r = row(rows, "floor_gap_mean")
     assert r["values"] == {"A": 1.0, "D": 1.0, "G": 1.0} and r["result"] == "flat", r
-    r = row(rows, "floor_room_tiles")
-    assert r["values"] == {"A": 9.0, "D": 9.0, "G": 16.0} and r["result"] == "no data", r
+    r = next(x for x in rows if x["slider"] == "Room size")
+    assert r["key"] == "bedroom_room_tiles" and r["values"] == {"A": 9.0, "D": 9.0, "G": 16.0}, r
+    assert r["result"] == "no data", r          # none of the three moves Room size
     assert "| Verticality | floors with a main hall | 2 | 5 | 1 | Deep | pass |" in md, md
     assert "| Spacing | hall before the first room on a floor (least wins) | 0 | 2 | 2 | War | pass |" in md
-    assert "| Room size | tiles a room on a floor | 9 | 9 | 16 |  | no data |" in md
+    assert "| Room size | tiles a bedroom | 9 | 9 | 16 | Mer / low: Mon | no data |" in md, md
     assert "not on a floor" not in md
     # the Deep mine with the longest arm and the fewest floors: both lines fail
     _md, rows = report([("A", "War-hold", fort_state(2, 30, 16, 180), j(1, 0, 9)),
@@ -421,3 +431,19 @@ def _():
 
 if __name__ == "__main__":
     finish()
+
+
+@test("(item23) Room size: tiles a bedroom; the Merchant city's (+50) most wins, the Monastery's (-50) least")
+def _():
+    def j(tiles):
+        return [level(1, "bedrooms", tiles=tiles * 4 + 20, summary={"rooms": 4},
+                      floor=answer_floor(hall_new=20, units=4))]
+    _md, rows = report([("B", "Monastery", fort_state(2, 30, 16, 180), j(4)),
+                        ("C", "Merchant city", fort_state(2, 30, 16, 180), j(16)),
+                        ("G", "Garden fort", fort_state(2, 30, 16, 180), j(9))])
+    r = next(x for x in rows if x["slider"] == "Room size")
+    assert r["values"] == {"B": 4.0, "C": 16.0, "G": 9.0} and r["result"] == "pass", r
+    _md, rows = report([("B", "Monastery", fort_state(2, 30, 16, 180), j(16)),
+                        ("C", "Merchant city", fort_state(2, 30, 16, 180), j(4)),
+                        ("G", "Garden fort", fort_state(2, 30, 16, 180), j(9))])
+    assert next(x for x in rows if x["slider"] == "Room size")["result"] == "fail"

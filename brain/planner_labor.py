@@ -18,6 +18,29 @@ LABOR_MODES_FIXED = ("EverybodyDoesThis", "NobodyDoesThis")
 PICK_METALS = ("COPPER", "BRONZE", "IRON", "STEEL")    # (0.105.35) a pick's metal, the soldiers' steel last
 
 
+# (0.105.115 item20) C, 25 Nov (2.5 h): gather_trim refused 24 times "N of the N plant-gathering
+# jobs are fruit zones' (the game makes them again): nothing to cancel", the job count going
+# 70 -> 157 -> 70 as the zones' jobs came and went. After that answer the rule waits
+# GATHER_ZONES_DAYS game days or GATHER_ZONES_REAL_MINUTES real minutes (the longer)
+GATHER_ZONES_DAYS = 14
+GATHER_ZONES_REAL_MINUTES = 20
+
+
+def gather_zones_only(memory, p, s: dict) -> int | None:
+    """(item20) Days left while the last trim was refused as all fruit zones' jobs, else None."""
+    if memory is None:
+        return None
+    from planner_backoff import real_ticks
+    r = _d(_d(getattr(memory, "refusals", None)).get(refusal_key(p)))
+    if "fruit zones'" not in str(r.get("why") or "") or not isinstance(r.get("at"), int):
+        return None
+    now = abs_tick(s)
+    left = r["at"] + max(GATHER_ZONES_DAYS * TICKS_PER_DAY, real_ticks(s, GATHER_ZONES_REAL_MINUTES)) - now
+    if not 0 < left or now < r["at"]:
+        return None
+    return max(1, -(-left // TICKS_PER_DAY))
+
+
 def trees_this_year(s: dict, memory) -> tuple[int, int | None]:
     """(0.89) Trees felled this game year, and the elves' cap if elves trade
     with the fort (None otherwise: no quota to keep)."""
@@ -125,10 +148,16 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
     # far more gathering waiting than a fed fort needs (old marks): cancelled
     gathering = int(_d(_d(s.get("jobs")).get("by_type")).get("GatherPlants") or 0)
     if not hungry and gathering > cfg["gather_jobs_max"] and food_per_dwarf(s) >= cfg["established_food_per_dwarf"]:
-        proposals.append(Proposal("gather_trim", {"type": "trim_gathering", "keep": cfg["gather_jobs_keep"]},
-                                  f"{gathering} plant-gathering jobs wait and the fort has "
-                                  f"{food_per_dwarf(s):g} food a dwarf: cancel all but {cfg['gather_jobs_keep']} "
-                                  "(the farthest first)", 5))
+        trim = Proposal("gather_trim", {"type": "trim_gathering", "keep": cfg["gather_jobs_keep"]},
+                        f"{gathering} plant-gathering jobs wait and the fort has "
+                        f"{food_per_dwarf(s):g} food a dwarf: cancel all but {cfg['gather_jobs_keep']} "
+                        "(the farthest first)", 5)
+        zoned = gather_zones_only(memory, trim, s)
+        if zoned:
+            notes.append(f"{gathering} plant-gathering jobs wait, but the last look found them all fruit zones' "
+                         f"(the game makes those again): looked at again in {zoned} day(s)")
+        else:
+            proposals.append(trim)
     # while food is short: shrubs gathered (a few at a time: a fort where
     # everybody gathers drops everything else for it), fish caught
     thirsty = drink_short(s, cfg)          # (0.99.6) wild plants and fruit to brew, and their seeds

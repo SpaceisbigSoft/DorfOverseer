@@ -524,7 +524,12 @@ def _():
         else:
             assert all(u["halls"] == [] for u in us), where
     assert n_levels == sum(len(v) for v in KIND_PARAMS.values()) * len(STYLES)
-    assert set(KIND_PARAMS) == set(M.KINDS.values()), "a kind of ai-layouts.KINDS is not tested"
+    # (0.105.115) were_cells is never on a floor (masterplan_floors.CLASSIC_KINDS): cut refuses it
+    assert set(KIND_PARAMS) | {"were_cells"} == set(M.KINDS.values()), "a kind of ai-layouts.KINDS is not tested"
+    for p in (dict(cells=2), dict(cells=5)):
+        res = F.cut(make("were_cells", p))
+        us, why = res if isinstance(res, tuple) else (res, None)
+        assert us is None and "not cuttable" in str(why), (p, res)
 
 
 @test("cut: workshops' units are in shops order with their tags; 8 bedrooms give 8 units of room_size")

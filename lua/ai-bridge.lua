@@ -49,7 +49,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.114'
+BRIDGE_VERSION = '0.105.115'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -226,6 +226,7 @@ BRIDGE_MODULES = {
     'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
     'ai-shelter-plan', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',
     'ai-stuck',   -- (0.105.45)
+    'ai-werecells',   -- (0.105.115 item24) the werebeast cells behind drawbridges
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
     'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
     'ai-lure',   -- (0.105.45)

@@ -84,8 +84,8 @@ def _():
     assert "pcall(seal_lockable, o, row, ctx)" in r
     assert "OPENINGS_COST = {project_reads" in r
     s = body(SURVEY, "seal_lockable")
-    assert "W.door_blocked(o, cits, data)" in s and "W.door_seal_skip, o, data" in s
-    assert "pcall(W.citizens)" in s
+    assert "WSAFE.door_blocked(o, cits, data)" in s and "WSAFE.door_seal_skip, o, data" in s
+    assert "pcall(WSAFE.citizens)" in s
     for f, sig in (("fort_doors", "data"), ("door_blocked", "o, cits, data"), ("door_seal_skip", "o, data")):
         assert re.search(r"\nfunction " + f + r"\(" + re.escape(sig) + r"\)", SAFETY), f
         assert "data = data or builder().load_projects()" in body(SAFETY, f), f

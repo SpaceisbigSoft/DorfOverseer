@@ -16,7 +16,7 @@ local function report_units(...) return U.report_units(...) end   -- (r6) ai-uti
 local S = reqscript('ai-society')   -- find_burrow, new_burrow
 -- (r9) the hub's and its parts' version marks; started afresh at each load, so a part
 -- that failed to load shows as unmarked (as ai-gates does)
-PART_VERSIONS = {['ai-society-burrows'] = '0.105.114'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-society-burrows'] = '0.105.115'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- (0.104.78) the recreation burrow ----------------------------------------
 --
@@ -25,8 +25,10 @@ PART_VERSIONS = {['ai-society-burrows'] = '0.105.114'}   -- (0.105.26) bumped wi
 -- they take no work and spend their time where the friends, the drink and the
 -- gods are. Enxah: 42 badly wanting friends, 18 miserable, hardly anyone idle.
 -- (item6) One tavern and one temple, so its members meet one another there.
--- The burrow also covers the dining halls, the bedrooms and the food and
--- drink piles (never the hospital: 0.104.127), so nobody in it goes hungry, thirsty or sleepless.
+-- (0.105.115 item22) Only the tavern and the temple now (never the hospital:
+-- 0.104.127): no dining hall, bedroom or stockpile, where the members took
+-- jobs (StoreItemInBarrel, FillPond) or idled alone. The thirsty, hungry and
+-- drowsy are let out to drink, eat and sleep (rec_dry, rec_tired).
 -- At most `max` dwarves at a time: very unhappy or worse, not a soldier, not
 -- a child, not a patient; each goes back to work when no longer unhappy, or
 -- after `days` days. Its members are kept in the save.
@@ -35,7 +37,10 @@ RECREATION_KEY = 'ai-overseer/recreation'
 -- (0.104.127) never the hospital: Teacheroar's massacre (31 Oct, ~45 dead, 39 strangled
 -- by citizens) happened in its hospital zone, x95-101 y40-48 z167, where 124 wounded lay
 -- on the floor and the burrow kept the unhappiest dwarves (patients never join it)
-local REC_ZONES = {MeetingHall = true, DiningHall = true, Bedroom = true}
+-- (0.105.115 item22) the meeting halls only, and only in a fort with no tavern
+-- (the dining halls and bedrooms are gone: 25 Nov, 07:23, of 19 members in
+-- four forts one was praying, the rest hauling or idle in bedrooms)
+local REC_ZONES = {MeetingHall = true}
 
 local function rec_state()
     local d = U.site_get(RECREATION_KEY, {members = {}})
@@ -53,6 +58,11 @@ end
 REC_THIRST = 25000           -- DFHack's "thirsty"
 REC_HUNGER = 50000           -- DF's "hungry"
 REC_STALE_DAYS = 9           -- the rule's cooldown (7 days) and two more
+REC_SLEEPY = 57600           -- (0.105.115 item22) DFHack's "drowsy": the burrow has no bed
+-- (0.105.115 item22) a member's least stay (half a day): the recovered or the
+-- need met wait this long before going back to work; an emergency (thirst,
+-- hunger, sleep, a tantrum, care, a mood, a threat) never waits
+REC_MIN_STAY = 600
 
 -- (0.105.97) a killer the killer rule holds (lua/ai-killers.lua is_held: a
 -- cell, or a strong or certain suspect): never into the recreation, hospital,
@@ -82,6 +92,12 @@ local function rec_dry(u)
     return ok and yes == true
 end
 
+-- (0.105.115 item22) drowsy: out to sleep in a bed (none in the burrow)
+local function rec_tired(u)
+    local ok, yes = pcall(function() return u.counters2.sleepiness_timer >= REC_SLEEPY end)
+    return ok and yes == true
+end
+
 local function zone_tiles(b, burrow)
     local n = 0
     for y = b.y1, b.y2 do
@@ -97,8 +113,8 @@ end
 
 -- The burrow's tiles: the zones of one tavern and one temple (item6:
 -- rec_gathering; every location's and every meeting hall when the fort has
--- no tavern), the dining and bedroom zones (never a hospital's), and the
--- stockpiles that take food or drink.
+-- no tavern), never a hospital's. (0.105.115 item22) The stockpiles that take
+-- food or drink only when neither drink in those zones nor a well is found.
 -- (0.105.33, L6) Drink in the burrow: 'drink' when (not forbidden) drink
 -- lies on one of its tiles; else the 3x3 of the working well nearest the
 -- burrow's zones (`cx`: their centres) added, 'well'; else nil (nobody is
@@ -207,7 +223,7 @@ end
 
 -- (item6) bumped when the burrow's layout rule changes: a burrow filled by
 -- an older rule is filled again at the next tick, not at its weekly refill
-REC_FILL_V = 2
+REC_FILL_V = 3      -- (0.105.115 item22) 3: the tavern and temple only
 
 -- (0.105.113 item9) a civzone's active flag (DF's zone screen), or nil unread
 local function zone_on(bid)
@@ -283,15 +299,24 @@ function fill_recreation(burrow)
                 n = n + zone_tiles(b, burrow)
                 cx.x, cx.y, cx.z, cx.n = cx.x + (b.x1 + b.x2) / 2, cx.y + (b.y1 + b.y2) / 2, cx.z + b.z, cx.n + 1
             end
-        elseif t == df.building_type.Stockpile then
-            local okf, food = pcall(function() return b.settings.flags.food end)
-            -- (0.105.97) never a killer cell's own pile (ai-killers LARDER_PREFIX): the way
-            -- to it leads into the killer's cell (B, 23 Nov)
-            local okc, larder = pcall(function() return tostring(b.name):find('AI cell larder ', 1, true) == 1 end)
-            if okf and food and not (okc and larder) then n = n + zone_tiles(b, burrow) end
         end
     end
-    return n, rec_water(burrow, cx), tav and {tavern = tav, temple = tem} or nil
+    local water = rec_water(burrow, cx)
+    if water == nil then
+        -- (0.105.115 item22) no drink nor well: the food and drink piles, as before
+        for _, b in ipairs(df.global.world.buildings.all) do
+            if b:getType() == df.building_type.Stockpile then
+                local okf, food = pcall(function() return b.settings.flags.food end)
+                -- (0.105.97) never a killer cell's own pile (ai-killers LARDER_PREFIX): the way
+                -- to it leads into the killer's cell (B, 23 Nov)
+                local okc, larder = pcall(function() return tostring(b.name):find('AI cell larder ', 1, true) == 1 end)
+                if okf and food and not (okc and larder) then n = n + zone_tiles(b, burrow) end
+            end
+        end
+        water = rec_water(burrow, cx)
+        if water == 'drink' then water = 'piles' end
+    end
+    return n, water, tav and {tavern = tav, temple = tem} or nil
 end
 
 -- --- (0.105.113 item9) the taverns and temples drawn together --------------
@@ -445,6 +470,7 @@ local function rec_base(u)
     -- recreation burrow is the taverns and halls, where the others are
     if rec_tantrum(u) then return false end
     if rec_dry(u) then return false end              -- (0.105.33) drink and eat first
+    if rec_tired(u) then return false end            -- (0.105.115 item22) and sleep
     return not rec_sick(u)
 end
 
@@ -456,6 +482,24 @@ function badly_wants_friends(u)
         end
     end)
     return ok and f or nil
+end
+
+-- (0.105.115 item22) a citizen's close friends among the citizens (DF's
+-- relationship of love 50+, as the report's social.relations counts them):
+-- a list of units, or nil when the relationships can't be read. `by_hf`:
+-- hist_figure_id -> citizen.
+REC_CLOSE_LOVE = 50
+function close_friends(u, by_hf)
+    local ok, list = pcall(function()
+        local hf = df.historical_figure.find(u.hist_figure_id)
+        local out = {}
+        for _, r in ipairs(hf.info.relationships.hf_visual) do
+            local x = by_hf[r.histfig_id]
+            if x and x ~= u and r.core.love >= REC_CLOSE_LOVE then table.insert(out, x) end
+        end
+        return out
+    end)
+    return ok and list or nil
 end
 
 -- --- (0.105.97) off-duty soldiers short of friends, drink or prayer ---------
@@ -500,7 +544,7 @@ local function rec_soldier_base(u)
     if not dfhack.units.isAdult(u) or u.military.squad_id == -1 then return false end
     if not squad_free(u.military.squad_id) then return false end
     if killer_held(u) then return false end          -- (0.105.97, merge) a held killer, never among the others
-    if in_mood(u) or rec_noble(u) or rec_tantrum(u) or rec_dry(u) then return false end
+    if in_mood(u) or rec_noble(u) or rec_tantrum(u) or rec_dry(u) or rec_tired(u) then return false end
     return not rec_sick(u)
 end
 
@@ -516,10 +560,13 @@ local function rec_keep_soldier(sid, id, since, now, soldier_days)
     if killer_held(u) then return false, 'a held killer', u end   -- (0.105.97, merge)
     if in_mood(u) then return false, 'a mood', u end
     if rec_dry(u) then return false, 'thirsty or hungry', u end
+    if rec_tired(u) then return false, 'drowsy', u end           -- (0.105.115 item22)
     if rec_tantrum(u) then return false, 'a tantrum', u end
     if rec_sick(u) then return false, 'needs care', u end
     since = tonumber(since) or now
-    if now - since >= (soldier_days or 5) * 1200 or not soldier_leisure_want(u) then return false, 'time', u end
+    if now - since < REC_MIN_STAY then return true, nil, u end   -- (0.105.115 item22) half a day at least
+    if now - since >= (soldier_days or 5) * 1200 then return false, 'time', u end
+    if not soldier_leisure_want(u) then return false, 'need met', u end
     return true, nil, u
 end
 
@@ -544,22 +591,111 @@ local function rec_keep(d, id, since, now, days, friend_days)
     if killer_held(u) then return false, 'a held killer', u end   -- (0.105.97) out at once (B, 23 Nov)
     if in_mood(u) then return false, 'a mood', u end         -- (0.105.51) out at once: its workshop is outside
     if rec_dry(u) then return false, 'thirsty or hungry', u end
+    if rec_tired(u) then return false, 'drowsy', u end           -- (0.105.115 item22) no bed inside
     if rec_tantrum(u) then return false, 'a tantrum', u end
     if rec_sick(u) then return false, 'needs care', u end
     since = tonumber(since) or now
+    -- (0.105.115 item22) half a day at least: DF lets a dwarf socialise only
+    -- when idle, and the member had to walk there first
+    if now - since < REC_MIN_STAY then return true, nil, u end
+    if d.pals and d.pals[id] then
+        -- (0.105.115 item22) a close friend brought in with a lonely member:
+        -- kept while that member is, within `friend_days`
+        if now - since >= friend_days * 1200 then return false, 'time', u end
+        if not d.members[tostring(d.pals[id])] then return false, 'friend gone out', u end
+        return true, nil, u
+    end
     if d.friends and d.friends[id] then
         -- (0.104.80) in for friends: out after `friend_days`, or once the need is met
-        if now - since >= friend_days * 1200 or not badly_wants_friends(u) then return false, 'time', u end
+        if now - since >= friend_days * 1200 then return false, 'time', u end
+        if not badly_wants_friends(u) then return false, 'need met', u end
         return true, nil, u
     end
     local okc, cat = pcall(dfhack.units.getStressCategory, u)
-    if (okc and type(cat) == 'number' and cat >= 3) or now - since >= days * 1200 then return false, 'time', u end
+    if okc and type(cat) == 'number' and cat >= 3 then return false, 'recovered', u end
+    if now - since >= days * 1200 then return false, 'time', u end
     return true, nil, u
 end
 
-local function rec_let_out(d, b, id, u, now, dry_run, txt, released)
+-- (0.105.115 item22) a member's labours off while in the burrow (25 Nov
+-- 07:23: of 19 members one socialised, the rest hauling inside it: DF lets a
+-- dwarf socialise only when idle). The ones it had are kept in the save
+-- (d.labors[id], by name) and given back when it goes out. Looked at again
+-- at every report: one the work details (or the AI's labour rules) gave back
+-- is taken off again and added to the list.
+function rec_labors_off(d, id, u)
+    d.labors = type(d.labors) == 'table' and d.labors or {}
+    local had = type(d.labors[id]) == 'table' and d.labors[id] or {}
+    local seen = {}
+    for _, n in ipairs(had) do seen[n] = true end
+    local n = 0
+    pcall(function()
+        local last = df.unit_labor._last_item
+        for i = 0, last do
+            local okl, on = pcall(function() return u.status.labors[i] end)
+            local name = df.unit_labor[i]
+            if okl and on == true and name and pcall(function() u.status.labors[i] = false end) then
+                n = n + 1
+                if not seen[name] then table.insert(had, name); seen[name] = true end
+            end
+        end
+    end)
+    if #had > 0 then d.labors[id] = had end
+    return n
+end
+
+function rec_labors_back(d, id, u)
+    local had = type(d.labors) == 'table' and d.labors[id]
+    if type(had) ~= 'table' then return 0 end
+    local n = 0
+    if u then
+        for _, name in ipairs(had) do
+            local ok = pcall(function()
+                local l = df.unit_labor[name]
+                if l ~= nil then u.status.labors[l] = true end
+            end)
+            if ok then n = n + 1 end
+        end
+    end
+    d.labors[id] = nil
+    return n
+end
+
+-- (0.105.115 item22) an emergency the labours are needed for: patients
+-- wait for care and no citizen outside the burrow can diagnose: the members
+-- who could (their labours kept in d.labors) are let out
+-- `but`: a unit not counted (one about to move in)
+local function rec_doctor_short(d, but)
+    local short = false
+    pcall(function()
+        local sick, docs = 0, 0
+        local l = df.unit_labor.DIAGNOSE
+        for _, u in ipairs(report_citizens()) do
+            if rec_sick(u) then sick = sick + 1 end
+            if not d.members[tostring(u.id)] and u ~= but and u.military.squad_id == -1
+                    and u.status.labors[l] then docs = docs + 1 end
+        end
+        short = sick > 0 and docs == 0
+    end)
+    return short
+end
+
+local function rec_could_diagnose(d, id)
+    for _, n in ipairs(type(d.labors) == 'table' and type(d.labors[id]) == 'table' and d.labors[id] or {}) do
+        if n == 'DIAGNOSE' then return true end
+    end
+    return false
+end
+
+local function rec_let_out(d, b, id, u, now, dry_run, txt, released, why)
     if not dry_run and u and b then pcall(dfhack.burrows.setAssignedUnit, b, u, false) end
+    if not dry_run then rec_labors_back(d, id, u) end           -- (0.105.115 item22)
+    if not dry_run and why then                                 -- (0.105.115 item22) why, for the tick's result
+        d.out_why = type(d.out_why) == 'table' and d.out_why or {}
+        d.out_why[why] = (tonumber(d.out_why[why]) or 0) + 1
+    end
     d.members[id] = nil
+    if d.pals then d.pals[id] = nil end
     if d.friends then d.friends[id] = nil end
     if d.soldiers then d.soldiers[id] = nil end     -- (0.105.97)
     d.out[id] = now
@@ -588,14 +724,21 @@ function recreation_status(txt)
         elseif last and now - last >= REC_STALE_DAYS * 1200 then why_all = 'no tick for ' .. REC_STALE_DAYS .. ' days'
         elseif d.water == false then why_all = 'no drink nor well in the burrow' end
         local days, fdays = tonumber(d.days) or 28, tonumber(d.friend_days) or 7
+        local relabored = 0
+        local doc = rec_doctor_short(d)
         for id, since in pairs(d.members) do
-            local keep, _, u = rec_keep(d, id, since, now, days, fdays)
+            local keep, why, u = rec_keep(d, id, since, now, days, fdays)
+            if keep and doc and rec_could_diagnose(d, id) then keep, why = false, 'a doctor needed' end
             if why_all or not keep then
                 if not u then u = df.unit.find(tonumber(id)) end
-                rec_let_out(d, b, id, u, now, false, txt, released)
+                rec_let_out(d, b, id, u, now, false, txt, released, why_all and 'all out' or why)
+            elseif u then
+                -- (0.105.115 item22) labours the details gave back: off again
+                relabored = relabored + rec_labors_off(d, id, u)
             end
         end
-        if #released > 0 then
+        if relabored > 0 then out.labors_reset = relabored end
+        if #released > 0 or relabored > 0 then
             U.site_put(RECREATION_KEY, d)
             out.released_now = released
             out.why = why_all
@@ -623,6 +766,8 @@ function recreation_status(txt)
         if next(sq) ~= nil then out.squads = sq end
     end)
     if d.water ~= nil then out.water = d.water end
+    for _ in pairs(d.pals or {}) do out.for_pals = (out.for_pals or 0) + 1 end   -- (0.105.115 item22)
+    if type(d.out_why) == 'table' and next(d.out_why) ~= nil then out.out_why = d.out_why end
     -- (item6) the tavern (and temple) the burrow keeps its members in
     if type(d.gathering) == 'table' then out.gathering = d.gathering end
     -- (0.105.113 item9) the taverns and temples the AI retired
@@ -652,7 +797,7 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release,
     local b = S.find_burrow(RECREATION_NAME)
     if release then
         local released = {}
-        for id in pairs(d.members) do rec_let_out(d, b, id, df.unit.find(tonumber(id)), now, dry_run, txt, released) end
+        for id in pairs(d.members) do rec_let_out(d, b, id, df.unit.find(tonumber(id)), now, dry_run, txt, released, 'release') end
         if not dry_run then d.ticked = now; U.site_put(RECREATION_KEY, d) end
         return {ok = true, released = released, members = 0, release = true, dry_run = dry_run or nil,
                 unchanged = #released == 0 or nil}
@@ -665,7 +810,14 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release,
     local tiles
     -- (0.105.36, D5) a dry burrow is looked at again each day: drink brought
     -- in is seen then, not at the weekly refill
-    if made or not d.filled or now - d.filled >= 7 * 1200
+    -- (0.105.115 item22) and at once when the tavern or temple kept changed
+    -- (social_consolidate retired the one the burrow held)
+    local moved = false
+    if type(d.gathering) == 'table' then
+        local okg, gt, ge = pcall(function() return rec_gathering(rec_locations()) end)
+        moved = okg and (gt ~= d.gathering.tavern or ge ~= d.gathering.temple)
+    end
+    if made or not d.filled or now - d.filled >= 7 * 1200 or moved
             or (d.water == false and now - d.filled >= 1200) or d.fill_v ~= REC_FILL_V then
         if not dry_run then
             local water, place
@@ -679,10 +831,10 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release,
     -- back to work: recovered, gone, drafted, thirsty, raging, sick, or in long enough
     local dry_burrow = d.water == false
     for id, since in pairs(d.members) do
-        local keep, _, u = rec_keep(d, id, since, now, days, friend_days)
+        local keep, why, u = rec_keep(d, id, since, now, days, friend_days)
         if dry_burrow or not keep then
             if not u then u = df.unit.find(tonumber(id)) end
-            rec_let_out(d, b, id, u, now, dry_run, txt, released)
+            rec_let_out(d, b, id, u, now, dry_run, txt, released, dry_burrow and 'no drink' or why)
         end
     end
     if dry_burrow then
@@ -694,6 +846,19 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release,
                 note = 'the recreation burrow holds no drink and no well giving water: nobody is kept in it '
                        .. '(looked at again each day)',
                 burrow_id = b.id, tiles = tiles, released = released, members = 0, dry_run = dry_run or nil}
+    end
+    -- (0.105.115 item22) moved in: into the burrow, its labours off
+    -- never the last diagnoser outside while patients wait (false: not moved in)
+    local laboff = 0
+    local function admit(u)
+        local okd, diag = pcall(function() return u.status.labors[df.unit_labor.DIAGNOSE] == true end)
+        if okd and diag and rec_doctor_short(d, u) then return false end
+        if not dry_run then
+            dfhack.burrows.setAssignedUnit(b, u, true)
+            laboff = laboff + rec_labors_off(d, tostring(u.id), u)
+        end
+        d.members[tostring(u.id)] = now
+        return true
     end
     local count, fcount, scount = 0, 0, 0
     for id in pairs(d.members) do
@@ -713,31 +878,74 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release,
     table.sort(cands, function(a, c) if a.cat ~= c.cat then return a.cat < c.cat end return a.u.id < c.u.id end)
     for _, c in ipairs(cands) do
         if count >= max then break end
-        if not dry_run then dfhack.burrows.setAssignedUnit(b, c.u, true) end
-        d.members[tostring(c.u.id)] = now
-        count = count + 1
-        table.insert(added, (txt or tostring)(dfhack.units.getReadableName(c.u)))
+        if admit(c.u) then
+            count = count + 1
+            table.insert(added, (txt or tostring)(dfhack.units.getReadableName(c.u)))
+        end
     end
     -- (0.104.80) a few places for civilians who badly want friends: a week
     -- where the others are (Enxah, autumn y76: 42 badly, 21 of them with no
     -- close friend, 11 of 14 idle dwarves in no meeting zone)
+    -- (0.105.115 item22) and where a close friend is: B, 25 Nov 10:50, none of
+    -- the members' close friends was in the burrow or the tavern (they idled
+    -- in other halls and the barracks), so the need could not be met there.
+    -- First those with a close friend already in the burrow, then those with
+    -- one who can come along (brought in with them, a pal: d.pals), then
+    -- those whose friends can't be read or can't come; never one with no
+    -- close friend in the fort at all (F: two at -200000 held places).
+    local nofriend = 0
     if friends > 0 and fcount < friends then
+        local cits = report_citizens(true)
+        local by_hf = {}
+        for _, u in ipairs(cits) do pcall(function() by_hf[u.hist_figure_id] = u end) end
         local fc = {}
-        for _, u in ipairs(report_citizens(true)) do
+        for _, u in ipairs(cits) do
             local key = tostring(u.id)
             if not d.members[key] and not d.out[key] and rec_base(u) then
                 local f = badly_wants_friends(u)
-                if f then table.insert(fc, {u = u, f = f}) end
+                if f then
+                    local close = close_friends(u, by_hf)
+                    local tier, pal, palf = 2, nil, nil
+                    if close and #close == 0 then tier = nil; nofriend = nofriend + 1 end
+                    for _, x in ipairs(close or {}) do
+                        local xk = tostring(x.id)
+                        local inside = d.members[xk] ~= nil
+                        if not inside and b then
+                            pcall(function() inside = dfhack.burrows.isAssignedTile(b, x.pos) end)
+                            inside = inside == true
+                        end
+                        if inside then tier = 0
+                        elseif tier ~= 0 and not d.members[xk] and rec_base(x) then
+                            -- the friend who misses friends most comes along
+                            local xf = badly_wants_friends(x) or 0
+                            if not pal or xf < palf then pal, palf, tier = x, xf, 1 end
+                        end
+                    end
+                    if tier then table.insert(fc, {u = u, f = f, tier = tier, pal = tier == 1 and pal or nil}) end
+                end
             end
         end
-        table.sort(fc, function(a, c) if a.f ~= c.f then return a.f < c.f end return a.u.id < c.u.id end)
+        table.sort(fc, function(a, c)
+            if a.tier ~= c.tier then return a.tier < c.tier end
+            if a.f ~= c.f then return a.f < c.f end
+            return a.u.id < c.u.id
+        end)
         for _, c in ipairs(fc) do
             if fcount >= friends then break end
-            if not dry_run then dfhack.burrows.setAssignedUnit(b, c.u, true) end
-            d.members[tostring(c.u.id)] = now
-            d.friends[tostring(c.u.id)] = true
-            fcount = fcount + 1
-            table.insert(added, (txt or tostring)(dfhack.units.getReadableName(c.u)) .. ' (for friends)')
+            if not d.members[tostring(c.u.id)] and admit(c.u) then
+                d.friends[tostring(c.u.id)] = true
+                fcount = fcount + 1
+                table.insert(added, (txt or tostring)(dfhack.units.getReadableName(c.u)) .. ' (for friends)')
+                local p = c.pal
+                if p and not d.members[tostring(p.id)] and fcount < friends and admit(p) then
+                    d.friends[tostring(p.id)] = true
+                    d.pals = type(d.pals) == 'table' and d.pals or {}
+                    d.pals[tostring(p.id)] = c.u.id
+                    fcount = fcount + 1
+                    table.insert(added, (txt or tostring)(dfhack.units.getReadableName(p)) .. ' (a friend of '
+                        .. (txt or tostring)(dfhack.units.getReadableName(c.u)) .. ')')
+                end
+            end
         end
     end
     -- (0.105.97) a few places for off-duty soldiers badly missing friends,
@@ -755,21 +963,25 @@ function recreation_tick(max, days, dry_run, txt, friends, friend_days, release,
         table.sort(sc, function(a, c) if a.f ~= c.f then return a.f < c.f end return a.u.id < c.u.id end)
         for _, c in ipairs(sc) do
             if scount >= soldiers then break end
-            if not dry_run then dfhack.burrows.setAssignedUnit(b, c.u, true) end
-            d.members[tostring(c.u.id)] = now
-            d.soldiers[tostring(c.u.id)] = c.u.military.squad_id
-            scount = scount + 1
-            table.insert(added, (txt or tostring)(dfhack.units.getReadableName(c.u)) .. ' (soldier off duty)')
+            if admit(c.u) then
+                d.soldiers[tostring(c.u.id)] = c.u.military.squad_id
+                scount = scount + 1
+                table.insert(added, (txt or tostring)(dfhack.units.getReadableName(c.u)) .. ' (soldier off duty)')
+            end
         end
     end
-    if not dry_run then U.site_put(RECREATION_KEY, d) end
-    if #added == 0 and #released == 0 and not tiles then
+    -- (0.105.115 item22) why members went out since the last tick (the
+    -- reports' too), into the tick's result (the journal), then cleared
+    local out_why = type(d.out_why) == 'table' and next(d.out_why) ~= nil and d.out_why or nil
+    if not dry_run then d.out_why = nil; U.site_put(RECREATION_KEY, d) end
+    if #added == 0 and #released == 0 and not tiles and not out_why then
         -- (0.104.79) nothing to change is no refusal: the rule waits its cooldown
         -- (asked every cycle and refused before, 17:45)
         return {ok = true, unchanged = true, members = count + fcount + scount}
     end
     return {ok = true, burrow_id = b.id, tiles = tiles, added = added, released = released,
-            members = count + fcount + scount, dry_run = dry_run or nil}
+            members = count + fcount + scount, dry_run = dry_run or nil, out_why = out_why,
+            labors_off = laboff > 0 and laboff or nil, no_close_friend = nofriend > 0 and nofriend or nil}
 end
 
 -- (0.105.97) squad `sid` back on duty (act_squad_routine): its soldiers in

@@ -277,9 +277,13 @@ def unhappy_wide(s: dict, cfg: dict) -> bool:
 def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, memory=None) -> None:
     """(0.104.78) The recreation burrow (players' cure for dwarves too busy to
     meet their needs): the very unhappy and miserable civilians moved into a
-    burrow over the taverns, temples, library, dining halls, bedrooms and food
-    piles, so they take no work there; each back to work once no longer
-    unhappy, or after `recreation_days`. The bridge picks who; the planner asks
+    burrow over one tavern and one temple, so they take no work there; each
+    back to work once no longer unhappy, or after `recreation_days`.
+    (0.105.115 item22) Only those zones now (no dining hall, bedroom or
+    stockpile: members hauled and slept there), the members' labours off
+    while in, half a game day at least, the lonely with a close friend inside
+    or brought along first (lua/ai-society-burrows.lua recreation_tick); why
+    each went out is in the tick's result (`out_why`). The bridge picks who; the planner asks
     while anyone civilian is that low, or while the burrow has members (to let
     them out). Not while threats can reach the fort (the alert's burrow rules
     then), nor in a fort under `recreation_min_citizens`.
@@ -385,7 +389,7 @@ def _recreation_rule(s: dict, cfg: dict, worst: list, proposals: list | None, me
                                   + (f", {short_sol} soldier(s) badly missing friends, drink or prayer"
                                      if soldiers else "")
                                   + (f", {members} in the recreation burrow" if members else "")
-                                  + ": the unhappiest off work in the taverns, temples and halls"
+                                  + ": the unhappiest off work in the tavern and temple kept, their labours off"
                                   + (", the lonely a week among the others" if friends else "")
                                   + (", soldiers off duty a few days there" if soldiers else "")
                                   + ", the recovered back to work",

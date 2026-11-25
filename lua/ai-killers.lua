@@ -87,6 +87,7 @@ STRONG_CRIMES = {Murder = true, BloodDrinking = true, AttemptedMurder = true}
 -- within a year, so law_swap never saw two)
 LAW_WINDOW_TICKS = 3 * 403200
 LAW_KILLS = 2               -- (0.105.99) a law officer's killings outside a punishment: the office goes
+LAW_PUNISHED = 1            -- (item21) a law officer's convicts killed in DF's beatings: the office goes too
 
 -- --- helpers ---------------------------------------------------------------
 
@@ -254,11 +255,9 @@ function killings(mem, now)
                 row.lawful = row.lawful + 1
                 return
             end
-            if is_law[kid] == nil then is_law[kid] = law(mem[kid]) end
-            if is_law[kid] then
-                convicts = convicts or convict_ids()
-                if convicts[vid] then row.punished = row.punished + 1; return end
-            end
+            -- (item21) a convict's death is DF's punishment, the officer in office or no longer
+            convicts = convicts or convict_ids()
+            if convicts[vid] then row.punished = row.punished + 1; return end
             local cname = enum_name(df.death_type, cause)
             row.causes[cname] = (row.causes[cname] or 0) + 1
             if cname:find('DRAIN') then row.drained = true end
@@ -1083,7 +1082,7 @@ PART_LOCALS = {U = U, assign = assign, burrow_named = burrow_named, changed = ch
 PARTS = {'cell'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-killers'] = '0.105.114'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-killers'] = '0.105.115'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

@@ -48,6 +48,23 @@ TRANSIENT_* (thirst, the stranded, ways in and out, wells' rescue, fights,
 the insane, the mood's own rule ...), drink and water in a crisis, urgent
 survival steps in a crisis, CRITICAL_* defence, any defence step in danger.
 
+(0.105.115 item20) Live 25 Nov (2.5 h, 0.105.114): E staff 217 ("nobody free":
+the doctor's post, once a game day while patients waited, a day being 15-25 s
+there), A squad_fill 145, C build 35 and F 35 ("no safe level found within
+the time limit (z40: kept for ...; z11: cavern ...)": three lists, three
+reasons), E appoint 23. Now:
+  * the reason is compared without what is in brackets as well as numbers
+    (the counts and lists the bridge adds: "kept out: 2 a post, 1 very
+    unhappy" or "1 breaking down" is the same no);
+  * a few fort-wide reasons are a family across the rule's actions
+    (FAMILIES: "nobody free to take the post" for any post, "no suitable
+    dwarves" for any squad, "nobody fits to lead a squad" for any office): a
+    family's streak holds each of them, and a success of any ends it;
+  * the short caps (a care post, an answer to wait, a defence step in peace)
+    are the longer of their game days and planner_backoff.REAL_CAP_MINUTES
+    real minutes at the fort's fps (state perf.fps), so a fast fort isn't
+    asked every few seconds; the safety steps (SHORT_CAP_*) keep game time.
+
 Never held: the responses to danger (EMERGENCY, the rules that pace their
 own tries), defence steps (the alarm, gates, squads: hold_classes), the
 steps that only let go, the transient survival steps below (thirst, the
@@ -63,7 +80,7 @@ import hold_classes as _hc
 from digest import _d
 from planner_core import EMERGENCY, OWN_PACE, TICKS_PER_DAY, is_release, levels_done, refusal_key
 from planner_core_threats import great_present
-from planner_backoff import care_post
+from planner_backoff import care_post, real_ticks, REAL_CAP_MINUTES
 
 # survival steps whose refusal is transient: never held by a streak
 TRANSIENT_RULES = {
@@ -124,9 +141,45 @@ def _on(cfg) -> bool:
     return bool(_d(cfg).get("r5p3_refusal_backoff", True))
 
 
+_BRACKETS = re.compile(r"\s*\([^()]*\)")
+
+
+def norm_why(text) -> str:
+    """(item20) A reason without its numbers and without what is in brackets
+    (the bridge's counts and lists: "no safe level found within the time limit
+    (z40: kept for the main hall ...)" is one no whatever the list)."""
+    t = str(text or "").strip()
+    for _ in range(4):                       # nested brackets, from the inside out
+        u = _BRACKETS.sub("", t)
+        if u == t:
+            break
+        t = u
+    t = re.sub(r"\d+", "#", t)
+    return re.sub(r"\s+", " ", t).strip()[:WHY_MAX]
+
+
 def _why(r: dict) -> str:
-    """The reason, numbers aside ("4 buildings still waiting" is the same no as "5 ...")."""
-    return re.sub(r"\d+", "#", str(_d(r).get("error") or "").strip())[:WHY_MAX]
+    """The reason, numbers aside ("4 buildings still waiting" is the same no as "5 ..."),
+    (item20) and what is in brackets."""
+    return norm_why(_d(r).get("error"))
+
+
+# (item20) fort-wide reasons: one streak for all the rule's actions (any post, squad or office),
+# beside each action's own. The pattern is matched against the normalised reason.
+FAMILIES = {
+    "staff": re.compile(r"^nobody free to take the post"),
+    "squad_fill": re.compile(r"^no suitable dwarves could be added"),
+    "appoint": re.compile(r"^nobody fits to lead a squad"),
+}
+
+
+def family_key(rule) -> str:
+    return f"{rule}:*family"
+
+
+def _family(p, why: str) -> bool:
+    pat = FAMILIES.get(getattr(p, "rule", None))
+    return bool(pat and pat.match(str(why or "")))
 
 
 def _water(p) -> bool:
@@ -192,15 +245,15 @@ def danger(memory, state, cfg=None) -> bool:
     return False
 
 
-def cap_ticks(p, r_or_rec: dict, cfg: dict) -> int:
+def cap_ticks(p, r_or_rec: dict, cfg: dict, state=None) -> int:
     """(item7) The longest wait of this step's streak, in ticks: half a day for
     the SHORT_CAP_* safety steps, a day for a hospital post while patients wait,
     r112_defence_wait_max_days for a defence step (in peace), at most
     r112_wait_answer_max_days for an answer to wait, else r5p3_refusal_wait_max_days."""
     cfg = _d(cfg)
-    a = _d(getattr(p, "action", None))
     first = max(1, int(cfg.get("r5p3_refusal_first_days", 1) or 1))
-    days = float(max(first, int(cfg.get("r5p3_refusal_wait_max_days", 28) or 28)))
+    most = float(max(first, int(cfg.get("r5p3_refusal_wait_max_days", 28) or 28)))
+    days = most
     if _d(r_or_rec).get("waiting"):
         days = min(days, float(cfg.get("r112_wait_answer_max_days", WAIT_ANSWER_MAX_DAYS) or WAIT_ANSWER_MAX_DAYS))
     try:
@@ -210,9 +263,17 @@ def cap_ticks(p, r_or_rec: dict, cfg: dict) -> int:
         pass
     if care_post(p):
         days = min(days, float(cfg.get("r112_care_post_max_days", CARE_POST_DAYS) or CARE_POST_DAYS))
+    ticks = max(1, int(days * TICKS_PER_DAY))
     if _prefixed(getattr(p, "rule", None), SHORT_CAP_RULES, SHORT_CAP_PREFIXES):
+        # the safety steps keep game time (a mood or a tantrum runs in game days)
         days = min(days, float(cfg.get("r112_short_cap_days", SHORT_CAP_DAYS) or SHORT_CAP_DAYS))
-    return max(1, int(days * TICKS_PER_DAY))
+        return max(1, int(days * TICKS_PER_DAY))
+    if days < most:
+        # (item20) a short cap: or REAL_CAP_MINUTES real minutes, where that is longer (a fast
+        # fort), never past the streak's own longest wait
+        real = real_ticks(state, float(cfg.get("r115_real_cap_minutes", REAL_CAP_MINUTES) or REAL_CAP_MINUTES))
+        ticks = max(ticks, min(real, int(most * TICKS_PER_DAY)))
+    return ticks
 
 
 def exempt(p, memory=None, state=None, cfg=None) -> bool:
@@ -263,6 +324,8 @@ def note(memory, p, r: dict, state: dict, now: int, cfg: dict, brief: bool = Fal
     key = refusal_key(p)
     if r.get("ok") is True:
         book.pop(key, None)
+        if p.rule in FAMILIES:
+            book.pop(family_key(p.rule), None)     # (item20) one taken: the fort-wide no is over
         return
     if r.get("ok") is not False or r.get("halted") or brief:
         return
@@ -272,6 +335,15 @@ def note(memory, p, r: dict, state: dict, now: int, cfg: dict, brief: bool = Fal
     why = ("wait: " if waiting else "") + _why(r)
     why = why[:WHY_MAX]
     sig = signature(p, state, why)
+    keys = [key] + ([family_key(p.rule)] if not waiting and _family(p, why) else [])
+    for k in keys:
+        _count(book, k, p, a, why, sig, waiting, state, now, cfg, family=k != key)
+    _prune(book, now, cfg)
+
+
+def _count(book, key, p, a, why, sig, waiting, state, now, cfg, family=False) -> None:
+    """One record of the streak lengthened (or begun again): the action's own,
+    or (item20) its rule's family's."""
     old = _d(book.get(key))
     n = int(old.get("n") or 0) + 1 if old.get("why") == why and old.get("sig") == sig else 1
     first = max(1, int(cfg.get("r5p3_refusal_first_days", 1) or 1))
@@ -279,15 +351,16 @@ def note(memory, p, r: dict, state: dict, now: int, cfg: dict, brief: bool = Fal
     rec = {"n": n, "why": why, "sig": sig, "at": now, "rule": p.rule, "type": a.get("type")}
     if waiting:
         rec["waiting"] = True
+    if family:
+        rec["family"] = True
     if n >= streak:
-        cap = cap_ticks(p, rec, cfg)
+        cap = cap_ticks(p, rec, cfg, state)
         ticks = min(cap, first * 2 ** min(n - streak, 20) * TICKS_PER_DAY)
         rec["until"] = now + ticks
         rec["days"] = int(ticks // TICKS_PER_DAY) if ticks % TICKS_PER_DAY == 0 else round(ticks / TICKS_PER_DAY, 2)
-        if n == streak:
+        if n == streak and not (family and _d(book.get(refusal_key(p))).get("say")):
             rec["say"] = True      # said once a streak: when its wait first begins
     book[key] = rec
-    _prune(book, now, cfg)
 
 
 def _prune(book: dict, now: int, cfg: dict) -> None:
@@ -308,16 +381,27 @@ def wait(memory, p, state: dict, now: int, cfg: dict):
     streak no longer holds once what the refusal depends on has changed."""
     if not _on(cfg) or memory is None or exempt(p, memory, state, cfg):
         return None
-    rec = _d(_d(getattr(memory, "refusal_streaks", None)).get(refusal_key(p)))
+    book = _d(getattr(memory, "refusal_streaks", None))
+    best = None
+    for k in (refusal_key(p),) + ((family_key(p.rule),) if p.rule in FAMILIES else ()):
+        got = _wait_one(_d(book.get(k)), p, state, now, cfg)
+        if got is not None and (best is None or got[0] > best[0]):
+            best = got
+    return best
+
+
+def _wait_one(rec: dict, p, state, now: int, cfg: dict):
     until = rec.get("until")
     if not isinstance(until, int) or not 0 <= now < until:
+        return None
+    if rec.get("family") and not _family(p, rec.get("why")):
         return None
     cap = max(1, int(cfg.get("r5p3_refusal_wait_max_days", 28) or 28)) * TICKS_PER_DAY
     if until - now > cap or (isinstance(rec.get("at"), int) and rec["at"] > now):
         return None      # (r5 Z4) the game's time went back (an older save): the wait no longer holds
     if isinstance(rec.get("at"), int):
         # (item7) the step's cap as it is now (a hospital post once patients wait, a short-cap step)
-        until = min(until, rec["at"] + cap_ticks(p, rec, cfg))
+        until = min(until, rec["at"] + cap_ticks(p, rec, cfg, state))
         if now >= until:
             return None
     if rec.get("sig") != signature(p, state, str(rec.get("why") or "")):

@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -74,6 +74,8 @@ ACTIONS = {
     fire_guard = act_fire_guard,
     prisoner_room = act_prisoner_room,
     moon_cell = act_moon_cell,
+    -- (0.105.115 item24) the were cells' levers linked to their drawbridges (lua/ai-werecells.lua)
+    were_cells = function(a) return reqscript('ai-werecells').link(a.dry_run == true) end,
     seal_cavern = act_seal_cavern,
     accept_cups = act_accept_cups,           -- (0.104.168)
     rest_infected = act_rest_infected,       -- (0.104.168)
@@ -875,6 +877,7 @@ for _, name in ipairs({
     'way_out_open', 'way_out_leave',   -- (0.105.47, J16) each dry run says what it would pull or unlock and changes nothing
     'park_project',   -- (y2) its dry run checks the level and its sig and saves nothing
     'social_places',  -- (0.105.113 item9) its dry run names the places and switches no zone
+    'were_cells',     -- (0.105.115 item24) its dry run is link_lever's (checks the mechanisms) and makes no job
 }) do DRY_OK[name] = true end
 
 -- These only change what's displayed, so they still work while halted, dry

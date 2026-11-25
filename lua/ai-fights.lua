@@ -86,7 +86,19 @@
 -- is separated at once: the entry's `choke` {by, victim, how, grapple,
 -- suffocation}, counts.chokes (once a conflict).
 --
---   act(a)        the fight_watch action {on, ticks?, separate_ticks?, end_tantrums?, dry_run?}
+-- (0.105.115 item21, B and D 25 Nov) DF's beatings: four of the night's six
+-- citizens killed by citizens were convicts beaten to death (SUFFOCATE) by
+-- the captain of the guard or the sheriff (job BeatCriminal; a sentence's
+-- hammer strikes with no hammerer, or a beating). No Conflict, so nothing
+-- was capped or separated; each was logged once as a calm 'attack'. Each
+-- pass now sets every plotinfo.punishments entry's beating and hammer_strikes
+-- to 0 (the prison time kept): logged 'beating_spared', counts
+-- beatings_spared. A beating already under way (BeatCriminal on a living
+-- citizen who is suffocating, unconscious, bleeding or in a strangling hold)
+-- has the officer's job removed: 'beating_stopped', counts beatings_stopped
+-- (and chokes). The action's spare_beatings = false turns both off.
+--
+--   act(a)        the fight_watch action {on, ticks?, separate_ticks?, end_tantrums?, spare_beatings?, dry_run?}
 --   report()      the `fights` section
 --   pass(now)     one pass (the timer's; tests call it)
 --@ module = true
@@ -112,6 +124,7 @@ STATE_KEY = 'ai_overseer_fight_watch'
 YEAR = 403200
 CHOKE_MOVES = {Choke = true, FollowStrangle = true}   -- (0.105.112) df.wrestle_attack_type: a strangling hold
 CHOKE_CODES = {[1] = 'Choke', [13] = 'FollowStrangle'}  -- ...their numbers, should the enum be unreadable
+BEAT_JOB = 'BeatCriminal'    -- (item21) df.job_type of the law's beating
 
 local CODE = {}              -- this load of the file (a newer load takes the loop over)
 
@@ -122,8 +135,10 @@ end
 
 local function fresh_state()
     return {on = false, ticks = FIGHT_WATCH_TICKS, separate_ticks = FIGHT_SEPARATE_TICKS, end_tantrums = true,
+            spare_beatings = true,
             counts = {seen = 0, capped = 0, separated = 0, reengaged = 0, passes = 0, errors = 0, died = 0,
-                      tantrums_ended = 0, tantrum_attacks = 0, attacks = 0, spars = 0, chokes = 0, others_separated = 0},
+                      tantrums_ended = 0, tantrum_attacks = 0, attacks = 0, spars = 0, chokes = 0, others_separated = 0,
+                      beatings_spared = 0, beatings_stopped = 0},
             seen = {}, recent = {}, log = {}, file_lines = nil, tantrum_logged = {}, attack_logged = {},
             attack_seen = {}, spar_logged = {}, spars_recent = {}}
 end
@@ -755,6 +770,74 @@ local function attack_row(at)
             timer1 = field(at, 'timer1'), timer2 = field(at, 'timer2')}
 end
 
+-- --- (item21) DF's beatings ----------------------------------------------------
+
+-- every punishment waiting or under way: its beating and hammer strikes set
+-- to 0 (the prison time kept). Returns the entries spared.
+function spare_beatings(S, now, dry)
+    if S.spare_beatings == false then return 0 end
+    local list = nil
+    pcall(function() list = df.global.plotinfo.punishments end)
+    if list == nil then return 0 end
+    S.beat_logged = S.beat_logged or {}
+    local n = 0
+    for _, p in ipairs(list) do
+        local b, hs = field(p, 'beating'), field(p, 'hammer_strikes')
+        if (type(b) == 'number' and b > 0) or (type(hs) == 'number' and hs > 0) then
+            local done = false
+            if not dry then
+                done = pcall(function()
+                    if type(b) == 'number' and b > 0 then p.beating = 0 end
+                    if type(hs) == 'number' and hs > 0 then p.hammer_strikes = 0 end
+                end)
+            end
+            local cid = field(p, 'criminal')
+            local last = S.beat_logged[cid]
+            if done or not (last and now - last >= 0 and now - last < ATTACK_LOG_TICKS) then
+                S.beat_logged[cid] = now
+                local cu, ou = find_unit(cid), find_unit(field(p, 'officer'))
+                if done then n = n + 1; bump(S, 'beatings_spared') end
+                log(S, {kind = 'beating_spared', tick = now, criminal = cid, criminal_name = cu and unit_name(cu) or nil,
+                        officer = field(p, 'officer'), officer_name = ou and unit_name(ou) or nil, beating = b,
+                        hammer_strikes = hs, prison = field(p, 'prison_counter'), spared = done,
+                        dry = dry or nil})
+            end
+        end
+    end
+    for k, t in pairs(S.beat_logged) do if now - t >= ATTACK_LOG_TICKS or now < t then S.beat_logged[k] = nil end end
+    return n
+end
+
+-- a law officer's beating (job BeatCriminal) of a living citizen: stopped (the
+-- officer's job removed) once the convict is suffocating, unconscious,
+-- bleeding or held in a strangling grip. True when stopped (or would be, dry).
+function beating_on(S, now, dry, u, target, h)
+    if S.spare_beatings == false then return false end
+    local g = grapple_of(h.attack)
+    local danger = hurt(target) or ((g and CHOKE_MOVES[g]) and 'choke hold') or nil
+    if not danger then return false end
+    local done = false
+    if not dry then
+        done = pcall(function()
+            local j = u.job.current_job
+            if j == nil then error('no job') end
+            dfhack.job.removeJob(j)
+        end)
+        if done then
+            bump(S, 'beatings_stopped')
+            if danger == 'suffocating' or danger == 'choke hold' then bump(S, 'chokes') end
+        end
+    end
+    local key = tostring(u.id) .. '>' .. tostring(target.id)
+    local last = S.attack_logged[key]
+    S.attack_logged[key] = now
+    if not done and last and now - last >= 0 and now - last < TANTRUM_LOG_TICKS then return true end
+    log(S, {kind = 'beating_stopped', tick = now, id = u.id, name = unit_name(u), target = target.id,
+            target_name = unit_name(target), danger = danger, grapple = g, stopped = done, dry = dry or nil,
+            suffocation = field(field(target, 'counters'), 'suffocation'), attack = attack_row(h.attack)})
+    return true
+end
+
 -- one look at the living citizens: a tantrum that attacks a citizen ended,
 -- a calm citizen's attack on a citizen logged, or counted as sparring
 -- (item3: spar_reason). Returns the tantrums ended.
@@ -831,9 +914,14 @@ function scan_units(S, now, dry, list)
     local tidx = nil
     for _, c in ipairs(calm) do
         local u, target, h = c.u, c.target, c.h
+        local job = job_of(u)
+        local beat = job == BEAT_JOB and beating_on(S, now, dry, u, target, h)
         tidx = tidx or training_index()
-        local why, what = spar_reason(S, by, u, target, now, tidx)
-        if why then
+        local why, what = nil, nil
+        if job ~= BEAT_JOB then why, what = spar_reason(S, by, u, target, now, tidx) end
+        if beat then
+            -- (item21) a beating stopped: its own log entry
+        elseif why then
             -- (item3) sparring: counted once a pair a ATTACK_LOG_TICKS, kept out of the log
             local lo, hi = math.min(u.id, target.id), math.max(u.id, target.id)
             local key = tostring(lo) .. '~' .. tostring(hi)
@@ -852,7 +940,7 @@ function scan_units(S, now, dry, list)
                 S.attack_logged[key] = now
                 bump(S, 'attacks')
                 log(S, {kind = 'attack', tick = now, id = u.id, name = unit_name(u), target = target.id,
-                        target_name = unit_name(target), job = job_of(u),
+                        target_name = unit_name(target), job = job,
                         suffocation = field(field(target, 'counters'), 'suffocation'),
                         attack = attack_row(h.attack)})
             end
@@ -869,7 +957,7 @@ end
 
 -- the grapple move of an attack's wrestle_info (df.wrestle_attack_type's name:
 -- 1 Choke, 13 FollowStrangle, as DF 53.x lists them), or nil
-local function grapple_of(at)
+function grapple_of(at)
     local g = field(field(at, 'wrestle_info'), 'grapple_attack')
     if type(g) ~= 'number' or g < 0 then return nil end
     local ok, nm = pcall(function() return df.wrestle_attack_type[g] end)
@@ -921,6 +1009,14 @@ function pass(now, opts)
     local done = {conflicts = 0, ours = 0, capped = 0, separated = 0, tantrums_ended = 0}
     local list = conflicts()
     S.counts.passes = S.counts.passes + 1
+    -- (item21) DF's beatings spared before anyone is beaten
+    local okb, nb = pcall(spare_beatings, S, now, dry)
+    if okb then
+        done.beatings_spared = nb or 0
+    else
+        S.error = 'beatings: ' .. tostring(nb):sub(1, 160)
+        S.counts.errors = S.counts.errors + 1
+    end
     -- (item3) the tantrums that attack citizens, before the conflicts (and when there are none)
     local okt, n = pcall(scan_units, S, now, dry, list)
     if okt then
@@ -1131,7 +1227,7 @@ end
 
 local function brief(S)
     return {ok = true, armed = alive(), on = S.on or false, ticks = S.ticks, separate_ticks = S.separate_ticks,
-            end_tantrums = S.end_tantrums ~= false, counts = S.counts}
+            end_tantrums = S.end_tantrums ~= false, spare_beatings = S.spare_beatings ~= false, counts = S.counts}
 end
 
 -- the fight_watch action
@@ -1150,6 +1246,9 @@ function act(a)
     if a.end_tantrums ~= nil and type(a.end_tantrums) ~= 'boolean' then
         return {ok = false, rejected = true, error = 'fight_watch: end_tantrums is true or false'}
     end
+    if a.spare_beatings ~= nil and type(a.spare_beatings) ~= 'boolean' then
+        return {ok = false, rejected = true, error = 'fight_watch: spare_beatings is true or false'}
+    end
     local S = state()
     if a.dry_run == true then
         local r = brief(S)
@@ -1160,6 +1259,7 @@ function act(a)
     if a.separate_ticks ~= nil or S.separate_ticks == nil then S.separate_ticks = sep end
     if a.on then
         S.end_tantrums = a.end_tantrums ~= false       -- (item3) on unless the action says false
+        if a.spare_beatings ~= nil then S.spare_beatings = a.spare_beatings end   -- (item21) on unless told false
         local was = alive()
         local started = arm(S)
         local r = brief(S)
@@ -1177,7 +1277,8 @@ end
 function report()
     local S = state()
     local out = {armed = alive(), on = S.on or false, ticks = S.ticks, separate_ticks = S.separate_ticks,
-                 end_tantrums = S.end_tantrums ~= false, counts = S.counts, error = S.error, log = {}, now = {},
+                 end_tantrums = S.end_tantrums ~= false, spare_beatings = S.spare_beatings ~= false,
+                 counts = S.counts, error = S.error, log = {}, now = {},
                  spars_recent = S.spars_recent or {}}     -- (item3) the last sparring pairs (never in the log)
     for i = math.max(1, #S.log - REPORT_LOG + 1), #S.log do table.insert(out.log, S.log[i]) end
     local now = game_tick()
