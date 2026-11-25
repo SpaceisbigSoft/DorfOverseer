@@ -210,17 +210,17 @@ def _():
 
 @test("bridge: the cell keeps the killer apart (every cycle it runs); the touched files compile; under 60 KB")
 def _():
-    k = src("ai-killers.lua")
+    k = src("ai-killers-cell.lua")   # (0.105.113) cell in the killers' part
     cell = body(k, "function cell(")
     assert "keep_apart" in cell and "#out.apart" in cell
-    for name in ("ai-killers.lua", "ai-military-draft.lua", "ai-nobles.lua", "ai-society-burrows.lua",
+    for name in ("ai-killers.lua", "ai-killers-cell.lua", "ai-military-draft.lua", "ai-nobles.lua", "ai-society-burrows.lua",
                  "ai-society-burrows-calm.lua", "ai-society-burrows-hospital.lua",
                  "ai-society-burrows-weather.lua", "ai-near-gates.lua"):
         assert len(src(name).encode("utf-8")) < 60 * 1024, name
     need_lua()
     from lupa.lua53 import LuaRuntime
     f = LuaRuntime().eval("function(s) local f, e = load(s, 'b', 't', {}) return e end")
-    for name in ("ai-killers.lua", "ai-military-draft.lua", "ai-nobles.lua", "ai-society-burrows.lua",
+    for name in ("ai-killers.lua", "ai-killers-cell.lua", "ai-military-draft.lua", "ai-nobles.lua", "ai-society-burrows.lua",
                  "ai-society-burrows-calm.lua", "ai-society-burrows-hospital.lua",
                  "ai-society-burrows-weather.lua", "ai-near-gates.lua"):
         assert f(src(name)) is None, (name, f(src(name)))

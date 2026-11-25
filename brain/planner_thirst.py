@@ -44,7 +44,11 @@ that already acts on it this cycle is left to it (no second action):
                thirst between them); no GiveWater job for them, or dehydrated:
                get_up (their Rest ended, they walk to drink) if they can
                stand; dehydrated: the lift asked each retry while they live;
-               Needs you only when they can't stand
+               Needs you only when they can't stand; (item5) the fort's part
+               also when every carrier is busy with no GiveWater for them, no
+               bucket is free, or they lie outside a bed unable to stand (the
+               Recover wounded labour: DF waters only a patient in bed); a
+               labour its work detail gives everybody is not asked again
   unknown      (R1 g2) thirst_probe from the act line: their burrows, the
                alarm's, the AI's locked doors near, the drink forbidden or
                claimed: each finding said (the AI's own undone); a few
@@ -82,6 +86,7 @@ for _s in (EMERGENCY, NO_COOLDOWN, LIMIT_EXEMPT, STEER_PROTECTED, MULTI_PER_CYCL
 
 DEHYDRATED = 50000
 YEAR = 403200
+LABOR_ALL_TICKS = 12000     # (item5) a labour the bridge said everybody does: not asked again for 10 days
 JOURNALED_KEEP = 500        # (0.105.51) thirst deaths remembered as journaled (ids), the newest kept
 
 REASONS = {
@@ -293,6 +298,9 @@ def _patient_found(last: dict) -> str:
     bits += [what.get(m, m) for m in _l(last.get("missing")) if isinstance(m, str)]
     if last.get("can_stand") is False:
         bits.append("they can't stand")
+    if last.get("in_bed") is False and last.get("resting") is not True:
+        # (item5) DF waters only a patient resting in bed (B 24 Nov: 17182 on the floor, no GiveWater)
+        bits.append("they lie outside a bed (DF brings water only to a patient resting in one)")
     if last.get("got_up"):
         bits.append("they got up from rest")
     elif last.get("get_up") and last.get("ok") is False:
@@ -503,17 +511,42 @@ def _patient_support(s: dict, cfg: dict, proposals: list, b: dict, now: int, pat
         proposals.append(Proposal(RULE, action, f"{n} patient(s) thirsty ({who} first): {why}", 0))
         said.append(why)
 
-    short = [k for k, v in _d(b.get("results")).items()
-             if k.startswith("thirst_patient:") and isinstance(_d(v).get("carriers"), int)
-             and "carriers" in _l(_d(v).get("missing")) and 0 <= now - int(_d(v).get("tick") or 0) < 4 * retry]
-    if short and "FEED_WATER_CIVILIANS" not in jobs:
+    # (item5) the last answers for these patients (fresh ones only)
+    recs = [(r, _last(b, f"thirst_patient:{r.get('id')}")) for r in patients]
+    recs = [(r, v) for r, v in recs if v and 0 <= now - int(v.get("tick") or 0) < 4 * retry]
+    every = _d(b.get("labor_all"))
+
+    def all_do(job: str) -> bool:
+        # (item5) the bridge said the job's work detail is set to everybody: asking again changes nothing
+        t = every.get(job)
+        return isinstance(t, int) and 0 <= now - t < LABOR_ALL_TICKS
+
+    short = [r for r, v in recs if isinstance(v.get("carriers"), int) and "carriers" in _l(v.get("missing"))]
+    # (item5) every carrier busy and no GiveWater for them: more hands, as when too few
+    busy = [r for r, v in recs if v.get("carriers_free") == 0 and v.get("give_water_for_them") == 0]
+    if (short or busy) and "FEED_WATER_CIVILIANS" not in jobs and not all_do("FEED_WATER_CIVILIANS"):
+        why = ("too few dwarves carry water to the bedridden" if short else
+               "every dwarf who carries water to the bedridden is busy and none brings it to them")
         offer("assign_labor:FEED_WATER_CIVILIANS", {"type": "assign_labor", "job": "FEED_WATER_CIVILIANS", "count": 2},
-              "too few dwarves carry water to the bedridden: two more given the labour")
+              f"{why}: two more given the labour")
+    # (item5) a patient who can't stand lying outside a bed gets no GiveWater (DF waters only one
+    # resting in bed): the Recover wounded labour carries them to one
+    floor = [r for r, v in recs if v.get("in_bed") is False and v.get("resting") is not True
+             and (v.get("can_stand") is False or r.get("can_stand") is False)]
+    rescue = _d(_d(s.get("threats")).get("rescue"))
+    if (floor and "RECOVER_WOUNDED" not in jobs and rescue.get("mode") != "EverybodyDoesThis"
+            and not all_do("RECOVER_WOUNDED")):
+        offer("assign_labor:RECOVER_WOUNDED", {"type": "assign_labor", "job": "RECOVER_WOUNDED", "count": 2},
+              f"{floor[0].get('name') or 'a patient'} lies outside a bed and can't stand, and DF brings water only "
+              "to a patient resting in bed: two more given the Recover wounded labour, to carry them to one")
     buckets = _d(s.get("supplies")).get("buckets")
-    if buckets == 0 and "wooden_bucket" not in recipes and not _queued(s, "wooden_bucket"):
+    # (item5) no free bucket at the last count (all in jobs or forbidden) is as bad as none
+    no_free = [r for r, v in recs if v.get("buckets_free") == 0 or "buckets" in _l(v.get("missing"))]
+    if (buckets == 0 or no_free) and "wooden_bucket" not in recipes and not _queued(s, "wooden_bucket"):
         offer("work_order:wooden_bucket", {"type": "work_order", "recipe": "wooden_bucket",
                                            "amount": int(cfg.get("g2_thirst_buckets", 3))},
-              "no bucket to carry water to them: buckets made")
+              "no bucket to carry water to them: buckets made" if buckets == 0 else
+              "no free bucket to carry water to them: more buckets made")
     vacant = _l(_d(s.get("society")).get("vacant"))
     if "CHIEF_MEDICAL_DWARF" in vacant and "CHIEF_MEDICAL_DWARF" not in offices and player_rules(s)["appoint_nobles"]:
         offer("appoint:CHIEF_MEDICAL_DWARF", {"type": "appoint", "office": "CHIEF_MEDICAL_DWARF"},
@@ -531,7 +564,18 @@ def note_thirst(p, r, memory, now: int) -> None:
     {tick, ok, changed, did, error, missing, carriers, findings}."""
     a = p.action if isinstance(getattr(p, "action", None), dict) else {}
     t = a.get("type")
-    if t not in LADDER_ACTIONS or memory is None:
+    if memory is None:
+        return
+    if t == "assign_labor" and getattr(p, "rule", None) == RULE:
+        # (item5) B 24 Nov: care_feed asked 33 times for a labour its work detail gave everybody
+        err = str(_d(r).get("error") or "")
+        if _d(r).get("ok") is False and "everybody already" in err and isinstance(a.get("job"), str):
+            b = _book(memory)
+            b.setdefault("labor_all", {})
+            if isinstance(b["labor_all"], dict):
+                b["labor_all"][a["job"]] = now
+        return
+    if t not in LADDER_ACTIONS:
         return
     r = r if isinstance(r, dict) else {}
     b = _book(memory)
@@ -586,6 +630,8 @@ def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
     b = _book(memory)
     _prune(b["acted"], now, max(int(cfg.get("thirst_retry_ticks", 600)), 1) * 4)
     _prune(b["told"], now, YEAR)
+    if isinstance(b.get("labor_all"), dict):
+        _prune(b["labor_all"], now, YEAR)       # (item5) the work details set to everybody, as last told
     for d in _l(t.get("deaths")):
         if isinstance(d, dict) and isinstance(d.get("id"), int) and str(d["id"]) not in b["told"]:
             b["told"][str(d["id"])] = now

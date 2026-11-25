@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-trade-screen is a part of ai-trade; run ai-trade') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-trade-screen'] = '0.105.111'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-trade-screen'] = '0.105.112'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_units, depot, GOOD_TYPE, is_artifact, goods, trade_screen, perceived, ready, clear = PART_LOCALS.U, PART_LOCALS.report_units, PART_LOCALS.depot, PART_LOCALS.GOOD_TYPE, PART_LOCALS.is_artifact, PART_LOCALS.goods, PART_LOCALS.trade_screen, PART_LOCALS.perceived, PART_LOCALS.ready, PART_LOCALS.clear   -- (r9) the hub's locals
 

@@ -24,7 +24,7 @@ from lua_modules_util import bridge_later_parts, bridge_part_src  # noqa: E402
 
 LUA_DIR = ROOT / "lua"
 FAMILIES = {
-    "ai-bridge-report": ["ai-bridge-report-supplies", "ai-bridge-report-fort", "ai-bridge-report-world"],
+    "ai-bridge-report": ["ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort", "ai-bridge-report-world"],   # (0.105.113) -dead split off -supplies
     "ai-bridge-actions": ["ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-civic"],
 }
 HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
@@ -45,7 +45,7 @@ def _():
 @test("hub: BRIDGE_PARTS loads each file's later parts right after it, in the old order around them")
 def _():
     parts = hub_parts()
-    assert parts == ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-report-fort",
+    assert parts == ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort",
                      "ai-bridge-report-world", "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-actions-fort",
                      "ai-bridge-actions-works", "ai-bridge-actions-civic", "ai-bridge-probes",
                      "ai-bridge-design"], parts

@@ -47,6 +47,7 @@ SPLIT += ("ai-society-burrows.lua",)   # (r9 t1) a companion split too: its part
 SPLIT += ("gui/ai-overseer.lua",)   # (r9 t5) the in-game window: a hub in lua/gui/
 SPLIT += ("ai-blueprints.lua", "ai-layouts.lua")   # (r9 t8)
 SPLIT += ("ai-util.lua",)   # (r9 t9) the shared helpers: UTIL_SRC carries its parts
+SPLIT += ("ai-killers.lua",)   # (0.105.113) ai-killers-cell: the cell row's pile, keep_apart, cell, report
 
 
 def split_parts(name: str) -> list[str]:

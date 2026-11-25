@@ -50,7 +50,7 @@ COOLDOWN_KEYS = {"prisoners": "prisoner_room_cooldown_ticks",
                  # (r2 h9) one called wave a season; a stuck caravan's merchants told once a month
                  "migrant_drought": "h9_drought_cooldown_ticks", "stuck_caravan": "h9_caravan_cooldown_ticks"}
 # Rules that may act more than once a cycle (select()).
-MULTI_PER_CYCLE = {"stuck_order", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train",
+MULTI_PER_CYCLE = {"stuck_order", "order_remake", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train",
                    "labor", "well_parts",
                    "mood",   # (0.105.24) a mood's materials: weave, tan, smelt, free, cancel in one cycle
                    "gate_stuck"}   # (0.105.32) each split gate piece its own step

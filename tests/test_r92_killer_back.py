@@ -19,8 +19,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
+from lua_modules_util import split_src  # noqa: E402
 
-SRC = (ROOT / "lua" / "ai-killers.lua").read_text(encoding="utf-8")
+SRC = split_src("ai-killers.lua")   # (0.105.113) the hub and its part (ai-killers-cell), as one text
 
 
 @test("ai-killers: one let out stays out only while at or over the let-out levels (THIRST_OUT, HUNGER_OUT)")

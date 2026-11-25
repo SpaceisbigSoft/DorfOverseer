@@ -33,6 +33,12 @@ The rules here (lua/ai-welfare.lua does the work):
   slabs_ahead_blanks blank slabs for them (the mason engraves a blank one)
   slabs_ahead_place  the engraved slabs put up while no ghost walks (with a
                      ghost, _dead_notes' own `slabs` rule does it)
+  burial_assign      (item8) the fort's own dead lying free in reach (dead.why.free)
+                     while free tombs stand open, for burial_assign_days running:
+                     a free tomb assigned to each (entomb_dead), as the player
+                     buries one by hand; DF's automatic burial left B's Dodok
+                     (dead raving, of thirst) 165 days on a meeting hall floor
+                     beside 10 open tombs
   burial_others      (0.105.51) the bodies DF never buries (dead.why.not_ours:
                      visitors', merchants', other civs') marked for a garbage
                      dump under the sky (mark_dump bodies), or one made
@@ -55,9 +61,10 @@ from planner_core import (TICKS_PER_DAY, Proposal, _has_shop, abs_tick, player_r
 from planner_config import PLANNER_CONFIG
 from planner_memorials import memorial_order_rules, slabs_ahead_held, spare_slab_notes
 
-__all__ = ["_welfare_rules", "tombable_dead", "burial_fallback_due", "cook_train_due", "welfare_days", "welfare_slabs"]
+__all__ = ["_welfare_rules", "burial_assign_due", "tombable_dead", "burial_fallback_due", "cook_train_due", "welfare_days", "welfare_slabs"]
 
 AGENDA_THEMES["burial_corner"] = AGENDA_THEMES["burial_coffins"] = "bury the dead"
+AGENDA_THEMES["burial_assign"] = "bury the dead"
 AGENDA_THEMES["burial_others"] = "the dead DF won't bury out to the dump"
 AGENDA_THEMES["slabs_ahead"] = AGENDA_THEMES["slabs_ahead_blanks"] = AGENDA_THEMES["slabs_ahead_place"] = \
     "memorials for the dead nobody can reach"
@@ -371,10 +378,51 @@ def _others_dead_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
                                   "garbage dump under the sky for them: make one outside", 5))
 
 
+def burial_assign_due(s: dict, cfg: dict, memory=None) -> int:
+    """(item8) How many of the fort's own dead lie free in reach (nothing in
+    the way the bridge can see: dead.why.free) with free tombs open, when
+    they have done so burial_assign_days running; else 0. Each report with
+    none starts the count again. Without a memory: at once."""
+    if "dead" in _d(s.get("_errors")):
+        return 0
+    d = _d(s.get("dead"))
+    free = _d(d.get("why")).get("free")
+    open_ = int(d.get("free_tombs") or 0) - int(d.get("free_tombs_no_citizens") or 0) \
+        - int(d.get("free_tombs_unreachable") or 0)
+    waiting = free if isinstance(free, int) and not isinstance(free, bool) and free > 0 and open_ > 0 else 0
+    if memory is None or not hasattr(memory, "burial_watch"):
+        return waiting
+    now = abs_tick(s)
+    w = memory.burial_watch if isinstance(memory.burial_watch, dict) else {}
+    if not waiting:
+        if w:
+            memory.burial_watch = {}
+        return 0
+    since = w.get("since")
+    if not isinstance(since, int) or isinstance(since, bool) or since > now:
+        memory.burial_watch = {"since": now, "n": waiting}
+        return 0
+    memory.burial_watch = dict(w, n=waiting)
+    return waiting if now - since >= int(_c(cfg, "burial_assign_days")) * TICKS_PER_DAY else 0
+
+
+def _burial_assign_rule(s: dict, cfg: dict, proposals: list, memory=None) -> None:
+    n = burial_assign_due(s, cfg, memory)
+    if n <= 0:
+        return
+    d = _d(s.get("dead"))
+    days = int(_c(cfg, "burial_assign_days"))
+    proposals.append(Proposal("burial_assign", {"type": "entomb_dead", "max": min(n, 5)},
+                              f"{n} of the fort's own dead have lain free where the dwarves can walk for {days}+ "
+                              f"days while {d.get('free_tombs')} tomb(s) stand free (DF's own burial hasn't taken "
+                              "them): a free tomb given to each, so they are carried there", 3))
+
+
 def _welfare_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None, rules_: dict | None = None) -> None:
     """(0.105.47) Called from plan() beside _dead_notes."""
     _burial_rules(s, cfg, proposals, notes, memory, rules_ or {})
     memorial_order_rules(s, proposals, notes)     # (item7) the orders that never end
     spare_slab_notes(s, notes)                    # (item4) spare slabs left lying: a note
+    _burial_assign_rule(s, cfg, proposals, memory)   # (item8) a tomb given to the dead DF leaves lying
     _others_dead_rule(s, cfg, proposals, notes)
     _cook_rule(s, cfg, proposals, memory)

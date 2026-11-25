@@ -66,9 +66,15 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # dump_move_ramp_edge, disposal_move_dump_cooldown_ticks (B's dump by the ramps): 24 Nov
 # (0.105.111) re-pinned after three deliberate keys: caravan_goods_days, caravan_goods_max,
 # caravan_goods_cooldown_ticks (B's and C's long-gone caravans' goods): 24 Nov
-DUMP_6298B4A = "c39da37e1fc521338be613d56f8b839021d5b47f12fcfccc1fd85fe328bbce87"
-KEYS_6298B4A = "9ae1f3c8aa98171c1355781e31c397cd833d3822d6ff2c0ff42eb0f61698d93b"
-COUNT_6298B4A = 1323
+# (0.105.112 item4) re-pinned after four deliberate keys: hospital_stock_base, hospital_stock_per_patient,
+# hospital_stock_max, hospital_stock_cooldown_ticks (B's hospitals holding the fort's thread): 25 Nov
+# (0.105.112 item2) re-pinned after three deliberate keys: killer_hold_days, chronic_hold_attack_days,
+# chronic_convict_refused_days (E's killers let out, its chronic attackers free): 24 Nov
+# (0.105.112 item8) re-pinned after three deliberate keys: burial_assign_days, burial_assign_cooldown_ticks,
+# order_remake_days (B's coffin order in unreachable bauxite, Dodok unburied): 25 Nov
+DUMP_6298B4A = "c1bf49fbb132bc8005ed31cd851135c522f575ae5951d7c47c238104c4ed0ff5"
+KEYS_6298B4A = "4940cef26ec19433519bbfd6d5f5d2c34686c9b16070c503ccdb5c0018fda5da"
+COUNT_6298B4A = 1333
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

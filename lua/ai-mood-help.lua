@@ -33,6 +33,9 @@
 --                                thread or cloth for a waiting strange mood,
 --                                and the hospital's quotas lowered meanwhile
 --                                (restore = true puts them back)
+--   act_hospital_cap(a)          (0.105.112) the `hospital_cap` action: the
+--                                hospital's standing thread and cloth quotas
+--                                (what its patients need), the surplus set out
 --@ module = true
 
 local U = reqscript('ai-util')
@@ -243,6 +246,8 @@ function report()
     end
     local okh, hh = pcall(hold_report)
     if okh and hh then out.hospital_hold = hh end
+    local okp, hc = pcall(cap_report)
+    if okp and hc then out.hospital_cap = hc end
     return out
 end
 
@@ -353,8 +358,31 @@ local function lower(loc, d, what, dry_run)
     return n
 end
 
+-- (0.105.112) the standing cap's record (hospital_cap): {caps = {{id,
+-- thread, cloth}...} (DF's units, the quotas the AI last set), at, tried}
+HOSPITAL_CAP_KEY = 'ai-overseer/hospital-cap'
+function cap_get()
+    local d = U.site_get(HOSPITAL_CAP_KEY, {})
+    if type(d) ~= 'table' then d = {} end
+    if type(d.caps) ~= 'table' then d.caps = {} end
+    return d
+end
+
+local function cap_entry(d, id)
+    for _, e in ipairs(d.caps) do
+        if tonumber(e.id) == id then return e end
+    end
+    return nil
+end
+
+-- the capped quota of a location (DF's units), or nil when the AI set none
+function cap_units(id, k)
+    local e = cap_entry(cap_get(), id)
+    return e and tonumber(e[k]) or nil
+end
+
 -- the quotas put back as they were (a quota the player set meanwhile, not 0,
--- is left as it is); the record cleared
+-- is left as it is), (0.105.112) never above the standing cap; the record cleared
 function restore_quotas(dry_run)
     local d = hold_get()
     local r = {locations = #d.locs, restored = 0, gone = 0, dry_run = dry_run or nil}
@@ -367,6 +395,9 @@ function restore_quotas(dry_run)
                 local c = loc:getContents()
                 for _, k in ipairs(QUOTAS) do
                     local was = tonumber(e[k])
+                    -- (0.105.112) never above the standing cap (hospital_cap)
+                    local cap = cap_units(tonumber(e.id), k)
+                    if was and cap and was > cap then was = cap end
                     if was and was > 0 and (tonumber(c['desired_' .. k]) or 0) == 0 then
                         if not dry_run then c['desired_' .. k] = was end
                         r.restored = r.restored + 1
@@ -545,7 +576,9 @@ function act_hospital_release(a, txt)
         if ok then lowered = lowered + n end
     end
     local mc, nc, kc, sc = release(M, 'CLOTH', cloth, fibre, CLOTH_WHOLE, dry, txt)
-    local mt, nt, kt, st = release(M, 'THREAD', thread, fibre, THREAD_WHOLE, dry, txt)
+    -- (0.105.112 item3) a thread mood (a.part_ok) takes thread at 90% of whole (B's hospital
+    -- thread was all 97-99%: none set out); the loom, for a cloth mood, a whole one
+    local mt, nt, kt, st = release(M, 'THREAD', thread, fibre, a.part_ok == true and 13500 or THREAD_WHOLE, dry, txt)
     local names = nc
     for _, v in ipairs(nt) do if #names < 5 then table.insert(names, v) end end
     local now = U.now_tick(0)
@@ -564,6 +597,169 @@ function act_hospital_release(a, txt)
         r.ok, r.rejected = false, true
         r.error = 'nothing of that kind in the hospital that can be taken (whole, in no job, owned by nobody'
             .. (sc + st > 0 and ', with a tile outside the hospital in reach' or '') .. '), and its quotas are 0 already'
+        return r
+    end
+    r.ok = true
+    return r
+end
+
+-- --- (0.105.112) the hospital's standing thread and cloth cap -------------------------
+--
+-- B (24 Nov): four hospital locations, each wanting DF's 5 thread and 5 cloth
+-- (desired_thread 75000, desired_cloth 50000): 17 of the fort's 19 plant
+-- threads lay in their chests and no thread was free outside, so the moods
+-- failed and the loom wove nothing. hospital_release lowered the quotas only
+-- while a mood waited and put them back after. Now the brain
+-- (brain/planner_hospital_stock.py) sets each hospital's thread and cloth
+-- quota to what its patients plausibly need (whole items: a small base and
+-- one more for each patient waiting for sutures or dressings, all on the
+-- hospital with the most chests, 0 on the others), and the surplus items
+-- (whole cloth, thread at least THREAD_SET_OUT_MIN) in the hospitals' chests
+-- and on their floor are set out beside them (hospital_release's
+-- release: unforbidden, for the haulers to take to a pile). A quota the
+-- player set below the AI's last cap is never raised; while hospital_release
+-- holds a quota at 0 the value kept for its restore is lowered to the cap
+-- instead, and restore_quotas never puts back more than the cap.
+CAP_MAX = 20                    -- whole items a location's quota at most
+-- B's hospital thread was all 97-99% (dimension 14625-14940: a suture's
+-- snip): none of it "whole". A thread this full is set out as surplus (a
+-- thread mood takes it; the loom wants a whole one); cloth only whole (a
+-- mood's cloth must be whole, ai-moods partial_cloth), the pieces stay for
+-- the dressings
+THREAD_SET_OUT_MIN = 13500
+
+-- the section's part: nil before the AI ever capped
+function cap_report()
+    local d = cap_get()
+    if #d.caps == 0 then return nil end
+    local list = {}
+    for _, e in ipairs(d.caps) do
+        table.insert(list, {id = tonumber(e.id), thread = tonumber(e.thread), cloth = tonumber(e.cloth)})
+    end
+    local tried = nil
+    if type(d.tried) == 'table' then
+        tried = {thread = tonumber(d.tried.thread), cloth = tonumber(d.tried.cloth),
+                 moved = tonumber(d.tried.moved), at = tonumber(d.tried.at)}
+    end
+    return {list = list, at = tonumber(d.at), tried = tried}
+end
+
+local function whole_count(v)
+    local n = math.tointeger(tonumber(v) or -1)
+    if not n or n < 0 then return nil end
+    return math.min(CAP_MAX, n)
+end
+
+local UNITS = {thread = THREAD_WHOLE, cloth = CLOTH_WHOLE}
+
+-- one location's quotas set to the cap (DF's units). Returns the changes:
+-- {k = {from, to, held = true when the hold's kept value was lowered}}
+local function cap_location(loc, caps, rec, hold, dry_run)
+    local c = loc:getContents()
+    local held = hold_entry(hold, loc.id)
+    local prev = cap_entry(rec, loc.id)
+    local out = {}
+    for _, k in ipairs(QUOTAS) do
+        local want = caps[k]
+        if want then
+            local units = want * UNITS[k]
+            if held and tonumber(held[k]) then
+                -- hospital_release holds it at 0: the value it keeps lowered instead
+                local was = tonumber(held[k])
+                if was > units then
+                    out[k] = {from = was, to = units, held = true}
+                    if not dry_run then held[k] = units end
+                end
+            else
+                local cur = tonumber(c['desired_' .. k]) or 0
+                local last = prev and tonumber(prev[k]) or nil
+                -- lowered always; raised only from the AI's own last cap
+                if cur > units or (cur < units and last ~= nil and cur == last) then
+                    out[k] = {from = cur, to = units}
+                    if not dry_run then
+                        c['desired_' .. k] = units
+                        if units < cur then pcall(function() c.need_more[k] = false end) end
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- the action. a: {caps = {{id, thread, cloth}...} (whole items, 0-20; a
+-- hospital left out is not touched), set_out = {thread = n, cloth = n} (whole
+-- items out of the hospitals' chests, 0-10 each), seen = {thread, cloth} (the
+-- brain's counts, kept so it doesn't ask again for the same stock), dry_run}
+function act_hospital_cap(a, txt)
+    a = a or {}
+    txt = txt or tostring
+    local dry = a.dry_run == true
+    if type(a.caps) ~= 'table' or #a.caps == 0 then
+        return {ok = false, rejected = true, error = 'hospital_cap needs caps: {{id, thread, cloth}...}'}
+    end
+    local rec, hold = cap_get(), hold_get()
+    local changed, names, missing = 0, {}, 0
+    local hold_changed = false
+    for _, e in ipairs(a.caps) do
+        local id = math.tointeger(tonumber(type(e) == 'table' and e.id or nil))
+        local loc = id and hospital_locations(id)[1]
+        if not loc then
+            missing = missing + 1
+        else
+            local caps = {thread = whole_count(e.thread), cloth = whole_count(e.cloth)}
+            local ok, ch = pcall(cap_location, loc, caps, rec, hold, dry)
+            if ok then
+                for k, v in pairs(ch) do
+                    changed = changed + 1
+                    if v.held then hold_changed = true end
+                    table.insert(names, ('hospital %d %s %d -> %d%s'):format(id, k, math.floor(v.from / UNITS[k]),
+                        math.floor(v.to / UNITS[k]), v.held and ' (after the mood)' or ''))
+                end
+                if not dry then
+                    local r = cap_entry(rec, id)
+                    if not r then r = {id = id}; table.insert(rec.caps, r) end
+                    for _, k in ipairs(QUOTAS) do
+                        if caps[k] then r[k] = caps[k] * UNITS[k] end
+                    end
+                end
+            end
+        end
+    end
+    -- the surplus whole items set out beside the hospital
+    local so = type(a.set_out) == 'table' and a.set_out or {}
+    local nt, nc = count(so.thread), count(so.cloth)
+    local mt, mc, stuck, moved_names = 0, 0, 0, {}
+    if nt + nc > 0 then
+        local okm, M = pcall(reqscript, 'ai-moods')
+        if okm and type(M) == 'table' and M.hospital_boxes and M.hospital_ground and M.cloth_kind then
+            local n1, s1, n2, s2, k1, k2
+            mc, n1, k1, s1 = release(M, 'CLOTH', nc, 'any', CLOTH_WHOLE, dry, txt)
+            mt, n2, k2, s2 = release(M, 'THREAD', nt, 'any', THREAD_SET_OUT_MIN, dry, txt)
+            stuck = s1 + s2
+            for _, v in ipairs(n1) do table.insert(moved_names, v) end
+            for _, v in ipairs(n2) do if #moved_names < 5 then table.insert(moved_names, v) end end
+            if not dry and mc + mt > 0 then pcall(function() M.AVAIL_CACHE = {} end) end
+        end
+    end
+    if not dry then
+        local now = U.now_tick(0)
+        if changed > 0 then rec.at = now end
+        if nt + nc > 0 then
+            local seen = type(a.seen) == 'table' and a.seen or {}
+            rec.tried = {thread = tonumber(seen.thread), cloth = tonumber(seen.cloth), moved = mt + mc, at = now}
+        end
+        U.site_put(HOSPITAL_CAP_KEY, rec)
+        if hold_changed then U.site_put(HOSPITAL_HOLD_KEY, hold) end
+    end
+    local r = {changed = changed, quotas = names, thread_out = mt, cloth_out = mc, items = moved_names,
+               dry_run = dry or nil}
+    if missing > 0 then r.no_such_hospital = missing end
+    if stuck > 0 then r.no_tile = stuck end
+    if changed == 0 and mt + mc == 0 then
+        r.ok, r.rejected = false, true
+        r.error = 'the hospitals\' thread and cloth quotas are at the cap already'
+            .. (nt + nc > 0 and ', and no whole thread or cloth in their chests could be set out (in a job, owned, used, or no tile in reach)' or '')
         return r
     end
     r.ok = true

@@ -442,3 +442,13 @@ PART.update({
     "disposal_outside_danger_tiles": 40,  # a danger this near a dump zone keeps the haulers in
     "disposal_outside_rearm_ticks": 600,  # half a day clear after the AI's switch-off, then on again
 })
+
+# (0.105.112) the hospitals' standing thread and cloth (brain/planner_hospital_stock.py,
+# lua/ai-mood-help.lua act_hospital_cap). B, 24 Nov: four hospitals at DF's 5 thread and 5 cloth
+# each held 17 of the fort's 19 plant threads; the strange moods failed for want of free thread
+PART.update({
+    "hospital_stock_base": 2,             # whole thread (and cloth) the hospitals keep with no patient waiting
+    "hospital_stock_per_patient": 1,      # one more for each patient waiting for sutures or dressings
+    "hospital_stock_max": 5,              # never more than this (DF's own default quota per hospital)
+    "hospital_stock_cooldown_ticks": 600,  # half a day between the steps
+})

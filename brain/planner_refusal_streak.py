@@ -23,6 +23,31 @@ reset when:
 The wait is said once in the notes when it begins (plan() reads the flag,
 select() clears it), not every cycle.
 
+(0.105.112 item7) D2, live 24 Nov (12 h): B staff 91 ("nobody free"),
+homes_liked 44, care_feed 33, unload_depot 228; E chronic_convict 41, mood 48;
+A squad_fill 86, food_store 32. The streaks were begun again almost every
+time: the signature held the levels finished ever, which moves every few game
+days in a fort of 150+ levels, though a post, a labour or a trial has nothing
+to do with a new level; an answer to wait was never counted; the squads (the
+defence class) were never held even in peace. Now:
+  * the levels are in the signature only for a step that looks for room
+    (water, farms, a level, a place, a pile, a room: SPACE_*);
+  * an answer to wait counts too (same reason, numbers aside), its wait at
+    most `r112_wait_answer_max_days` (the game is already at it);
+  * a defence step is held only in peace (no reachable threat, quiet for
+    `alert_quiet_cycles` cycles, no great danger) and at most
+    `r112_defence_wait_max_days`; the critical ones (CRITICAL_*: the alarm,
+    gates, the shelter, killers, fights) never;
+  * a few safety steps that were held up to 28 days keep a short cap
+    (SHORT_CAP_*: `r112_short_cap_days`, half a day): a mood's help, a tantrum's
+    care, the jail, the magma guard;
+  * a hospital post asked while patients wait for care ("nobody free") at
+    most a game day (`r112_care_post_max_days`).
+Never held at all (as before, and listed): EMERGENCY, OWN_PACE, releases,
+TRANSIENT_* (thirst, the stranded, ways in and out, wells' rescue, fights,
+the insane, the mood's own rule ...), drink and water in a crisis, urgent
+survival steps in a crisis, CRITICAL_* defence, any defence step in danger.
+
 Never held: the responses to danger (EMERGENCY, the rules that pace their
 own tries), defence steps (the alarm, gates, squads: hold_classes), the
 steps that only let go, the transient survival steps below (thirst, the
@@ -37,6 +62,8 @@ import re
 import hold_classes as _hc
 from digest import _d
 from planner_core import EMERGENCY, OWN_PACE, TICKS_PER_DAY, is_release, levels_done, refusal_key
+from planner_core_threats import great_present
+from planner_backoff import care_post
 
 # survival steps whose refusal is transient: never held by a streak
 TRANSIENT_RULES = {
@@ -64,6 +91,34 @@ WATER_ACTIONS = {"place_well", "water_zone", "restrict_water", "renew_well_dig",
 FARM_ACTIONS = {"farm_plots", "set_farm_crops", "farm_thresholds"}
 WHY_MAX = 100          # characters of the reason kept (and compared)
 
+# (item7) the critical defence: never held by a streak, in peace either
+CRITICAL_RULES = {
+    "threat_alert", "alerts", "gate", "gates", "gate_guard", "gate_doors", "gate_lever", "gate_parts",
+    "gate_jobs", "gate_stuck", "gate_dogs", "entrances", "destroyer_gate", "seal_cavern", "cavern_openings",
+    "shelter", "shelter_flee", "shelter_pick", "shelter_refresh", "shelter_squads", "shelter_supply",
+    "squad_attack", "squad_recall", "archer_post", "caravan_guard", "near_gates", "near_gates_refresh",
+    "killer", "cursed", "reanimation", "flood", "fire_guard", "intruder_guard", "thief_watch",
+    "break_fights", "fight_watch", "calm_burrow", "insane", "thirst",
+}
+CRITICAL_PREFIXES = ("thirst", "fight", "killer", "shelter", "gate", "alarm", "alert")
+# (item7) safety steps that may wait, but never long: at most r112_short_cap_days
+SHORT_CAP_RULES = {"mood_hospital", "mood_reserve", "mood_help", "mood_free", "staff_tantrum", "tantrum_soldier",
+                   "tantrum_care", "jail_more", "jail_size", "jail_urgent", "magma_guard", "hospital_guard"}
+SHORT_CAP_PREFIXES = ("mood", "tantrum", "thirst", "killer", "fight", "shelter", "gate", "alarm")
+# (item7) steps whose refusal may end with a new level (room, floor, soil): the levels finished
+# ever are in their signature; for the rest (a post, a labour, a trial, a squad) they are not
+SPACE_TYPES = {"start_project", "food_pile", "make_pasture", "farm_plots", "house_dwarves", "give_room",
+               "dig_stairwell", "deep_depot", "cistern_step", "make_pit"}
+SPACE_PREFIXES = ("place_", "dig", "build", "make_zone", "zone_")
+SPACE_WORDS = re.compile(r"\b(room|rooms|floor|spot|tile|tiles|space|soil|level|levels|dig|"
+                         r"drop|wall|stockpile|pile|zone)\b", re.I)
+# (item7) the shorter caps, game days (a cfg key of the same name overrides; kept out of
+# PLANNER_CONFIG, whose keys are pinned by test_r7_d6)
+WAIT_ANSWER_MAX_DAYS = 7      # r112_wait_answer_max_days: an answer to wait (work under way), the same again
+DEFENCE_MAX_DAYS = 7          # r112_defence_wait_max_days: a defence step (squads, kit), held only in peace
+SHORT_CAP_DAYS = 0.5          # r112_short_cap_days: the safety steps that may wait (SHORT_CAP_*)
+CARE_POST_DAYS = 1            # r112_care_post_max_days: a hospital post while patients wait ("nobody free")
+
 
 def _on(cfg) -> bool:
     return bool(_d(cfg).get("r5p3_refusal_backoff", True))
@@ -85,10 +140,22 @@ def _farm(p) -> bool:
     return a.get("type") in FARM_ACTIONS or (a.get("type") == "start_project" and a.get("kind") == "farms")
 
 
-def signature(p, state: dict) -> dict:
-    """What the refusal depends on: when any of it changes, the streak ends."""
+def spatial(p, why: str = "") -> bool:
+    """(item7) A step whose refusal a new level may end (room, floor, soil):
+    water, farms, a level, a place, a pile, a room, or a reason about room."""
+    a = _d(getattr(p, "action", None))
+    t = str(a.get("type") or "")
+    return (_water(p) or _farm(p) or t in SPACE_TYPES or t.startswith(SPACE_PREFIXES)
+            or bool(SPACE_WORDS.search(str(why or ""))))
+
+
+def signature(p, state: dict, why: str = "") -> dict:
+    """What the refusal depends on: when any of it changes, the streak ends.
+    (item7) The levels finished ever only for a step that looks for room."""
     s = _d(state)
-    sig = {"v": s.get("bridge_version"), "levels": levels_done(s)}
+    sig = {"v": s.get("bridge_version")}
+    if spatial(p, why):
+        sig["levels"] = levels_done(s)
     b = _d(s.get("buildings"))
     if _water(p):
         sig["wells"] = _d(b.get("other")).get("Well", 0)
@@ -98,7 +165,57 @@ def signature(p, state: dict) -> dict:
     return sig
 
 
-def exempt(p, memory=None, state=None) -> bool:
+def _prefixed(rule, names: set, prefixes: tuple) -> bool:
+    rule = str(rule or "")
+    return rule in names or rule.startswith(prefixes)
+
+
+def critical(p) -> bool:
+    """(item7) The critical defence and safety (CRITICAL_*): never held."""
+    return _prefixed(getattr(p, "rule", None), CRITICAL_RULES, CRITICAL_PREFIXES)
+
+
+def danger(memory, state, cfg=None) -> bool:
+    """(item7) Danger about: no defence step is held then. A threat that can
+    reach the dwarves lately (not yet quiet for alert_quiet_cycles cycles), a
+    great danger, the fort's own alarm up, or no memory to tell."""
+    if memory is None:
+        return True
+    try:
+        quiet = int(_d(cfg).get("alert_quiet_cycles", 3) or 3)
+        if int(getattr(memory, "quiet_cycles", 0) or 0) < quiet:
+            return True
+        if great_present(_d(state)) or getattr(memory, "ai_alert_raised", False):
+            return True
+    except Exception:  # noqa: BLE001  (unknown: as danger, never held by mistake)
+        return True
+    return False
+
+
+def cap_ticks(p, r_or_rec: dict, cfg: dict) -> int:
+    """(item7) The longest wait of this step's streak, in ticks: half a day for
+    the SHORT_CAP_* safety steps, a day for a hospital post while patients wait,
+    r112_defence_wait_max_days for a defence step (in peace), at most
+    r112_wait_answer_max_days for an answer to wait, else r5p3_refusal_wait_max_days."""
+    cfg = _d(cfg)
+    a = _d(getattr(p, "action", None))
+    first = max(1, int(cfg.get("r5p3_refusal_first_days", 1) or 1))
+    days = float(max(first, int(cfg.get("r5p3_refusal_wait_max_days", 28) or 28)))
+    if _d(r_or_rec).get("waiting"):
+        days = min(days, float(cfg.get("r112_wait_answer_max_days", WAIT_ANSWER_MAX_DAYS) or WAIT_ANSWER_MAX_DAYS))
+    try:
+        if _hc.step_class(p) == _hc.DEFENCE:
+            days = min(days, float(cfg.get("r112_defence_wait_max_days", DEFENCE_MAX_DAYS) or DEFENCE_MAX_DAYS))
+    except Exception:  # noqa: BLE001
+        pass
+    if care_post(p):
+        days = min(days, float(cfg.get("r112_care_post_max_days", CARE_POST_DAYS) or CARE_POST_DAYS))
+    if _prefixed(getattr(p, "rule", None), SHORT_CAP_RULES, SHORT_CAP_PREFIXES):
+        days = min(days, float(cfg.get("r112_short_cap_days", SHORT_CAP_DAYS) or SHORT_CAP_DAYS))
+    return max(1, int(days * TICKS_PER_DAY))
+
+
+def exempt(p, memory=None, state=None, cfg=None) -> bool:
     """A step never held by a refusal streak (see the module's text). The
     streak is still counted for it (it may stop being exempt)."""
     a = _d(getattr(p, "action", None))
@@ -108,7 +225,7 @@ def exempt(p, memory=None, state=None) -> bool:
     if rule in TRANSIENT_RULES or a.get("type") in TRANSIENT_ACTIONS:
         return True
     try:
-        if _hc.step_class(p) == _hc.DEFENCE:
+        if _hc.step_class(p) == _hc.DEFENCE and (critical(p) or danger(memory, state, cfg)):
             return True
     except Exception:  # noqa: BLE001  (unclassable: never held by mistake)
         return True
@@ -133,8 +250,9 @@ def _book(memory) -> dict:
 
 def note(memory, p, r: dict, state: dict, now: int, cfg: dict, brief: bool = False) -> None:
     """A step answered (record()): a refusal lengthens its streak (or starts a
-    new one), an acceptance ends it. Unknown answers, the in-game halt, work
-    under way and a search cut short (to be tried again soon) leave it."""
+    new one), an acceptance ends it. Unknown answers, the in-game halt and a
+    search cut short (to be tried again soon) leave it. (item7) An answer to
+    wait (work under way) counts too, its wait shorter (cap_ticks)."""
     if not _on(cfg) or memory is None:
         return
     r = _d(r)
@@ -146,21 +264,26 @@ def note(memory, p, r: dict, state: dict, now: int, cfg: dict, brief: bool = Fal
     if r.get("ok") is True:
         book.pop(key, None)
         return
-    if r.get("ok") is not False or r.get("halted") or r.get("waiting") or brief:
+    if r.get("ok") is not False or r.get("halted") or brief:
         return
     if p.rule in EMERGENCY or a.get("type") in OWN_PACE:
         return
-    why, sig = _why(r), signature(p, state)
+    waiting = bool(r.get("waiting"))
+    why = ("wait: " if waiting else "") + _why(r)
+    why = why[:WHY_MAX]
+    sig = signature(p, state, why)
     old = _d(book.get(key))
     n = int(old.get("n") or 0) + 1 if old.get("why") == why and old.get("sig") == sig else 1
     first = max(1, int(cfg.get("r5p3_refusal_first_days", 1) or 1))
-    cap = max(first, int(cfg.get("r5p3_refusal_wait_max_days", 28) or 28))
     streak = max(1, int(cfg.get("r5p3_refusal_streak", 3) or 3))
     rec = {"n": n, "why": why, "sig": sig, "at": now, "rule": p.rule, "type": a.get("type")}
+    if waiting:
+        rec["waiting"] = True
     if n >= streak:
-        days = min(cap, first * 2 ** (n - streak))
-        rec["until"] = now + days * TICKS_PER_DAY
-        rec["days"] = days
+        cap = cap_ticks(p, rec, cfg)
+        ticks = min(cap, first * 2 ** min(n - streak, 20) * TICKS_PER_DAY)
+        rec["until"] = now + ticks
+        rec["days"] = int(ticks // TICKS_PER_DAY) if ticks % TICKS_PER_DAY == 0 else round(ticks / TICKS_PER_DAY, 2)
         if n == streak:
             rec["say"] = True      # said once a streak: when its wait first begins
     book[key] = rec
@@ -183,7 +306,7 @@ def _prune(book: dict, now: int, cfg: dict) -> None:
 def wait(memory, p, state: dict, now: int, cfg: dict):
     """(days left, record) while the step's streak holds it, else None. The
     streak no longer holds once what the refusal depends on has changed."""
-    if not _on(cfg) or memory is None or exempt(p, memory, state):
+    if not _on(cfg) or memory is None or exempt(p, memory, state, cfg):
         return None
     rec = _d(_d(getattr(memory, "refusal_streaks", None)).get(refusal_key(p)))
     until = rec.get("until")
@@ -192,7 +315,12 @@ def wait(memory, p, state: dict, now: int, cfg: dict):
     cap = max(1, int(cfg.get("r5p3_refusal_wait_max_days", 28) or 28)) * TICKS_PER_DAY
     if until - now > cap or (isinstance(rec.get("at"), int) and rec["at"] > now):
         return None      # (r5 Z4) the game's time went back (an older save): the wait no longer holds
-    if rec.get("sig") != signature(p, state):
+    if isinstance(rec.get("at"), int):
+        # (item7) the step's cap as it is now (a hospital post once patients wait, a short-cap step)
+        until = min(until, rec["at"] + cap_ticks(p, rec, cfg))
+        if now >= until:
+            return None
+    if rec.get("sig") != signature(p, state, str(rec.get("why") or "")):
         return None
     return max(1, -(-(until - now) // TICKS_PER_DAY)), rec
 

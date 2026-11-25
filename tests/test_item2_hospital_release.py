@@ -127,10 +127,12 @@ def _():
     s = fort()
     x = {"index": 0, "item": "THREAD", "quantity": 2, "flags": ["yarn"], "avail": av(hospital=3)}
     s["moods"] = {"list": [mood([x])]}
-    assert [p.action for p in rule(s)[0]] == [{"type": "hospital_release", "thread": 2, "kind": "yarn"}]
+    assert [p.action for p in rule(s)[0]] == [{"type": "hospital_release", "thread": 2, "kind": "yarn",
+                                                 "part_ok": True}]    # (item3) a 90%-full thread does
     x = {"index": 0, "item": "THREAD", "quantity": 1, "flags": [], "avail": av(hospital=1)}
     s["moods"] = {"list": [mood([x])]}
-    assert [p.action for p in rule(s)[0]] == [{"type": "hospital_release", "thread": 1, "kind": "any"}]
+    assert [p.action for p in rule(s)[0]] == [{"type": "hospital_release", "thread": 1, "kind": "any",
+                                                 "part_ok": True}]
     # none of the hospital's suits it: nothing
     x = {"index": 0, "item": "THREAD", "quantity": 1, "flags": ["silk"], "avail": av()}
     s["moods"] = {"list": [mood([x])]}

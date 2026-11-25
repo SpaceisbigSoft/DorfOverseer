@@ -42,9 +42,9 @@ proposes or notes anything.
 from __future__ import annotations
 
 from digest import _d, _l
-from planner_core import Proposal, abs_tick, can_fight, player_rules
+from planner_core import TICKS_PER_DAY, TICKS_PER_YEAR, Proposal, abs_tick, can_fight, player_rules
 
-__all__ = ["killer_rows", "evidence_words", "_killer_rule", "held_killer_ids"]
+__all__ = ["killer_rows", "evidence_words", "_killer_rule", "held_killer_ids", "people_killer", "note_killer_book"]
 
 KINDS = ("vampire", "werebeast", "cursed", "killer")
 CONFIDENCES = ("certain", "strong", "weak")
@@ -74,10 +74,21 @@ def held_killer_ids(s: dict) -> set:
     out = {c["unit_id"] for c in _l(k.get("cells"))
            if isinstance(c, dict) and isinstance(c.get("unit_id"), int) and not isinstance(c.get("unit_id"), bool)}
     for r in killer_rows(s):
-        if r["confidence"] in ("strong", "certain") and not r.get("child") \
+        if (r["confidence"] in ("strong", "certain") or people_killer(r)) and not r.get("child") \
                 and not (r.get("law") and r["kind"] == "killer"):
             out.add(r["id"])
     return out
+
+
+def people_killer(r: dict) -> bool:
+    """(0.105.112) A killer row with a person killed (no animal) in the
+    look-back window, in a tantrum or a brawl, any conflict level (the lawful
+    ones, a sparring or a berserk victim, are not counted by the bridge):
+    `people` (lua/ai-killers.lua). Live E, 24 Nov: Diamondlenses (Melbil,
+    16:35) and Dentconstruct (Medtob, 22:16) each strangled a citizen in a
+    tantrum and stayed "weak" (one killing: a note only) and free."""
+    n = r.get("people")
+    return r.get("kind") == "killer" and isinstance(n, int) and not isinstance(n, bool) and n >= 1
 
 
 def evidence_words(r: dict) -> str:
@@ -264,7 +275,7 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
         if r.get("law") and kind == "killer":
             _law_row(s, cfg, r, head, proposals, notes)
             continue
-        if conf == "weak":
+        if conf == "weak" and not people_killer(r):
             notes.append(f"{head}: watched; one killing or a fight gone too far is not enough for the AI to "
                          "act on one of the fort's own")
             continue
@@ -305,7 +316,8 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
                 cell_ids.append(r["id"])
                 notes.append(f"{head}: no squad able to fight is free, so the AI locks them in a cell meanwhile")
             continue
-        # a murderer (or a cursed one with killings): locked away
+        # a murderer (or a cursed one with killings, or (0.105.112) one who
+        # killed a citizen): locked away
         cell_ids.append(r["id"])
         larder = _larder_words(cell)
         if cell.get("locked"):
@@ -321,6 +333,14 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
                          "once they are inside, let out to eat and drink)")
     cells = [c for c in _l(k.get("cells")) if isinstance(c, dict) and isinstance(c.get("unit_id"), int)]
     held = {c["unit_id"]: c for c in cells}
+    # (0.105.112) the ones kept though the report no longer asks: a killer
+    # still in a tantrum, miserable or very unhappy, or within killer_hold_days
+    # of the killing; a chronic tantrum case who attacked a citizen, held while
+    # miserable (each said)
+    kept = _kept_holds(s, cfg, memory, held, cell_ids)
+    for i, why in kept.items():
+        cell_ids.append(i)
+        notes.append(why)
     stale = [u for u in held if u not in cell_ids]
     pending = [i for i in cell_ids if not held.get(i, {}).get("locked")]
     # (0.105.97) a held cell whose pile waits for drink (none made yet, or
@@ -344,7 +364,13 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
     if pending or stale or dry or squadded:
         why = []
         if pending:
-            why.append(f"{len(pending)} killer(s) or vampire(s) among the fort's own: lock them in a cell")
+            chronic = [i for i in pending if kept.get(i, "").startswith(CHRONIC_HEAD)]
+            if len(chronic) < len(pending):
+                why.append(f"{len(pending) - len(chronic)} killer(s) or vampire(s) among the fort's own: lock them "
+                           "in a cell")
+            if chronic:
+                why.append(f"{len(chronic)} chronic tantrum dwarf(s) who attacked citizens: held in a cell (drink "
+                           "and meals brought in) until no longer miserable")
         if squadded:
             why.append(f"{len(squadded)} locked in a cell still in a squad: out of it (and of any other burrow "
                        "or military office)")
@@ -357,3 +383,126 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
             what = " and ".join(lack) or "drink"
             why.append(f"{len(waits)} cell(s): the cell's pile waits for {what}")
         proposals.append(Proposal("killer", {"type": "killer_cell", "units": cell_ids}, "; ".join(why), 1))
+
+
+# --- (0.105.112) who stays held ------------------------------------------------
+
+CHRONIC_HEAD = "chronic tantrum case"
+UNHAPPY = ("miserable", "very_unhappy")
+STRESS_WORDS = {0: "miserable", 1: "very_unhappy"}
+
+
+def note_killer_book(s: dict, memory) -> dict:
+    """The citizens who killed a citizen (`people` rows: the newest killing's
+    tick) and the citizens who attacked one (the fight watcher's `attack` and
+    `tantrum_ended` log rows), kept in memory.killer_book: the report forgets
+    a killing once it is older than its window (3 game years: ~7 real hours
+    in E, whose year runs in ~2.4) and the watcher's log is lost with the game
+    (a reload, the 3-hourly fresh start). Kept a year. Returns the book."""
+    now = _now(s)
+    if memory is None or now is None:
+        return {}
+    book = dict(_d(getattr(memory, "killer_book", None)))
+    kills = {k: v for k, v in _d(book.get("kills")).items() if isinstance(v, dict) and isinstance(v.get("last"), int)
+             and 0 <= now - v["last"] < TICKS_PER_YEAR}
+    for r in killer_rows(s):
+        ago = r.get("last_ago")
+        if people_killer(r) and isinstance(ago, int) and not r.get("child") and not r.get("law"):
+            last = now - ago
+            old = _d(kills.get(str(r["id"])))
+            if not isinstance(old.get("last"), int) or old["last"] < last:
+                kills[str(r["id"])] = {"last": last, "name": str(r.get("name") or "")[:60]}
+    attacks = {}
+    for k, v in _d(book.get("attacks")).items():
+        ts = [t for t in _l(v) if isinstance(t, int) and 0 <= now - t < TICKS_PER_YEAR]
+        if ts:
+            attacks[k] = ts
+    for e in _l(_d(s.get("fights")).get("log")):
+        if not isinstance(e, dict) or e.get("kind") not in ("attack", "tantrum_ended"):
+            continue
+        i, t = e.get("id"), e.get("tick")
+        if not (isinstance(i, int) and isinstance(t, int) and isinstance(e.get("target"), int)) or t > now:
+            continue
+        ts = attacks.setdefault(str(i), [])
+        if t not in ts:
+            ts.append(t)
+            ts.sort()
+            del ts[:-10]
+    book["kills"], book["attacks"] = kills, attacks
+    memory.killer_book = book
+    return book
+
+
+def _now(s: dict):
+    d = _d(s.get("date"))
+    return abs_tick(s) if isinstance(d.get("year"), int) and isinstance(d.get("tick"), int) else None
+
+
+def _stress_of(r: dict | None, t: dict | None):
+    """'miserable', 'very_unhappy', ... from the killer row's stress category
+    (0 miserable, 1 very unhappy) or the tantrum ledger row's word."""
+    v = _d(r).get("stress")
+    if isinstance(v, int) and not isinstance(v, bool):
+        return STRESS_WORDS.get(v, "calmer")
+    w = _d(t).get("stress")
+    return w if isinstance(w, str) and w else None
+
+
+def _kept_holds(s: dict, cfg: dict, memory, held: dict, cell_ids: list) -> dict:
+    """{unit id: the words}: the ones held in (or put into) a cell though the
+    killer list doesn't ask for them. A killer with a cell (not the law, not a
+    child): kept while in a tantrum, miserable or very unhappy, or within
+    killer_hold_days of the last killing of a citizen. A chronic tantrum case
+    (chronic_tantrums+ this year) who attacked a citizen in the last
+    chronic_hold_attack_days: held (a cell is made) while miserable or in a
+    tantrum. Live E, 24 Nov: Muterazor, celled at 20:29, was let out "no longer
+    needed" at 20:35 (year 270, tick 65088) when his killings of 267 (tick
+    61328, 62769) passed the 3-year window; he strangled Thikut at 21:31."""
+    from planner_tantrums import tantrum_rows
+    now = _now(s)
+    if now is None:
+        return {}
+    book = note_killer_book(s, memory)
+    rows = {r["id"]: r for r in killer_rows(s)}
+    tant = {r["id"]: r for r in tantrum_rows(s)}
+    out = {}
+    hold = int(cfg.get("killer_hold_days", 56)) * TICKS_PER_DAY
+    for i in held:
+        if i in cell_ids:
+            continue
+        r = rows.get(i)
+        if r is not None and (r.get("law") or r.get("child")):
+            continue                                  # the law and children: the rules above say
+        t = tant.get(i)
+        k = _d(_d(book.get("kills")).get(str(i)))
+        if not k and not (t and int(t.get("year") or 0) >= int(cfg.get("chronic_tantrums", 3))):
+            continue
+        who = (r or t or {}).get("name") or k.get("name") or f"unit {i}"
+        stress = _stress_of(r, t)
+        if k:
+            days = (now - k["last"]) // TICKS_PER_DAY if isinstance(k.get("last"), int) else None
+            why = ("is in a tantrum" if _d(t).get("now") else f"is {stress.replace('_', ' ')}" if stress in UNHAPPY
+                   else f"did so {days} day(s) ago" if days is not None and now - k["last"] < hold else None)
+            if why:
+                out[i] = (f"{who} killed a citizen and {why}: kept in the AI's cell (never let out while in a "
+                          f"tantrum, miserable or very unhappy, nor within {hold // TICKS_PER_DAY} days of the killing)")
+            continue
+        if _d(t).get("now") or stress == "miserable":
+            out[i] = (f"{CHRONIC_HEAD}: {who} ({t.get('year')} tantrums this year, "
+                      f"{'in a tantrum' if t.get('now') else 'miserable'}) attacked a citizen: kept in the AI's cell "
+                      "until no longer miserable")
+    # the chronic attackers not held yet
+    attack_win = int(cfg.get("chronic_hold_attack_days", 336)) * TICKS_PER_DAY
+    for i, t in tant.items():
+        if i in held or i in cell_ids or i in out or int(t.get("year") or 0) < int(cfg.get("chronic_tantrums", 3)):
+            continue
+        if not (t.get("now") or t.get("stress") == "miserable") or t.get("child"):
+            continue
+        ts = [x for x in _l(_d(book.get("attacks")).get(str(i))) if isinstance(x, int) and 0 <= now - x < attack_win]
+        if not ts:
+            continue
+        out[i] = (f"{CHRONIC_HEAD}: {t.get('name') or i} threw {t.get('year')} tantrums this year, is "
+                  f"{'in a tantrum' if t.get('now') else 'miserable'} and attacked a citizen "
+                  f"{(now - ts[-1]) // TICKS_PER_DAY} day(s) ago (the fight watcher saw it): held in the AI's cell "
+                  "(drink and meals brought in) until no longer miserable")
+    return out

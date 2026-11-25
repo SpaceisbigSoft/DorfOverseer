@@ -192,6 +192,19 @@ PART = {
     # fort's own outside a punishment (B, 23 Nov: one each in a tantrum's brawl):
     # the office to a calm free dwarf (planner_killers._law_row), a month per office
     "law_killer_kills": 2,
+    # (0.105.112) a citizen who killed a citizen (a tantrum, a brawl, any conflict; not
+    # a lawful punishment) is held in the killer cell; never let out while in a
+    # tantrum, miserable or very unhappy, or this many days after the killing (E,
+    # 24 Nov: Muterazor let out "no longer needed" when his kills aged out of the
+    # 3-year window, ~7 real hours there; he strangled Thikut an hour later)
+    "killer_hold_days": 56,
+    # (0.105.112) a chronic tantrum case (chronic_tantrums+ a year) who attacked a
+    # citizen this recently (the fight watcher's attack / tantrum_ended rows) is held
+    # in the same cell until no longer miserable
+    "chronic_hold_attack_days": 336,
+    # (0.105.112) chronic_convict refused "no solved case" waits for a new tantrum of
+    # theirs (a new case) and at least this many days (E: 41 refusals in 12 h)
+    "chronic_convict_refused_days": 1,
     "law_swap_cooldown_ticks": 28 * 1200,
     "crisis_kill_days": 14,               # a citizen killed by a citizen this recently: crisis mode
     "crisis_repeat_dwarves": 2,           # ...or this many dwarves...
@@ -214,6 +227,9 @@ PART = {
     "burial_fallback_unburied": 1,        # ...or at once when this many more dead than free tombs wait and no tomb level is under way
     "burial_others_max": 50,              # (0.105.51) the bodies DF never buries (visitors', other civs') marked for the dump in one go
     "burial_others_cooldown_ticks": 3 * 1200,
+    "burial_assign_days": 3,              # (item8) the fort's own dead lying free in reach this long with free tombs: a tomb given each
+    "burial_assign_cooldown_ticks": 2 * 1200,
+    "order_remake_days": 7,               # (item8) an AI stone order in one named stone with no job this long: made again in any stone
     "burial_corner_max": 10,              # coffins placed on the AI's other levels in one go
     "burial_corner_cooldown_ticks": 7 * 1200,
     "burial_coffins_cooldown_ticks": 3 * 1200,

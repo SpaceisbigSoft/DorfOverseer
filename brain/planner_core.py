@@ -124,6 +124,7 @@ class Memory:
     stuck_seen: dict = field(default_factory=dict)       # (0.105.45) the stuck sweep: {items {key: {state, sig, moved, step, at}}, families {fam: [ticks]}, past {kind: n}, tick}
     thirst_book: dict = field(default_factory=dict)      # (0.105.46, I2) the thirst watch: {acted {"action:unit": tick}, told {unit: tick}}
     cook_watch: dict = field(default_factory=dict)       # (0.105.51) {unit, since}: the trainee cook not free to cook since then
+    burial_watch: dict = field(default_factory=dict)     # (item8) {since, n}: the fort's own dead lying free in reach with free tombs since then
     near_gates_seen: dict = field(default_factory=dict)  # (0.105.47, I7d) {last: tick a great danger kept the work near the gates, who}
     story_season: str = ""                                # the last season the AI-written chronicle told ("y<year> <season>")
     gate_closed_by_ai: bool = False                      # the AI pulled the gate lever to close it
@@ -245,6 +246,7 @@ class Memory:
     called_off: dict = field(default_factory=dict)       # (0.105.26) great danger id -> tick its fight was called off
     recovery: dict = field(default_factory=dict)         # (0.105.46, I4) collapse recovery: {since, why, floor, peak, weeks, last_rise, calls, journal} (planner_recovery)
     tantrum_book: dict = field(default_factory=dict)     # (0.105.47) {breaks: [ticks of tantrum/berserk/possession reports], loose_last: tick} (planner_tantrums)
+    killer_book: dict = field(default_factory=dict)      # (0.105.112) {kills: {uid: {last, name}}, attacks: {uid: [ticks]}}: citizens who killed or attacked citizens (planner_killers)
     welfare: dict = field(default_factory=dict)          # (0.105.47, I7b) {short_since: tick the dead first outnumbered the free tombs} (planner_welfare)
     beast_hunt: dict = field(default_factory=dict)       # (0.105.54) the cavern beast's kill plan: {id, name, tactic, goal, stage, since, opened, retry, squads} (planner_threats)
     lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)

@@ -34,10 +34,12 @@ LATE = {planner_select: ("mood_blocked", "order_gate", "reserve_room"),
         planner_record: ("note_gate_stuck", "note_holdfast", "note_way_out")}
 
 # dir(planner) at main 6298b4a (0.105.62), before the split; (r11 n1) + _office_swap_rule; (0.105.78) + meal_glut_filter;
-# (item2) + mood_hospital_rule
+# (item2) + mood_hospital_rule; (0.105.112 item4) + hospital_stock_rule
 NAMES_6298B4A = (
     'meal_glut_filter',
     'mood_hospital_rule',   # (item2) a mood's cloth or thread out of the hospital's stock
+    'hospital_stock_rule',   # (0.105.112 item4) the hospitals' standing thread/cloth cap
+    '_order_remake_rule', 'remake_due',   # (0.105.112 item8) a one-stone order with no job remade in any stone
     'ACTION_LOG_MAX', 'ADJUST_BOUNDS', 'AGENDA_THEMES', 'AI_OFFICES', 'ALERT_DANGERS', 'ALL_FOOD',
     'ASKED_TICKS', 'BASIC_STOCKPILES', 'BASIC_WORKSHOPS', 'BREW_RECIPES', 'BUILDABLE_SHOPS', 'CHARACTER_KINDS',
     'CISTERN_WORDS', 'COAL_STONES', 'COMPLAINT_WORDS', 'CONTAINER_RECIPES', 'COOLDOWN_KEYS', 'CROWD_LOCATIONS',

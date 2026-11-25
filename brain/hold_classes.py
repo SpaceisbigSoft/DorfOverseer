@@ -112,7 +112,7 @@ _SURVIVAL_RULES = {
     "rescue_labor", "stranded", "insane", "cave_in_dig_out", "way_in", "way_out", "way_out_dig", "second_way",
     "webs", "remove_webs",
     # the dead
-    "burial", "burial_coffins", "burial_corner", "burial_others", "coffins", "slabs", "slabs_free", "slabs_ahead",
+    "burial", "burial_coffins", "burial_corner", "burial_others", "burial_assign", "coffins", "slabs", "slabs_free", "slabs_ahead",
     "slabs_ahead_blanks", "slabs_ahead_place", "slabs_ghost", "slabs_orders", "tombs_ghosts", "ghost_mason", "ghost_masons", "dead_units",
     "necro_corpses",
     # the mind: needs, stress, tantrums, justice, moods
@@ -120,7 +120,7 @@ _SURVIVAL_RULES = {
     "recreation", "calm_burrow", "free_time", "tavern", "tavern_chest", "tavern_urgent", "temple_chest",
     "quick_temple", "quick_tavern", "break_fights", "fight_watch", "convict", "chronic_care", "chronic_convict", "chronic_posts",
     "jail_urgent", "jail_size", "jail_more", "prisoners_water", "pit_prisoners", "mothers", "mood",
-    "mood_reserve", "mood_shelter", "mood_hospital", "instrument_orders", "join_levels",
+    "mood_reserve", "mood_shelter", "mood_hospital", "hospital_stock", "instrument_orders", "join_levels",
     # the fort's offices and people
     "appoint", "law_swap", "messenger", "office_swap", "office_free", "pop_cap", "recovery_migrants", "migrant_drought", "stuck_caravan", "caravan_goods", "census", "labor", "labor_trim", "petitions",
     "petition_retarget", "residency", "citizenship", "location_access",
@@ -134,7 +134,7 @@ _SURVIVAL_RULES = {
     "stone", "dig_first", "dig_jobs", "project", "slots", "build", "planned_parts", "found", "mandate", "cleanup",
     "cleanup_spatter", "cleanup_spatter_dry", "cleanup_dead", "cleanup_dead_dry", "cleanup_items",
     "cleanup_items_dry", "cleanup_units", "cleanup_units_dry", "approve_orders", "order_slots", "orphan_jobs",
-    "unsuspend", "stuck_order", "stuck_sweep", "tools", "mechanisms", "bins", "picks", "fuel", "fuel_trim",
+    "unsuspend", "stuck_order", "order_remake", "stuck_sweep", "tools", "mechanisms", "bins", "picks", "fuel", "fuel_trim",
     "smelt", "smelting", "steel", "cloth", "crafts", "hauling", "hauling_add", "hauling_back", "hauling_relieve",
     "hauling_shrink", "barrows", "barrow_order", "feeder", "feeder_link", "bench_caps", "excess_shops",
     "disposal_dump", "disposal_empty", "disposal_melt", "disposal_melt_order", "redig", "disposal_orders", "disposal_outside", "disposal_outside_off",
@@ -202,8 +202,8 @@ _SURVIVAL_ACTIONS = {
     "hospital_burrow", "hospital_guard", "calm_burrow", "rest_infected", "traction_rest", "add_doctor_post",
     "bed_rest",   # (item5)
     "vacate_post", "staff_location", "add_posts", "staff_labors", "mood_free_items", "mood_shelter",
-    "hospital_release",
-    "allow_burial", "unforbid_dead", "coffins_anywhere", "engrave_memorials", "prune_memorial_orders", "place_slabs", "free_slabs",
+    "hospital_release", "hospital_cap",
+    "allow_burial", "unforbid_dead", "entomb_dead", "coffins_anywhere", "engrave_memorials", "prune_memorial_orders", "place_slabs", "free_slabs",
     "bench_jobs", "scrub_dead_units", "prune_remains", "pit_prisoners",
     # justice, tantrums, offices, people
     "break_fights", "fight_watch", "convict", "release_prisoners", "tantrum_step_down", "squad_release", "appoint",

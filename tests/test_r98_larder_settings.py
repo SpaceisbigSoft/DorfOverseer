@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 import planner_killers as PK  # noqa: E402
@@ -39,7 +39,7 @@ try:
 except ImportError:
     LuaRuntime = None
 
-SRC = (ROOT / "lua" / "ai-killers.lua").read_text(encoding="utf-8")
+SRC = split_src("ai-killers.lua")   # (0.105.113) the hub and its part (ai-killers-cell), as one text
 ITEM3 = (ROOT / "tests" / "test_item3_killers.py").read_text(encoding="utf-8")
 R97 = (ROOT / "tests" / "test_r97_cell_drink.py").read_text(encoding="utf-8")
 DAY = 1200
@@ -172,7 +172,9 @@ def _():
 
 @test("ai-killers.lua stays under 60 KB")
 def _():
-    assert len(SRC.encode("utf-8")) < 60 * 1024, len(SRC.encode("utf-8"))
+    for f in ("ai-killers.lua", "ai-killers-cell.lua"):   # (0.105.113) each file of the family
+        n = len((ROOT / "lua" / f).read_text(encoding="utf-8").encode("utf-8"))
+        assert n < 60 * 1024, (f, n)
 
 
 @test("ai-killers.lua compiles under Lua 5.3")

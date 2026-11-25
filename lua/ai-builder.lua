@@ -625,7 +625,7 @@ end
 -- modules, and a test's swap (B.tile_info = ...) reaches every part.
 ---------------------------------------------------------------------------
 
-PARTS = {'sites', 'projects', 'projects-progress', 'projects-finish', 'projects-founding', 'projects-wayin', 'projects-polish', 'farms', 'wells', 'wells-shaft', 'wells-watch', 'wells-place', 'cistern', 'cistern-status', 'cistern-step', 'surface', 'keep', 'deepdepot', 'wagonroad', 'dump', 'rooms', 'halls',   -- (0.105.30) halls
+PARTS = {'sites', 'projects', 'projects-progress', 'projects-finish', 'projects-founding', 'projects-wayin', 'projects-polish', 'farms', 'wells', 'wells-shaft', 'wells-watch', 'wells-place', 'cistern', 'cistern-status', 'cistern-step', 'surface', 'keep', 'deepdepot', 'wagonroad', 'dump', 'rooms', 'rooms-walls', 'halls',   -- (0.105.30) halls
          'landmarks', 'landmarks-place', 'landmarks-stages',   -- (D0) the Design track's landmarks; (r9) split by theme
          'court',       -- (0.105.47) the Garden fort's garden court above ground
          'floorstore',      -- (layout B) the floors' saved record and report
@@ -634,7 +634,7 @@ PARTS = {'sites', 'projects', 'projects-progress', 'projects-finish', 'projects-
 -- (0.105.26) each part marks the version it came with (the bridge's
 -- `version` lists one that differs from BRIDGE_VERSION); started afresh at
 -- each load, so a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-builder'] = '0.105.111'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-builder'] = '0.105.112'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

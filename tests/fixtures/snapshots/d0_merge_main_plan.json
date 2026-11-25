@@ -2168,9 +2168,10 @@
  "region2-0.83-y62-spring.json:Deep mine": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:96cd97f8bf77ae0dfb6c0aa5",
+   "props": "sha256:195df2bdf6ae81d8c51ef027",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2200,9 +2201,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:12bf10a35cc9446c8732fd02",
+   "props": "sha256:24d5d6944a4cafbde28e6077",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2231,9 +2233,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:96cd97f8bf77ae0dfb6c0aa5",
+   "props": "sha256:195df2bdf6ae81d8c51ef027",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2265,9 +2268,10 @@
  "region2-0.83-y62-spring.json:Garden fort": [
   {
    "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
-   "props": "sha256:cf7d5abb9362952776113fa0",
+   "props": "sha256:97538bc70a2e84f930963bde",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2299,9 +2303,10 @@
   },
   {
    "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
-   "props": "sha256:f48dcf7b68a09defe72b4a68",
+   "props": "sha256:3a6dae0c33c129127de8f764",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2332,9 +2337,10 @@
   },
   {
    "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
-   "props": "sha256:cf7d5abb9362952776113fa0",
+   "props": "sha256:97538bc70a2e84f930963bde",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2368,9 +2374,10 @@
  "region2-0.83-y62-spring.json:Hermit hold": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:722dd2046fbf8267091be442",
+   "props": "sha256:30006298bcc6aa82beca4f3d",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2399,9 +2406,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:3ddc747adb59066b36740285",
+   "props": "sha256:cc9336cc04ebe4ee93fd5463",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2429,9 +2437,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:722dd2046fbf8267091be442",
+   "props": "sha256:30006298bcc6aa82beca4f3d",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2462,9 +2471,10 @@
  "region2-0.83-y62-spring.json:Merchant city": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:974948451c76132649def76d",
+   "props": "sha256:201456e2d965e74121a37964",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2496,9 +2506,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:9affc3b4cd5767f907a8cd5a",
+   "props": "sha256:d41d8536d608feb539303150",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2529,9 +2540,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:974948451c76132649def76d",
+   "props": "sha256:201456e2d965e74121a37964",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2565,9 +2577,10 @@
  "region2-0.83-y62-spring.json:Monastery": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:96e032582f043fe40a0b0931",
+   "props": "sha256:fc194c5042222d1691231c1e",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2592,9 +2605,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:fead700980ed1119ffdd3397",
+   "props": "sha256:6d819b745bb7e3522b774f36",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2618,9 +2632,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:96e032582f043fe40a0b0931",
+   "props": "sha256:fc194c5042222d1691231c1e",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2647,9 +2662,10 @@
  "region2-0.83-y62-spring.json:War-hold": [
   {
    "notes": "sha256:40e4e68a3b179d3830c98a0e",
-   "props": "sha256:501a93761223da83794e696b",
+   "props": "sha256:118a5666cb81cb2317fde6f9",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2677,9 +2693,10 @@
   },
   {
    "notes": "sha256:40e4e68a3b179d3830c98a0e",
-   "props": "sha256:6d56b78b03e0d005e6f5edb1",
+   "props": "sha256:2e93b6fac96e109f3b0a67de",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2706,9 +2723,10 @@
   },
   {
    "notes": "sha256:40e4e68a3b179d3830c98a0e",
-   "props": "sha256:501a93761223da83794e696b",
+   "props": "sha256:118a5666cb81cb2317fde6f9",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2738,9 +2756,10 @@
  "region2-0.83-y62-spring.json:own": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:7251d73772600fcc849ef835",
+   "props": "sha256:43258404dea0ec0719ba8ed5",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2769,9 +2788,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:3fb22ca09f1c5ce911d3f270",
+   "props": "sha256:876dfed08ac762b8721b3bf4",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -2799,9 +2819,10 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:7251d73772600fcc849ef835",
+   "props": "sha256:43258404dea0ec0719ba8ed5",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",

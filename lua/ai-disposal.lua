@@ -166,6 +166,17 @@ local function in_dump(dumps, x, y, z)
     return nil
 end
 
+-- A map block's item ids, copied first: fn may remove an item (empty_dump's
+-- dfhack.items.remove takes it out of block.items) and DFHack's vector
+-- iterator then reads past the shrunk end. F (24 Nov 22:59, 23:26):
+-- "ai-disposal.lua:177: Cannot iterate field vector<int32_t>.91: index out
+-- of bounds", empty_dump refused with 174 and 205 items in the dump.
+local function block_ids(block)
+    local ids = {}
+    pcall(function() for _, id in ipairs(block.items) do ids[#ids + 1] = id end end)
+    return ids
+end
+
 -- The items lying in one dump zone, read through its map blocks (one block
 -- of 16x16 tiles at a time): calls fn(it) for each, stops when fn returns false.
 local function zone_items(zn, fn)
@@ -174,7 +185,7 @@ local function zone_items(zn, fn)
         for by = zn.y1 - zn.y1 % 16, zn.y2, 16 do
             local ok, block = pcall(dfhack.maps.getTileBlock, math.max(bx, zn.x1), math.max(by, zn.y1), zn.z)
             if ok and block then
-                for _, id in ipairs(block.items) do
+                for _, id in ipairs(block_ids(block)) do
                     if not seen[id] then
                         seen[id] = true
                         local it = df.item.find(id)
@@ -285,7 +296,7 @@ function near_items(zn, fn)
             for by = y1 - y1 % 16, y2, 16 do
                 local ok, block = pcall(dfhack.maps.getTileBlock, math.max(bx, x1), math.max(by, y1), z)
                 if ok and block then
-                    for _, id in ipairs(block.items) do
+                    for _, id in ipairs(block_ids(block)) do
                         if not seen[id] then
                             seen[id] = true
                             local it = df.item.find(id)

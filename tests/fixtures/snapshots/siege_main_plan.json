@@ -209,9 +209,10 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:7251d73772600fcc849ef835",
+   "props": "sha256:43258404dea0ec0719ba8ed5",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",
@@ -241,9 +242,10 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:3fb22ca09f1c5ce911d3f270",
+   "props": "sha256:876dfed08ac762b8721b3bf4",
    "rules": [
     "hospital",
+    "hospital_stock",
     "staff",
     "cistern",
     "build",

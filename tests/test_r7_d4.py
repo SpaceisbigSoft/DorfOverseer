@@ -72,7 +72,7 @@ NAMES_AT_6298B4A["planner_industry"] = """
     "_quarry_status", "_quarry_stock", "_real_locations", "_record_any_outcome", "_refused_wait",
     "_restraint_order", "_seed_reserve_rule", "_shoes_recipe", "_slow_game_rules", "_smelting_rule",
     "_soap_rule", "_soldier_swap", "_spare_mechanisms_rule", "_stalled_days", "_standing_key", "_steel_rule",
-    "_stone_rule", "_stuck_again_rule", "_stuck_before", "_stuck_orders_rule", "_supply_rules",
+    "_order_remake_rule", "remake_due", "_stone_rule", "_stuck_again_rule", "_stuck_before", "_stuck_orders_rule", "_supply_rules",
     "_surface_basics", "_trade_rules", "_traits", "_unknown_reachable", "_unsuspend_rule", "_watchdog_notes",
     "_weapon_gaps", "_workshops_busy", "abs_tick", "agenda", "all_clear", "annotations", "asdict", "ask_player",
     "brew_jobs_open", "brew_recipe", "brewable_counts", "brief_timeout", "can_fight", "care_waiting",

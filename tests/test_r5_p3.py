@@ -241,11 +241,10 @@ def _():
     assert len(m.refusal_streaks) == 5, len(m.refusal_streaks)
 
 
-@test("left alone: unknown answers, the in-game halt, work under way, a search cut short")
+@test("left alone: unknown answers, the in-game halt, a search cut short (item7: an answer to wait counts)")
 def _():
     s, m, p = fort(), Memory(), well()
     for r in ({"ok": None}, {"ok": False, "halted": True, "error": "halted"},
-              {"ok": False, "waiting": True, "error": "trees being felled"},
               {"ok": False, "timed_out": True, "error": "search cut short"}):
         record([(p, r)], s, m, CFG)
     assert not m.refusal_streaks, m.refusal_streaks

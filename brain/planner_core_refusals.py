@@ -8,7 +8,7 @@ from digest import _d, _l
 from planner_config import PLANNER_CONFIG
 from planner_core_base import EMERGENCY, TICKS_PER_DAY, TICKS_PER_YEAR, watch_since
 from planner_backoff import (WAIT_BACKOFF_TYPES, WAIT_BACKOFF_MAX_DAYS, NO_EFFECT_COUNT,  # noqa: F401
-                             NO_EFFECT_DROP, _no_effect_same)
+                             NO_EFFECT_DROP, _no_effect_same, CARE_POST_MAX_DAYS, care_post)
 
 
 # One back-off for everything the game refuses: the same action refused
@@ -31,7 +31,11 @@ REFUSAL_KEYS = ("type", "kind", "recipe", "job", "entrance_id", "project_id", "n
                 # (0.105.48, K3) a release isn't the confine of the same rule:
                 # calm_burrow / calm_burrow release were one key, so the confine's
                 # loop hold and refusals held the letting-out for weeks
-                "release", "on")
+                "release", "on",
+                # (0.105.112 item7) nor one post's: the hospital's doctor given (location 3)
+                # cleared the surgeon's back-off there, so "nobody free" for the surgeon began
+                # again at a day (B, 24 Nov: staff refused 91 times in 12 h)
+                "post")
 
 
 def is_release(a) -> bool:
@@ -134,6 +138,8 @@ def _refused_wait(memory: Memory, p: Proposal, now: int, bridge: str | None = No
     if bridge and r and r.get("v") != bridge:   # (refusals from before 0.81 carry no version: once more)
         return None
     until = r.get("until")
+    if isinstance(until, int) and isinstance(r.get("at"), int) and care_post(p):
+        until = min(until, r["at"] + CARE_POST_MAX_DAYS * TICKS_PER_DAY)   # (item7) patients wait now
     if isinstance(until, int) and 0 <= now < until:
         return max(1, -(-(until - now) // TICKS_PER_DAY))
     return None
@@ -258,6 +264,8 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
         days = REFUSAL_IDLE_DAYS   # (0.104.138) the goal is met: a year, not a loop
     if p.action.get("type") == "squad_release" and "longs to fight or train" in str(r.get("error") or ""):
         days = max(days, 56)       # (0.104.34) a need that lasts: Enxah asked 368 times, 10 dwarves, all refused
+    if care_post(p):
+        days = min(days, CARE_POST_MAX_DAYS)   # (item7) patients wait: a free dwarf is looked for once a game day
     memory.refusals[key] = {"n": n, "until": now + days * TICKS_PER_DAY, "at": now,
                             "why": str(r.get("error") or "")[:120]}
     if r.get("timed_out"):

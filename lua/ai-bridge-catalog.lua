@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.111'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.112'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -615,6 +615,9 @@ ACTIONS = {
     -- hospital's thread (and cloth) quota at 0 meanwhile; restore puts it back
     -- (lua/ai-mood-help.lua, brain/planner_moods.py mood_hospital_rule)
     hospital_release = function(a) return reqscript('ai-mood-help').act_hospital_release(a, txt, a.dry_run == true) end,
+    -- (0.105.112) the hospitals' standing thread and cloth quotas, the surplus set out
+    -- (lua/ai-mood-help.lua, brain/planner_hospital_stock.py)
+    hospital_cap = function(a) return reqscript('ai-mood-help').act_hospital_cap(a, txt, a.dry_run == true) end,
     -- (0.105.47) a meeting that waits behind DF's diplomacy light opened by
     -- clicking it (lua/ai-meeting-open.lua); sent by the overseer only unattended
     open_meeting = function(a)
@@ -659,6 +662,12 @@ ACTIONS = {
     -- (item7) EngraveSlab orders for a dead with a slab already taken off (they
     -- never ended: frequency NONE), the rest made once, the ghosts' put first
     prune_memorial_orders = function(a) return reqscript('ai-memorials').prune_orders(a.dry_run == true) end,
+    -- (item8) a free tomb assigned to each of the fort's own dead lying free in reach
+    entomb_dead = function(a)
+        local n = int_in(a.max or 3, 1, 10)
+        if not n then return reject('entomb_dead: max is 1-10') end
+        return reqscript('ai-welfare').entomb_dead(n, a.dry_run == true)
+    end,
     train_cook = function(a)
         if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('train_cook: release is true or false') end
         return reqscript('ai-welfare').train_cook(a.dry_run == true, a.release == true)
@@ -837,12 +846,14 @@ for _, name in ipairs({
                        -- runs only fix/stuck-merchants -n
     'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none
     'hospital_release',   -- (item2) its dry run counts what it would lower and release, and changes nothing
+    'hospital_cap',       -- (0.105.112) its dry run counts what it would cap and set out, and changes nothing
     'open_meeting',    -- (0.105.47) its dry run finds the diplomacy light and clicks nothing
     'close_world',     -- (0.105.48, K9) its dry run says whether the World screen would be left, and presses nothing
     'hospital_guard', 'tantrum_step_down',   -- (0.105.47) each dry run checks and changes nothing
     'training_squad',   -- (0.105.47) its dry run names the leader or counts the places and changes nothing
     'coffins_anywhere', 'engrave_memorials', 'train_cook',   -- (0.105.47) each dry run finds and names, and changes nothing
     'prune_memorial_orders',   -- (item7) its dry run counts the orders and changes nothing
+    'entomb_dead',   -- (item8) its dry run names the dead and their tombs and assigns none
     'well_safety', 'well_rescue',   -- (0.105.47) each dry run plans and checks, and changes nothing
     'near_gates', 'retire_water_zones',   -- (0.105.47, I7d) each dry run counts and changes nothing
     'cross_cavern',    -- (0.105.47) its dry run plans the step (quickfort's dry run) and marks nothing

@@ -412,6 +412,98 @@ def _():
     assert not r.ok and skipped(r) == {"danger": 1} and len(w.removed) == 0, (dict(r), skipped(r))
 
 
+# F (24 Nov 22:59, 23:26): "ai-disposal.lua:177: Cannot iterate field vector<int32_t>.91: index out of
+# bounds". dfhack.items.remove takes the item out of its map block's items vector while zone_items walked
+# that vector; DFHack's iterator then read past the shrunk end. Here a block's items are one shared vector
+# per block that remove() shrinks, and reading an index the vector had but no longer has raises as DFHack does.
+LIVE_BLOCKS = r"""
+local env, W = ...
+local vecs = {}
+local function vector(ids)
+    local cap = #ids
+    local function get(_, i)
+        if type(i) == 'number' and i > #ids and i <= cap then
+            error(('Cannot iterate field vector<int32_t>.%d: index out of bounds'):format(i - 1))
+        end
+        return ids[i]
+    end
+    local mt = {__index = get, __len = function() return #ids end}
+    mt.__ipairs = function(t)
+        return function(_, i) i = i + 1; local v = get(t, i); if v ~= nil then return i, v end end, t, 0
+    end
+    return setmetatable({}, mt)
+end
+local function block_of(it) return it.pos.x - it.pos.x % 16, it.pos.y - it.pos.y % 16, it.pos.z end
+env.dfhack.maps.getTileBlock = function(x, y, z)
+    local k = (x - x % 16) .. ',' .. (y - y % 16) .. ',' .. z
+    if not vecs[k] then
+        local ids = {}
+        for _, it in ipairs(W.items) do
+            local bx, by, bz = block_of(it)
+            if bz == z and bx == x - x % 16 and by == y - y % 16 then ids[#ids + 1] = it.id end
+        end
+        vecs[k] = {ids = ids}
+    end
+    return {items = vector(vecs[k].ids)}
+end
+env.dfhack.items.remove = function(it)
+    it.flags.removed = true
+    table.insert(W.removed, it.id)
+    for _, v in pairs(vecs) do
+        for i = #v.ids, 1, -1 do if v.ids[i] == it.id then table.remove(v.ids, i) end end
+    end
+    return true
+end
+-- the fake itself: removing while walking the vector raises
+return function()
+    local b = env.dfhack.maps.getTileBlock(10, 10, 150)
+    return pcall(function()
+        for _, id in ipairs(b.items) do env.dfhack.items.remove(env.df.item.find(id)) end
+    end)
+end
+"""
+
+
+@test("empty_dump: removing items from a block DFHack is walking never reads past its end (F, 24 Nov 22:59)")
+def _():
+    if not need_lua():
+        return
+    lua, env, w = world()
+    w.dump(50, 10, 10, 150)
+    for i in range(3):
+        mk(lua, w, kind="PANTS", flags={"forbid": True}, pos=(10 + i, 11, 150))
+    walk_and_remove = lua.execute(LIVE_BLOCKS, env, w)
+    ok, err = walk_and_remove()
+    assert not ok and "index out of bounds" in str(err), (ok, err)      # the fake behaves as DFHack's vector
+
+    lua, env, w = world()
+    w.dump(50, 10, 10, 150)
+    junk = [mk(lua, w, kind="PANTS", flags={"forbid": True}, pos=(10 + i % 3, 10 + i // 3, 150)) for i in range(9)]
+    mk(lua, w, kind="PANTS", flags={"forbid": True}, pos=(14, 11, 150))       # same block, outside the zone
+    lua.execute(LIVE_BLOCKS, env, w)
+    r = env.empty_dump(opts(lua), False)
+    assert r.ok and r.removed == 9 and set(w.removed.values()) == {j.id for j in junk}, (dict(r), r.error)
+
+
+@test("empty_dump near: removing what lies beside the dump never reads past a block's end either")
+def _():
+    if not need_lua():
+        return
+    from test_item8_dump_near import fort
+    lua, env, w = fort()
+    near = [mk(lua, w, kind="ARMOR", flags={"forbid": True}, pos=(9, 9, 149)) for _ in range(4)]
+    lua.execute(LIVE_BLOCKS, env, w)
+    r = env.empty_dump(opts(lua, near=True), False)
+    assert r.ok and r.removed == 4 and all(a.flags.removed for a in near), (dict(r), r.error)
+
+
+@test("ai-disposal: no map block's items vector is walked directly (block_ids copies it first)")
+def _():
+    src = module_src("ai-disposal.lua")
+    assert "ipairs(block.items)" not in re.sub(r"local function block_ids.*?\nend\n", "", src, flags=re.S)
+    assert src.count("ipairs(block_ids(block))") == 2
+
+
 # --- set_standing_orders ---------------------------------------------------------------
 
 @test("set_standing_orders: short or full names, dry run, only refuse/dump/forbid orders that exist and read 0/1")

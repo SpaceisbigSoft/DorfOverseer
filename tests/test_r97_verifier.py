@@ -24,7 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "brain"))
 from planner import PLANNER_CONFIG  # noqa: E402
@@ -35,7 +35,7 @@ try:
 except ImportError:
     LuaRuntime = None
 
-SRC = (ROOT / "lua" / "ai-killers.lua").read_text(encoding="utf-8")
+SRC = split_src("ai-killers.lua")   # (0.105.113) the hub and its part (ai-killers-cell), as one text
 CIVIC = (ROOT / "lua" / "ai-bridge-actions-civic.lua").read_text(encoding="utf-8")
 ITEM3 = (ROOT / "tests" / "test_item3_killers.py").read_text(encoding="utf-8")
 DRINK = (ROOT / "tests" / "test_r97_cell_drink.py").read_text(encoding="utf-8")

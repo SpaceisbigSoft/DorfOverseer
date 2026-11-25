@@ -49,7 +49,7 @@
 local json = require('json')
 local utils = require('utils')
 
-BRIDGE_VERSION = '0.105.111'
+BRIDGE_VERSION = '0.105.112'
 PROTOCOL = 1 -- bump when the report's shape changes in a breaking way
 
 OUT_DIR = dfhack.getDFPath() .. '/dfhack-config/ai-overseer'   -- (a global: the parts write there too)
@@ -115,7 +115,7 @@ NOT_IN_FORT = {ok = false, error = 'no fortress is loaded (the game is at a menu
 -- (D0) ai-bridge-design: the Design track's landmarks
 -- (r6) ai-bridge-report and ai-bridge-actions each in four files (by theme;
 -- each file's later parts right after it, in the order the one file had)
-BRIDGE_PARTS = {'ai-bridge-report', 'ai-bridge-report-supplies', 'ai-bridge-report-fort', 'ai-bridge-report-world', 'ai-bridge-orders', 'ai-bridge-actions', 'ai-bridge-actions-fort', 'ai-bridge-actions-works', 'ai-bridge-actions-civic', 'ai-bridge-probes', 'ai-bridge-design'}
+BRIDGE_PARTS = {'ai-bridge-report', 'ai-bridge-report-supplies', 'ai-bridge-report-dead', 'ai-bridge-report-fort', 'ai-bridge-report-world', 'ai-bridge-orders', 'ai-bridge-actions', 'ai-bridge-actions-fort', 'ai-bridge-actions-works', 'ai-bridge-actions-civic', 'ai-bridge-probes', 'ai-bridge-design'}
 -- (0.105.26) Each part carries a marker, PART_VERSIONS['<part>'] = '<version>',
 -- the same string as BRIDGE_VERSION: one find-replace of the quoted version
 -- across lua/*.lua bumps them all. `version` lists a part whose marker differs

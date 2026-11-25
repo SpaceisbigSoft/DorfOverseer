@@ -14,7 +14,7 @@ from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 import planner_farms
 from planner_insane import INSANE_MOODS, insane_ids, insane_present  # (0.105.40b)
-from planner_mood_help import (dead_order, usable_thread, silk_route, webs_reach, free_items_skip,  # (0.105.47, J1)
+from planner_mood_help import (mood_want, dead_order, usable_thread, silk_route, webs_reach, free_items_skip,  # (0.105.47, J1)
                                TRADE_IF, request_detail)
 
 __all__ = ["MOOD_WORKSHOPS", "_mood_rules", "mood_item_text", "MOOD_CONSUMERS", "MOOD_TRADE_KEYS", "_mood_make", "_mood_slaughter", "_mood_materials", "mood_counts_text", "mood_journal", "mood_trade_wants", "MOOD_BLOCKS", "mood_blocked", "MOOD_RESERVES", "mood_reserve_counts", "reserve_room", "RESERVE_BATCH", "note_reserve_swap", "_mood_reserve_rule", "reserve_trade_wants", "reserve_words", "MOOD_SHOP_KINDS", "mood_shops_missing",
@@ -200,11 +200,10 @@ def mood_blocks_of(x: dict) -> list:
     while one mood request waits (mood_blocked): cloth and thread by the kind
     of thread it names (none named: every kind)."""
     kind = mood_kind(x)
-    flags = set(str(f) for f in _l(x.get("flags")))
-    item = str(x.get("item") or "").upper()
-    if kind == "cloth" or item == "THREAD":
-        table = MOOD_CLOTH_BLOCKS if kind == "cloth" else MOOD_THREAD_BLOCKS
-        kinds = [k for k in table if k in flags] or list(table)
+    w = mood_want(x)                      # (0.105.112 item3)
+    if w["what"] in ("cloth", "thread"):
+        table = MOOD_CLOTH_BLOCKS if w["what"] == "cloth" else MOOD_THREAD_BLOCKS
+        kinds = [k for k in table if k in w["fibres"]] or list(table)
         return [r for k in kinds for r in table[k]]
     return list(MOOD_BLOCKS.get(kind, ()))
 
@@ -254,6 +253,7 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         q = math.ceil(q / 10000)              # an older bridge: DF's cloth units
     q = max(1, min(10, q))
     flags = set(_l(x.get("flags")))
+    want = mood_want(x)                   # (0.105.112 item3) read as mood_hospital reads it
     acts: list = []
     stuck = int(_d(mood).get("stalled") or 0) >= cfg.get("mood_stall_days", 7) or bool(_d(mood).get("urgent"))
     unwoven = ""
@@ -297,7 +297,7 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         # cancelled for want of thread counts none); every kind's route is
         # tried in turn, silk too: webs collected at the Loom
         thread = usable_thread(s, cfg)
-        kinds = [k for k in ("silk", "yarn", "plant") if k in flags] or \
+        kinds = list(want["fibres"]) or \
             sorted(("plant", "yarn", "silk"), key=lambda k: -int(thread.get(k) or 0))
         if not _has_shop(b, "Loom"):
             if _mood_shop(s, ("Loom",), acts, mood, "cloth woven"):
@@ -343,11 +343,11 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
                                                   " (no sheep, llama or alpaca with wool grown to shear)"
                                                   if k == "yarn" else "")
                       + unwoven + dead_words())
-    if kind == "other" and str(x.get("item") or "").upper() == "THREAD":
+    if want["what"] == "thread":
         # (0.105.33) thread itself (mood_kind says "other"): by the request's
         # kind, the routes the cloth branch takes (B4: a plant-thread request
         # was told "no recipe makes it" with fibre plants and a farmer's)
-        kinds = [k for k in ("plant", "yarn", "silk") if k in flags] or \
+        kinds = list(want["fibres"]) or \
             (["plant"] if thread_plants_here(s) else []) + (["yarn"] if wool_route(s) else []) \
             + (["silk"] if silk_route(s, cfg) else []) or ["plant"]
         for k in kinds:
@@ -394,7 +394,25 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
                 return acts, None
             return acts, "no smelter"
         if not magma and int(su.get("fuel") or 0) <= 0:
-            return acts, "no fuel for the smelter"
+            # (0.105.112 item3) the fuel made first. D, 22-24 Nov: eight moods (forges, a
+            # metalcrafter, craftsdwarfs) waited on bars with 84 ore stones, a smelter and a
+            # wood furnace, fuel 0 and 19 logs no dwarf could walk to: "no fuel" was said and
+            # nothing done; all eight went mad
+            coal = sorted(((int(_d(v).get("n") or 0), k) for k, v in
+                           _d(_d(s.get("stone_use")).get("economic")).items()
+                           if k in MOOD_COAL and int(_d(v).get("n") or 0) > 0), reverse=True)
+            if coal and order(MOOD_COAL[coal[0][1]], 1, f"make coke from {coal[0][1].lower().replace('_', ' ')} "
+                                                    "(fuel to smelt the bar)"):
+                return acts, None
+            if int(st.get("wood") or 0) > 0 and _has_shop(b, "WoodFurnace"):
+                if order("make_charcoal", 2, "burn wood into charcoal (fuel to smelt the bar)"):
+                    return acts, None
+            lacts, lwhy = _mood_make(s, {"item": "WOOD", "quantity": 1}, "log", memory, cfg, mood=mood)
+            if lacts or lwhy is None:
+                acts.extend((a, how + " (wood for charcoal, the smelter's fuel)") for a, how in lacts)
+                return acts, None
+            return acts, "no fuel for the smelter (no coal, and no wood within reach to burn: " + lwhy + ")" \
+                + dead_words()
         metal = str(x.get("material") or "").upper().replace(" ", "_")
         if metal == "ROCK":
             metal = ""
@@ -480,6 +498,8 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         return acts, "no loose stone of the kind it wants"
     return acts, "no recipe makes it"
 
+
+MOOD_COAL = {"COAL_BITUMINOUS": "coke_bituminous", "LIGNITE": "coke_lignite"}   # planner_industry_stone's COAL_STONES
 
 MOOD_SLAUGHTER_MIN_TAME = 1     # (R1 g6) for a mood: any spare animal (the bridge keeps pets, named ones, a last pair)
 
@@ -855,9 +875,9 @@ def _mood_player_orders(s: dict, blockers: list) -> str:
     for x in blockers:
         k = mood_kind(x)
         if k == "cloth":
-            flags = set(str(f) for f in _l(x.get("flags")))
-            want |= {"cloth"} if "plant" in flags or not flags & {"silk", "yarn"} else set()
-            want |= {f for f in ("silk", "yarn") if f in flags}
+            fib = set(mood_want(x)["fibres"])          # (0.105.112 item3)
+            want |= {"cloth"} if "plant" in fib or not fib & {"silk", "yarn"} else set()
+            want |= {f for f in ("silk", "yarn") if f in fib}
         elif k == "leather":
             want.add("leather")
     if not want:
@@ -905,10 +925,11 @@ def mood_trade_wants(s: dict) -> list[dict]:
             key = MOOD_TRADE_KEYS.get(mood_kind(x))
             # (R1 g6) cloth and thread of the fibre asked (a silk mood was "sold"
             # the cheapest cloth: plant): CLOTH:SILK, THREAD:YARN... (lua/ai-trade.lua)
-            fibre = [f for f in ("silk", "yarn", "plant") if f in set(str(f) for f in _l(x.get("flags")))]
-            if mood_kind(x) == "cloth" and len(fibre) == 1:
+            w = mood_want(x)                    # (0.105.112 item3) the one reading of the want
+            fibre = list(w["fibres"])
+            if w["what"] == "cloth" and len(fibre) == 1:
                 key = "CLOTH:" + fibre[0].upper()
-            elif str(x.get("item") or "").upper() == "THREAD":
+            elif w["what"] == "thread":
                 key = "THREAD" + (":" + fibre[0].upper() if len(fibre) == 1 else "")
             if not key and mood_kind(x) == "bar" and x.get("material") and str(x["material"]).lower() != "rock":
                 key = "BAR:" + str(x["material"]).upper().replace(" ", "_")
@@ -1091,7 +1112,7 @@ def reserve_words(s: dict, cfg: dict, x: dict) -> str:
     """(0.105.31) For a mood's Needs you: the reserve of what it asks and
     what is being done about it ('' when no reserve is kept of it)."""
     kind = mood_kind(x)
-    flags = set(str(f) for f in _l(x.get("flags")))
+    flags = set(mood_want(x)["fibres"])   # (0.105.112 item3) the fibres as every mood rule reads them
     counts = mood_reserve_counts(s)
     if kind == "cloth" and ("plant" in flags or not flags & {"silk", "yarn"}):
         want, have = int(cfg.get("reserve_plant_cloth") or 0), counts["plant_cloth"]
@@ -1504,15 +1525,14 @@ HOSPITAL_FIBRES = ("silk", "yarn", "plant")
 
 
 def _cloth_or_thread(x: dict) -> str | None:
-    """'cloth' or 'thread' for a mood request of either, else None."""
-    if mood_kind(x) == "cloth":
-        return "cloth"
-    return "thread" if str(_d(x).get("item") or "").upper() == "THREAD" else None
+    """'cloth' or 'thread' for a mood request of either, else None (mood_want's reading)."""
+    w = mood_want(x)["what"]
+    return w if w in ("cloth", "thread") else None
 
 
 def _fibre_of(x: dict) -> str:
-    flags = set(str(f) for f in _l(_d(x).get("flags")))
-    return next((f for f in HOSPITAL_FIBRES if f in flags), "any")
+    """(0.105.112 item3) the fibre as the mood rule reads it (mood_want), not a reading of its own."""
+    return mood_want(x)["fibre"]
 
 
 def _by_fibre(counts, fibre: str) -> int:
@@ -1606,8 +1626,13 @@ def mood_hospital_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
         return
     stitch = stitch_waiting(s)
     found = []
+    from planner_mood_help import hospital_none_skip
     for m, x, what in reqs:
         share = _hospital_share(s, x, what, cfg)
+        if share and hospital_none_skip(s, memory, "thread" if "thread" in share else "cloth", _fibre_of(x)):
+            # (0.105.112 item3) the hospital answered "nothing of that kind" for these very
+            # counts (B, Sigun: its yarn thread all part-used, asked four times in 9 minutes)
+            share = None
         if share:
             urgent, thirsty, stalled = mood_urgency(s, m, memory, cfg)
             found.append((not urgent, m, x, what, share, urgent, thirsty, stalled))
@@ -1625,6 +1650,8 @@ def mood_hospital_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
                          f"{int(cfg.get('mood_urgent_days', MOOD_URGENT_DAYS))} days)")
             continue
         a = {"type": "hospital_release", give: n, "kind": fibre}
+        if give == "thread" and what == "thread" and mood_want(x)["part_ok"]:
+            a["part_ok"] = True       # (0.105.112 item3) a thread mood takes a 90%-full thread; the loom doesn't
         proposals.append(Proposal(
             "mood_hospital", a,
             f"{why}: {n} {give} set out of its chests for it"

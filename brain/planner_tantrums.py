@@ -467,7 +467,36 @@ def _convict_blockers(s: dict, cfg: dict, r: dict) -> list:
     return out
 
 
-def _chronic_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
+NO_CASE = "no solved case"
+
+
+def _convict_backoff(memory, p: Proposal, r: dict, s: dict, cfg: dict) -> str | None:
+    """(0.105.112) The last resort refused for want of a case ("no solved case
+    of that culprit waits for a trial"): asked again only once a new tantrum of
+    theirs is in the ledger (DF opens a disorderly case for a tantrum) and at
+    least chronic_convict_refused_days after the refusal, or after
+    chronic_convict_after_days at most. Live E, 24 Nov: refused 41 times in
+    12 hours for Muterazor, the refusal back-off begun again at a day after
+    each conviction that did go through. The words, or None (ask)."""
+    if memory is None:
+        return None
+    from planner_core_refusals import refusal_key
+    old = _d(_d(getattr(memory, "refusals", None)).get(refusal_key(p)))
+    at = old.get("at")
+    if NO_CASE not in str(old.get("why") or "") or not isinstance(at, int):
+        return None
+    now = abs_tick(s)
+    if now < at:
+        return None                                   # an older save loaded
+    newer = any(isinstance(t, int) and t > at for t in _l(r.get("ticks")))
+    if now - at >= int(cfg.get("chronic_convict_after_days", 28)) * TICKS_PER_DAY:
+        return None
+    if newer and now - at >= int(cfg.get("chronic_convict_refused_days", 1)) * TICKS_PER_DAY:
+        return None
+    return "no case of theirs to convict at the last try: asked again after their next tantrum"
+
+
+def _chronic_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """(I7c fix 5) The chronic cases one dwarf at a time, the worst first:
     off every post and the hospital labours; their own unmet needs, one a
     day in turn; the last resort behind its checks."""
@@ -500,13 +529,17 @@ def _chronic_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         if why_not:
             last_resort = f"; no conviction ({', '.join(why_not)})"
         else:
-            proposals.append(Proposal("chronic_convict", {"type": "convict", "max": 1, "unit_id": r["id"],
-                                                         "disorderly": True},
-                                      f"{head}, still after {cfg['chronic_convict_after_days']}+ days of care: the last "
-                                      "resort, one of their own disorderly-behaviour cases convicted (a free jail "
-                                      "chain, a usable well, nobody "
-                                      "wounded, no beating waiting)", 4))
-            last_resort = "; the last resort: one of their own cases convicted"
+            p = Proposal("chronic_convict", {"type": "convict", "max": 1, "unit_id": r["id"], "disorderly": True},
+                         f"{head}, still after {cfg['chronic_convict_after_days']}+ days of care: the last "
+                         "resort, one of their own disorderly-behaviour cases convicted (a free jail "
+                         "chain, a usable well, nobody "
+                         "wounded, no beating waiting)", 4)
+            wait = _convict_backoff(memory, p, r, s, cfg)
+            if wait:
+                last_resort = f"; no conviction ({wait})"
+            else:
+                proposals.append(p)
+                last_resort = "; the last resort: one of their own cases convicted"
     notes.append(f"chronic tantrum case{'s' if len(cases) > 1 else ''} ({len(cases)}): {head}; missing "
                  f"{', '.join(_l(r.get('unmet'))) or 'nothing the game lists'}: the AI "
                  + ("meets " + ", ".join(done) + " in turn" if done else "has no action for those")
@@ -523,4 +556,4 @@ def _tantrum_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
     _staff_tantrum_rule(s, cfg, proposals)
     _tantrum_soldier_rule(s, memory, cfg, proposals)      # (0.105.99)
     _hospital_guard_rule(s, memory, cfg, proposals, notes)
-    _chronic_rule(s, cfg, proposals, notes)
+    _chronic_rule(s, cfg, proposals, notes, memory)

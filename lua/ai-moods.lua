@@ -88,8 +88,12 @@ function requests_missing(job, txt)
                 -- metal": the report said "rough gem of rock"
                 if mi and not (ji.mat_type == 0 and ji.mat_index < 0) then mat = txt(mi:toString()) end
             end
+            -- (0.105.112 item3) DF's min_dimension (cloth 10000, a bar 150): the brain
+            -- reads whether a part-used thread can do (planner_mood_help mood_want)
+            local okm, md = pcall(function() return tonumber(ji.min_dimension) end)
             table.insert(out, {index = idx, item = df.item_type[ji.item_type] or tostring(ji.item_type), material = mat,
                                flags = flag_names(ji),
+                               min_dim = (okm and md and md > 0) and math.floor(md) or nil,
                                quantity = dim[idx] and math.ceil(left / CLOTH_DIM) or left})
         end
     end
@@ -453,11 +457,23 @@ end
 -- cloths: a partial piece (E, 22 Nov: Nish's Secretive mood stalled 41 days
 -- "on hand" with a 60% silk and a 20% wool cloth free, then went mad and
 -- died of thirst) is tallied in `partial`, never toward what the mood lacks.
+-- (0.105.112 item3) DF asks a mood's cloth as 1 item with job_item.min_dimension
+-- 10000 (a bar: 150), not in dimension units, so the test above never held
+-- (no `partial` in any fort's mood lines): D, 24 Nov, Athel, Zuntir and Udil
+-- each read "1 cloth (yarn) on hand" from one "llama wool cloth (80%)" for
+-- 40 days, the 2 whole ones in the hospital never set out, and died. An item
+-- under the request's min_dimension (a cloth request without one: a whole
+-- cloth) is a part-used piece DF won't take.
 local function partial_cloth(ji, it)
-    local okq, dimq = pcall(function() return ji.item_type == df.item_type.CLOTH and ji.quantity >= 1000 end)
-    if not (okq and dimq) then return false end
+    local okq, need = pcall(function()
+        local md = tonumber(ji.min_dimension) or -1
+        if md > 0 then return md end
+        if ji.item_type == df.item_type.CLOTH then return CLOTH_DIM end
+        return nil
+    end)
+    if not (okq and need) then return false end
     local ok, d = pcall(function() return it:getTotalDimension() end)
-    return ok and type(d) == 'number' and d > 0 and d < CLOTH_DIM
+    return ok and type(d) == 'number' and d > 0 and d < need
 end
 
 function request_avail(ji, entry, unit, taken)

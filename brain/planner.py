@@ -39,6 +39,7 @@ import steer_guard  # noqa: E402  (r4 k1) the strategist's holds and raises judg
 from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood's materials held from other orders
 from planner_moods import reserve_room, note_reserve_swap, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
 from planner_moods import mood_hospital_rule  # noqa: E402  (item2) a mood's cloth or thread out of the hospital's stock
+from planner_hospital_stock import hospital_stock_rule  # noqa: E402  (0.105.112) the hospitals' standing thread and cloth
 from planner_gates import note_gate_stuck, note_gate_stuck_cycle  # noqa: E402  (0.105.32) a gate the game holds shut
 from planner_guards import (guard_fail, guard_lines, guard_ok, outdoor_filter,  # noqa: E402,F401  (0.105.48, K6)
                             unknown_filter, meal_glut_filter)
@@ -753,6 +754,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (item2) a waiting mood's cloth or thread out of the hospital's chests, its quotas put back after
     if "moods" not in errors and "supplies" not in errors:
         _guard(mood_hospital_rule, s, memory, cfg, proposals, notes)
+    # (0.105.112) the hospitals' thread and cloth quotas kept to what their patients need, the rest set out
+    if "locations" not in errors and "supplies" not in errors:
+        _guard(hospital_stock_rule, s, memory, cfg, proposals, notes)
     # (0.105.47, J1) a gathering mood's workshop and materials inside the shelter while the alarm is up
     if "mood_help" not in errors:
         _guard(mood_shelter_rule, s, memory, cfg, proposals, notes)
@@ -1046,6 +1050,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_tantrum_rules, s, memory, cfg, proposals, notes)
         _guard(_orphan_jobs_rule, s, proposals)
         _guard(_room_repair_rule, s, proposals)
+        _guard(_order_remake_rule, s, memory, cfg, proposals)    # (item8) before the stuck rule: it skips a taken id
         _guard(_bench_coffins_rule, s, memory, proposals)
         _guard(_order_slots_rule, s, proposals)
         _guard(_stuck_orders_rule, s, memory, cfg, proposals)

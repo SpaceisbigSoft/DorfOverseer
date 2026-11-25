@@ -51,7 +51,7 @@ CFG = PLANNER_CONFIG
 LUA = ROOT / "lua"
 DISPOSAL = (LUA / "ai-disposal.lua").read_text(encoding="utf-8")
 CIVIC = (LUA / "ai-bridge-actions-civic.lua").read_text(encoding="utf-8")
-SUPPLIES = (LUA / "ai-bridge-report-supplies.lua").read_text(encoding="utf-8")
+SUPPLIES = (LUA / "ai-bridge-report-dead.lua").read_text(encoding="utf-8")   # (0.105.113) get_dead, split off ai-bridge-report-supplies
 SURFACE = (LUA / "ai-builder-surface.lua").read_text(encoding="utf-8")
 DUMPB = (LUA / "ai-builder-dump.lua").read_text(encoding="utf-8")
 

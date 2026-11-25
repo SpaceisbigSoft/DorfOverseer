@@ -33,6 +33,8 @@
 --                           (DF's workshop profile, its Workers tab), so one
 --                           dwarf learns; kept until gone, then the next best.
 --                           Never a kitchen the player named workers for.
+--   entomb_dead(max, dry)   (item8) a free tomb assigned to each of the fort's
+--                           own dead lying free in reach (DF carries them there)
 --   report()                the `welfare` section: the corner coffins (placed,
 --                           built, free), free coffin items, the trainee cook
 --
@@ -459,6 +461,103 @@ function open_tombs(areas, dry_run)
         end
     end)
     return {ok = true, opened = n, dry_run = dry_run or nil}
+end
+
+-- (0.105.112 item8) A tomb given to each of the fort's own dead whose body
+-- lies free in the dwarves' reach and waits with free tombs standing open (B,
+-- 24 Nov: Dodok, dead of thirst while raving, lay 165 days on a meeting hall
+-- floor with 10 open tombs: DF's automatic burial never took him). A tomb
+-- zone assigned to a dead unit is how the player buries one by hand: the
+-- dwarves carry the body to that coffin. Free tombs only: a coffin with no
+-- body, in a tomb zone nobody owns that takes citizens, reachable from the
+-- body. At most `max` a call; the nearest tomb to each body.
+local function tomb_free(z)
+    local owner = -1
+    pcall(function() owner = z.assigned_unit_id end)
+    if owner ~= nil and owner >= 0 then return false end
+    local closed = true
+    pcall(function() closed = z.zone_settings.tomb.flags.no_citizens end)
+    if closed then return false end
+    local coffin = nil
+    pcall(function()
+        for _, b in ipairs(z.contained_buildings) do
+            if b:getType() == df.building_type.Coffin and b:getBuildStage() >= b:getMaxBuildStage() then
+                local used = false
+                for _, ci in ipairs(b.contained_items) do
+                    local t = df.item_type[ci.item:getType()] or ''
+                    if ci.use_mode == 0 and (t == 'CORPSE' or t == 'CORPSEPIECE' or t == 'REMAINS') then used = true end
+                end
+                if not used then coffin = b end
+            end
+        end
+    end)
+    return coffin
+end
+
+function entomb_dead(max, dry_run)
+    max = math.max(1, math.min(10, math.tointeger(max) or 3))
+    local tombs, owned = {}, {}
+    pcall(function()
+        for _, z in ipairs(df.global.world.buildings.other.ZONE_TOMB) do
+            pcall(function()
+                local c = tomb_free(z)
+                if c then table.insert(tombs, {z = z, pos = xyz2pos(c.centerx, c.centery, c.z)}) end
+                local o = z.assigned_unit_id
+                if o ~= nil and o >= 0 then owned[o] = true end
+            end)
+        end
+    end)
+    if #tombs == 0 then
+        return {ok = false, rejected = true, error = 'no free tomb that takes citizens (a coffin with no body, the zone nobody\'s)'}
+    end
+    local from = anchor()
+    local race, civ, group = U.fort_race_civ()
+    local ctx = {U = U, race = race, civ = civ, group = group}
+    local given, waiting, taken = {}, 0, {}
+    pcall(function()
+        for _, it in ipairs(df.global.world.items.other.CORPSE) do
+            if #given >= max then break end
+            pcall(function()
+                local f = it.flags
+                if f.in_building or f.removed or f.forbid or f.dump or f.in_job or f.in_inventory
+                        or not U.on_ground(it) then return end
+                if U.corpse_side(it, 'CORPSE', ctx) ~= 'own' then return end
+                local u = df.unit.find(it.unit_id)
+                if not u or not dfhack.units.isDead(u) or owned[u.id] then return end
+                local x, y, z = dfhack.items.getPosition(it)
+                if not x then return end
+                local at = xyz2pos(x, y, z)
+                if from and not dfhack.maps.canWalkBetween(from, at) then return end
+                waiting = waiting + 1
+                local best, bd = nil, nil
+                for i, t in ipairs(tombs) do
+                    if not taken[i] and dfhack.maps.canWalkBetween(at, t.pos) then
+                        local d = math.abs(t.pos.x - x) + math.abs(t.pos.y - y) + 3 * math.abs(t.pos.z - z)
+                        if not bd or d < bd then best, bd = i, d end
+                    end
+                end
+                if not best then return end
+                local t = tombs[best]
+                local ok = dry_run
+                if not dry_run then
+                    local oks, r = pcall(dfhack.buildings.setOwner, t.z, u)
+                    ok = oks and r ~= false and t.z.assigned_unit_id == u.id
+                end
+                if ok then
+                    taken[best] = true
+                    owned[u.id] = true
+                    table.insert(given, {unit = u.id, name = name_of(u), zone = t.z.id,
+                                         x = t.pos.x, y = t.pos.y, z = t.pos.z})
+                end
+            end)
+        end
+    end)
+    if #given == 0 then
+        return {ok = false, rejected = true, waiting = waiting,
+                error = waiting > 0 and 'no free tomb the waiting dead can be carried to'
+                    or 'no body of the fort\'s own lies free in reach without a tomb of its own'}
+    end
+    return {ok = true, given = given, free_tombs = #tombs - #given, dry_run = dry_run or nil}
 end
 
 -- --- a cook trained -------------------------------------------------------------

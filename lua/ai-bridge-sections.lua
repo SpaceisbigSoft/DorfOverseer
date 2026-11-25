@@ -10,7 +10,7 @@
 -- Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-sections is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.111'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.112'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- Run one section of the report; if it fails, keep the rest of the report
 -- and put the error where that section would have been.
@@ -544,6 +544,7 @@ CACHE_INVALIDATES.set_farm_crops = {'farms'}   -- (0.105.5) the plots' crops rea
 CACHE_INVALIDATES.accept_cups = {'needs'}       -- (0.104.168) the cups census shows what it changed
 CACHE_INVALIDATES.mood_free_items = {'moods'}  -- (0.105.24) what the mood can reach now
 CACHE_INVALIDATES.hospital_release = {'moods', 'locations'}  -- (item2) the moods' counts, the hospital's quotas
+CACHE_INVALIDATES.hospital_cap = {'moods', 'locations'}  -- (0.105.112) likewise
 CACHE_INVALIDATES.location_access = {'locations'}  -- (0.105.26) shut places read shut, not "opened by you"
 -- (0.105.27) the disposal section read again after each disposal action
 for _, name in ipairs({'unforbid_items', 'mark_melt', 'mark_dump', 'empty_dump', 'place_dump'}) do
@@ -554,6 +555,7 @@ CACHE_INVALIDATES.set_standing_orders = {'disposal', 'dead'}
 CACHE_INVALIDATES.coffins_anywhere = {'dead', 'welfare'}
 CACHE_INVALIDATES.engrave_memorials = {'dead'}
 CACHE_INVALIDATES.prune_memorial_orders = {'dead'}   -- (item7) memorial_orders counted again
+CACHE_INVALIDATES.entomb_dead = {'dead'}   -- (item8) the free tombs counted again
 CACHE_INVALIDATES.train_cook = {'welfare'}
 -- (0.105.40 review) world cleanup: items deleted (the disposal marks and dump
 -- counts, industry's boulders and stocks), creatures vaporized (disposal's

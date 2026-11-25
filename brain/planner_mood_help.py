@@ -24,12 +24,48 @@ from digest import _d, _l
 from planner_core import (LIMIT_EXEMPT, STEER_PROTECTED, PLANNER_CONFIG, Proposal, TICKS_PER_DAY, _has_shop,
                           abs_tick, mood_kind, mood_on_hand)
 
-__all__ = ["CANCEL_MATCH", "dead_order", "usable_thread", "released_since", "webs_reach", "silk_route", "silk_wanted", "webs_hold",
-           "mood_shelter_rule", "free_items_sig", "free_items_skip", "note_mood_help", "TRADE_IF", "request_detail"]
+__all__ = ["mood_want", "MOOD_FIBRES", "THREAD_PART_OK", "CANCEL_MATCH", "dead_order", "usable_thread", "released_since", "webs_reach", "silk_route", "silk_wanted", "webs_hold",
+           "mood_shelter_rule", "free_items_sig", "free_items_skip", "hospital_none_skip", "note_mood_help", "TRADE_IF", "request_detail"]
 
 # a gathering mood's tiles put in the shelter: a life on it, no action slot to wait for
 LIMIT_EXEMPT.add("mood_shelter")
 STEER_PROTECTED.add("mood_shelter")
+
+# --- (0.105.112 item3) one reading of what a mood request wants --------------------
+#
+# B, 24 Nov 22:28-22:40: Sigun's secretive mood (a gem cutter's) wanted 1 yarn
+# cloth first and 1 plant cloth fourth; `mood` read the fibre from the
+# request's flags in one order, `mood_hospital` from them in another
+# (`_fibre_of`), and the thread branch in a third; each acted on its own
+# reading. Every rule now reads a request through mood_want.
+
+MOOD_FIBRES = ("silk", "yarn", "plant")
+THREAD_WHOLE = 15000
+THREAD_PART_OK = 13500        # (item4's THREAD_SET_OUT_MIN) a thread mood takes thread this full
+_MAT_FIBRE = (("silk", "silk"), ("wool", "yarn"), ("hair", "yarn"), ("yarn", "yarn"))
+
+
+def mood_want(x: dict) -> dict:
+    """What a mood request (the bridge's `moods.list[].missing[]`, from DF's
+    job_items: item type, material, flags1-3) asks for, read one way for
+    every rule: {what: 'cloth' | 'thread' | a mood_kind, fibres: the fibres
+    the request names in DF's flags (silk / yarn / plant; from its material
+    when the flags name none, e.g. "cave spider silk"), fibre: the one fibre
+    to set out or make ('any' when none is named), part_ok: a part-used
+    thread does (DF's min_dimension under a whole thread, or not reported)}."""
+    x = _d(x)
+    item = str(x.get("item") or "").upper()
+    what = "cloth" if item == "CLOTH" else "thread" if item == "THREAD" else mood_kind(x)
+    flags = set(str(f) for f in _l(x.get("flags")))
+    fibres = tuple(f for f in MOOD_FIBRES if f in flags)
+    if not fibres and what in ("cloth", "thread") and x.get("material"):
+        mat = str(x.get("material")).lower()
+        fibres = tuple(dict.fromkeys(k for w, k in _MAT_FIBRE if w in mat)) or ("plant",)
+    md = x.get("min_dim")
+    md = md if isinstance(md, int) and not isinstance(md, bool) else None
+    return {"what": what, "fibres": fibres, "fibre": fibres[0] if fibres else "any",
+            "part_ok": what == "thread" and (md is None or md <= THREAD_PART_OK)}
+
 
 # (0.105.47) the caravans: no trade deal ran in any fort all run (I7a), so the
 # notes never promise a purchase, only one if a trade happens
@@ -48,6 +84,9 @@ CANCEL_MATCH = {
     "process_plants": (("process plant",), ()),
     "tan_hide": (("tan ",), ()),
     "smelt_ore": (("smelt",), ()),
+    "make_charcoal": (("charcoal",), ()),
+    "coke_bituminous": (("coke",), ()),
+    "coke_lignite": (("coke",), ()),
     "raw_green_glass": (("glass",), ()),
     "cut_gems": (("cut ",), ()),
     "stone_blocks": (("block",), ()),
@@ -146,9 +185,8 @@ def silk_route(s: dict, cfg: dict | None = None) -> bool:
 
 
 def _silk_request(x: dict) -> bool:
-    flags = set(str(f) for f in _l(_d(x).get("flags")))
-    item = str(_d(x).get("item") or "").upper()
-    return "silk" in flags and (mood_kind(x) == "cloth" or item == "THREAD")
+    w = mood_want(x)
+    return w["what"] in ("cloth", "thread") and "silk" in w["fibres"]
 
 
 def silk_wanted(s: dict, cfg: dict | None = None) -> str:
@@ -243,6 +281,21 @@ def free_items_skip(memory, unit_id, missing: list) -> bool:
     return seen is not None and seen == free_items_sig(missing)
 
 
+def _hospital_sig(s: dict) -> str:
+    h = _d(_d(s.get("supplies")).get("hospital"))
+    return "|".join(f"{k}:{sorted(_d(h.get(k)).items())}" for k in ("cloth_kinds", "thread_kinds"))
+
+
+def hospital_none_skip(s: dict, memory, give: str, fibre: str) -> bool:
+    """(0.105.112 item3) hospital_release answered "nothing of that kind"
+    for this give (cloth / thread) and fibre while the hospital's counts were
+    as they are now: not asked again until they change."""
+    if memory is None:
+        return False
+    seen = _d(_d(getattr(memory, "mood_help", None)).get("hosp_none")).get(f"{give}:{fibre}")
+    return seen is not None and seen == _hospital_sig(s)
+
+
 def note_mood_help(p, r: dict, state: dict, memory, now) -> None:
     """record(): a mood_free_items call that found nothing forbidden keeps the
     counts it saw; a workshop built past the cap for a mood is remembered
@@ -261,6 +314,15 @@ def note_mood_help(p, r: dict, state: dict, memory, now) -> None:
         elif _d(r).get("ok") is True:
             none.pop(uid, None)
         mh["free_none"] = none
+    if getattr(p, "rule", "") == "mood_hospital" and a.get("type") == "hospital_release" and not a.get("restore"):
+        hn = dict(_d(mh.get("hosp_none")))
+        give = "thread" if a.get("thread") else "cloth"
+        key = f"{give}:{a.get('kind') or 'any'}"
+        if _d(r).get("ok") is not True and "nothing of that kind" in str(_d(r).get("error") or ""):
+            hn[key] = _hospital_sig(state)
+        elif _d(r).get("ok") is True:
+            hn.pop(key, None)
+        mh["hosp_none"] = hn
     if getattr(p, "rule", "") == "mood" and a.get("type") == "start_project" and a.get("mood_unit") is not None:
         if _d(r).get("ok") is not False:
             cap = dict(_d(mh.get("cap_built")))

@@ -217,6 +217,7 @@ SHORT_WORDS = {
     "remove_webs": "remove spider webs far from the fort",  # (0.105.3)
     "mood_shelter": "let a strange mood's workshop and materials into the shelter",  # (0.105.47, J1)
     "hospital_release": "give a strange mood the hospital's thread or cloth (or put the hospital's quotas back)",  # (item2)
+    "hospital_cap": "keep the hospital's thread and cloth to what its patients need (the rest set out for the fort)",  # (0.105.112)
     "scrub_dead_units": "clear old dead creatures from the game's unit list",  # (0.104.158)
     # (0.105.40, 13e) world cleanup (brain/planner_cleanup.py)
     "cleanup_items": "delete items no dwarf has reached for a year",
@@ -265,6 +266,7 @@ SHORT_WORDS = {
     "coffins_anywhere": "coffins with a tomb each on the AI's other levels, when no tomb level comes",  # (0.105.47, I7b)
     "engrave_memorials": "memorial slabs for the dead nobody can reach, before their ghosts rise",  # (0.105.47, I7b)
     "prune_memorial_orders": "end the memorial slab orders that never end",  # (item7)
+    "entomb_dead": "give the waiting dead a tomb each",  # (item8)
     "train_cook": "keep one cook at the kitchens so they learn",  # (0.105.47, I7b)
     "near_gates": "keep the civilians' work outside near the gates (or let it go anywhere again)",  # (0.105.47, I7d)
     "retire_water_zones": "take down the AI's water zones on surface water before the ice",  # (0.105.47, I7d)

@@ -2,14 +2,15 @@
 in 0.105.25, 13c): order slots and the workshop an order goes to, jobs
 left without an order, suspended jobs resumed, the AI's orders approved,
 stuck orders cancelled (select() then holds the recipe: stuck_hold_days),
-coffins on the bench. planner_industry re-exports every name here."""
+coffins on the bench, an order in a stone the dwarves can't reach made
+again in any stone (item8). planner_industry re-exports every name here."""
 
 from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule"]
+__all__ = ["_order_remake_rule", "remake_due", "_bench_coffins_rule", "STONE_CRAFTS", "order_shop", "_order_slots_rule", "_orphan_jobs_rule", "_unsuspend_rule", "_approve_rule", "_stuck_orders_rule"]
 
 
 def _bench_coffins_rule(s: dict, memory, proposals: list) -> None:
@@ -41,6 +42,66 @@ def _bench_coffins_rule(s: dict, memory, proposals: list) -> None:
                               f"a tomb level waits for {waiting} coffin(s) and the AI's coffin order has made no job "
                               f"in {(now - _d(memory.order_watch.get(str(idle[0].get('id')))).get('since', now)) // TICKS_PER_DAY} "
                               f"days: put {min(5, waiting)} straight on a {'carpenter' if material == 'wood' else 'mason'}'s bench", 3))
+
+
+ORDER_REMAKE_DAYS = 7     # (item8) default for order_remake_days
+
+
+def remake_due(s: dict, memory, cfg: dict) -> list:
+    """(0.105.112 item8) The AI's one-time orders for a stone recipe in one
+    named stone that have made no job in order_remake_days: [(order, days)].
+    B (24 Nov): a stone coffin order in the fort's bauxite stone, placed in
+    264, made no job in 2,349 days: all six bauxite boulders lay on the
+    flooded level (z136) the dwarves can't walk to, so DF never found one; the
+    stuck rule leaves the last coffin order standing while the dead wait, and
+    the coffins rule put coffins straight on the bench every few minutes."""
+    if memory is None or not jobs_reported(s) or "orders" in _d(s.get("_errors")):
+        return []
+    days_ = int(cfg.get("order_remake_days", ORDER_REMAKE_DAYS))
+    now = abs_tick(s)
+    out = []
+    for o in _l(s.get("orders")):
+        if not isinstance(o, dict) or not o.get("by_ai") or o.get("repeats") or o.get("validated") is False:
+            continue
+        recipe, mat = str(o.get("recipe") or ""), str(o.get("material") or "")
+        if not recipe.startswith("stone_") or not mat.startswith("INORGANIC:") or (o.get("amount_left") or 0) <= 0:
+            continue
+        if _d(o.get("jobs")).get("n"):
+            continue
+        w = _d(memory.order_watch.get(str(o.get("id"))))
+        if not isinstance(w.get("since"), int):
+            continue
+        days = stuck_days(w, now)
+        if days >= days_:
+            out.append((o, days))
+    return out
+
+
+def _order_remake_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
+    """(item8) Each such order (one a cycle) taken off and made again in any
+    stone the masons can reach (wood where stone is short and the recipe has
+    a wooden kind): two steps of the one rule, the cancel first. No stuck
+    hold is booked: the recipe isn't what failed, the stone was."""
+    due = remake_due(s, memory, cfg)
+    if not due:
+        return
+    o, days = max(due, key=lambda t: t[1])
+    from planner_building_stores import WOODEN_FURNITURE
+    recipe, amount = str(o.get("recipe")), min(int(o.get("amount_left") or 1), 50)
+    mat = str(o.get("material")).split(":", 1)[1].lower().replace("_", " ")
+    wooden = WOODEN_FURNITURE.get(recipe)
+    if stone_short(s, amount) and wooden and _has_shop(_d(s.get("buildings")), "Carpenters") \
+            and int(_d(s.get("stocks")).get("wood") or 0) >= amount:
+        remade, how = {"type": "work_order", "recipe": wooden, "amount": amount}, "in wood (stone is short)"
+    elif stone_short(s, amount):
+        return                              # no stone to make it of: the quarry rule first
+    else:
+        remade, how = {"type": "work_order", "recipe": recipe, "amount": amount}, "in any stone the masons can reach"
+    proposals.append(Proposal("order_remake", {"type": "cancel_work_order", "order_id": o.get("id")},
+                              f"the AI's {recipe} order in {mat} ({amount} left) has made no job in {days} days "
+                              f"(no {mat} the dwarves can reach): take it off", 3))
+    proposals.append(Proposal("order_remake", remade,
+                              f"the {recipe} order in {mat} taken off: {amount} made again {how}", 3, True))
 
 
 STONE_CRAFTS = ("crafts", "ring", "bracelet", "earring", "amulet", "figurine", "mug", "scepter", "crown", "goblet")

@@ -71,6 +71,21 @@
 -- the last SPAR_RECENT_KEEP are the section's spars_recent. A tantrum is
 -- still ended (the tantrum branch is looked at first, mutual or not).
 --
+-- (0.105.112, E 24 Nov: 13 of the citizens kept, each also in a conflict
+-- with a tame peahen or a dog of the fort) The fort's own side is wider: a
+-- living tame animal of the fort's civ ('pet') and a resident, visitor,
+-- merchant or diplomat at peace ('guest') in a conflict with citizens make it
+-- the fort's own; they are taken out of it with the citizens (counts
+-- others_separated; the log's units show kind). A conflict with no living
+-- citizen is left alone. Real enemies (invaders, wild or agitated animals,
+-- another civ's animals, undead, crazed, transformed, night creatures,
+-- forgotten beasts and great dangers, hostile or berserk guests) still keep
+-- the citizens in theirs; kept_why names which. A strangling hold (an Attack
+-- whose wrestle_info.grapple_attack is Choke/FollowStrangle on a living
+-- citizen of a brawl or worse) or a citizen of it suffocating under an attack
+-- is separated at once: the entry's `choke` {by, victim, how, grapple,
+-- suffocation}, counts.chokes (once a conflict).
+--
 --   act(a)        the fight_watch action {on, ticks?, separate_ticks?, end_tantrums?, dry_run?}
 --   report()      the `fights` section
 --   pass(now)     one pass (the timer's; tests call it)
@@ -95,6 +110,8 @@ TRAINING_ACTIVITY = {Sparring = true, CombatTraining = true, IndividualSkillDril
 MONTH = 33600                -- ticks in a game month (the squad schedule's index)
 STATE_KEY = 'ai_overseer_fight_watch'
 YEAR = 403200
+CHOKE_MOVES = {Choke = true, FollowStrangle = true}   -- (0.105.112) df.wrestle_attack_type: a strangling hold
+CHOKE_CODES = {[1] = 'Choke', [13] = 'FollowStrangle'}  -- ...their numbers, should the enum be unreadable
 
 local CODE = {}              -- this load of the file (a newer load takes the loop over)
 
@@ -106,7 +123,7 @@ end
 local function fresh_state()
     return {on = false, ticks = FIGHT_WATCH_TICKS, separate_ticks = FIGHT_SEPARATE_TICKS, end_tantrums = true,
             counts = {seen = 0, capped = 0, separated = 0, reengaged = 0, passes = 0, errors = 0, died = 0,
-                      tantrums_ended = 0, tantrum_attacks = 0, attacks = 0, spars = 0},
+                      tantrums_ended = 0, tantrum_attacks = 0, attacks = 0, spars = 0, chokes = 0, others_separated = 0},
             seen = {}, recent = {}, log = {}, file_lines = nil, tantrum_logged = {}, attack_logged = {},
             attack_seen = {}, spar_logged = {}, spars_recent = {}}
 end
@@ -176,30 +193,68 @@ local function field(o, k)
     return ok and v or nil
 end
 
--- the unit's judgement: 'citizen' (a living citizen of the fort), 'dead' (a
--- dead citizen), or nil and why (anything else: the conflict is left alone)
+-- (0.105.112) hostile by DF's flags or temper: a marauder, an active invader,
+-- an uninvited visitor, an ambusher, an agitated animal. nil when unreadable.
+local function hostile(u)
+    if is(dfhack.units.isAgitated, u) then return 'agitated' end
+    local f1, f2 = field(u, 'flags1'), field(u, 'flags2')
+    for _, k in ipairs({'marauder', 'active_invader', 'hidden_ambusher', 'hidden_in_ambush'}) do
+        if field(f1, k) == true then return k end
+    end
+    if field(f2, 'visitor_uninvited') == true then return 'visitor_uninvited' end
+    return nil
+end
+
+-- the unit's judgement: 'citizen' (a living citizen of the fort), 'pet' (a
+-- living tame animal of the fort's civ, at peace), 'guest' (a resident,
+-- visitor, merchant or diplomat at peace), 'dead' (a dead citizen or pet of
+-- the fort), or nil and why (a real enemy or a stranger: the conflict is left
+-- alone). (0.105.112) E 24 Nov: 13 citizens kept out of a separation because
+-- each was also in a conflict with a tame peahen or a dog of the fort ("not a
+-- citizen"); the fort's own animals and guests are now its side.
 function unit_kind(u)
     local U = dfhack.units
     if not u then return nil, 'unit not found' end
+    local civ = field(df.global.plotinfo, 'civ_id')
+    local own_civ = civ ~= nil and field(u, 'civ_id') == civ
+    local animal = is(U.isAnimal, u)
+    local tame = is(U.isTame, u) or is(U.isDomesticated, u)
     if is(U.isDead, u) or (U.isAlive and is(U.isAlive, u) == false) then
-        local civ = field(df.global.plotinfo, 'civ_id')
-        if field(u, 'civ_id') == civ and civ ~= nil and not is(U.isAnimal, u) then return 'dead' end
+        if own_civ and (not animal or tame) then return 'dead' end
         return nil, 'dead, not a citizen'
     end
     if is(U.isInvader, u) then return nil, 'invader' end
     if is(U.isUndead, u) then return nil, 'undead' end
     if is(U.isCrazed, u) then return nil, 'crazed' end
-    if is(U.isDanger, u) then return nil, 'a danger' end
     local okw, changed = pcall(function()
         local nr = u.enemy.normal_race
         return nr ~= nil and nr >= 0 and nr ~= u.race
     end)
     if okw and changed then return nil, 'transformed' end
-    if is(U.isMerchant, u) or is(U.isDiplomat, u) or is(U.isVisitor, u) or is(U.isAnimal, u) then
-        return nil, 'not a citizen'
+    if is(U.isForgottenBeast, u) then return nil, 'forgotten beast' end
+    if is(U.isNightCreature, u) then return nil, 'night creature' end
+    if is(U.isGreatDanger, u) then return nil, 'a great danger' end
+    if is(U.isDanger, u) then return nil, 'a danger' end
+    if animal then
+        if not tame then return nil, 'wild animal' end
+        if not own_civ then return nil, "another civ's animal" end
+        local h = hostile(u)
+        if h then return nil, 'hostile animal (' .. h .. ')' end
+        return 'pet'
+    end
+    if is(U.isMerchant, u) or is(U.isDiplomat, u) or is(U.isVisitor, u) or is(U.isVisiting, u) then
+        local h = hostile(u) or (berserk(u) and 'berserk') or nil
+        if h then return nil, 'hostile visitor (' .. h .. ')' end
+        return 'guest'
     end
     local okc, cit = pcall(U.isCitizen, u, true)
     if okc and cit then return 'citizen' end
+    if is(U.isResident, u) then
+        local h = hostile(u) or (berserk(u) and 'berserk') or nil
+        if h then return nil, 'hostile resident (' .. h .. ')' end
+        return 'guest'
+    end
+    if hostile(u) then return nil, 'hostile (' .. hostile(u) .. ')' end
     return nil, 'not a citizen'
 end
 
@@ -269,6 +324,11 @@ function judge(ev)
         end
     end
     if #j.ids < 2 then j.ours, j.why = false, j.why or 'fewer than two units' end
+    if j.ours then   -- (0.105.112) pets and guests alone are not the fort's fight to break up
+        local n = 0
+        for _, r in ipairs(j.units) do if r.kind == 'citizen' then n = n + 1 end end
+        if n == 0 then j.ours, j.why = false, 'no living citizen in it' end
+    end
     return j
 end
 
@@ -364,6 +424,7 @@ local function unit_rows(j)
     local out = {}
     for _, r in ipairs(j.units) do
         table.insert(out, {id = r.id, name = unit_name(r.u), dead = r.kind == 'dead' or nil,
+                           kind = (r.kind == 'pet' or r.kind == 'guest') and r.kind or nil,
                            tantrum = (r.kind == 'citizen' and in_tantrum(r.u)) or nil,
                            berserk = (r.kind == 'citizen' and berserk(r.u)) or nil})
     end
@@ -749,6 +810,51 @@ function scan_units(S, now, dry, list)
     return ended
 end
 
+-- --- (0.105.112) a strangling hold: separated at once ------------------------
+
+-- the grapple move of an attack's wrestle_info (df.wrestle_attack_type's name:
+-- 1 Choke, 13 FollowStrangle, as DF 53.x lists them), or nil
+local function grapple_of(at)
+    local g = field(field(at, 'wrestle_info'), 'grapple_attack')
+    if type(g) ~= 'number' or g < 0 then return nil end
+    local ok, nm = pcall(function() return df.wrestle_attack_type[g] end)
+    if ok and type(nm) == 'string' then return nm end
+    return CHOKE_CODES[g] or tostring(g)
+end
+
+-- a unit of the conflict choking a living citizen of it: {by, victim, how =
+-- 'hold' (a Choke/FollowStrangle grapple; only when `fighting`, a brawl or
+-- worse: wrestlers choke in sparring) or 'suffocation' (its target's
+-- counters.suffocation > 0, at any level), grapple, suffocation}, or nil
+function choke_of(j, fighting)
+    local cit = {}
+    for _, r in ipairs(j.units) do if r.kind == 'citizen' then cit[r.id] = r end end
+    local found = nil
+    for _, r in ipairs(j.units) do
+        if r.kind ~= 'dead' then
+            for _, h in ipairs(attacks_of(r.u)) do
+                local v = cit[h.target]
+                if v and h.target ~= r.id then
+                    local g = grapple_of(h.attack)
+                    local suff = field(field(v.u, 'counters'), 'suffocation')
+                    if type(suff) ~= 'number' then suff = nil end
+                    local c = {by = r.id, by_name = unit_name(r.u), victim = v.id, victim_name = unit_name(v.u),
+                               grapple = g, suffocation = suff}
+                    if fighting and g and CHOKE_MOVES[g] then
+                        c.how = 'hold'
+                        return c
+                    end
+                    if suff and suff > 0 and not found then
+                        c.how = 'suffocation'
+                        found = c
+                    end
+                end
+            end
+        end
+    end
+    return found
+end
+
 -- --- one pass ---------------------------------------------------------------
 
 -- opts: {dry = true: read and log, change nothing}. Returns what it did.
@@ -836,13 +942,22 @@ function pass(now, opts)
                     reeng = true
                 end
             end
-            local separate = fighting and (rec.lethal or rec.died or reeng
-                or (now - rec.first) > (S.separate_ticks or FIGHT_SEPARATE_TICKS))
+            -- (0.105.112) a strangling hold in a brawl or worse, or a citizen of it
+            -- suffocating under an attack in it at any level: separated at once
+            local choke = choke_of(j, fighting)
+            if choke and not rec.choked then
+                rec.choked = true
+                if not dry then S.counts.chokes = (S.counts.chokes or 0) + 1 end
+                entry = entry or {kind = 'change'}
+            end
+            local separate = (fighting and (rec.lethal or rec.died or reeng
+                or (now - rec.first) > (S.separate_ticks or FIGHT_SEPARATE_TICKS))) or choke ~= nil
             local removed, kept = {}, {}
             if separate then
                 if not dry then mo = mo or makeown() end
+                -- (0.105.112) the fort's own pets and guests in it taken out too
                 for _, r in ipairs(j.units) do
-                    if r.kind == 'citizen' then
+                    if r.kind == 'citizen' or r.kind == 'pet' or r.kind == 'guest' then
                         if foreign[r.id] then
                             table.insert(kept, r.id)
                         elseif dry then
@@ -885,6 +1000,7 @@ function pass(now, opts)
                     if #why > 0 then entry.kept_why = why end
                 end
                 if reeng then entry.reengaged = true end
+                if choke then entry.choke = choke end
                 if dry then entry.dry = true end
                 log(S, entry)
             end
@@ -892,6 +1008,11 @@ function pass(now, opts)
                 S.counts.capped = S.counts.capped + capped
                 if #removed > 0 then
                     S.counts.separated = S.counts.separated + #removed
+                    for _, r in ipairs(j.units) do
+                        if (r.kind == 'pet' or r.kind == 'guest') and S.recent[r.id] == now then
+                            S.counts.others_separated = (S.counts.others_separated or 0) + 1
+                        end
+                    end
                     if reeng then S.counts.reengaged = S.counts.reengaged + 1 end
                     rec.sep_at = now
                     rec.separations = (rec.separations or 0) + 1

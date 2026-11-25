@@ -35,3 +35,17 @@ def _no_effect_same(p, rec: dict) -> bool:
         return rec.get("reason") == p.reason
     c, was = count(p), rec.get("count")
     return isinstance(c, int) and isinstance(was, int) and c >= was * NO_EFFECT_DROP
+
+
+# (0.105.112 item7) a hospital post while patients wait for care: its "nobody
+# free" asked again once a game day (never the 32-84 days of the back-off: a
+# dwarf may be free tomorrow and the surgeon's patient is waiting)
+CARE_POSTS = {"DOCTOR", "SURGEON", "DIAGNOSTICIAN", "BONE_DOCTOR", "CHIEF_MEDICAL_DWARF"}
+CARE_POST_MAX_DAYS = 1
+
+
+def care_post(p) -> bool:
+    a = getattr(p, "action", None)
+    a = a if isinstance(a, dict) else {}
+    return (a.get("type") == "staff_location" and str(a.get("post") or "").upper() in CARE_POSTS
+            and "need care" in str(getattr(p, "reason", "") or ""))
