@@ -50,7 +50,26 @@
 -- TANTRUM_LOG_TICKS). The Rules switch end_tantrums (on by default) turns
 -- the ending off (then only logged). A calm citizen's Attack on a citizen
 -- is only logged (kind 'attack', once a pair a ATTACK_LOG_TICKS), sparring
--- (a Horseplay/Training conflict) left out.
+-- left out.
+--
+-- (item3, B 24 Nov) Sparring: B logged 199 'attack's in ~2 h, nearly all
+-- mutual pairs of wrestlers (each attacking the other in the same ticks, no
+-- deaths, no tantrum): DF's sparring/combat training opens no Horseplay or
+-- Training conflict. A calm citizen's attack on a citizen is sparring when
+-- the guards hold (the target in no tantrum or berserk, neither of the two in
+-- a conflict above Training, neither badly hurt: suffocating, unconscious or
+-- under 3/4 of its blood) and one of:
+--   'conflict'  the attacker in a Horseplay/Training conflict (as before);
+--   'activity'  the attacker in a training activity (an entry or event named
+--               in TRAINING_ACTIVITY: its u.social_activities/u.activities,
+--               or listed among a training event's participants);
+--   'squad'     the attacker on duty in a squad told to train (a TRAIN order
+--               in its routine's schedule this month, or a routine named
+--               '...train...') with no order of the squad's own;
+--   'mutual'    the target attacked the attacker too within MUTUAL_TICKS.
+-- Counted (counts.spars, once a pair a ATTACK_LOG_TICKS), never in the log:
+-- the last SPAR_RECENT_KEEP are the section's spars_recent. A tantrum is
+-- still ended (the tantrum branch is looked at first, mutual or not).
 --
 --   act(a)        the fight_watch action {on, ticks?, separate_ticks?, end_tantrums?, dry_run?}
 --   report()      the `fights` section
@@ -69,6 +88,11 @@ LOG_FILE_SLACK = 100         -- ...rewritten once it holds this many more
 TANTRUM_LOG_TICKS = 100      -- (item3) a tantrum ended is logged once a unit in this many ticks
 ATTACK_LOG_TICKS = 600       -- (item3) a calm citizen's attack on a citizen: once a pair in this many
 SPARRING_MAX = 2             -- (item3) a conflict no higher than Training is sparring
+MUTUAL_TICKS = 100           -- (item3) A attacks B and B attacks A within this many ticks: sparring
+SPAR_RECENT_KEEP = 5         -- (item3) the last spars the section shows (spars_recent)
+TRAINING_ACTIVITY = {Sparring = true, CombatTraining = true, IndividualSkillDrill = true, SkillDemonstration = true,
+                     Training = true, TrainingSession = true, RangedPractice = true}   -- (item3) DF's names
+MONTH = 33600                -- ticks in a game month (the squad schedule's index)
 STATE_KEY = 'ai_overseer_fight_watch'
 YEAR = 403200
 
@@ -82,8 +106,9 @@ end
 local function fresh_state()
     return {on = false, ticks = FIGHT_WATCH_TICKS, separate_ticks = FIGHT_SEPARATE_TICKS, end_tantrums = true,
             counts = {seen = 0, capped = 0, separated = 0, reengaged = 0, passes = 0, errors = 0, died = 0,
-                      tantrums_ended = 0, tantrum_attacks = 0, attacks = 0},
-            seen = {}, recent = {}, log = {}, file_lines = nil, tantrum_logged = {}, attack_logged = {}}
+                      tantrums_ended = 0, tantrum_attacks = 0, attacks = 0, spars = 0},
+            seen = {}, recent = {}, log = {}, file_lines = nil, tantrum_logged = {}, attack_logged = {},
+            attack_seen = {}, spar_logged = {}, spars_recent = {}}
 end
 
 -- the one state table, global so a reload of this file finds it
@@ -450,6 +475,133 @@ local function sparring(by, id)
     return false
 end
 
+-- --- (item3) sparring that opens no conflict -----------------------------------
+
+-- in a conflict above Training (a brawl or worse: never sparring)
+local function above_training(by, id)
+    for _, c in ipairs(by[id] or {}) do
+        if c.max ~= nil and c.max > SPARRING_MAX then return true end
+    end
+    return false
+end
+
+-- badly hurt: suffocating (a strangling, what killed B's seven), unconscious,
+-- or under 3/4 of its blood. nil when not (or unreadable).
+local function hurt(u)
+    local c = field(u, 'counters')
+    local suff, unc = field(c, 'suffocation'), field(c, 'unconscious')
+    if type(suff) == 'number' and suff > 0 then return 'suffocating' end
+    if type(unc) == 'number' and unc > 0 then return 'unconscious' end
+    local b = field(u, 'body')
+    local bc, bm = field(b, 'blood_count'), field(b, 'blood_max')
+    if type(bc) == 'number' and type(bm) == 'number' and bm > 0 and bc * 4 < bm * 3 then return 'bleeding' end
+    return nil
+end
+
+-- the DF name of a training activity entry or event type (nil when it is none)
+local function training_name(enum, ty)
+    local ok, nm = pcall(function() return enum[ty] end)
+    if ok and type(nm) == 'string' and TRAINING_ACTIVITY[nm] then return nm end
+    return nil
+end
+
+-- the training activities now: {acts = {[activity id] = name}, units = {[unit id] = name}}
+-- (an entry is training when its own type or one of its events' is; the units
+-- are the training events' participants.units, where DF lists them)
+function training_index()
+    local idx = {acts = {}, units = {}}
+    pcall(function()
+        local all = df.global.world.activities.all
+        if #all == 0 then return end
+        for _, a in ipairs(all) do
+            local nm = training_name(df.activity_entry_type, field(a, 'type'))
+            local evs = vec_list(field(a, 'events'))
+            for _, ev in ipairs(evs) do
+                local okt, ty = pcall(function() return ev:getType() end)
+                local en = (okt and training_name(df.activity_event_type, ty)) or nil
+                if en then nm = nm or en end
+            end
+            if nm then
+                local id = field(a, 'id')
+                if id ~= nil then idx.acts[id] = nm end
+                for _, ev in ipairs(evs) do
+                    for _, uid in ipairs(vec_list(field(field(ev, 'participants'), 'units'))) do
+                        if idx.units[uid] == nil then idx.units[uid] = nm end
+                    end
+                end
+            end
+        end
+    end)
+    return idx
+end
+
+-- the training activity the unit is in (its name), or nil
+local function training_of(u, idx)
+    local id = field(u, 'id')
+    if id ~= nil and idx.units[id] then return idx.units[id] end
+    for _, k in ipairs({'social_activities', 'activities'}) do
+        for _, aid in ipairs(vec_list(field(u, k))) do
+            if type(aid) ~= 'number' then aid = field(aid, 'id') end   -- (a pointer, should DF hold one)
+            if aid ~= nil and idx.acts[aid] then return idx.acts[aid] end
+        end
+    end
+    return nil
+end
+
+-- on duty in a squad told to train: 'order' (a TRAIN order in the squad's
+-- routine this month, the unit's position not left out of it), 'routine' (the
+-- schedule unreadable, the routine named '...train...'), or nil. A squad with
+-- an order of its own (kill, station...) is not training.
+local function squad_training(u)
+    local ok, why = pcall(function()
+        local sid = u.military.squad_id
+        if type(sid) ~= 'number' or sid < 0 then return nil end
+        local sq = df.squad.find(sid)
+        if not sq then return nil end
+        local okn, n = pcall(function() return #sq.orders end)
+        if okn and n > 0 then return nil end
+        local idx = field(sq, 'cur_routine_idx')
+        if type(idx) ~= 'number' or idx < 0 then return nil end
+        local found, read = nil, false
+        pcall(function()
+            local month = math.floor(df.global.cur_year_tick / MONTH)
+            local TRAIN = df.squad_order_type.TRAIN
+            local pos = u.military.squad_position
+            for _, so in ipairs(sq.schedule[idx][month].orders) do
+                local okt, ty = pcall(function() return so.order:getType() end)
+                if okt and ty == TRAIN then
+                    local okp, mine = pcall(function() return so.positions[pos] end)
+                    if not okp or mine ~= false then found = 'order' end
+                end
+            end
+            read = true
+        end)
+        if found or read then return found end
+        local okr, nm = pcall(function() return tostring(df.global.plotinfo.alerts.routines[idx].name) end)
+        if okr and type(nm) == 'string' and nm:lower():find('train', 1, true) then return 'routine' end
+        return nil
+    end)
+    return ok and why or nil
+end
+
+-- why a calm citizen's attack on citizen `t` is sparring ('conflict',
+-- 'activity', 'squad', 'mutual'; and the activity's name), or nil: a real
+-- attack. The guards first: a target in a tantrum or berserk, either in a
+-- conflict above Training, or either badly hurt is never sparring.
+function spar_reason(S, by, u, t, now, tidx)
+    if in_tantrum(t) or berserk(t) or berserk(u) then return nil end
+    if above_training(by, u.id) or above_training(by, t.id) then return nil end
+    if hurt(u) or hurt(t) then return nil end
+    if sparring(by, u.id) then return 'conflict' end
+    local nm = training_of(u, tidx)
+    if nm then return 'activity', nm end
+    local sq = squad_training(u)
+    if sq then return 'squad', sq end
+    local back = (S.attack_seen or {})[tostring(t.id) .. '>' .. tostring(u.id)]
+    if back and now - back >= 0 and now - back <= MUTUAL_TICKS then return 'mutual' end
+    return nil
+end
+
 -- a few plain fields of the attack's wrestle info (nil when unreadable)
 local function wrestle_of(at)
     local ok, out = pcall(function()
@@ -483,13 +635,19 @@ local function attack_row(at)
 end
 
 -- one look at the living citizens: a tantrum that attacks a citizen ended,
--- a calm citizen's attack on a citizen logged. Returns the tantrums ended.
+-- a calm citizen's attack on a citizen logged, or counted as sparring
+-- (item3: spar_reason). Returns the tantrums ended.
 function scan_units(S, now, dry, list)
     local units = {}
     local ok = pcall(function() units = df.global.world.units.active end)
     if not ok or units == nil then return 0 end
     S.tantrum_logged = S.tantrum_logged or {}
     S.attack_logged = S.attack_logged or {}
+    S.attack_seen = S.attack_seen or {}              -- (item3) a state from an older load of this file
+    S.spar_logged = S.spar_logged or {}
+    S.spars_recent = S.spars_recent or {}
+    S.counts.spars = S.counts.spars or 0
+    local calm = {}
     local on = S.end_tantrums ~= false
     local by = nil
     local ended = 0
@@ -537,26 +695,52 @@ function scan_units(S, now, dry, list)
                     end
                 end
             else
+                -- (item3) a calm citizen's attacks: all of this pass's seen first (a
+                -- mutual pair is both ways in the same ticks), judged below
                 for _, h in ipairs(hits) do
                     local target = living_citizen(h.target)
-                    if target and not sparring(by, u.id) then
-                        local key = tostring(u.id) .. '>' .. tostring(target.id)
-                        local last = S.attack_logged[key]
-                        if not (last and now - last >= 0 and now - last < ATTACK_LOG_TICKS) then
-                            S.attack_logged[key] = now
-                            bump(S, 'attacks')
-                            log(S, {kind = 'attack', tick = now, id = u.id, name = unit_name(u), target = target.id,
-                                    target_name = unit_name(target), job = job_of(u),
-                                    suffocation = field(field(target, 'counters'), 'suffocation'),
-                                    attack = attack_row(h.attack)})
-                        end
+                    if target then
+                        S.attack_seen[tostring(u.id) .. '>' .. tostring(target.id)] = now
+                        table.insert(calm, {u = u, target = target, h = h})
                     end
                 end
             end
         end
     end
+    local tidx = nil
+    for _, c in ipairs(calm) do
+        local u, target, h = c.u, c.target, c.h
+        tidx = tidx or training_index()
+        local why, what = spar_reason(S, by, u, target, now, tidx)
+        if why then
+            -- (item3) sparring: counted once a pair a ATTACK_LOG_TICKS, kept out of the log
+            local lo, hi = math.min(u.id, target.id), math.max(u.id, target.id)
+            local key = tostring(lo) .. '~' .. tostring(hi)
+            local last = S.spar_logged[key]
+            if not (last and now - last >= 0 and now - last < ATTACK_LOG_TICKS) then
+                S.spar_logged[key] = now
+                bump(S, 'spars')
+                table.insert(S.spars_recent, {tick = now, id = u.id, name = unit_name(u), target = target.id,
+                                              target_name = unit_name(target), why = why, what = what})
+                while #S.spars_recent > SPAR_RECENT_KEEP do table.remove(S.spars_recent, 1) end
+            end
+        else
+            local key = tostring(u.id) .. '>' .. tostring(target.id)
+            local last = S.attack_logged[key]
+            if not (last and now - last >= 0 and now - last < ATTACK_LOG_TICKS) then
+                S.attack_logged[key] = now
+                bump(S, 'attacks')
+                log(S, {kind = 'attack', tick = now, id = u.id, name = unit_name(u), target = target.id,
+                        target_name = unit_name(target), job = job_of(u),
+                        suffocation = field(field(target, 'counters'), 'suffocation'),
+                        attack = attack_row(h.attack)})
+            end
+        end
+    end
     for id, t in pairs(S.tantrum_logged) do if now - t >= TANTRUM_LOG_TICKS or now < t then S.tantrum_logged[id] = nil end end
     for k, t in pairs(S.attack_logged) do if now - t >= ATTACK_LOG_TICKS or now < t then S.attack_logged[k] = nil end end
+    for k, t in pairs(S.attack_seen) do if now - t > MUTUAL_TICKS or now < t then S.attack_seen[k] = nil end end
+    for k, t in pairs(S.spar_logged) do if now - t >= ATTACK_LOG_TICKS or now < t then S.spar_logged[k] = nil end end
     return ended
 end
 
@@ -812,7 +996,8 @@ end
 function report()
     local S = state()
     local out = {armed = alive(), on = S.on or false, ticks = S.ticks, separate_ticks = S.separate_ticks,
-                 end_tantrums = S.end_tantrums ~= false, counts = S.counts, error = S.error, log = {}, now = {}}
+                 end_tantrums = S.end_tantrums ~= false, counts = S.counts, error = S.error, log = {}, now = {},
+                 spars_recent = S.spars_recent or {}}     -- (item3) the last sparring pairs (never in the log)
     for i = math.max(1, #S.log - REPORT_LOG + 1), #S.log do table.insert(out.log, S.log[i]) end
     local now = game_tick()
     for _, c in ipairs(conflicts()) do

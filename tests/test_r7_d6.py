@@ -59,9 +59,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # disposal_outside_cooldown_ticks (B's dump): 24 Nov
 # (0.105.101) re-pinned after two deliberate keys: disposal_outside_danger_tiles,
 # disposal_outside_rearm_ticks (B's dump order kept off by far dangers): 24 Nov
-DUMP_6298B4A = "17cafd3c4a1ff65c653b0b55d73f4ea295d81b66904c0b6517d6087ea4793ef6"
-KEYS_6298B4A = "681b561fdc31fd5f91fa796b7cc499fb15500b95a2d4e2dc959e28223455b603"
-COUNT_6298B4A = 1301
+# (0.105.109) re-pinned after two deliberate keys: g2_thirst_patient_step, g2_thirst_getup_tries
+# (B's patients dying of thirst after three tries in two days): 24 Nov
+DUMP_6298B4A = "f7b376369ff3815c13d6b3178362bec6fc69c6246715bc3071eba2a2c0eda5a4"
+KEYS_6298B4A = "3451d9b191ded521748df58cada655de4a437441a2894c81c676126285867ed8"
+COUNT_6298B4A = 1303
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

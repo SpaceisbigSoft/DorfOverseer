@@ -115,6 +115,15 @@ function W.conflict(id, sides)
     W.all = vec(W.acts)
     return a, ev
 end
+-- (item3) a non-conflict activity: one event of type `ety` whose participants.units are `units`
+function W.activity(id, ety, units)
+    local ev = {event_id = id * 10, participants = {units = vec(units or {})}, getType = function() return ety end}
+    local a = {id = id, type = 50, events = vec({ev})}
+    table.insert(W.acts, a)
+    W.all = vec(W.acts)
+    return a, ev
+end
+W.squads = {}
 function W.clear() W.acts = {}; W.all = vec({}) end
 function W.levels(ev)
     local out = {}
@@ -138,8 +147,10 @@ env.df = {
                   end
               end})},
     activity_entry_type = {Conflict = CONFLICT_T},
-    activity_event_type = {Conflict = CONFLICT_E},
+    activity_event_type = {Conflict = CONFLICT_E, [20] = 'Sparring', [21] = 'CombatTraining', [99] = 'Conversation'},
     unit_action_type = {Attack = 1},
+    squad = {find = function(id) return W.squads[id] end},   -- (item3) the squads, by id
+    squad_order_type = {TRAIN = 3},
     job_type = {[5] = 'Strangle'},
     soldier_mood_type = {[-1] = 'None', [0] = 'MartialTrance', [1] = 'Enraged', [2] = 'Tantrum', [3] = 'Depressed'},
     mood_type = {[7] = 'Berserk'},
@@ -481,6 +492,125 @@ W.conflict(610, {{units = {8}, level = 2}, {units = {9}, level = 2}})
 E.pass(6000)
 for _, x in ipairs(E.state().log) do assert(not (x.kind == 'attack' and x.id == 8), 'sparring not logged') end
 assert(E.state().log[1].id == 1, 'the other pair still logged')
+""")
+
+# --- (item3) sparring that opens no conflict: B's 199 mutual wrestlers -----------
+
+case("a mutual pair, neither in a tantrum: counted as spars once a pair a window, never logged", r"""
+W.unit{id = 1, name = 'Wrestler A', attacks = {2}}
+W.unit{id = 2, name = 'Wrestler B', attacks = {1}}
+E.pass(5000)
+local S = E.state()
+assert(S.counts.spars == 1 and S.counts.attacks == 0 and #S.log == 0, 'one spar, no attack, no log')
+local r = S.spars_recent[1]
+assert(r.why == 'mutual' and r.tick == 5000 and ((r.id == 1 and r.target == 2) or (r.id == 2 and r.target == 1)), 'recent')
+E.pass(5010); E.pass(5300)
+assert(S.counts.spars == 1, 'once a pair a ATTACK_LOG_TICKS')
+E.pass(5000 + E.ATTACK_LOG_TICKS)
+assert(S.counts.spars == 2 and #S.log == 0, 'again past the window')
+local rep = E.report()
+assert(rep.counts.spars == 2 and #rep.spars_recent == 2 and #rep.log == 0, 'the section')
+-- B joins a pass later: A's first attack logged, then the pair is sparring
+W.units[1], W.units[2] = nil, nil
+W.unit{id = 3, attacks = {4}}; W.unit{id = 4}
+E.pass(8000)
+assert(S.counts.attacks == 1, 'one-way: an attack')
+W.unit{id = 4, attacks = {3}}
+E.pass(8050)
+assert(S.counts.attacks == 1 and S.counts.spars == 3, 'both ways now: one spar')
+-- answered past MUTUAL_TICKS: not mutual
+W.unit{id = 5, attacks = {6}}; W.unit{id = 6}
+E.pass(9000)
+W.unit{id = 5}; W.unit{id = 6, attacks = {5}}
+E.pass(9000 + E.MUTUAL_TICKS + 10)
+local n = 0
+for _, e in ipairs(S.log) do if e.kind == 'attack' and (e.id == 5 or e.id == 6) then n = n + 1 end end
+assert(n == 2, 'both logged as attacks')
+-- spars_recent keeps the last SPAR_RECENT_KEEP
+for i = 1, 8 do W.unit{id = 100 + 2 * i, attacks = {101 + 2 * i}}; W.unit{id = 101 + 2 * i, attacks = {100 + 2 * i}} end
+E.pass(9500)
+assert(#S.spars_recent == E.SPAR_RECENT_KEEP, 'kept to the last few')
+""")
+
+case("mutual but not sparring: a target suffocating or bleeding, a tantrum (still ended), a brawl", r"""
+W.unit{id = 1, attacks = {2}}; W.unit{id = 2, attacks = {1}, suffocation = 30}
+W.unit{id = 3, tantrum = true, countdown = 900, attacks = {4}}; W.unit{id = 4, attacks = {3}}
+W.unit{id = 5, attacks = {6}}; W.unit{id = 6, attacks = {5}}
+W.conflict(620, {{units = {5}, level = 3}, {units = {6}, level = 3}})
+W.unit{id = 7, attacks = {8}}; W.unit{id = 8, attacks = {7}, body = {blood_count = 50, blood_max = 100}}
+W.unit{id = 9, attacks = {10}}; W.unit{id = 10, attacks = {9}, body = {blood_count = 90, blood_max = 100}}
+E.pass(5000)
+local S = E.state()
+local w = W.units[3]
+assert(w.counters.soldier_mood_countdown == 1 and S.counts.tantrums_ended == 1, 'the tantrum ended, mutual or not')
+local att = {}
+for _, e in ipairs(S.log) do if e.kind == 'attack' then att[e.id] = e.target end end
+assert(att[1] == 2 and att[2] == 1, 'suffocating: both attacks logged')
+assert(att[4] == 3 and att[3] == nil, 'the calm one hitting a tantrum: an attack')
+assert(att[5] == 6 and att[6] == 5, 'in a brawl: attacks')
+assert(att[7] == 8 and att[8] == 7, 'bleeding: attacks')
+assert(att[9] == nil and att[10] == nil, 'a scratch: sparring')
+assert(S.counts.attacks == 7 and S.counts.spars == 1, 'counts')
+""")
+
+case("in a training activity (participants, social_activities, activities): sparring; a conversation is not", r"""
+W.unit{id = 1, attacks = {2}}; W.unit{id = 2}
+W.activity(700, 20, {1})                                          -- a Sparring event listing unit 1
+W.unit{id = 3, attacks = {4}, social_activities = W.vec({701})}; W.unit{id = 4}
+W.activity(701, 21, {})                                           -- CombatTraining, no participants read
+W.unit{id = 5, attacks = {6}, activities = W.vec({702})}; W.unit{id = 6}
+W.activity(702, 20, {})
+W.unit{id = 7, attacks = {8}, activities = W.vec({703})}; W.unit{id = 8}
+W.activity(703, 99, {7})                                          -- a Conversation: no
+W.unit{id = 9, attacks = {10}}; W.unit{id = 10, suffocation = 12}
+W.activity(704, 20, {9})                                          -- sparring, but the target strangled: no
+E.pass(5000)
+local S = E.state()
+local why = {}
+for _, r in ipairs(S.spars_recent) do why[r.id] = r.why .. ':' .. tostring(r.what) end
+assert(why[1] == 'activity:Sparring' and why[3] == 'activity:CombatTraining' and why[5] == 'activity:Sparring', 'found')
+assert(S.counts.spars == 3 and S.counts.attacks == 2, 'counts')
+local att = {}
+for _, e in ipairs(S.log) do if e.kind == 'attack' then att[e.id] = true end end
+assert(att[7] and att[9] and not att[1], 'the others logged')
+-- a training activity opens no Conflict: the conflict pass has nothing to do
+assert(S.counts.seen == 0 and #W.removed == 0)
+""")
+
+case("a squad told to train: sparring; left out of the order, an order of its own, off duty: not", r"""
+local TRAIN = {getType = function() return 3 end}
+local function sq(t) t.orders = t.orders or W.vec({}); return t end
+E.df.global.plotinfo.alerts = {routines = {[0] = {name = 'Staggered training'}, [1] = {name = 'Off duty'}}}
+W.squads[10] = sq{cur_routine_idx = 0, schedule = {[0] = {[0] = {orders = W.vec({{order = TRAIN, positions = W.vec({true})}})}}}}
+W.unit{id = 1, attacks = {2}, military = {squad_id = 10, squad_position = 0}}; W.unit{id = 2}
+W.squads[11] = sq{cur_routine_idx = 0, schedule = {[0] = {[0] = {orders = W.vec({{order = TRAIN, positions = W.vec({false})}})}}}}
+W.unit{id = 3, attacks = {4}, military = {squad_id = 11, squad_position = 0}}; W.unit{id = 4}
+W.squads[12] = sq{cur_routine_idx = 0, orders = W.vec({{}}),
+                  schedule = {[0] = {[0] = {orders = W.vec({{order = TRAIN, positions = W.vec({true})}})}}}}
+W.unit{id = 5, attacks = {6}, military = {squad_id = 12, squad_position = 0}}; W.unit{id = 6}
+W.squads[13] = sq{cur_routine_idx = 0}                            -- no schedule read: the routine's name
+W.unit{id = 7, attacks = {8}, military = {squad_id = 13, squad_position = 0}}; W.unit{id = 8}
+W.squads[14] = sq{cur_routine_idx = 1}
+W.unit{id = 9, attacks = {10}, military = {squad_id = 14, squad_position = 0}}; W.unit{id = 10}
+W.unit{id = 11, attacks = {12}, military = {squad_id = -1, squad_position = -1}}; W.unit{id = 12}
+E.pass(5000)
+local S = E.state()
+local why = {}
+for _, r in ipairs(S.spars_recent) do why[r.id] = r.why .. ':' .. tostring(r.what) end
+assert(why[1] == 'squad:order' and why[7] == 'squad:routine', 'training squads')
+local att = {}
+for _, e in ipairs(S.log) do if e.kind == 'attack' then att[e.id] = true end end
+assert(att[3] and att[5] and att[9] and att[11] and not att[1] and not att[7], 'the others logged')
+assert(S.counts.spars == 2 and S.counts.attacks == 4, 'counts')
+""")
+
+case("an older state (no spar tables, no spars count): read without a throw", r"""
+local S = E.state()
+S.attack_seen, S.spar_logged, S.spars_recent, S.counts.spars = nil, nil, nil, nil
+W.unit{id = 1, attacks = {2}}; W.unit{id = 2, attacks = {1}}
+E.pass(5000)
+assert(S.counts.spars == 1 and S.counts.errors == 0, 'counted')
+assert(#E.report().spars_recent == 1)
 """)
 
 case("end_tantrums = false: logged, not ended; the action stores it, the section shows it", r"""

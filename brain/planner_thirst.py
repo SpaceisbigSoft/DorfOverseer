@@ -40,7 +40,11 @@ that already acts on it this cycle is left to it (no second action):
                the water carrying counted (carriers, buckets, water in
                reach); the fort's part once a cycle: the carrying labour
                when short, buckets when none, a chief medical dwarf and a
-               diagnoser; a few tries, then Needs you once dehydrated
+               diagnoser; (item2) the tries spread over the thirst (a step of
+               thirst between them); no GiveWater job for them, or dehydrated:
+               get_up (their Rest ended, they walk to drink) if they can
+               stand; dehydrated: the lift asked each retry while they live;
+               Needs you only when they can't stand
   unknown      (R1 g2) thirst_probe from the act line: their burrows, the
                alarm's, the AI's locked doors near, the drink forbidden or
                claimed: each finding said (the AI's own undone); a few
@@ -260,29 +264,91 @@ def _no_path_step(r: dict, cfg: dict, ex: dict, b: dict, lad: dict, now: int,
     return {"type": "thirst_way", "unit_id": uid, "max_dig": int(cfg.get("g2_thirst_way_dig", 30))}, words, None
 
 
+def _patient_found(last: dict) -> str:
+    """(item2) What the last thirst_patient answer found, in words: the
+    GiveWater jobs for them, the hospital's buckets, the free carriers, what
+    was missing (every field optional: an older bridge sends fewer)."""
+    if not last:
+        return ""
+    bits = []
+    gw, gw_all = last.get("give_water_for_them"), last.get("give_water_jobs")
+    ft = gw if isinstance(gw, int) else gw_all
+    if ft == 0:
+        bits.append("no GiveWater job seen for them" + (f" ({gw_all} in the fort)" if isinstance(gw_all, int) and gw_all > 0
+                                                        and isinstance(gw, int) else ""))
+    elif isinstance(ft, int):
+        bits.append(f"{ft} GiveWater job(s) for them")
+    h = _d(last.get("hospital"))
+    if isinstance(h.get("count_buckets"), int):
+        des = h.get("desired_buckets")
+        bits.append(f"hospital buckets {h['count_buckets']}/{des if isinstance(des, int) else '?'}")
+    if isinstance(last.get("carriers_free"), int):
+        bits.append(f"carriers free {last['carriers_free']}")
+    elif isinstance(last.get("carriers"), int):
+        bits.append(f"carriers {last['carriers']}")
+    if isinstance(last.get("buckets_free"), int) and not h:
+        bits.append(f"free buckets {last['buckets_free']}")
+    what = {"carriers": "too few dwarves carry water", "buckets": "no free bucket",
+            "water": "no well or water zone they can be brought water from"}
+    bits += [what.get(m, m) for m in _l(last.get("missing")) if isinstance(m, str)]
+    if last.get("can_stand") is False:
+        bits.append("they can't stand")
+    if last.get("got_up"):
+        bits.append("they got up from rest")
+    elif last.get("get_up") and last.get("ok") is False:
+        bits.append(f"getting them up failed: {last.get('error') or 'refused'}")
+    return "; ".join(bits) or "nothing missing seen"
+
+
 def _patient_step(r: dict, s: dict, cfg: dict, ex: dict, b: dict, lad: dict) -> tuple[dict | None, str, str | None]:
     """(R1 g2) a patient: thirst_patient (lifted out of the hospital burrow, the
-    carrying counted) a few times; then Needs you once dehydrated."""
+    carrying counted) a few times; (item2) the tries spread over the thirst
+    window (`g2_thirst_patient_step` of thirst between them: B's Uvash had his
+    three in 2500 ticks, then nothing for 36000 till he died). When the last
+    answer saw no GiveWater job for them, or once dehydrated, a patient resting
+    who can stand is got up (get_up: their Rest ended, they walk to drink); once
+    dehydrated the lift is asked again each retry while they live. Needs you
+    only when the bridge says they can't stand (with what it found)."""
     uid, timer = r["id"], int(r.get("timer") or 0)
     last = _last(b, f"thirst_patient:{uid}")
-    miss = [m for m in _l(last.get("missing")) if isinstance(m, str)]
-    if _tries(lad, "thirst_patient") >= int(cfg.get("g2_thirst_patient_tries", 3)):
-        what = {"carriers": "too few dwarves carry water", "buckets": "no free bucket",
-                "water": "no well or water zone they can be brought water from"}
-        lack = ", ".join(what.get(m, m) for m in miss) or "water still doesn't reach them"
-        if timer >= DEHYDRATED:
-            return None, f"the AI's help did not get water to them ({lack})", (
-                f"{r.get('name') or 'a patient'} at {_where(r)} is dehydrated in bed and the AI could not get water "
-                f"to them ({lack}): a well or water zone the carriers reach, a bucket, dwarves on the Orderlies "
-                "work")
-        return None, f"the AI's help is done for now ({lack}); the well and supply rules go on", None
-    if "place_well" in ex["types"]:
-        tail = "; a well is placed this cycle"
-    else:
-        tail = ""
-    return ({"type": "thirst_patient", "unit_id": uid},
-            "let them out of the AI hospital burrow and count what carries water to them (carriers, buckets, a "
-            "well in reach)" + tail, None)
+    tries, tmax = _tries(lad, "thirst_patient"), int(cfg.get("g2_thirst_patient_tries", 3))
+    getups, gmax = _tries(lad, "thirst_patient_get_up"), int(cfg.get("g2_thirst_getup_tries", 2))
+    step = int(cfg.get("g2_thirst_patient_step", 6000))
+    at = lad.get("patient_at")
+    dehyd = timer >= DEHYDRATED
+    gw = last.get("give_water_for_them")
+    ft = gw if isinstance(gw, int) else last.get("give_water_jobs")
+    no_gw = ft == 0
+    getup_failed = bool(last.get("get_up")) and last.get("ok") is False
+    cant = (last.get("can_stand") is False or r.get("can_stand") is False
+            or (getup_failed and last.get("resting") is not False))
+    can_get_up = (not cant and not getup_failed and last.get("resting") is True and getups < gmax)
+    found = _patient_found(last)
+    name = r.get("name") or "a patient"
+    needs = None
+    if cant and (dehyd or no_gw):
+        needs = (f"{name} at {_where(r)} is {'dehydrated' if dehyd else 'thirsty'} in bed, can't stand to walk to a "
+                 f"drink and the AI could not get water to them ({found}): a well or water zone the carriers reach, "
+                 "a bucket, dwarves on the Orderlies work")
+    tail = "; a well is placed this cycle" if "place_well" in ex["types"] else ""
+    if (dehyd or no_gw) and can_get_up:
+        why = "dehydrated" if dehyd else "no GiveWater job brings them water"
+        return ({"type": "thirst_patient", "unit_id": uid, "get_up": True},
+                f"{why} ({found}): end their rest so they walk to a drink, the hospital burrow lifted" + tail, needs)
+    if dehyd:
+        return ({"type": "thirst_patient", "unit_id": uid},
+                "dehydrated: let them out of the AI hospital burrow again and count what carries water to them"
+                + (f" (the last try found: {found})" if found else "") + tail, needs)
+    due = not isinstance(at, int) or timer - at >= step or timer < at
+    if tries < tmax and due:
+        return ({"type": "thirst_patient", "unit_id": uid},
+                "let them out of the AI hospital burrow and count what carries water to them (carriers, buckets, a "
+                "well in reach)" + (f" (the last try found: {found})" if found else "") + tail, needs)
+    if tries < tmax:
+        return None, (f"next try once their thirst reaches {at + step} (the last try found: {found or 'nothing yet'}); "
+                      "the well and supply rules go on"), needs
+    return None, (f"tried {tries} times (the last found: {found or 'nothing'}); asked again once dehydrated; "
+                  "the well and supply rules go on"), needs
 
 
 def _probe_step(r: dict, cfg: dict, b: dict, lad: dict) -> tuple[dict | None, str, str | None]:
@@ -477,7 +543,8 @@ def note_thirst(p, r, memory, now: int) -> None:
             return
     did = []
     for k, w in (("removed", "the AI's walls taken down"), ("unlocked", "doors unlocked"), ("dug", "tiles marked to dig"),
-                 ("pending", "tiles already marked"), ("acted", "undone"), ("lifted", "out of the hospital burrow")):
+                 ("pending", "tiles already marked"), ("acted", "undone"), ("lifted", "out of the hospital burrow"),
+                 ("got_up", "got up from rest")):
         v = r.get(k)
         if v is True or (isinstance(v, int) and not isinstance(v, bool) and v > 0):
             did.append(w if v is True else f"{v} {w}")
@@ -491,6 +558,21 @@ def note_thirst(p, r, memory, now: int) -> None:
                          "missing": [m for m in _l(r.get("missing")) if isinstance(m, str)][:4] or None,
                          "carriers": r.get("carriers") if isinstance(r.get("carriers"), int) else None,
                          "findings": [str(f)[:120] for f in _l(r.get("findings"))[:6]] or None}
+    if t == "thirst_patient":
+        # (item2) what the bridge saw of the patient (every field optional: an older bridge sends none)
+        rec = b["results"][key]
+        rec["get_up"] = bool(a.get("get_up"))
+        for k in ("resting", "can_stand", "in_bed", "got_up"):
+            if isinstance(r.get(k), bool):
+                rec[k] = r[k]
+        for k in ("give_water_jobs", "give_water_for_them", "carriers_free", "buckets_free"):
+            if isinstance(r.get(k), int) and not isinstance(r.get(k), bool):
+                rec[k] = r[k]
+        h = _d(r.get("hospital"))
+        hosp = {k: h[k] for k in ("id", "count_buckets", "desired_buckets")
+                if isinstance(h.get(k), int) and not isinstance(h.get(k), bool)}
+        if hosp:
+            rec["hospital"] = hosp
 
 
 def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
@@ -560,7 +642,11 @@ def _thirst_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
                 acts += 1
                 proposed = True
                 if action["type"] in LADDER_ACTIONS:
-                    lad["n"][action["type"]] = int(lad["n"].get(action["type"]) or 0) + 1
+                    # (item2) a patient got up is counted apart from the plain lift
+                    n_key = "thirst_patient_get_up" if action.get("get_up") else action["type"]
+                    lad["n"][n_key] = int(lad["n"].get(n_key) or 0) + 1
+                if action["type"] == "thirst_patient":
+                    lad["patient_at"] = timer            # (item2) the next try only after the thirst rose a step
                 if whole:
                     shared.add(action["type"])
                 if action["type"] == "release_prisoners":

@@ -335,15 +335,17 @@ def _others_dead_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     # kept by the action (DF's dead_dwarf flag) and counted loose by the
     # report, so burial_others was refused 44 times in 2 hours ("no body DF
     # leaves unburied may be marked for the dump now"). An older bridge: as before.
-    told = any(k in why for k in ("not_ours_dumpable", "not_ours_kept", "not_ours_unreachable"))
+    told = any(k in why for k in ("not_ours_dumpable", "not_ours_kept", "not_ours_unreachable", "not_ours_busy"))
     dumpable = int(why.get("not_ours_dumpable") or 0) if told else n
     if dumpable <= 0:
         far = int(why.get("not_ours_unreachable") or 0)
         kept = int(why.get("not_ours_kept") or 0)
+        busy = int(why.get("not_ours_busy") or 0)     # (item4) carried or on a job: the action leaves them
         marked = max(0, int(why.get("not_ours") or 0) - n)
         parts = ([f"{far} where the dwarves can't walk"] if far else []) \
             + ([f"{kept} kept as the fort's own remains (their record can't say they were another's)"] if kept
-               else []) + ([f"{marked} more already marked or in the dump"] if marked else [])
+               else []) + ([f"{busy} carried or on a job"] if busy else []) \
+            + ([f"{marked} more already marked or in the dump"] if marked else [])
         notes.append(f"{n} dead of other civs lie unburied (DF buries only its own) and none can go to the dump now"
                      + (": " + ", ".join(parts) if parts else "") + ": left where they lie")
         return

@@ -900,36 +900,95 @@ local function has_worker(job)
     return false
 end
 
+-- (item4) The fruit-gathering zones' boxes ({x1, y1, x2, y2, z}): DF makes
+-- a zone's GatherPlants jobs again from the zone itself, so cancelling them
+-- doesn't stick (B, 24 Nov: "135 plant-gathering jobs wait ... cancel all but
+-- 20" done 29 times in 1.5 hours). A zone lies on its trees' floor; the
+-- fruit hangs in the crowns above it (ZONE_CROWN levels).
+ZONE_CROWN = 12
+local function gather_zones()
+    local out = {}
+    pcall(function()
+        local CIV = df.building_type.Civzone
+        for _, b in ipairs(df.global.world.buildings.all) do
+            pcall(function()
+                if b:getType() == CIV and df.civzone_type[b.type] == 'PlantGathering' then
+                    table.insert(out, {x1 = b.x1, y1 = b.y1, x2 = b.x2, y2 = b.y2, z = b.z})
+                end
+            end)
+        end
+    end)
+    return out
+end
+
+-- Pure: is (x, y, z) over one of the zones' boxes (its floor or a crown above)?
+function in_gather_zone(zones, x, y, z)
+    for _, b in ipairs(zones) do
+        if x >= b.x1 and x <= b.x2 and y >= b.y1 and y <= b.y2 and z >= b.z and z <= b.z + ZONE_CROWN then
+            return true
+        end
+    end
+    return false
+end
+
+local function zone_job(j, zones)
+    local okr, ref = pcall(function()
+        for _, r in ipairs(j.general_refs) do
+            if df.general_ref_building_civzone_assignedst and df.general_ref_building_civzone_assignedst:is_instance(r) then
+                return true
+            end
+        end
+        return false
+    end)
+    if okr and ref then return true end
+    return in_gather_zone(zones, j.pos.x, j.pos.y, j.pos.z)
+end
+
 function trim_gathering(keep, dry_run)
     keep = math.max(0, keep or 20)
     local c = centre() or {x = 0, y = 0, z = 0}
     local jobs, by_id = {}, {}
+    local zones, zoned = gather_zones(), 0
     local GATHER = df.job_type.GatherPlants
     local link = df.global.world.jobs.list.next
     while link do
         local j = link.item
         if j and j.job_type == GATHER then
-            local d = math.abs(j.pos.x - c.x) + math.abs(j.pos.y - c.y) + 3 * math.abs(j.pos.z - c.z)
-            table.insert(jobs, {id = j.id, d = d, taken = has_worker(j)})
-            by_id[j.id] = j
+            if zone_job(j, zones) then
+                zoned = zoned + 1      -- (item4) a fruit zone's: DF makes it again, left
+            else
+                local d = math.abs(j.pos.x - c.x) + math.abs(j.pos.y - c.y) + 3 * math.abs(j.pos.z - c.z)
+                table.insert(jobs, {id = j.id, d = d, taken = has_worker(j)})
+                by_id[j.id] = j
+            end
         end
         link = link.next
     end
-    local cancel = gathering_to_cancel(jobs, keep)
+    -- (item4) the zones' jobs count toward what is kept: only marked plants' beyond it go
+    local cancel = gathering_to_cancel(jobs, math.max(0, keep - zoned))
     if #cancel == 0 then
+        if zoned > 0 then
+            return {ok = false, rejected = true, zone_jobs = zoned, jobs = #jobs + zoned,
+                    error = ('%d of the %d plant-gathering jobs are fruit zones\' (the game makes them again): '
+                             .. 'nothing to cancel'):format(zoned, #jobs + zoned)}
+        end
         return {ok = false, rejected = true, error = ('only %d plant-gathering jobs: nothing to cancel'):format(#jobs)}
     end
-    if dry_run then return {ok = true, dry_run = true, jobs = #jobs, cancel = #cancel} end
-    local done = 0
+    if dry_run then return {ok = true, dry_run = true, jobs = #jobs + zoned, zone_jobs = zoned, cancel = #cancel} end
+    local done, unmarked = 0, 0
     for _, id in ipairs(cancel) do
         local j = by_id[id]
         -- (the shrub's gather mark goes too, or the game makes the job again)
         pcall(function()
             local d = dfhack.maps.getTileFlags(j.pos)
-            if d and d.dig ~= df.tile_dig_designation.No then d.dig = df.tile_dig_designation.No end
+            if d and d.dig ~= df.tile_dig_designation.No then
+                d.dig = df.tile_dig_designation.No
+                unmarked = unmarked + 1
+            end
         end)
         if pcall(dfhack.job.removeJob, j) then done = done + 1 end
     end
     if done == 0 then return {ok = false, error = 'the game would not cancel the gathering jobs'} end
-    return {ok = true, jobs = #jobs, cancelled = done, left = #jobs - done}
+    return {ok = true, jobs = #jobs + zoned, cancelled = done, left = #jobs + zoned - done,
+            zone_jobs = zoned > 0 and zoned or nil, unmarked = unmarked}
 end

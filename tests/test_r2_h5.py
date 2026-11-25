@@ -278,6 +278,21 @@ def _():
     assert r.rejected and r.merchant_goods == 325 and "merchants' own" in r.error, dict(r)
 
 
+@test("(item4) step 6: the depot's items on a job followed per id; on it 3+ days, stuck; gone, forgotten")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, marked = lua.execute(TT.FAKE, TRADE_SRC)
+    t = lua.table_from
+    keep, busy, stuck, changed = env.busy_record(t({}), t([5, 6]), 1000, 3600)
+    assert busy == 2 and stuck == 0 and changed and keep["5"] == 1000, (busy, stuck, changed)
+    keep, busy, stuck, changed = env.busy_record(keep, t([5, 6]), 1000 + 3600, 3600)
+    assert busy == 2 and stuck == 2 and not changed, (busy, stuck, changed)
+    keep, busy, stuck, changed = env.busy_record(keep, t([6, 7]), 1000 + 4000, 3600)
+    assert busy == 2 and stuck == 1 and changed and keep["5"] is None and keep["7"] == 5000, (busy, stuck)
+    keep, busy, stuck, changed = env.busy_record(t({"6": 9000}), t([6]), 5000, 3600)     # an older save
+    assert stuck == 0 and keep["6"] == 5000
+
+
 def state(caravans, goods_at_depot=20, **trader):
     return {"trade": {"depot": True, "caravans": caravans, "at_depot": goods_at_depot, "goods": 0,
                       "trader": dict({"at_depot": False, "can_open": True, "fresh": True}, **trader)},

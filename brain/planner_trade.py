@@ -89,11 +89,26 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
                                   f"a caravan from {cs[0].get('civ')} is {'at the depot' if here else 'coming'}: "
                                   + ("ask for the broker at the depot" if not trader.get("requested") else
                                      "the broker is asked for; if nobody comes within a day, anyone may trade"), 3))
-    if not real_cs and (tr.get("at_depot") or 0) > 0 and not _d(tr.get("screen")).get("open"):
+    at_dep = int(tr.get("at_depot") or 0)
+    busy = int(tr.get("at_depot_busy") or 0) if isinstance(tr.get("at_depot_busy"), int) else 0
+    if not real_cs and at_dep > 0 and busy >= at_dep and not _d(tr.get("screen")).get("open"):
+        # (item4) every one of the fort's goods left in the depot is on a job
+        # (a hauler's): unload would leave them and only answer "being hauled
+        # out" (B, 24 Nov: the same 4 on a job for hours, unload_depot refused
+        # 107 times in 2 hours). Not asked; said, the stuck ones (on the job
+        # 3+ days, lua/ai-trade.lua DEPOT_STUCK_TICKS) as a look in the game.
+        stuck = int(tr.get("at_depot_stuck") or 0) if isinstance(tr.get("at_depot_stuck"), int) else 0
+        if stuck > 0:
+            notes.append(f"{stuck} of the fort's {at_dep} goods left in the trade depot have been on a hauling job "
+                         "for 3+ days and never leave (a stuck job): look at the depot in the game (cancel the "
+                         "job, or the item's way out may be blocked); the AI doesn't ask to unload them")
+    elif not real_cs and at_dep > 0 and not _d(tr.get("screen")).get("open"):
         # (0.103.9) the caravans have gone and the fort's goods sit in the
         # depot, where nobody can own or use them, until the next one
+        if busy > 0:
+            at_dep -= busy        # (item4) the free ones only: a hauler is already carrying out the rest
         proposals.append(Proposal("unload_depot", {"type": "unload_depot", "max": cfg["unload_depot_max"]},
-                                  f"the caravans have gone and {tr['at_depot']} of the fort's goods sit in the "
+                                  f"the caravans have gone and {at_dep} of the fort's goods sit in the "
                                   "depot: take them back out (stored again, there to own)", 4))
     if not real_cs and ((trader.get("anyone") and trader.get("anyone_by_ai", True))
                         or trader.get("requested") or trader.get("job")):

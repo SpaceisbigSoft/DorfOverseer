@@ -369,6 +369,17 @@ def _():
     assert ids(cancel(jobs, 5)) == []
     assert ids(cancel(jobs, 0)) == [5, 2, 4, 1]                          # the taken one is never cancelled
 
+@test("(item4) gathering jobs: a fruit zone's (its floor or the crowns above it) are told apart; trim leaves them")
+def _():
+    g = game([], [], [])
+    lua, env = g["lua"], g["env"]
+    zones = lua.table_from([lua.table_from({"x1": 10, "y1": 10, "x2": 20, "y2": 20, "z": 100})])
+    assert env.in_gather_zone(zones, 15, 15, 100) and env.in_gather_zone(zones, 10, 20, 105)
+    assert not env.in_gather_zone(zones, 9, 15, 100) and not env.in_gather_zone(zones, 15, 15, 99)
+    assert not env.in_gather_zone(zones, 15, 15, 100 + env.ZONE_CROWN + 1)
+    assert not env.in_gather_zone(lua.table_from([]), 15, 15, 100)
+
+
 @test("work waiting: jobs nobody has taken, by labour (a reaction's by its skill); assigning any labour; skilled first")
 def _():
     units = SEVEN + [{"id": 8, "skills": [("BREWING", 4)]},                  # a skilled brewer, not on it

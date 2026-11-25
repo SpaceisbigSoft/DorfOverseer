@@ -112,6 +112,11 @@ PART.update({
     "g2_thirst_way_tries": 3,             # no_path: thirst_way (the AI's walls, doors, a dig) at most this often a dwarf
     "g2_thirst_way_dig": 30,              # ...rock tiles dug for one dwarf at most
     "g2_thirst_patient_tries": 3,         # a patient: thirst_patient (hospital burrow lifted, carrying counted) this often
+    "g2_thirst_patient_step": 6000,       # (item2) ...each try only once the thirst rose this much since the last
+                                          # (B 24 Nov: Uvash's 3 tries in 2500 ticks, then nothing for 36000 till he died)
+    "g2_thirst_getup_tries": 2,           # (item2) thirst_patient get_up (their Rest ended so they walk to drink)
+                                          # this often a patient: when no GiveWater job is seen, or once dehydrated;
+                                          # past it the plain lift is asked each thirst_retry_ticks while dehydrated
     "g2_thirst_probe_tries": 3,           # "unknown": thirst_probe at most this often a dwarf
     "g2_thirst_probe_timer": 35000,       # ...from this thirst (was: said only once dehydrated)
     "g2_thirst_buckets": 3,               # a patient thirsty and no bucket: this many ordered

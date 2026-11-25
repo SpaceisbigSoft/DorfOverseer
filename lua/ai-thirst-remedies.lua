@@ -8,9 +8,9 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-thirst-remedies is a part of ai-thirst; run ai-thirst') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-thirst-remedies'] = '0.105.108'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-thirst-remedies'] = '0.105.109'   -- (0.105.26) bumped with BRIDGE_VERSION
 
-local U, now_tick, txt, is, key, group_at, mood_of, job_name, patient, drink_map, NEIGH, wells, water_zones, burrow_by_id, held_kind, civ_alert, burrow_holds = PART_LOCALS.U, PART_LOCALS.now_tick, PART_LOCALS.txt, PART_LOCALS.is, PART_LOCALS.key, PART_LOCALS.group_at, PART_LOCALS.mood_of, PART_LOCALS.job_name, PART_LOCALS.patient, PART_LOCALS.drink_map, PART_LOCALS.NEIGH, PART_LOCALS.wells, PART_LOCALS.water_zones, PART_LOCALS.burrow_by_id, PART_LOCALS.held_kind, PART_LOCALS.civ_alert, PART_LOCALS.burrow_holds   -- (r9) the hub's locals
+local U, now_tick, txt, is, key, group_at, mood_of, job_name, patient, drink_map, NEIGH, wells, water_zones, burrow_by_id, held_kind, civ_alert, burrow_holds, stand_facts = PART_LOCALS.U, PART_LOCALS.now_tick, PART_LOCALS.txt, PART_LOCALS.is, PART_LOCALS.key, PART_LOCALS.group_at, PART_LOCALS.mood_of, PART_LOCALS.job_name, PART_LOCALS.patient, PART_LOCALS.drink_map, PART_LOCALS.NEIGH, PART_LOCALS.wells, PART_LOCALS.water_zones, PART_LOCALS.burrow_by_id, PART_LOCALS.held_kind, PART_LOCALS.civ_alert, PART_LOCALS.burrow_holds, PART_LOCALS.stand_facts   -- (r9) the hub's locals
 
 -- --- (R1 g2) real remedies: a way to the drink, water to a patient, a look at "unknown" ----------
 --
@@ -28,9 +28,13 @@ local U, now_tick, txt, is, key, group_at, mood_of, job_name, patient, drink_map
 --        own locked gate doors (unlocked), or natural rock (an ordinary dig
 --        designation through the dig guard). Never a player's wall or
 --        locked door, never in a siege or near a danger.
---   patient_help(uid, dry)       a patient: lifted out of the AI hospital
+--   patient_help(uid, dry, get_up)  a patient: lifted out of the AI hospital
 --        burrow (when held there), and what water carrying needs, counted:
 --        dwarves with the labour, free buckets, a well or water zone in reach.
+--        (item1) and why DF brings no water: resting, can_stand, in_bed, the
+--        hospital they lie in (its buckets), the GiveWater jobs, the carriers
+--        free; get_up: a dwarf resting who can stand has the Rest job ended,
+--        so they walk to drink themselves.
 --   probe(uid, dry)              "unknown": their burrows (an AI one with no
 --        drink left), the alarm's burrow, the AI's locked doors near them,
 --        the drink in reach forbidden or claimed by jobs: each finding said,
@@ -721,24 +725,138 @@ local function buckets()
     return n, free
 end
 
-function patient_help(uid, dry_run)
+-- (item1, B 24 Nov: Uvash died of thirst in hospital zone #1342's bed, 2
+-- hospital buckets, 5 wells in reach, 20 carriers, and no GiveWater job ever
+-- came) What stands between a patient and the water DF carries. Each read
+-- behind pcall; a field is left out when it can't be read.
+
+-- the bed building on their tile: true, false, or nil (unread)
+local function in_bed(u)
+    local ok, yes = pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(u.pos.x, u.pos.y, u.pos.z))
+        return b ~= nil and df.building_type[b:getType()] == 'Bed'
+    end)
+    if ok then return yes end
+    return nil
+end
+
+-- the site's location by id (an abstract building)
+local function location_by_id(id)
+    local ok, loc = pcall(function()
+        for _, b in ipairs(dfhack.world.getCurrentSite().buildings) do
+            if b.id == id then return b end
+        end
+    end)
+    return ok and loc or nil
+end
+
+-- the hospital location of the zone they lie in: {id, zone_id,
+-- count_buckets, desired_buckets}, or nil
+local function hospital_at(u)
+    local out
+    pcall(function()
+        local zones = dfhack.buildings.findCivzonesAt(xyz2pos(u.pos.x, u.pos.y, u.pos.z)) or {}
+        for _, z in ipairs(zones) do
+            local lid
+            pcall(function() lid = z.location_id end)
+            local loc = type(lid) == 'number' and lid >= 0 and location_by_id(lid) or nil
+            local htype = false
+            if loc then pcall(function() htype = df.abstract_building_type[loc:getType()] == 'HOSPITAL' end) end
+            if loc and htype then
+                local e = {id = loc.id, zone_id = z.id}
+                local c
+                pcall(function() c = loc:getContents() end)
+                if not c then pcall(function() c = loc.contents end) end
+                if c then
+                    pcall(function() e.count_buckets = tonumber(c.count_buckets) end)
+                    pcall(function() e.desired_buckets = tonumber(c.desired_buckets) end)
+                end
+                out = e
+                return
+            end
+        end
+    end)
+    return out
+end
+
+-- GiveWater jobs in the world: (count, true if one names this unit as other
+-- than its worker; nil when none names them or the refs can't be read)
+local function give_water_jobs(uid)
+    local n, mine = 0, 0
+    pcall(function()
+        local link = df.global.world.jobs.list.next
+        local guard = 0
+        while link and guard < 20000 do
+            guard = guard + 1
+            local j = link.item
+            local okt, name = pcall(function() return df.job_type[j.job_type] end)
+            if okt and type(name) == 'string' and name:find('^GiveWater') then   -- GiveWater, GiveWater2
+                n = n + 1
+                local theirs = false
+                pcall(function()
+                    for _, ref in ipairs(j.general_refs) do
+                        local okr, ruid = pcall(function() return ref.unit_id end)
+                        if okr and ruid == uid then
+                            local rt
+                            pcall(function() rt = df.general_ref_type[ref:getType()] end)
+                            if rt ~= 'UNIT_WORKER' then theirs = true end
+                        end
+                    end
+                end)
+                if theirs then mine = mine + 1 end
+            end
+            link = link.next
+        end
+    end)
+    return n, mine
+end
+
+local function on_a_job(u)
+    local ok, yes = pcall(function() return u.job.current_job ~= nil end)
+    return ok and yes or false
+end
+
+function patient_help(uid, dry_run, get_up)
     local u = df.unit.find(uid)
     if not u or is(dfhack.units.isDead, u) then return {ok = false, rejected = true, error = 'no such living unit'} end
     local now = now_tick()
     local out = {ok = true, unit_id = uid, dry_run = dry_run or nil, missing = {}}
+    -- (item1) why no water comes: read first, nothing changed by it
+    out.resting = job_name(u) == 'Rest'
+    local can, unc = stand_facts(u)
+    out.can_stand = can
+    out.unconscious = unc or nil
+    out.in_bed = in_bed(u)
+    out.hospital = hospital_at(u)
+    out.give_water_jobs, out.give_water_for_them = give_water_jobs(uid)
+    -- (item1) get_up refused before anything is changed
+    if get_up then
+        local why
+        if not out.resting then why = 'not resting (no Rest job to end)'
+        elseif can ~= true then why = can == false and 'they cannot stand' or 'whether they can stand could not be read' end
+        if why then
+            out.ok, out.rejected, out.error = false, true, 'get_up: ' .. why
+            out.missing = nil
+            return out
+        end
+    end
     out.lifted = lift_hospital(u, dry_run, now) or nil
     -- who carries water: citizens with the labour, not soldiers, not patients, sane
-    local carriers = 0
+    local carriers, free = 0, 0
     local okc, cits = pcall(U.citizens, false, true)
     for _, c in ipairs(okc and cits or {}) do
         if c.id ~= uid and not is(dfhack.units.isDead, c) and has_labor(c, 'FEED_WATER_CIVILIANS') then
             local soldier = false
             pcall(function() soldier = c.military.squad_id ~= -1 end)
             local m = mood_of(c)
-            if not soldier and not patient(c) and not (m and INSANE_MOODS[m]) then carriers = carriers + 1 end
+            if not soldier and not patient(c) and not (m and INSANE_MOODS[m]) then
+                carriers = carriers + 1
+                if not on_a_job(c) then free = free + 1 end
+            end
         end
     end
     out.carriers = carriers
+    out.carriers_free = free
     out.buckets, out.buckets_free = buckets()
     local g = group_at(u.pos.x, u.pos.y, u.pos.z)
     local wl, wz = wells(), water_zones()
@@ -751,6 +869,21 @@ function patient_help(uid, dry_run)
     if out.buckets_free == 0 then table.insert(out.missing, 'buckets') end
     if out.wells_here + out.water_zones_here == 0 then table.insert(out.missing, 'water') end
     if #out.missing == 0 then out.missing = nil end
+    -- (item1) up out of bed: the Rest job ended, so they walk to drink
+    if get_up then
+        if dry_run then
+            out.got_up = true                 -- planned (as `lifted` in a dry run)
+        else
+            local okj, j = pcall(function() return u.job.current_job end)
+            local okr, r = false, nil
+            if okj and j then okr, r = pcall(dfhack.job.removeJob, j) end
+            if okr and r ~= false and job_name(u) ~= 'Rest' then
+                out.got_up = true
+            else
+                out.ok, out.error = false, 'get_up: the Rest job could not be ended'
+            end
+        end
+    end
     return out
 end
 

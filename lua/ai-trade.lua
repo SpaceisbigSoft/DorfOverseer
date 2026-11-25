@@ -278,6 +278,34 @@ function overstays(txt, dep)
     return out
 end
 
+-- (item4) The fort's items in the depot on a job, followed across looks:
+-- {item id (string) = first tick seen busy}, kept in the save.
+DEPOT_BUSY_KEY = 'ai-overseer/depot-busy'
+DEPOT_STUCK_TICKS = 3 * 1200        -- a haul out of the depot takes far less than three days
+
+-- Pure: the record after a look that saw `ids` busy at `now`: the ids no
+-- longer busy forgotten, the new ones from now. Returns the new record, how
+-- many were busy, how many longer than stuck_ticks, and whether it changed.
+function busy_record(seen, ids, now, stuck_ticks)
+    local keep, stuck, changed = {}, 0, false
+    for _, id in ipairs(ids) do
+        local k = tostring(id)
+        local since = tonumber(seen[k])
+        if since == nil or since > now then since = now; changed = true end   -- (a tick from the future: an older save)
+        keep[k] = since
+        if now - since >= stuck_ticks then stuck = stuck + 1 end
+    end
+    for k in pairs(seen) do if keep[k] == nil then changed = true end end
+    return keep, #ids, stuck, changed
+end
+
+function depot_busy_seen(ids)
+    local now = trade_now()
+    local keep, busy, stuck, changed = busy_record(U.site_get(DEPOT_BUSY_KEY, {}), ids, now, DEPOT_STUCK_TICKS)
+    if changed then pcall(U.site_put, DEPOT_BUSY_KEY, keep) end
+    return busy, stuck
+end
+
 -- The report's "trade" section.
 function survey(txt)
     local dep = depot()
@@ -297,13 +325,32 @@ function survey(txt)
         -- whose y251 caravan never left (325 "of the fort's goods"), asked to
         -- unload them 50 and 48 times ("the game kept it in the depot")
         local at, theirs = 0, 0
+        local busy_ids = {}
         for _, ci in ipairs(dep.contained_items) do
             if ci.use_mode == df.building_item_role_type.TEMP then
-                if merchant_item(ci.item) then theirs = theirs + 1 else at = at + 1 end
+                if merchant_item(ci.item) then theirs = theirs + 1 else
+                    at = at + 1
+                    local okb, b = pcall(function() return ci.item.flags.in_job end)
+                    if okb and b then table.insert(busy_ids, ci.item.id) end
+                end
             end
         end
         out.at_depot = at
         if theirs > 0 then out.merchant_goods = theirs end
+        -- (item4) of those, the ones on a job (a hauler's, carrying them out):
+        -- unload leaves them and answers "being hauled out". B (24 Nov): the
+        -- same 4 stayed on a job for hours and unload_depot was asked 107
+        -- times in 2 hours. Busy since a tick kept per item id; busy past
+        -- DEPOT_STUCK_TICKS counts as stuck (the brain says it, asks no more)
+        if at > 0 then
+            local okr, busy, stuck = pcall(depot_busy_seen, busy_ids)
+            if okr then
+                out.at_depot_busy = busy
+                if stuck > 0 then out.at_depot_stuck = stuck end
+            end
+        elseif next(U.site_get(DEPOT_BUSY_KEY, {})) ~= nil then
+            pcall(U.site_put, DEPOT_BUSY_KEY, {})
+        end
     end
     -- the commonest cut gem (to set into crafts at the jeweller's)
     pcall(function()
@@ -447,7 +494,7 @@ function unload(limit, dry_run, txt)
     local dep = depot()
     if not dep then return {ok = false, rejected = true, error = 'no trade depot built yet'} end
     if #caravans(txt) > 0 then return {ok = false, rejected = true, error = 'a caravan is coming or at the depot'} end
-    local items = {}
+    local items, busy_ids = {}, {}
     for _, ci in ipairs(dep.contained_items) do
         if ci.use_mode == df.building_item_role_type.TEMP and ci.item and merchant_item(ci.item) then
             theirs = theirs + 1     -- (r2 h5) the merchants' goods are theirs to pack, never moved
@@ -455,11 +502,19 @@ function unload(limit, dry_run, txt)
             -- (0.104.138) one a hauler is already carrying out is left to him
             local busy = false
             pcall(function() busy = ci.item.flags.in_job end)
-            if busy then busy_n = busy_n + 1 else table.insert(items, ci.item) end
+            if busy then
+                busy_n = busy_n + 1
+                table.insert(busy_ids, ci.item.id)
+            else table.insert(items, ci.item) end
         end
     end
     if #items == 0 and busy_n > 0 then
-        return {ok = false, rejected = true, waiting = true, error = busy_n .. ' item(s) are being hauled out of the depot'}
+        -- (item4) the ones on a job past DEPOT_STUCK_TICKS: stuck, said so
+        local okr, _, stuck = pcall(depot_busy_seen, busy_ids)
+        stuck = okr and stuck or 0
+        return {ok = false, rejected = true, waiting = true, busy = busy_n, stuck = stuck > 0 and stuck or nil,
+                error = busy_n .. ' item(s) are being hauled out of the depot'
+                        .. (stuck > 0 and (' (' .. stuck .. ' on the same job for 3+ days: stuck)') or '')}
     end
     if #items == 0 then
         return {ok = false, rejected = true, merchant_goods = theirs > 0 and theirs or nil,
@@ -759,7 +814,7 @@ PART_LOCALS = {U = U, report_units = report_units, depot = depot, caravans = car
 PARTS = {'screen', 'depot'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-trade'] = '0.105.108'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-trade'] = '0.105.109'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

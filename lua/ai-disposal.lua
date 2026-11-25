@@ -592,6 +592,12 @@ function dump_bodies(ctx, want, max, res, dry_run)
         if x and in_dump(ctx.dumps, x, y, z) then return end
         if not outside then skip(res, 'no_outside_dump'); return end
         local reason = x and reason_of(it, kind, x, y, z, ctx) or 'unknown'
+        -- (item4) forbidden_reason reads DF's dead_dwarf flag (or a dead
+        -- owner) as 'own_dead' before the body's side: a forbidden visitor's
+        -- body was skipped for 'reason' while the dead report counted it
+        -- dumpable (B, 24 Nov: burial_others refused 16 times after 0.105.99).
+        -- dumpable_other_body said another's above: it is other_dead here.
+        if reason == 'own_dead' then reason = 'other_dead' end
         local why = blocked(it, x, y, z, reason, ctx)
         if why then skip(res, why); return end
         if reason ~= 'free' and not want[reason] then skip(res, 'reason'); return end

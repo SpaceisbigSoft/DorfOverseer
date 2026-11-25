@@ -337,6 +337,8 @@ def short(a: dict) -> str:
         return "dig the first staircase, further from the wagon"
     if t == "fight_watch" and a.get("on") is False:   # (item1)
         return "stop the in-game fight watcher"
+    if t == "thirst_patient" and a.get("get_up"):    # (item2) the patient's Rest ended: they walk to drink
+        return "get a parched patient who can stand up from rest to walk to a drink"
     words = SHORT_WORDS.get(t)
     if words is not None:
         return words

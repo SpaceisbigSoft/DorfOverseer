@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.108'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.109'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -300,7 +300,9 @@ ACTIONS = {
     thirst_patient = function(a)
         local id = type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or nil
         if not id then return reject('thirst_patient needs unit_id') end
-        return reqscript('ai-thirst').patient_help(id, a.dry_run == true)
+        -- (item1) get_up: a resting patient who can stand sent to drink
+        if a.get_up ~= nil and type(a.get_up) ~= 'boolean' then return reject('thirst_patient: get_up is true or false') end
+        return reqscript('ai-thirst').patient_help(id, a.dry_run == true, a.get_up == true)
     end,
     thirst_probe = function(a)
         local id = type(a.unit_id) == 'number' and math.tointeger(a.unit_id) or nil

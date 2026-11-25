@@ -398,18 +398,125 @@ def _():
     assert not any(a.get("recipe") == "wooden_bucket" for a in acts), acts      # ordered already
 
 
-@test("brain: a patient's help tried its tries: then Needs you once dehydrated, naming what was missing")
+@test("brain (older bridge's answer, no new fields): the tries spread by thirst, then the lift each retry once dehydrated")
 def _():
+    # (item2) was: three tries then Needs you; now no Needs you without the bridge saying they can't stand
     m = Memory()
     res = {"thirst_patient": {"ok": True, "carriers": 4, "buckets_free": 2, "missing": ["water"]}}
-    tries = 0
+    at = []
+    notes = []
     for i in range(8):
-        s = state([row(7, "injured", timer=40000 + 2000 * i, x=112, y=155, z=163)],
+        timer = 40000 + 2000 * i
+        s = state([row(7, "injured", timer=timer, x=112, y=155, z=163)],
                   tick=1200 + PLANNER_CONFIG["thirst_retry_ticks"] * i)
         p, n = cycle(s, m, res)
-        tries += sum(1 for x in p if x.action["type"] == "thirst_patient")
-    assert tries == PLANNER_CONFIG["g2_thirst_patient_tries"], tries
-    assert any(x.startswith("[you] ") and "dehydrated in bed" in x and "no well or water zone" in x for x in n), n
+        notes += n
+        at += [timer for x in p if x.action["type"] == "thirst_patient"]
+        assert all("get_up" not in x.action for x in p), p         # resting unknown: never got up
+    assert at == [40000, 46000, 50000, 52000, 54000], at             # 6000 apart, then each retry dehydrated
+    assert not any(x.startswith("[you] ") for x in notes), notes
+    assert any("no well or water zone" in x for x in notes), notes
+    assert not any("help is done" in x or "still doesn't reach" in x for x in notes), notes
+
+
+# --- 7. (item2, B 24 Nov: Uvash 17126, Zutthan 18458) the patient never left alone -----------------
+
+UVASH = 17126
+NEW_OK = {"ok": True, "lifted": True, "carriers": 20, "carriers_free": 20, "buckets_free": 24, "missing": [],
+          "resting": True, "can_stand": True, "in_bed": True, "give_water_jobs": 0, "give_water_for_them": 0,
+          "hospital": {"id": 3, "count_buckets": 0, "desired_buckets": 2}}
+
+
+def uvash(timer, i):
+    return state([row(UVASH, "injured", timer=timer, name="Uvash", x=112, y=155, z=163)],
+                 tick=1200 + PLANNER_CONFIG["thirst_retry_ticks"] * i)
+
+
+@test("brain (B, Uvash 35550-38092): three cycles 600 ticks apart: one try, not three; the note names the next")
+def _():
+    m = Memory()
+    ok = {"thirst_patient": {"ok": True, "lifted": True, "carriers": 20, "buckets_free": 24, "missing": []}}
+    ps = []
+    for i, timer in enumerate((35550, 36400, 37250, 38092)):
+        p, n = cycle(uvash(timer, i), m, ok)
+        ps += p
+    assert [x.action for x in ps] == [{"type": "thirst_patient", "unit_id": UVASH}], ps
+    assert any("next try once their thirst reaches 41550" in x for x in n), n
+
+
+@test("brain: no GiveWater job for them after a try: get_up proposed (resting, can stand); notes say what was found")
+def _():
+    m = Memory()
+    p, _ = cycle(uvash(35550, 0), m, {"thirst_patient": NEW_OK})
+    assert p[0].action == {"type": "thirst_patient", "unit_id": UVASH}
+    p, n = cycle(uvash(36200, 1), m, {"thirst_patient": dict(NEW_OK, got_up=True)})
+    assert [x.action for x in p] == [{"type": "thirst_patient", "unit_id": UVASH, "get_up": True}], p
+    r = p[0].reason
+    assert "no GiveWater job seen for them" in r and "hospital buckets 0/2" in r and "carriers free 20" in r, r
+    assert m.thirst_book["ladder"][str(UVASH)]["n"] == {"thirst_patient": 1, "thirst_patient_get_up": 1}
+    assert m.thirst_book["results"][f"thirst_patient:{UVASH}"]["got_up"] is True
+    assert not any(x.startswith("[you] ") for x in n), n
+
+
+@test("brain: dehydrated with the tries spent: get_up, then the plain lift every retry till the end (never silent)")
+def _():
+    m = Memory()
+    acts = []
+    for i, timer in enumerate(range(35000, 75000, 600)):
+        res = dict(NEW_OK, give_water_for_them=1, give_water_jobs=1)       # a GiveWater job seen: no early get_up
+        p, n = cycle(uvash(timer, i), m, {"thirst_patient": res})
+        acts += [(timer, x.action) for x in p]
+    before = [t for t, a in acts if t < 50000]
+    assert len(before) == PLANNER_CONFIG["g2_thirst_patient_tries"], before
+    assert before[1] - before[0] >= PLANNER_CONFIG["g2_thirst_patient_step"], before
+    after = [(t, a) for t, a in acts if t >= 50000]
+    assert after[0][1].get("get_up") is True, after[:2]
+    gu = [a for _, a in after if a.get("get_up")]
+    assert len(gu) == PLANNER_CONFIG["g2_thirst_getup_tries"], gu
+    assert len(after) == len(range(50000, 75000, 600)), len(after)        # each retry while dehydrated
+    assert all(a["type"] == "thirst_patient" and a["unit_id"] == UVASH for _, a in after)
+
+
+@test("brain (Zutthan 18458): the bridge says they can't stand: no get_up; Needs you saying what it found")
+def _():
+    m = Memory()
+    cant = dict(NEW_OK, can_stand=False)
+    cycle(uvash(35550, 0), m, {"thirst_patient": cant})
+    p, n = cycle(uvash(36200, 1), m, {"thirst_patient": cant})
+    assert not any(x.action.get("get_up") for x in p), p
+    you = [x for x in n if x.startswith("[you] ")]
+    assert you and "can't stand" in you[0] and "no GiveWater job seen" in you[0] and "hospital buckets 0/2" in you[0] \
+        and "carriers free 20" in you[0], you
+    p, n = cycle(uvash(52000, 2), m, {"thirst_patient": cant})
+    assert [x.action for x in p] == [{"type": "thirst_patient", "unit_id": UVASH}], p    # the lift goes on
+    assert any(x.startswith("[you] ") and "dehydrated in bed" in x for x in n), n
+
+
+@test("brain: a thirst row with can_stand false: no get_up; a get_up refused: not asked again, Needs you")
+def _():
+    m = Memory()
+    s = uvash(51000, 0)
+    s["thirst"]["list"][0]["can_stand"] = False
+    cycle(s, m, {"thirst_patient": NEW_OK})
+    s = uvash(51600, 1)
+    s["thirst"]["list"][0]["can_stand"] = False
+    p, n = cycle(s, m)
+    assert p and not any(x.action.get("get_up") for x in p), p
+    assert any(x.startswith("[you] ") and "can't stand" in x for x in n), n
+    m = Memory()
+    cycle(uvash(51000, 0), m, {"thirst_patient": NEW_OK})
+    p, _ = cycle(uvash(51600, 1), m, {"thirst_patient": {"ok": False, "error": "they can't stand", "resting": True}})
+    assert p[0].action.get("get_up") is True, p
+    p, n = cycle(uvash(52200, 2), m)
+    assert p and not p[0].action.get("get_up"), p
+    assert any(x.startswith("[you] ") and "getting them up failed: they can't stand" in x for x in n), n
+
+
+@test("words: thirst_patient with get_up has its own short words")
+def _():
+    import overseer_words as OW
+    assert OW.short({"type": "thirst_patient", "get_up": True}) != OW.short({"type": "thirst_patient"})
+    assert "stand" in OW.short({"type": "thirst_patient", "get_up": True})
 
 
 @test("brain (E): 'unknown' gets thirst_probe from the act line (was: nothing); findings said; then Needs you")

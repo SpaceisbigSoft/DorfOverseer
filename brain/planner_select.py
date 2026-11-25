@@ -357,7 +357,12 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                     continue
             wait = _refused_wait(memory, p, now, state.get("bridge_version"))
             if wait is not None:
-                n = _d(memory.refusals.get(refusal_key(p))).get("n")
+                rec_ = _d(memory.refusals.get(refusal_key(p)))
+                n = rec_.get("n")
+                if rec_.get("w"):         # (item4) the same answer to wait, again: a longer wait each time
+                    held.append(f"{p.rule}: waiting on the game, the same answer {rec_['w']} time(s) in a row "
+                                f"({str(rec_.get('why') or '')[:80]}); asks again in {wait} day(s)")
+                    continue
                 held.append(f"{p.rule}: the game refused it {n} time(s) in a row; tries again in {wait} day(s)" if n
                             else f"{p.rule}: waiting on the game (its last answer was to wait); asks again in "
                                  f"{wait} day(s)")      # (0.97: it said "refused 0 time(s)")

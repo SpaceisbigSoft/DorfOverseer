@@ -150,6 +150,11 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 memory.last_fired[p.rule] = now - cooldown + TICKS_PER_DAY
             elif p.rule == "found" and not brief_timeout_now:
                 memory.last_fired[p.rule] = now          # the ground won't allow it: ask again in 3 days
+            elif p.rule in ("burial_others",):     # (item4) its own cooldown begins at a refusal too
+                # (item4) the rule's own cooldown begins at a refusal too (it
+                # began only at a success: burial_others_cooldown_ticks never
+                # held a refused mark_dump, B 24 Nov, 16 refusals)
+                memory.last_fired[cooldown_key(p)] = now
             return False
         memory.last_fired[cooldown_key(p)] = now
         if p.rule not in LOOP_EXEMPT:

@@ -7,6 +7,8 @@ import json
 from digest import _d, _l
 from planner_config import PLANNER_CONFIG
 from planner_core_base import EMERGENCY, TICKS_PER_DAY, TICKS_PER_YEAR, watch_since
+from planner_backoff import (WAIT_BACKOFF_TYPES, WAIT_BACKOFF_MAX_DAYS, NO_EFFECT_COUNT,  # noqa: F401
+                             NO_EFFECT_DROP, _no_effect_same)
 
 
 # One back-off for everything the game refuses: the same action refused
@@ -218,6 +220,19 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
         return
     if r.get("ok") is not False or r.get("halted") or p.rule in EMERGENCY or p.action.get("type") in OWN_PACE:
         return                     # unknown, or stopped by the in-game halt: not the game saying no
+    if r.get("waiting") and p.action.get("type") in WAIT_BACKOFF_TYPES:
+        # (item4) the same "wait" again and again: longer each time it comes
+        # back word for word (counts too), the refusal count kept (an answer
+        # to wait between two refusals no longer begins the back-off again)
+        old = _d(memory.refusals.get(key))
+        why = str(r.get("error") or "")[:120]
+        w = int(old.get("w") or 0) + 1 if old.get("why") == why else 1
+        days = min(WAIT_BACKOFF_MAX_DAYS, 2 * 2 ** (w - 1))
+        memory.refusals[key] = {"n": int(old.get("n") or 0), "w": w, "until": now + days * TICKS_PER_DAY,
+                                "at": now, "why": why}
+        if bridge:
+            memory.refusals[key]["v"] = str(bridge)
+        return
     if r.get("waiting"):           # work under way (trees being felled): look again in 2 days, no back-off
         memory.refusals[key] = {"n": 0, "until": now + 2 * TICKS_PER_DAY, "at": now,
                                 "why": str(r.get("error") or "")[:120]}
@@ -295,11 +310,13 @@ def _loop_count(memory: Memory, p: Proposal, now: int) -> int | None:
 # then tries once more. C (2-5 Nov) ordered a crossbow every week for 35 game
 # years, "4 crossbow soldiers and 3 with a crossbow" each time (962 orders);
 # F gave the same one quiver 171 times ("1 without a quiver and 1 free").
-NO_EFFECT_RULES = {"arms", "quivers"}
+NO_EFFECT_RULES = {"arms", "quivers", "gather_trim"}
 NO_EFFECT_WHY = {"arms": "the crossbows made don't reach the crossbow squad (a hunter may take them, or the "
                          "uniform asks for another kind): look in the game",
                  "quivers": "the quiver handed out doesn't stay with the soldier (the game takes it back): "
-                            "look in the game"}
+                            "look in the game",
+                 "gather_trim": "the cancelled plant-gathering jobs come back (a fruit-gathering zone makes them "
+                                "again, or plants still marked): look in the game"}
 
 
 def note_no_effect(memory: Memory, p: Proposal, ok, now: int) -> None:
@@ -311,8 +328,12 @@ def note_no_effect(memory: Memory, p: Proposal, ok, now: int) -> None:
         memory.no_effect = {}
     k = refusal_key(p)
     old = _d(memory.no_effect.get(k))
-    n = int(old.get("n") or 0) + 1 if old.get("reason") == p.reason else 1
+    same = _no_effect_same(p, old)
+    n = int(old.get("n") or 0) + 1 if same else 1
     memory.no_effect[k] = {"reason": p.reason, "n": n, "tick": now}
+    if p.rule in NO_EFFECT_COUNT:     # (item4) the count the streak began with
+        c = NO_EFFECT_COUNT[p.rule](p)
+        memory.no_effect[k]["count"] = old.get("count") if same else c
     if len(memory.no_effect) > 40:
         for kk in sorted(memory.no_effect, key=lambda x: int(_d(memory.no_effect[x]).get("tick") or 0))[:-40]:
             del memory.no_effect[kk]
@@ -325,7 +346,7 @@ def no_effect_wait(memory: Memory, p: Proposal, now: int, cfg: dict = PLANNER_CO
         return None
     r = _d(_d(getattr(memory, "no_effect", None)).get(refusal_key(p)))
     most = cfg.get("no_effect_max", PLANNER_CONFIG["no_effect_max"])
-    if r.get("reason") != p.reason or int(r.get("n") or 0) < most or not isinstance(r.get("tick"), int):
+    if not _no_effect_same(p, r) or int(r.get("n") or 0) < most or not isinstance(r.get("tick"), int):
         return None
     left = r["tick"] + cfg.get("no_effect_hold_days", PLANNER_CONFIG["no_effect_hold_days"]) * TICKS_PER_DAY - now
     return max(1, -(-left // TICKS_PER_DAY)) if 0 < left else None

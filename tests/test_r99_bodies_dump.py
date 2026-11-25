@@ -96,6 +96,14 @@ def _():
     assert o[0].reason.startswith("1 dead of other civs") and "where the dwarves can reach" in o[0].reason
 
 
+@test("(item4) burial_others: the dumpable ones carried or on a job (not_ours_busy): nothing asked, said why")
+def _():
+    o, notes = welfare(st({"not_ours_busy": 1}))
+    assert not o, o                       # before: counted dumpable, refused 16 times in 1.5 hours
+    n = [x for x in notes if "dead of other civs" in x][0]
+    assert "1 carried or on a job" in n, n
+
+
 @test("burial_others: an older bridge (none of the new counts): asked as before")
 def _():
     o, _ = welfare(st())
@@ -222,6 +230,18 @@ def _():
     assert "out.marked_dump_outside = out.marked_dump_outside + 1" in DISPOSAL
 
 
+@test("(item4) bridge: dump_bodies takes a forbidden visitor's body (dead_dwarf read as own_dead) as other_dead; the report counts only the free ones dumpable")
+def _():
+    i = DISPOSAL.index("function dump_bodies(ctx, want, max, res, dry_run)")
+    body = DISPOSAL[i:DISPOSAL.index("\nend\n", i)]
+    assert "if reason == 'own_dead' then reason = 'other_dead' end" in body
+    assert body.index("U.dumpable_other_body(it, kind, ctx)") < body.index("reason = 'other_dead'")
+    assert "SU.on_ground(it) and SU.item_unfree(it, DUMP_ALLOW) == nil" in REPORT
+    assert "why.not_ours_busy" in REPORT
+    assert "DUMP_ALLOW = {forbid = true, dump = true, owned = true, artifact = true, dead_dwarf = true, rotten = true}" in REPORT
+    assert "local ALLOW = {forbid = true, dump = true, owned = true, artifact = true, dead_dwarf = true, rotten = true}" in DISPOSAL
+
+
 @test("bridge: unforbid_dead leaves a body by a live danger or on the cistern's tiles forbidden, and says so")
 def _():
     i = ACTS.index("function act_unforbid_dead(a)")
@@ -259,6 +279,18 @@ def _():
     v = A.mk(lua, w, kind="CORPSE", race=1, unit_id=6, flags={"dead_dwarf": True}, pos=(70, 70, 130))
     c = A.mk(lua, w, kind="CORPSE", race=1, unit_id=5, flags={"dead_dwarf": True}, pos=(71, 70, 130))
     r = env.mark_dump(A.opts(lua, bodies=True, junk=False, reasons=["free", "other_dead"], max=50), False)
+    assert r.ok and v.flags.dump and not c.flags.dump, (r.ok, A.skipped(r), r.error)
+
+
+@test("(item4) lua: mark_dump bodies takes B's visitor body forbidden too (DF's forbid-your-dead order on a dead_dwarf body)")
+def _():
+    need_lua()
+    import test_k48_dead_unhappy as K
+    A, lua, env, w = K.disposal_world()
+    v = A.mk(lua, w, kind="CORPSE", race=1, unit_id=6, flags={"dead_dwarf": True, "forbid": True}, pos=(70, 70, 130))
+    c = A.mk(lua, w, kind="CORPSE", race=1, unit_id=5, flags={"dead_dwarf": True, "forbid": True}, pos=(71, 70, 130))
+    r = env.mark_dump(A.opts(lua, bodies=True, junk=False, reasons=["free", "other_dead"], max=50), False)
+    # before: skipped for 'reason' (forbidden_reason said own_dead), refused "no body ... may be marked"
     assert r.ok and v.flags.dump and not c.flags.dump, (r.ok, A.skipped(r), r.error)
 
 

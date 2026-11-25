@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.108'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.109'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
 
@@ -621,6 +621,9 @@ end
 -- The dead: ghosts of the fort's own, citizens' bodies not yet in a coffin,
 -- and coffins in a tomb zone that are still free for a burial.
 local CORPSE_TYPES = {CORPSE = true, CORPSEPIECE = true, REMAINS = true}
+-- (item4) what dump_bodies lets past ai-util item_unfree (ai-disposal ALLOW):
+-- the dead report's not_ours_dumpable asks the same
+DUMP_ALLOW = {forbid = true, dump = true, owned = true, artifact = true, dead_dwarf = true, rotten = true}
 
 local function coffin_is_free(b)
     for _, ci in ipairs(b.contained_items) do
@@ -922,7 +925,21 @@ function get_dead()
                         local okd, dumpable = pcall(function()
                             return side_ctx ~= nil and side_ctx.U.dumpable_other_body(it, 'CORPSE', side_ctx)
                         end)
-                        if okd and dumpable then
+                        -- (item4) and free for the action to touch, as dump_bodies
+                        -- asks (ai-disposal blocked: on the ground, on no job, in
+                        -- no hand): one carried or on a job counted dumpable and
+                        -- the action refused ("no body ... may be marked")
+                        local free = true
+                        if okd and dumpable and reach then
+                            local okf, f2 = pcall(function()
+                                local SU = side_ctx.U
+                                return SU.on_ground(it) and SU.item_unfree(it, DUMP_ALLOW) == nil
+                            end)
+                            free = not okf or f2 == true
+                        end
+                        if okd and dumpable and reach and not free then
+                            why.not_ours_busy = (why.not_ours_busy or 0) + 1
+                        elseif okd and dumpable then
                             if reach then
                                 why.not_ours_dumpable = (why.not_ours_dumpable or 0) + 1
                             else

@@ -40,8 +40,12 @@
 --                       a siege or by a danger, only plain walls, safe tiles,
 --                       and never a way that joins the fort to the outside
 --                       past its gates (the flood check)
---   patient_help(uid, dry)          (R1 g2) a patient out of the hospital
---                       burrow; the water carrying counted
+--   patient_help(uid, dry, get_up)  (R1 g2) a patient out of the hospital
+--                       burrow; the water carrying counted; (item1) why no
+--                       water comes (resting, can_stand, in_bed, the
+--                       hospital's buckets, GiveWater jobs, free carriers),
+--                       and get_up: a resting dwarf who can stand sent to
+--                       drink (their Rest job ended)
 --   probe(uid, dry)                 (R1 g2) "unknown" looked into
 --@ module = true
 
@@ -142,6 +146,40 @@ local function patient(u)
     return ok and yes or false
 end
 
+-- (item1, B 24 Nov: Zutthan, walking about with infected wounds, died of
+-- thirst as 'injured', waiting for water DF only brings to a dwarf in bed)
+-- Can they stand: (can, unconscious, on_ground). can is nil when it can't be
+-- read; false when unconscious, with no limb left to stand on, or short of
+-- legs and on the ground (crawling); true otherwise.
+local function stand_facts(u)
+    local unc = false
+    pcall(function() unc = (tonumber(u.counters.unconscious) or 0) > 0 end)
+    local ground = false
+    pcall(function() ground = u.flags1.on_ground == true end)
+    if unc then return false, true, ground end
+    local ok, can = pcall(function()
+        local s = u.status2
+        local mx, n = s.limbs_stand_max, s.limbs_stand_count
+        if type(mx) ~= 'number' or type(n) ~= 'number' or mx <= 0 then return nil end
+        if n <= 0 then return false end
+        if n < mx and ground then return false end
+        return true
+    end)
+    if ok then return can, false, ground end
+    return nil, false, ground
+end
+
+-- (item1) up and about: not resting, not lying, not unable to stand, and
+-- seen so: can_stand read true, or on a job that is not Rest. DF carries
+-- water (GiveWater) only to a dwarf resting in bed or unable to get up, so a
+-- patient who is up is no reason to wait for it. Unread (can_stand nil, no
+-- job): not known to be up.
+local function is_up(f)
+    if f.resting or f.can_stand == false or f.unconscious or f.lying then return false end
+    if f.can_stand == true then return true end
+    return type(f.job) == 'string' and f.job ~= 'Rest'
+end
+
 -- --- the reason ------------------------------------------------------------
 
 -- f: {insane, mood, chained, jailed, cell, stranded, drinking, timer,
@@ -163,7 +201,10 @@ end
 --   no_drink     no drink nor well anywhere
 --   injured      a patient, or "too injured" (water brought from a well);
 --                (R1 g2) also one last seen as a patient while still thirsty
---                (was_patient) or resting in bed (resting)
+--                (was_patient) or resting in bed (resting); (item1) a patient
+--                only while not up (is_up: resting, lying, can't stand, or
+--                not seen up), and anyone unconscious or unable to stand. A
+--                patient up and walking falls through to the reasons below
 --   cancelled    their Drink job dropped for another reason (in `cancel`)
 --   unknown      drink in reach, nothing seen in the way (on the way to it)
 function classify(f)
@@ -193,7 +234,10 @@ function classify(f)
     -- may read clear by then (B 16 Nov: "a patient" at 25-32k, then "unknown"
     -- at 50k and dead in the hospital bed), so a dwarf last seen as one (the
     -- save's snapshot) or lying in bed resting still is one
-    if f.patient or f.was_patient or f.resting or why:find('injur', 1, true) then return 'injured' end
+    -- (item1) only while they can't walk to drink themselves: DF brings no
+    -- water to a patient who is up (B 24 Nov: Zutthan at his crafts)
+    if f.resting or f.can_stand == false or f.unconscious or why:find('injur', 1, true) then return 'injured' end
+    if (f.patient or f.was_patient) and not is_up(f) then return 'injured' end
     if why:find('path', 1, true) or why:find('reach', 1, true) then return 'no_path' end
     if why ~= '' then return 'cancelled' end
     return 'unknown'
@@ -588,6 +632,13 @@ function report()
                     f.was_patient, row.was_patient = true, true
                 end
                 if jn == 'Rest' then f.resting, row.resting = true, true end
+                -- (item1) standing or lying: a patient up and walking is told so
+                f.job = jn
+                local can, unc, ground = stand_facts(u)
+                f.can_stand, row.can_stand = can, can
+                if unc then f.unconscious, row.unconscious = true, true end
+                if ground and not f.resting then f.lying = true end
+                if (f.patient or f.was_patient) and is_up(f) then row.walking_patient = true end
                 -- in reach: the walk group's drink, wells, water zones
                 f.drink_group = e and e.n or 0
                 f.forbidden_group = e and e.forbidden or 0
@@ -758,7 +809,7 @@ end
 
 -- (r9) this file's locals the later parts use (each takes back the ones it
 -- uses as locals of its own): all functions and fixed values, set once here
-PART_LOCALS = {U = U, now_tick = now_tick, txt = txt, is = is, key = key, group_at = group_at, mood_of = mood_of, job_name = job_name, patient = patient, drink_map = drink_map, NEIGH = NEIGH, wells = wells, water_zones = water_zones, burrow_by_id = burrow_by_id, held_kind = held_kind, civ_alert = civ_alert, burrow_holds = burrow_holds}
+PART_LOCALS = {U = U, now_tick = now_tick, txt = txt, is = is, key = key, group_at = group_at, mood_of = mood_of, job_name = job_name, patient = patient, stand_facts = stand_facts, drink_map = drink_map, NEIGH = NEIGH, wells = wells, water_zones = water_zones, burrow_by_id = burrow_by_id, held_kind = held_kind, civ_alert = civ_alert, burrow_holds = burrow_holds}
 
 ---------------------------------------------------------------------------
 -- (r9) The rest of the thirst watch lives in a part beside this file
@@ -774,7 +825,7 @@ PART_LOCALS = {U = U, now_tick = now_tick, txt = txt, is = is, key = key, group_
 PARTS = {'remedies'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-thirst'] = '0.105.108'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-thirst'] = '0.105.109'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')
