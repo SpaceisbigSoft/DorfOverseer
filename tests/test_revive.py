@@ -275,5 +275,39 @@ def _():
                 os.environ["DFHACK_PORT"] = old
 
 
+
+@test("revive (0.105.117): the copy the keeper started loads its save within ~30 s of its title, not after 2 minutes")
+def _():
+    t = [0.0]
+    logs, launched = [], []
+    df = FakeDF()
+    rv = revive.Reviver(logs.append, dfhack=df, launcher=launched.append, clock=lambda: t[0])
+    revive.launch_command = lambda: "C:/DF/Dwarf Fortress.exe"
+    rv.candidates = lambda: (["region4"], None)
+    for _ in range(3):                       # closed at the start: launched within ~30 s
+        rv.tick(); t[0] += 15
+    assert launched, logs
+    df.state = "title"
+    start = t[0]
+    while ("ai-title", "load", "region4") not in df.calls and t[0] - start < 300:
+        rv.tick(); t[0] += 5
+    assert ("ai-title", "load", "region4") in df.calls and t[0] - start <= 45, (t[0] - start, df.calls)
+
+
+@test("revive (0.105.117): a title screen the keeper didn't open (the player's) still waits the full 2 minutes")
+def _():
+    t = [0.0]
+    df = FakeDF()
+    df.state = "title"
+    rv = revive.Reviver(lambda *_: None, dfhack=df, launcher=lambda *_: None, clock=lambda: t[0])
+    rv.seen_up = True
+    rv.candidates = lambda: (["region4"], None)
+    for _ in range(20):                      # 100 s at the title: no load yet
+        rv.tick(); t[0] += 5
+    assert ("ai-title", "load", "region4") not in df.calls, df.calls
+    for _ in range(20):
+        rv.tick(); t[0] += 5
+    assert ("ai-title", "load", "region4") in df.calls, df.calls
+
 if __name__ == "__main__":
     finish()

@@ -6,6 +6,7 @@ Two things can end a run that the overseer alone can't fix:
     "df_launch" (a path to Dwarf Fortress.exe, or a steam:// link for the
     DFHack entry); at most once every LAUNCH_EVERY_S.
   * The game is up but at the title screen (no world loaded): after TITLE_S
+    (TITLE_OWN_S when the keeper started this copy itself: nobody is at it)
     the fort's newest save folder is loaded from the title screen (lua/ai-title.lua)
     (the folder from logs/last-fort.json, which the overseer writes each
     cycle; the newest of it and DF's autosaves); at most LOADS_PER_HOUR an hour.
@@ -39,6 +40,9 @@ START_DOWN_S = 15
 # until this long
 START_BUSY_S = 120
 TITLE_S = 120
+# (0.105.117) the game the keeper started itself (within LAUNCH_EVERY_S): nobody is at
+# its title screen, so the save is loaded after TITLE_OWN_S, not TITLE_S (the player's grace)
+TITLE_OWN_S = 15
 LAUNCH_EVERY_S = 900
 LOADS_PER_HOUR = 3
 HUNG_S = 1800                # (0.100.1) no answer this long (not down, not at the title): DF is closed
@@ -902,7 +906,11 @@ class Reviver:
 
     def tick(self) -> None:
         now = self.clock()
-        if now - self.last_probe < (PROBE_EVERY_S if self.seen_up else START_PROBE_S):
+        # (0.105.117) the copy the keeper started, at its title with no load under way: looked at
+        # every START_PROBE_S, so its save loads ~TITLE_OWN_S after the title shows (not 2-3 min)
+        quick = (not self.seen_up or (self.title_since is not None and self.loading is None
+                                      and now - self.last_launch < LAUNCH_EVERY_S))
+        if now - self.last_probe < (START_PROBE_S if quick else PROBE_EVERY_S):
             return
         self.last_probe = now
         state = self.probe()
@@ -984,7 +992,8 @@ class Reviver:
             self.busy_said = False        # (0.105.36, D7) said again the next time DF starts slowly
             self.title_since = self.title_since or now
             self.loads = [t for t in self.loads if now - t < 3600]
-            if now - self.title_since >= TITLE_S and len(self.loads) < LOADS_PER_HOUR:
+            own = now - self.last_launch < LAUNCH_EVERY_S     # (0.105.117) the keeper started this copy
+            if now - self.title_since >= (TITLE_OWN_S if own else TITLE_S) and len(self.loads) < LOADS_PER_HOUR:
                 if self.loading is not None:
                     return                    # (0.105.0) the last load still has time to come up
                 LAST_DAMAGED.clear()
