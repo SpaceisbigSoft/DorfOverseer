@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.112'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.113'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
 
@@ -430,6 +430,20 @@ function get_supplies()
         out.cooks = {best = best, skilled = skilled, kitchen_min = kmin, best_any = best_any,
                      able = #able, able_skills = top}
     end)
+    -- (0.105.113 item13) the logs a citizen can walk to (D: 19 logs, all on the surface out of every
+    -- dwarf's walk: the charcoal a bar mood's smelting needed never burnt); nil when no walk group is read
+    pcall(function()
+        local groups = citizen_walk_groups()
+        if not groups then return end
+        local n = 0
+        each('WOOD', function(it)
+            local x, y, z = dfhack.items.getPosition(it)
+            if not x then return end
+            local okg, g = pcall(dfhack.maps.getWalkableGroup, xyz2pos(x, y, z))
+            if okg and groups[g] then n = n + it:getStackSize() end
+        end)
+        out.wood_reach = n
+    end)
     each('SPLINT', function(it) out.splints = out.splints + it:getStackSize() end)
     each('CRUTCH', function(it) out.crutches = out.crutches + it:getStackSize() end)
     each('BAR', function(it)
@@ -597,9 +611,18 @@ function get_supplies()
     -- the brain releases the mood's kind (lua/ai-mood-help.lua hospital_release)
     out.hospital.cloth_kinds = {plant = 0, silk = 0, yarn = 0}
     out.hospital.thread_kinds = {plant = 0, silk = 0, yarn = 0}
+    -- (0.105.113 item13) and the hospital's part-used thread (a suture's leftover, under
+    -- THREAD_WHOLE) by kind: the loom weaves only whole thread (B: its thread 97% of a whole one)
+    out.hospital.thread_short = {plant = 0, silk = 0, yarn = 0}
     local function hosp_kind(what, it)
         local k = kind_of(it)
         if k then out.hospital[what][k] = out.hospital[what][k] + it:getStackSize() end
+        if k and what == 'thread_kinds' then
+            local okd, d = pcall(function() return it:getTotalDimension() end)
+            if okd and type(d) == 'number' and d > 0 and d < THREAD_WHOLE then
+                out.hospital.thread_short[k] = out.hospital.thread_short[k] + it:getStackSize()
+            end
+        end
     end
     each('CLOTH', function(it)
         if in_hospital(it) then out.hospital.cloth = out.hospital.cloth + it:getStackSize(); hosp_kind('cloth_kinds', it) return end

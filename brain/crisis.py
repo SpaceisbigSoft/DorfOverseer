@@ -14,7 +14,7 @@ RECOVERY_RULES = {
     "stress_care", "soap", "cloth", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",
     "needs_meal", "good_cooks", "recreation", "hospital_burrow", "tavern", "tavern_chest", "temple_chest",
     "tavern_urgent", "jail_urgent", "jail_size", "jail_more", "break_fights", "convict", "mood", "rooms", "drink", "drink_fruit",
-    "food", "farms", "kitchen", "water", "well", "well_parts", "pop_cap", "dig_first", "fat_ban",
+    "food", "farms", "kitchen", "water", "well", "well_parts", "pop_cap", "dig_first", "fat_ban", "meal_drink",
     "labor", "stone", "furniture",
 }
 # (0.104.168) the infected put to bed, soap two steps a cycle, more doctors,

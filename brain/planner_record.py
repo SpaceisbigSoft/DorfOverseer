@@ -195,6 +195,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.kitchen_ban = a.get("ban") is True
         if a["type"] == "kitchen_fat" and ok is True:          # (0.104.30)
             memory.fat_ban = a.get("ban") is True
+        if a["type"] == "kitchen_drinks" and ok is True:       # (0.105.113 item10)
+            memory.drink_cook_ban = a.get("ban") is True
         if a["type"] == "slaughter_one" and ok is True and a.get("mood_unit") is not None:
             memory.mood_slaughter[str(a["mood_unit"])] = now     # (0.105.30) one animal a mood
         if a["type"] == "start_project" and a.get("kind") == "memorial":

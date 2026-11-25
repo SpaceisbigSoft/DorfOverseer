@@ -1352,15 +1352,24 @@ def _():
     assert env.members_state(sq7).parched == 1
 
 
-@test("0.105.0 review: quivers move to the assigned list; only ones on the unassigned list; a bad field reported")
+@test("0.105.0 review: quivers move to the assigned list; (item11) one on no list is free too; a bad field reported")
 def _():
     lua, n, env, eq, sq7, sq8 = army()
     seq = lambda v: [v[i] for i in range(n(v))]
     lua.execute("local eq = ... ; eq.items_unassigned.QUIVER:erase(1)", eq)        # 82 on no list
+    # (0.105.113 item11) a quiver on neither list is free, as bolts are (C: 12 spare
+    # quivers on neither list, quivers_free 0, 5 of 10 crossbow soldiers without one)
+    assert env.quiver_report().quivers_free == 2
+    r = env.assign_quivers(False, 10)
+    assert r.ok and r.assigned == 2, dict(r)
+    assert sorted(seq(eq.items_assigned.QUIVER)) == [81, 82] and seq(eq.items_unassigned.QUIVER) == [], (
+        seq(eq.items_assigned.QUIVER), seq(eq.items_unassigned.QUIVER))
+    # one on the assigned list (another place's) is never free
+    lua, n, env, eq, sq7, sq8 = army()
+    lua.execute("local eq = ... ; eq.items_unassigned.QUIVER:erase(1); eq.items_assigned.QUIVER:insert('#', 82)", eq)
+    assert env.quiver_report().quivers_free == 1
     r = env.assign_quivers(False, 10)
     assert r.ok and r.assigned == 1, dict(r)
-    assert seq(eq.items_assigned.QUIVER) == [81] and seq(eq.items_unassigned.QUIVER) == [], (
-        seq(eq.items_assigned.QUIVER), seq(eq.items_unassigned.QUIVER))
     # a quiver field this DF hasn't: an error, not a raise
     lua, n, env, eq, sq7, sq8 = army()
     lua.execute("""local sq8 = ...

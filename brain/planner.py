@@ -811,7 +811,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # 6d. Society: offices, hunger and thirst, pastures, farms; the metal
     # industry through DFHack's own smelting orders --------------------------
     if can_use("society"):
-        _guard(_society_notes, s, traits, citizens, cfg, notes, proposals)
+        _guard(_society_notes, s, traits, citizens, cfg, notes, proposals, memory)
     if can_use("offices"):
         _guard(_offices_refill_rule, s, cfg, notes, proposals, memory)  # (0.104.168)
     if can_use("farms", "projects", "settings"):

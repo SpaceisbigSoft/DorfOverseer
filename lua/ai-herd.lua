@@ -387,6 +387,35 @@ function upkeep()
     return out
 end
 
+-- (0.105.113 item13) The fort's butcher's shops, built ({pos}), and whether a
+-- unit can walk to one. E, 24-25 Nov: a peafowl marked for slaughter stood in a
+-- pasture with no path to any butcher's shop; DF made no job for it, and every
+-- slaughter_one for a mood was refused "1 animal(s) already wait for the
+-- butcher" (79 times). No shop read: true (nothing known against it).
+function butcher_shops()
+    local out = {}
+    pcall(function()
+        for _, b in ipairs(df.global.world.buildings.other.WORKSHOP_ANY) do
+            if b.type == df.workshop_type.Butchers and b:getBuildStage() >= b:getMaxBuildStage() then
+                table.insert(out, xyz2pos(b.centerx, b.centery, b.z))
+            end
+        end
+    end)
+    return out
+end
+
+function reaches_butcher(u, shops)
+    if not shops or #shops == 0 then return true end
+    local ok, x, y, z = pcall(dfhack.units.getPosition, u)
+    if not ok or not x then return false end
+    local from = xyz2pos(x, y, z)
+    for _, p in ipairs(shops) do
+        local okw, w = pcall(dfhack.maps.canWalkBetween, from, p)
+        if okw and w then return true end
+    end
+    return false
+end
+
 local function trainers()
     local n = 0
     pcall(function()
@@ -400,7 +429,9 @@ end
 
 function report()
     local kinds, order = {}, {}
-    local out = {tame = 0, caged_tame = 0, pets = 0, war = 0, hunters = 0, kids = 0, marked = 0, breeders = 0,
+    local shops                                -- (0.105.113 item13) read at the first marked animal
+    local out = {tame = 0, caged_tame = 0, pets = 0, war = 0, hunters = 0, kids = 0, marked = 0, marked_waiting = 0,
+                 breeders = 0,
                  named = 0, wool_now = 0, milk_now = 0, shearable = 0, milkable = 0, egg_layers = 0,
                  grazers = 0, grazing_need = 0, pairs = 0, breeding_pairs = 0, tameable = 0, hunt_candidates = 0}
     local assigned, n_assigned, ok_list = assigned_ids()
@@ -429,7 +460,12 @@ function report()
             if in_cage then k.caged = k.caged + 1; out.caged_tame = out.caged_tame + 1 end
             if pet then out.pets = out.pets + 1 end
             if tr == 'TRAINED_WAR' then out.war = out.war + 1 elseif tr == 'TRAINED_HUNTER' then out.hunters = out.hunters + 1 end
-            if marked then k.marked = k.marked + 1; out.marked = out.marked + 1 end
+            if marked then
+                k.marked = k.marked + 1; out.marked = out.marked + 1
+                -- (0.105.113 item13) and of them those that can walk to a butcher's (a job comes)
+                shops = shops or butcher_shops()
+                if reaches_butcher(u, shops) then out.marked_waiting = out.marked_waiting + 1 end
+            end
             if not adult then k.kids = k.kids + 1; out.kids = out.kids + 1 end
             local breeder = bset[u.id] == true
             if breeder then

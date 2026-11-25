@@ -281,10 +281,16 @@ def hospital_shortfall(s: dict, traits: dict, cfg: dict) -> dict | None:
     unbedded = resting - have
     base = math.ceil(cit / 20 * factor(traits, "welfare")) + 2
     want = max(4, min(cfg["hospital_beds_max"], max(base, resting)))
-    if unbedded < cfg["hospital_outside_min"] or have >= want:
+    # (0.105.113 item11) Welfare above 0 is generosity: the hospitals grow to
+    # the beds the slider sizes for the fort (citizens / 20 x 2^(Welfare/100) + 2),
+    # not only when the wounded lie on the floor. F (Garden fort, Welfare +40,
+    # 97 dwarves) had its first hospital's 4 beds, A (War-hold, -40, 93) the same
+    generous = ((traits.get("welfare", 0) or 0) > 0
+                and min(cfg["hospital_beds_max"], base) - have >= cfg.get("hospital_welfare_grow_min", 4))
+    if (unbedded < cfg["hospital_outside_min"] and not generous) or have >= want:
         return None
     return {"unbedded": unbedded, "resting": resting, "have": have, "want": want, "citizens": cit,
-            "beds": max(4, min(20, want - have))}
+            "beds": max(4, min(20, want - have)), "generous": unbedded < cfg["hospital_outside_min"]}
 
 DIG_FIRST_KINDS = {"hospital", "tombs"}      # (0.104.128) levels dug before the rest
 

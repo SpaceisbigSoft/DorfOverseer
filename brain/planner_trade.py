@@ -8,7 +8,7 @@ from quirks import has_rule
 from digest import _d, _l
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["_trade_rules", "PRECIOUS_METALS", "precious_metal", "trade_wants", "trade_margin_for", "keeps_treasures", "KEEP_TREASURES_GREED"]
+__all__ = ["_trade_rules", "PRECIOUS_METALS", "precious_metal", "trade_wants", "metal_trade_wants", "metal_buy_scale", "IRON_ORES", "trade_margin_for", "keeps_treasures", "KEEP_TREASURES_GREED"]
 
 
 def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list,
@@ -131,7 +131,7 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
             from planner_moods import mood_trade_wants
             wants = mood_trade_wants(s)                       # (R1 g6) the mood's goods, nothing else
         else:
-            wants = trade_wants(s, cfg, citizens)
+            wants = trade_wants(s, cfg, citizens, traits or _traits(s))
         # (r2 h5) what any fort can use, bought when nothing the fort needs is
         # on sale (or it needs nothing): a fort with crafts at the depot sells
         # to every caravan (the screen was closed on "needs nothing", the deal
@@ -282,11 +282,13 @@ def precious_metal(s: dict, cfg: dict) -> str | None:
     return best[1] if best else None
 
 
-def trade_wants(s: dict, cfg: dict, citizens: int) -> list[dict]:
+def trade_wants(s: dict, cfg: dict, citizens: int, traits: dict | None = None) -> list[dict]:
     """What the fort would buy from a caravan, most needed first: food and
-    drink when short, then metal for gear, cloth, leather, thread, fuel, wood."""
+    drink when short, then metal for gear (metal_trade_wants), cloth,
+    leather, thread, fuel, wood."""
     st, su = _d(s.get("stocks")), _d(s.get("supplies"))
-    bars = _d(_d(_d(s.get("military")).get("gear")).get("bars"))
+    if traits is None:
+        traits = _traits(s) if isinstance(s.get("settings"), dict) else {}
     citizens = max(1, citizens)
     wants: list[dict] = []
     # (0.105.24) what a strange mood waits for and the fort can't supply: first
@@ -308,9 +310,8 @@ def trade_wants(s: dict, cfg: dict, citizens: int) -> list[dict]:
     food = sum(int(st.get(k) or 0) for k in ("prepared_meals", "meat", "fish", "cheese", "eggs", "plants"))
     want("FOOD", citizens * cfg["established_food_per_dwarf"] - food)
     want("DRINK", citizens * cfg["trade_drink_per_dwarf"] - int(st.get("drink") or 0))
-    if player_rules(s)["make_gear"]:
-        want("BAR:STEEL", min(30, cfg["steel_want"] - int(bars.get("STEEL") or 0)))
-        want("BAR:IRON", cfg["trade_bars_iron"] - int(bars.get("IRON") or 0))
+    for key, n in metal_trade_wants(s, cfg, traits):
+        want(key, n)
     want("CLOTH", max(cfg["cloth_min"], citizens * cfg["cloth_per_dwarf"]) - int(st.get("cloth") or 0))
     want("SKIN_TANNED", cfg["trade_leather"] - int(st.get("leather") or 0))
     want("THREAD", cfg["trade_thread"] - int(st.get("thread") or 0))
@@ -322,6 +323,70 @@ def trade_wants(s: dict, cfg: dict, citizens: int) -> list[dict]:
         if soap < cfg["soap_keep"] and not su.get("tallow") and not su.get("fat"):
             want("TALLOW", cfg["soap_keep"] - soap)
     return wants
+
+
+# (0.105.113 item10) the smelter's own wants from a caravan. All six forts
+# asked for steel bars in 243 deals of 22-24 Nov and got 3: the caravans
+# hardly carry them, while the forts sat on 41-64 iron bars and 2-7 flux
+# stones (A 18) -- flux, not iron, holds their steel back.
+IRON_ORES = ("HEMATITE", "MAGNETITE", "LIMONITE")
+TRADE_FLUX_MIN = 10            # flux stones under this, steel short and iron at hand: bought
+TRADE_FLUX_MAX = 20            # ... up to this many in all
+TRADE_ORE_IRON = 15            # iron ore bought up to this, when the fort has none and few iron bars
+TRADE_PIG_IRON = 10            # pig iron (half of steel's makings) bought while steel is short
+
+
+def metal_buy_scale(traits: dict | None) -> float:
+    """Greed (generous - grasping) on what the fort buys for its metal
+    industry: 1.5 at -100 (a generous fort stocks up), 1 at 0, 0.5 at
+    +100 (a grasping one buys only part of the shortfall), 0.25-2 at most."""
+    g = _d(traits).get("greed", 0) or 0
+    return max(0.25, min(2.0, 1 - 0.5 * g / 100))
+
+
+def metal_trade_wants(s: dict, cfg: dict, traits: dict | None = None) -> list[tuple[str, int]]:
+    """(0.105.113 item10) What the metal industry needs from a caravan, most
+    needed first: steel and iron bars for gear (the Rules switch Make gear),
+    pig iron, and for the smelter's own steel flux stone (steel short, iron
+    at hand, flux under TRADE_FLUX_MIN) and iron ore (none in store or
+    uncovered, few iron bars). Only with a forge or a smelter: a fort that
+    can't work metal buys none. Each shortfall times metal_buy_scale (Greed);
+    the deal's budget (what the fort's crafts at the depot pay for, at the
+    Greed margin) is what it can afford."""
+    if not player_rules(s)["make_gear"]:
+        return []
+    gear = _d(_d(s.get("military")).get("gear"))
+    bars = _d(gear.get("bars"))
+    furnaces = _d(_d(s.get("buildings")).get("furnaces"))
+    smelter = bool(furnaces.get("Smelter") or furnaces.get("MagmaSmelter"))
+    forge = bool(gear.get("forges")) or "forges" not in gear
+    if not (forge or smelter):
+        return []
+    k = metal_buy_scale(traits)
+    steel, iron = int(bars.get("STEEL") or 0), int(bars.get("IRON") or 0)
+    pig = int(gear.get("pig_iron") or 0)
+    ind = _d(s.get("industry"))
+    flux = int(ind.get("flux_stock") or 0)
+    by_ore = _d(ind.get("ore_stock_by"))
+    iron_ore = sum(int(_d(by_ore.get(o)).get("n") or 0) for o in IRON_ORES)
+    out: list[tuple[str, int]] = []
+
+    def add(key: str, short: float, most: int | None = None) -> None:
+        n = round(min(short, most) * k if most is not None else short * k)
+        if n > 0:
+            out.append((key, int(n)))
+
+    steel_short = cfg["steel_want"] - steel
+    add("BAR:STEEL", steel_short, 30)
+    add("BAR:IRON", cfg["trade_bars_iron"] - iron)
+    if smelter and steel_short > 0:
+        add("BAR:PIG_IRON", TRADE_PIG_IRON - pig, TRADE_PIG_IRON)
+        if flux < TRADE_FLUX_MIN and (iron > cfg["iron_keep"] or pig > 0 or iron_ore > 0):
+            add("BOULDER:FLUX", TRADE_FLUX_MAX - flux)
+    if (smelter and iron_ore == 0 and iron < cfg["trade_bars_iron"]
+            and not _d(_d(ind.get("ores")).get("IRON")).get("tiles")):
+        add("BOULDER:ORE_IRON", TRADE_ORE_IRON)
+    return out
 
 
 def trade_margin_for(traits: dict, cfg: dict) -> float:

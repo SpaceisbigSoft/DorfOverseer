@@ -1152,7 +1152,7 @@ SOCIETY_PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = 
 PARTS = {'animals', 'needs', 'posts'}
 -- each part marks the version it came with; started afresh at each load, so a
 -- part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-society'] = '0.105.112'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-society'] = '0.105.113'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

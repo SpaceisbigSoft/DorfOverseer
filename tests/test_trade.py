@@ -489,5 +489,117 @@ def _():
     assert p.traded is True and p.traded_by == "owners" and p.bought_now >= 1 and p.moved is False, dict(p)
 
 
+# (0.105.113 item10) the merchants' "we can't carry that" (Weight1/Weight2)
+HEAVY = r"""
+local env = ...
+local t = env.df.global.game.main_interface.trade
+env.df.talk_line_type[40], env.df.talk_line_type[41] = 'Weight1', 'Weight2'
+-- the fort's figurines 3.0 each (100 x 3000 / 100000), the amulet 1.5
+for i = 0, #t.good[1] - 1 do
+    local it = t.good[1][i]
+    local vol = env.df.item_type[it.t] == 'AMULET' and 50 or 100
+    it.getVolume = function() return vol end
+    it.getSolidDensity = function() return 3000 end
+end
+local presses = 0
+env.require = function(name)
+    if name == 'gui' then
+        return {simulateInput = function(_, key)
+            if key == 'LEAVESCREEN' then t.open = false; return end
+            presses = presses + 1
+            t.talkline = presses == 1 and 40 or 8      -- too heavy first, then a yes
+        end}
+    end
+    return require(name)
+end
+return function() return presses end
+"""
+
+
+@test("(item10) pick_offers: the goods most valuable for their weight first; never past max_weight")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, *_ = lua.execute(SCREEN, SRC)
+    t = lua.table_from
+    offers = t([t({"idx": 1, "value": 25, "weight": 10}), t({"idx": 2, "value": 25, "weight": 1}),
+                t({"idx": 3, "value": 25, "weight": 1}), t({"idx": 4, "value": 20, "weight": 0.1})])
+    picks, total = env.pick_offers(offers, 46)
+    got = sorted(picks[i].idx for i in range(1, len(picks) + 1))
+    assert total == 50 and got == [2, 3], (got, total)           # never the heavy one
+    picks, total = env.pick_offers(offers, 46, 1.5)
+    got = sorted(picks[i].idx for i in range(1, len(picks) + 1))
+    assert total == 45 and got in ([2, 4], [3, 4]), (got, total)   # what fits under 1.5: short of the target
+
+
+@test("(item10) the smelter's stone: BOULDER:ORE_IRON / FLUX / COAL; a want of BOULDER takes any stone")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, *_ = lua.execute(SCREEN, SRC)
+    t = lua.table_from
+    assert env.want_matches("BOULDER:FLUX", t({"cat": "BOULDER:FLUX"}))
+    assert not env.want_matches("BOULDER:FLUX", t({"cat": "BOULDER:ORE_IRON"}))
+    assert env.want_matches("BOULDER", t({"cat": "BOULDER:ORE_IRON"}))
+    assert not env.want_matches("BAR", t({"cat": "BAR:STEEL"}))
+    kind = lua.execute("""local env = ...
+        env.df.item_type.BOULDER = 50; env.df.item_type[50] = 'BOULDER'
+        local function rc(list) local v = {}; for i, x in ipairs(list) do v[i] = {value = x} end; return v end
+        local mats = {
+            HEMATITE = {inorganic = {metal_ore = {mat_index = {0}}}, material = {reaction_class = rc({})}},
+            DOLOMITE = {inorganic = {metal_ore = {mat_index = {}}}, material = {reaction_class = rc({'FLUX'})}},
+            LIGNITE = {inorganic = {metal_ore = {mat_index = {}}}, material = {reaction_class = rc({})}},
+            GRANITE = {inorganic = {metal_ore = {mat_index = {}}}, material = {reaction_class = rc({})}}}
+        for k, m in pairs(mats) do m.getToken = function() return 'INORGANIC:' .. k end end
+        env.dfhack.matinfo = {decode = function(it) return mats[it.stone] end,
+                              find = function(tok) return tok == 'INORGANIC:IRON' and {index = 0} or nil end}
+        return function(stone)
+            return env.category({stone = stone, getType = function() return 50 end})
+        end""", env)
+    assert [kind(x) for x in ("HEMATITE", "DOLOMITE", "LIGNITE", "GRANITE")] == \
+        ["BOULDER:ORE_IRON", "BOULDER:FLUX", "BOULDER:COAL", "BOULDER"]
+
+
+@test("(item10) Weight1: the screen kept open and the caravan not done; press_lighter ticks lighter goods and "
+      "presses again: traded")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, mf, ff, clicks = lua.execute(SCREEN, SRC)
+    t = lua.table_from
+    presses = lua.execute(HEAVY, env)
+    wants = t([t({"key": "BAR:STEEL", "count": 1}), t({"key": "CLOTH", "count": 1})])
+    r = env.deal(wants, 1.2, False, None)
+    # steel 40 + cloth 8: 58 wanted; the amulet and two figurines (70, 7.5 weight)
+    assert r.give_value == 70 and r.give_weight == 7.5 and r.buy_weight == 0, dict(r)
+    env.calibrate("Trade")
+    p = env.press("Trade", None)
+    assert p.answer == "Weight1" and p.too_heavy and not p.traded and not p.closed, dict(p)
+    tr = lua.eval("function(env) return env.df.global.game.main_interface.trade end")(env)
+    assert tr.open and not env.is_done(tr.mer), "the screen closed or the caravan marked done on Weight1"
+    r, p = env.press_lighter(r, p, wants, 1.2, None, None)
+    # under 7.5 x 0.6 = 4.5: the amulet and one figurine (45) pay for the cloth only
+    assert presses() == 2 and p.answer == "Trade" and p.traded and p.closed, dict(p)
+    assert r.give_weight <= 4.5 and abs(r.max_weight - 4.5) < 1e-6 and r.weight_tries[1].answer == "Weight1", dict(r)
+    assert r.weight_tries[1].give_weight == 7.5, dict(r.weight_tries[1])
+
+
+@test("(item10) Weight1 with nothing lighter to give (or no weights read): the screen closed, the caravan done")
+def _():
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, mf, ff, clicks = lua.execute(SCREEN, SRC)
+    t = lua.table_from
+    presses = lua.execute(HEAVY, env)
+    lua.execute("""local env = ...
+        local t = env.df.global.game.main_interface.trade
+        for i = 0, #t.good[1] - 1 do t.good[1][i].getVolume = nil end""", env)
+    wants = t([t({"key": "BAR:STEEL", "count": 1})])
+    r = env.deal(wants, 1.2, False, None)
+    env.calibrate("Trade")
+    p = env.press("Trade", None)
+    assert p.too_heavy, dict(p)
+    r, p = env.press_lighter(r, p, wants, 1.2, None, None)
+    tr = lua.eval("function(env) return env.df.global.game.main_interface.trade end")(env)
+    assert presses() == 1 and p.closed and not tr.open and env.is_done(tr.mer), dict(p)
+    assert len(r.weight_tries) == 1, dict(r)
+
+
 if __name__ == "__main__":
     finish()

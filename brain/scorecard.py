@@ -724,6 +724,13 @@ def measures(s: dict, j: dict) -> dict:
     for owner, k in CUSTOM_KEYS.items():
         out["custom_" + k] = sum(1 for lv in levels if CUSTOM_IDS[owner] & set(lv.get("customs") or []))
     out.update(construction_measures(s, j))
+    # (0.105.113 item11) Welfare's own say: the hospitals' beds (health.hospital zones),
+    # a dwarf at the peak. Only when the report has the hospitals (an older state reads
+    # nothing: the line stays out, as the floor lines do)
+    hosp = _d(s.get("health")).get("hospital")
+    if isinstance(hosp, list) and out.get("peak"):
+        beds = sum(int(_d(z).get("beds") or 0) for h in hosp for z in _l(_d(h).get("zones")))
+        out["hospital_beds_pk"] = round(100.0 * beds / out["peak"], 1)
     # (option B) the floor measures, each only when it has a number: a state and a journal from
     # before the floors give the dict they always gave (tests/test_d0_scorecard.py pins it key
     # for key); a key that is not there reads None, "no data", like every other (m.get)
@@ -1202,6 +1209,28 @@ FLOOR_LINES = [
 ]
 
 
+# (0.105.113 item11) Welfare's lines measured outcomes the slider barely moves (who is
+# unhappy: B's fights; good meals: the cook's skill, A's legendary cook; drink kinds:
+# C's caravans) and it won none. What the slider sizes itself is the hospital: beds
+# for citizens / 20 x 2^(Welfare/100) + 2, grown to that above 0 (planner_building_rooms
+# hospital_shortfall). No low side: below 0 the beds still follow the wounded.
+WELFARE_LINES = [
+    ("Welfare", "hospital beds per 100 dwarves (peak)", "hospital_beds_pk", {M, G}, set()),
+]
+
+
+def welfare_lines(lines: list, ms: list[dict]) -> list:
+    """(item11) `lines` with WELFARE_LINES after Welfare's last line, once a
+    fort's report carries its hospitals (a scorecard of older states reads as it did)."""
+    if not any(m.get("hospital_beds_pk") is not None for m in ms):
+        return lines
+    out = list(lines)
+    for ln in WELFARE_LINES:
+        at = max((i for i, x in enumerate(out) if x[0] == ln[0]), default=len(out) - 1)
+        out.insert(at + 1, ln)
+    return out
+
+
 def has_floors(ms: list[dict]) -> bool:
     """(option B) Does any fort carry a floor measure (a `floors` section, a
     start_project answered with `floor` or `not_on_floor`)?"""
@@ -1453,6 +1482,7 @@ def score_full(forts: list[Fort], at: str | None, now: bool) -> tuple[str, list[
     lines = LINES + (PEAK_LINES if sizes_differ([data[lb][2] for lb in labels]) else [])
     if has_floors([data[lb][2] for lb in labels]):       # (option B) only once a fort has floors
         lines = floor_lines(lines)
+    lines = welfare_lines(lines, [data[lb][2] for lb in labels])     # (item11) only once a fort has its hospitals
     rows, out = [], []
     for slider, what, key, high, low in lines:
         neg = key.startswith("-")

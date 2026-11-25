@@ -533,7 +533,13 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
         jobs = min(5, max(1, -(-bshort // 25)))
         bars = _d(g.get("bars"))
         metal = next((m for m in GEAR_METALS if (bars.get(m) or 0) >= jobs + cfg["bolt_bars_keep"]), None)
-        if metal and g.get("forges"):
+        # (0.105.113 item11) the forge's bars go to the soldiers' arms first:
+        # while a place waits for a weapon and the bowyer has wood, the bolts
+        # (shot away at the range) are wooden. C: ~110 orders of iron bolts in
+        # 12 hours, 19 melee places without a weapon and 3 squads unarmoured
+        wood_first = shop and wood >= jobs + cfg.get("bolt_wood_keep", 10) and (
+            int(g.get("weapon_gaps") or 0) > 0 or int(g.get("armed") or 0) < int(g.get("soldiers") or 0))
+        if metal and g.get("forges") and not wood_first:
             proposals.append(Proposal("arms", {"type": "work_order", "recipe": "metal_bolts", "amount": jobs,
                                                "material": f"INORGANIC:{metal}"},
                                       f"{g.get('bolts') or 0} bolts for {members} crossbow soldiers ({want} wanted): "
@@ -551,15 +557,29 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
     # (0.100) a crossbow soldier carries bolts in a quiver and picks a spare
     # one up himself: leather quivers until there is one for each
     sup = _d(s.get("supplies"))
-    if isinstance(sup.get("quivers"), int):
+    if isinstance(g.get("ranged_places"), int) and isinstance(g.get("quivers_assigned"), int):
+        # (0.105.113 item11) the places themselves (bridge 0.105.0): a quiver
+        # worn by a hunter or lying on no equipment list is no soldier's. C:
+        # 10 crossbow soldiers, 5 with a quiver, `quivers` 9 and `quivers_worn`
+        # 8 read as plenty, and none was made
+        qshort = (g["ranged_places"] - g["quivers_assigned"] - int(g.get("quivers_free") or 0)
+                  - queued(s, {"leather_quiver"}))
+    elif isinstance(sup.get("quivers"), int):
         qshort = (members - sup["quivers"] - int(sup.get("quivers_worn") or 0)
                   - queued(s, {"leather_quiver"}))
+    else:
+        qshort = 0
+    if isinstance(sup.get("quivers"), int) or isinstance(g.get("ranged_places"), int):
         leather = int(_d(s.get("stocks")).get("leather") or 0)
         if qshort > 0 and leather > 0 and _has_shop(s["buildings"], "Leatherworks"):
             n = min(qshort, leather, cfg["max_quiver_order"])
             proposals.append(Proposal("arms", {"type": "work_order", "recipe": "leather_quiver", "amount": n},
-                                      f"{members} crossbow soldiers, {sup['quivers']} spare quiver(s) and "
-                                      f"{int(sup.get('quivers_worn') or 0)} worn: make {n} of leather", 4, True))
+                                      (f"{g['ranged_places']} crossbow places, {g['quivers_assigned']} with a "
+                                       f"quiver and {int(g.get('quivers_free') or 0)} free"
+                                       if isinstance(g.get("ranged_places"), int) and isinstance(g.get("quivers_assigned"), int)
+                                       else f"{members} crossbow soldiers, {sup.get('quivers')} spare quiver(s) and "
+                                            f"{int(sup.get('quivers_worn') or 0)} worn")
+                                      + f": make {n} of leather", 4, True))
     if not shop:
         # (r2h4) asked whatever the shortage (bolts are used up, crossbows
         # break), as a lone shop that takes no project slot (_bowyer_rule)

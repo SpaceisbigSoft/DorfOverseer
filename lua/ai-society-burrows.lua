@@ -16,7 +16,7 @@ local function report_units(...) return U.report_units(...) end   -- (r6) ai-uti
 local S = reqscript('ai-society')   -- find_burrow, new_burrow
 -- (r9) the hub's and its parts' version marks; started afresh at each load, so a part
 -- that failed to load shows as unmarked (as ai-gates does)
-PART_VERSIONS = {['ai-society-burrows'] = '0.105.112'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-society-burrows'] = '0.105.113'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- --- (0.104.78) the recreation burrow ----------------------------------------
 --
@@ -168,26 +168,38 @@ end
 -- kept (a keeper, goblets and instruments first, then the most valuable,
 -- then the lowest id) and of the temple (to all gods first, then the most
 -- valuable); nil for either when the fort has none.
+-- (0.105.113 item9) a tavern's or temple's rank (the higher the better),
+-- shared with social_keep so the burrow's place is the first one kept
+function gather_key(l)
+    local id, v = tonumber(l.id) or 0, tonumber(l.value) or 0
+    if l.kind == 'INN_TAVERN' then
+        local s = (l.keeper and 4 or 0) + ((tonumber(l.goblets) or 0) > 0 and 2 or 0)
+                  + ((tonumber(l.instruments) or 0) > 0 and 2 or 0)
+        return {s, v, -id}
+    end
+    return {l.any_deity and 1 or 0, v, -id}
+end
+
+local function key_above(k, best_k)
+    if not best_k then return true end
+    for i = 1, #k do
+        if k[i] ~= best_k[i] then return k[i] > best_k[i] end
+    end
+    return false
+end
+
 function rec_gathering(locs)
     local tav, tav_k, tem, tem_k
-    local function better(k, best_k)
-        if not best_k then return true end
-        for i = 1, #k do
-            if k[i] ~= best_k[i] then return k[i] > best_k[i] end
-        end
-        return false
-    end
     for _, l in ipairs(locs or {}) do
         local id = tonumber(l.id)
-        local v = tonumber(l.value) or 0
+        -- (0.105.113 item9) one whose zones are all inactive (retired) gathers nobody
+        if l.inactive then id = nil end
         if id and l.kind == 'INN_TAVERN' then
-            local s = (l.keeper and 4 or 0) + ((tonumber(l.goblets) or 0) > 0 and 2 or 0)
-                      + ((tonumber(l.instruments) or 0) > 0 and 2 or 0)
-            local k = {s, v, -id}
-            if better(k, tav_k) then tav, tav_k = id, k end
+            local k = gather_key(l)
+            if key_above(k, tav_k) then tav, tav_k = id, k end
         elseif id and l.kind == 'TEMPLE' then
-            local k = {l.any_deity and 1 or 0, v, -id}
-            if better(k, tem_k) then tem, tem_k = id, k end
+            local k = gather_key(l)
+            if key_above(k, tem_k) then tem, tem_k = id, k end
         end
     end
     return tav, tem
@@ -196,6 +208,22 @@ end
 -- (item6) bumped when the burrow's layout rule changes: a burrow filled by
 -- an older rule is filled again at the next tick, not at its weekly refill
 REC_FILL_V = 2
+
+-- (0.105.113 item9) a civzone's active flag (DF's zone screen), or nil unread
+local function zone_on(bid)
+    local ok, v = pcall(function() return df.building.find(bid).spec_sub_flag.active end)
+    if ok and type(v) == 'boolean' then return v end
+    return nil
+end
+
+-- true when a location has zones and every one is inactive
+function loc_inactive(zones)
+    if #zones == 0 then return false end
+    for _, bid in ipairs(zones) do
+        if zone_on(bid) ~= false then return false end
+    end
+    return true
+end
 
 -- The fort's locations as rec_gathering reads them (never a hospital: it is
 -- left out of the burrow anyway), and each one's zones.
@@ -213,6 +241,7 @@ local function rec_locations()
                     e.value, e.goblets, e.instruments = c.location_value, c.count_goblets, c.count_instruments
                 end)
                 for _, bid in ipairs(c.building_ids) do table.insert(e.zones, bid) end
+                e.inactive = loc_inactive(e.zones)            -- (0.105.113 item9)
                 pcall(function()
                     for _, o in ipairs(b.occupations) do
                         if df.occupation_type[o.type] == 'TAVERN_KEEPER' and o.histfig_id ~= -1 then e.keeper = true end
@@ -263,6 +292,127 @@ function fill_recreation(burrow)
         end
     end
     return n, rec_water(burrow, cx), tav and {tavern = tav, temple = tem} or nil
+end
+
+-- --- (0.105.113 item9) the taverns and temples drawn together --------------
+--
+-- B "Monastery", 24 Nov 23:40: 35 citizens (94 a season before) and every
+-- place built for the 94 still open: 3 taverns, 5 temples, 2 guildhalls, a
+-- library, 4 hospitals. DF's idle dwarves each go to one of them: 11 idle in
+-- 6 of them and the barracks, never more than 3 in one; 26 of 35 badly
+-- missed friends (21 of those have 3 or more close friends, never met). The
+-- brain sends how many taverns (nt) and temples (ne) the fort needs by its
+-- size; the others' zones are made inactive (DF's zone screen), so the idle
+-- gather in the ones kept; one the AI retired is set going again, the best
+-- first, when the fort grows. One the player makes active again (or made
+-- inactive) is the player's: never touched again. Guildhalls, the library
+-- and the hospitals are never touched (a guild's petition; the care).
+SOCIAL_KEY = 'ai-overseer/social-retired'
+
+local function social_state()
+    local d = U.site_get(SOCIAL_KEY, {})
+    d.zones = type(d.zones) == 'table' and d.zones or {}     -- zone id -> location id: the AI's retired zones
+    d.player = type(d.player) == 'table' and d.player or {}  -- location id -> true: the player's (made active again)
+    return d
+end
+
+-- Pure: the ids kept ({[id] = true}) of the taverns and temples in `locs`
+-- (rec_locations' rows): the best by gather_key up to `nt` taverns and `ne`
+-- temples (so the first is the recreation burrow's), and the player's
+-- (`held`, {[tostring(id)] = true}) besides. Each kind keeps one at least.
+function social_keep(locs, nt, ne, held)
+    held = held or {}
+    local rows = {INN_TAVERN = {}, TEMPLE = {}}
+    for _, l in ipairs(locs or {}) do
+        local id = tonumber(l.id)
+        if id and rows[l.kind] then
+            table.insert(rows[l.kind], {id = id, k = gather_key(l), held = held[tostring(id)] and 1 or 0})
+        end
+    end
+    local keep = {}
+    for kind, n in pairs({INN_TAVERN = math.max(1, tonumber(nt) or 1), TEMPLE = math.max(1, tonumber(ne) or 1)}) do
+        local r = rows[kind]
+        table.sort(r, function(a, b) return key_above(a.k, b.k) end)
+        for i, e in ipairs(r) do
+            if i <= n or e.held == 1 then keep[e.id] = true end
+        end
+    end
+    return keep
+end
+
+-- the location ids the AI keeps retired (for the report)
+function social_retired()
+    local d, seen, out = social_state(), {}, {}
+    for zid, lid in pairs(d.zones) do
+        if zone_on(tonumber(zid)) == false and not seen[lid] then
+            seen[lid] = true
+            table.insert(out, tonumber(lid))
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+function social_consolidate(nt, ne, dry_run)
+    local d = social_state()
+    -- a zone the AI retired that stands active again (or is gone): the player's
+    for zid, lid in pairs(d.zones) do
+        local on = zone_on(tonumber(zid))
+        if on ~= false then
+            d.zones[zid] = nil
+            if on == true then d.player[tostring(lid)] = true end
+        end
+    end
+    local ours = {}
+    for _, lid in pairs(d.zones) do ours[tostring(lid)] = true end
+    local cand = {}
+    for _, e in ipairs(rec_locations()) do
+        if (e.kind == 'INN_TAVERN' or e.kind == 'TEMPLE') and #e.zones > 0
+                and (not e.inactive or ours[tostring(e.id)]) then
+            table.insert(cand, e)
+        end
+    end
+    local keep = social_keep(cand, nt, ne, d.player)
+    local off, on = {}, {}
+    for _, e in ipairs(cand) do
+        for _, bid in ipairs(e.zones) do
+            if keep[e.id] and d.zones[tostring(bid)] then
+                table.insert(on, {zone = bid, loc = e.id, kind = e.kind})
+            elseif not keep[e.id] and not d.player[tostring(e.id)] and zone_on(bid) == true then
+                table.insert(off, {zone = bid, loc = e.id, kind = e.kind})
+            end
+        end
+    end
+    local out = {ok = true, retired = {}, restored = {}, dry_run = dry_run or nil}
+    for id in pairs(keep) do out.kept = out.kept or {}; table.insert(out.kept, id) end
+    if out.kept then table.sort(out.kept) end
+    if #off == 0 and #on == 0 then
+        if not dry_run then U.site_put(SOCIAL_KEY, d) end
+        return {ok = false, rejected = true, kept = out.kept,
+                error = 'the taverns and temples are already as asked (' .. tostring(nt) .. ' and ' .. tostring(ne) .. ')'}
+    end
+    local function names(list, into)
+        local seen = {}
+        for _, r in ipairs(list) do
+            if not seen[r.loc] then seen[r.loc] = true; table.insert(into, (r.kind == 'TEMPLE' and 'temple #' or 'tavern #') .. r.loc) end
+        end
+    end
+    if dry_run then names(off, out.retired); names(on, out.restored); return out end
+    local done_off, done_on = {}, {}
+    for _, r in ipairs(off) do
+        pcall(function() df.building.find(r.zone).spec_sub_flag.active = false end)
+        if zone_on(r.zone) == false then d.zones[tostring(r.zone)] = r.loc; table.insert(done_off, r) end
+    end
+    for _, r in ipairs(on) do
+        pcall(function() df.building.find(r.zone).spec_sub_flag.active = true end)
+        if zone_on(r.zone) == true then d.zones[tostring(r.zone)] = nil; table.insert(done_on, r) end
+    end
+    U.site_put(SOCIAL_KEY, d)
+    names(done_off, out.retired); names(done_on, out.restored)
+    if #done_off == 0 and #done_on == 0 then
+        return {ok = false, error = 'the game would not change the zones of the taverns and temples'}
+    end
+    return out
 end
 
 -- (0.104.168) never a noble: the burrow covers no office, and a noble's
@@ -475,6 +625,14 @@ function recreation_status(txt)
     if d.water ~= nil then out.water = d.water end
     -- (item6) the tavern (and temple) the burrow keeps its members in
     if type(d.gathering) == 'table' then out.gathering = d.gathering end
+    -- (0.105.113 item9) the taverns and temples the AI retired
+    pcall(function()
+        local r = social_retired()
+        if #r > 0 then out.retired = r end
+        local held = {}
+        for lid in pairs(social_state().player) do table.insert(held, tonumber(lid)) end
+        if #held > 0 then table.sort(held); out.player_kept = held end   -- the player's: kept besides
+    end)
     return out
 end
 

@@ -612,6 +612,8 @@ def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None,
     _stress_care(s, cfg, listed, proposals, memory)
     _soldier_swap(s, cfg, proposals, memory)
     _recreation_rule(s, cfg, listed, proposals, memory)
+    from planner_social_places import _social_places_rule   # (0.105.113 item9) the taverns and temples drawn together
+    _social_places_rule(s, cfg, proposals)
     # (0.104.133) the full counts (the list keeps the worst 8: "8 miserable" was
     # said with 94 miserable and 48 very unhappy)
     stress = _d(_d(s.get("dwarves")).get("stress"))
@@ -1352,7 +1354,7 @@ AI_OFFICES = ("MANAGER", "BOOKKEEPER", "CHIEF_MEDICAL_DWARF", "BROKER", "SHERIFF
 
 
 def _society_notes(s: dict, traits: dict, citizens: int, cfg: dict, notes: list,
-                   proposals: list | None = None) -> None:
+                   proposals: list | None = None, memory=None) -> None:
     so = s["society"]
     names = {"MANAGER": "manager (work orders)", "BOOKKEEPER": "bookkeeper (stock counts)",
              "BROKER": "broker (trading)", "CHIEF_MEDICAL_DWARF": "chief medical dwarf (the hospital)",
@@ -1389,7 +1391,11 @@ def _society_notes(s: dict, traits: dict, citizens: int, cfg: dict, notes: list,
         # (0.105.35) what the AI does (no longer a check for the player): a dwarf in
         # bed drinks only what one with the labour brings; the AI's burrows
         # let out the thirsty and the hungry at each report
-        if so.get("parched") and proposals is not None:
+        # (0.105.113 item13) not while the bridge said lately that the labour's work detail is
+        # everybody's (B: refused every cycle, "everybody already does this (Orderlies set to everybody)")
+        from planner_thirst import labor_all_done
+        all_do = labor_all_done(memory, "FEED_WATER_CIVILIANS", abs_tick(s))
+        if so.get("parched") and proposals is not None and not all_do:
             proposals.append(Proposal("care_feed", {"type": "assign_labor", "job": "FEED_WATER_CIVILIANS",
                                                     "count": 2},
                                       f"{so.get('parched')} dwarves are parched: two more given the labour "
@@ -1397,7 +1403,9 @@ def _society_notes(s: dict, traits: dict, citizens: int, cfg: dict, notes: list,
         notes.append(f"{so.get('starving', 0)} dwarves are starving and {so.get('parched', 0)} parched"
                      + (f" ({who})" if who else "") + ": the AI's food and drink rules keep the stocks up and "
                        "its burrows let the thirsty out"
-                     + ("; two more dwarves bring water to the bedridden" if so.get("parched") else ""))
+                     + ("; everybody already brings water to the bedridden (the work detail is set to "
+                        "everybody)" if so.get("parched") and all_do else
+                        "; two more dwarves bring water to the bedridden" if so.get("parched") else ""))
     if so.get("grazers_unpastured") and not player_rules(s)["pasture_animals"]:
         # (0.105.35) the player's own switch: said, not handed back
         notes.append(f"{so['grazers_unpastured']} grazing animals have no pasture and will starve: the AI "

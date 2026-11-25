@@ -203,6 +203,7 @@ SHORT_WORDS = {
     "mood_free_items": "free the forbidden materials a strange mood is waiting for",  # (0.105.24)
     "add_doctor_post": "add a second doctor's post at a hospital",  # (0.104.168)
     "recreation": "move the unhappiest into the recreation burrow, the recovered back to work",  # (0.104.78)
+    "social_places": "keep the taverns and temples the fort needs open, the others' zones inactive",  # (0.105.113 item9)
     "pair_chairs": "put a chair beside each lone chair in the tavern",  # (0.104.77)
     "squad_swap": "send a soldier back to work and draft a keen dwarf in his place",  # (0.104.65)
     "assign_kit": "give the soldiers the free armour the game won't hand out",  # (0.105.8)
@@ -593,6 +594,8 @@ def short(a: dict) -> str:
     if t == "seed_reserve":   # (r2h6)
         return ("keep " + ", ".join(str(x).lower() for x in (a.get("ban") or [])[:3]) + " and its seed from the cooks"
                 if a.get("ban") else "let the cooks use the plants whose seed has come back")
+    if t == "kitchen_drinks":   # (0.105.113 item10)
+        return "keep drink from the cooks" if a.get("ban") else "let the cooks use drink again"
     if t == "kitchen_fat":
         return "keep fat and tallow from the cooks" if a.get("ban") else "let the cooks use fat and tallow again"
     if t == "order_slots":

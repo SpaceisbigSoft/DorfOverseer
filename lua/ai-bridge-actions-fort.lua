@@ -10,7 +10,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-fort is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.112'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.113'   -- bumped with BRIDGE_VERSION
 
 -- DFHack's own work-order libraries (conditioned orders, e.g. smelting
 -- whenever bars run low). Only these ones.
@@ -955,6 +955,29 @@ function act_kitchen_fat(a)
     local r = kitchen_ban('fat', keys, a.ban, a.dry_run)
     if a.ban and not a.dry_run and r.banned == 0 and #keys == 0 then return reject('no fat or tallow in the fort') end
     return r
+end
+
+-- (0.105.113 item10) Drink kept from the cooks while the fort has meals
+-- enough: a barrel of wine cooked is one ingredient of 25-30 servings worth
+-- 2-3 each, so the meal's worth per serving sinks to the drink's (A, 25 Nov:
+-- 1,201 servings with drink in them at 3.4 each, 4,144 without at 9.1; no
+-- drink was excluded in any of the six forts). A kitchen exclusion (Cook)
+-- for each drink kind in stock (reason 'drinks'), lifted with ban = false.
+function act_kitchen_drinks(a)
+    if type(a.ban) ~= 'boolean' then return reject('kitchen_drinks needs ban = true or false') end
+    local keys = {}
+    if a.ban then
+        local seen = {}
+        for _, it in ipairs(df.global.world.items.other.DRINK) do
+            local k = it.mat_type .. ':' .. it.mat_index
+            if not seen[k] then
+                seen[k] = true
+                table.insert(keys, {t = df.item_type.DRINK, s = -1, mt = it.mat_type, mi = it.mat_index})
+            end
+        end
+        if #keys == 0 then return reject('no drink in the fort') end
+    end
+    return kitchen_ban('drinks', keys, a.ban, a.dry_run)
 end
 
 -- (r2h6) The seed reserve: a farmable crop whose seeds run low keeps its

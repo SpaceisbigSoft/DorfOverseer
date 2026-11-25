@@ -26,7 +26,7 @@
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "digest": "sha256:26eeb58b17635fada2d51317",
    "notes": "sha256:a76be1d185e69e105d3b5eb9",
-   "props": "sha256:c3870a6bd98b6586a7c8924c",
+   "props": "sha256:d2537819da181c9cbfb40821",
    "rules": [
     "build",
     "hospital",
@@ -52,6 +52,7 @@
     "burial_others",
     "squad_trim",
     "pair_chairs",
+    "meal_drink",
     "alerts",
     "join_levels",
     "second_way"
@@ -61,7 +62,7 @@
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "digest": "sha256:26eeb58b17635fada2d51317",
    "notes": "sha256:4b4604253d59b494def3104b",
-   "props": "sha256:0b89c4827745c8800801982a",
+   "props": "sha256:e5b26c25d5562430d16b89a3",
    "rules": [
     "build",
     "hospital",
@@ -87,6 +88,7 @@
     "burial_others",
     "squad_trim",
     "pair_chairs",
+    "meal_drink",
     "alerts",
     "second_way"
    ]
@@ -220,7 +222,7 @@
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "digest": "sha256:caa13de766f914a138e40a9d",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:43258404dea0ec0719ba8ed5",
+   "props": "sha256:dd8d4764d2661fa1e7d10b31",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -246,6 +248,7 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -254,7 +257,7 @@
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "digest": "sha256:caa13de766f914a138e40a9d",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:876dfed08ac762b8721b3bf4",
+   "props": "sha256:9e33cb1a42a35ecae2f7ced6",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -280,6 +283,7 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink",
     "second_way"
    ]
   }

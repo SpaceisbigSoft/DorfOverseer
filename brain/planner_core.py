@@ -103,6 +103,7 @@ class Memory:
     shops_started: dict = field(default_factory=dict)    # workshop name -> times a workshops project was started for it
     farm_steer: str = ""                                 # (0.99.6) "drink" while autofarm's thresholds favour brewable crops; (0.105.5) "crops": the AI sets the plots' crops (autofarm off)
     kitchen_ban: bool = False                            # (0.100) the AI banned cooking brewables while drink is short
+    drink_cook_ban: bool = False                         # (0.105.113 item10) the AI keeps drink from the cooks
     fat_ban: bool = False                                # (0.104.30) the AI kept fat and tallow from the cooks
     storage_started: int | None = None                   # (0.104.38) when the AI last began a storage level for full piles
     tantrums: list = field(default_factory=list)         # (0.104.31) [tick, who] of recent tantrums, a day each

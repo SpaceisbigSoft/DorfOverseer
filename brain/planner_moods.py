@@ -171,13 +171,21 @@ def mood_item_text(x: dict) -> str:
     return what + (f" ({', '.join(kinds)})" if kinds else "")
 
 
+# (0.105.113 item13) every AI order that uses leather: shoes, quivers, the flasks
+# order's waterskins (0.105.26 seal fix), and the soldiers' leather gear (planner_leather's
+# LEATHER_RECIPES). D, 24 Nov 03:27-03:47: each hide tanned for Cog's leather mood (four
+# animals butchered for it) went within a minute into a leather_gear order for armour or
+# a cap (the rule's leather_armor/leather_cap were in neither list), and Cog went berserk
+MOOD_LEATHER_USES = ("leather_shoes", "leather_low_boots", "leather_quiver", "leather_waterskin",
+                     "leather_armor", "leather_cap", "leather_leggings", "leather_gloves",
+                     "leather_high_boots")
+
 # (0.105.24) the AI's own orders that use up what a mood waits for: cancelled
 # while the mood finds none free and another job holds it (cancelling an
 # order drops its jobs nobody works, and their items with them)
 MOOD_CONSUMERS = {"rough": ("cut_gems",), "cut_gem": ("encrust_goods",), "bone": ("bone_crafts",),
                   "cloth": ("cloth_bag", "yarn_bag", "silk_bag", "cloth_socks", "cloth_shoes"),
-                  "leather": ("leather_shoes", "leather_low_boots", "leather_quiver",
-                           "leather_waterskin"),          # (0.105.26 seal fix) the flasks order too
+                  "leather": MOOD_LEATHER_USES,
                   "bar": ("metal_crafts", "metal_amulet", "metal_bracelet", "metal_ring", "metal_earring")}
 
 
@@ -186,8 +194,7 @@ MOOD_CONSUMERS = {"rough": ("cut_gems",), "cut_gem": ("encrust_goods",), "bone":
 # crafts and cloth rules re-ordered what a mood had just cancelled); cloth and
 # thread by the kind of thread a request names (none named: every kind)
 MOOD_BLOCKS = {"rough": ("cut_gems",), "cut_gem": ("encrust_goods",), "bone": ("bone_crafts",),
-               "leather": ("leather_shoes", "leather_low_boots", "leather_quiver",
-                           "leather_waterskin"),          # (0.105.26 seal fix) the flasks order too
+               "leather": MOOD_LEATHER_USES,
                "bar": ("metal_crafts", "metal_amulet", "metal_bracelet", "metal_ring", "metal_earring")}
 MOOD_CLOTH_BLOCKS = {"plant": ("cloth_bag", "cloth_socks", "cloth_shoes"), "silk": ("silk_bag",),
                      "yarn": ("yarn_bag",)}
@@ -368,7 +375,8 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
                       "silk": "no silk thread (silk comes from spider webs: none a weaver can reach, or a "
                               "caravan's)"}.get(k, "no thread") + dead_words()
     if kind == "leather":
-        if int(su.get("hides") or 0) > 0 and _has_shop(b, "Tanners"):
+        hides = raw_hides(s)
+        if hides > 0 and _has_shop(b, "Tanners"):
             if order("tan_hide", q, "tan a hide"):
                 return acts, None
         why = "no hide to tan" + ("" if _has_shop(b, "Tanners") else " and no tanner's")
@@ -404,15 +412,19 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
             if coal and order(MOOD_COAL[coal[0][1]], 1, f"make coke from {coal[0][1].lower().replace('_', ' ')} "
                                                     "(fuel to smelt the bar)"):
                 return acts, None
-            if int(st.get("wood") or 0) > 0 and _has_shop(b, "WoodFurnace"):
-                if order("make_charcoal", 2, "burn wood into charcoal (fuel to smelt the bar)"):
+            # (0.105.113 item13) the logs a dwarf can walk to (D: 19 logs, all on the surface out of
+            # every dwarf's walk: the charcoal order stood): none, the fort's own reachable trees
+            wood, logs = reach_wood(s), int(st.get("wood") or 0)
+            if wood > 0 and _has_shop(b, "WoodFurnace"):
+                if order("make_charcoal", min(2, wood), "burn wood into charcoal (fuel to smelt the bar)"):
                     return acts, None
+            far = (f"the fort's {logs - wood} log(s) lie where no dwarf walks; " if logs > wood else "")
             lacts, lwhy = _mood_make(s, {"item": "WOOD", "quantity": 1}, "log", memory, cfg, mood=mood)
             if lacts or lwhy is None:
-                acts.extend((a, how + " (wood for charcoal, the smelter's fuel)") for a, how in lacts)
+                acts.extend((a, far + how + " (wood for charcoal, the smelter's fuel)") for a, how in lacts)
                 return acts, None
-            return acts, "no fuel for the smelter (no coal, and no wood within reach to burn: " + lwhy + ")" \
-                + dead_words()
+            return acts, "no fuel for the smelter (no coal, and no wood within reach to burn: " + far + lwhy \
+                + ")" + dead_words()
         metal = str(x.get("material") or "").upper().replace(" ", "_")
         if metal == "ROCK":
             metal = ""
@@ -560,6 +572,17 @@ def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict
         return False
     if any(a.get("type") == "slaughter_one" for a, _ in acts):
         return True
+    if mood and marked_waiting(s) > 0:
+        # (0.105.113 item13) an animal already waits for the butcher (the bridge refuses
+        # another: "N animal(s) already wait for the butcher", E 79 times, D 6): its bone and
+        # hide are coming, nothing proposed again; the next step instead: a butcher if
+        # nobody butchers
+        butchers = _d(_d(s.get("provisions")).get("butchery")).get("butchers")
+        if butchers == 0 and not any(a.get("type") == "assign_labor" for a, _ in acts):
+            acts.append(({"type": "assign_labor", "job": "BUTCHER", "count": 1},
+                         f"{marked_waiting(s)} animal(s) wait for the butcher and nobody butchers: a dwarf "
+                         "put on it"))
+        return True
     if mood:
         # (R1 g6) `mood`: the bridge takes any spare tame animal (young or of a
         # small herd too), never a pet, a war or hunting animal, a named one, a
@@ -577,6 +600,47 @@ def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict
     else:
         acts.append(({"type": "slaughter_one"}, f"one spare tame animal of the {tame} to the butcher: {why}"))
     return True
+
+
+def marked_waiting(s: dict) -> int:
+    """(0.105.113 item13) Tame animals marked for slaughter that can walk to a
+    butcher's shop (the herd report's `marked_waiting`; an older bridge: every
+    marked one, `marked`). One that can't (E: a peafowl in a pasture with no path
+    to the shop, marked for days) gets no job and no longer blocks another."""
+    h = _d(s.get("herd"))
+    v = h.get("marked_waiting", h.get("marked"))
+    return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else 0
+
+
+def reach_wood(s: dict) -> int:
+    """(0.105.113 item13) Logs a dwarf can walk to (supplies.wood_reach), else
+    (an older bridge) every log in stock."""
+    v = _d(s.get("supplies")).get("wood_reach")
+    if isinstance(v, int) and not isinstance(v, bool):
+        return max(0, v)
+    return max(0, int(_d(s.get("stocks")).get("wood") or 0))
+
+
+def mood_wants_bar(s: dict) -> bool:
+    """(0.105.113 item13) A crafting mood waits on a metal bar it doesn't have."""
+    for m in _l(_d(s.get("moods")).get("list")):
+        if isinstance(m, dict) and m.get("craft"):
+            for x in _l(m.get("missing")):
+                if isinstance(x, dict) and mood_kind(x) == "bar" and mood_on_hand(x) is not True:
+                    return True
+    return False
+
+
+def raw_hides(s: dict) -> int:
+    """(0.105.113 item13) Raw hides a tanner can take: the provisions report's
+    count (lua/ai-provisions.lua real_hide: a hide, no skin-covered limb or
+    skull), else the supplies' (any corpse piece of a skin that makes
+    parchment). D's tan_hide orders stood 28 days and were cancelled nine times
+    on hides no tanner takes."""
+    v = _d(_d(s.get("provisions")).get("butchery")).get("hides")
+    if isinstance(v, int) and not isinstance(v, bool):
+        return max(0, v)
+    return max(0, int(_d(s.get("supplies")).get("hides") or 0))
 
 
 def _ban_name(memory) -> str:
@@ -699,6 +763,9 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
                 for a, how in acts:
                     if a.get("type") == "work_order" and any(p.action == a for p in proposals):
                         continue
+                    if a.get("type") == "slaughter_one" and any(
+                            p.action.get("type") == "slaughter_one" for p in proposals):
+                        continue                   # (0.105.113 item13) one animal a cycle
                     proposals.append(Proposal(
                         "mood", a, f"{name}'s {mood.lower()} mood needs {mood_item_text(x)} (the one it is "
                         f"fetching now): the fort's counts it within the dwarf's walk, but nothing was "
@@ -740,6 +807,12 @@ def _mood_materials(s: dict, name: str, mood: str, missing: list, days: int,
         acts, why = _mood_make(s, x, kind, memory, cfg, mood=who)
         for a, how in acts:
             if a.get("type") == "work_order" and any(p.action == a for p in proposals):
+                continue
+            if a.get("type") in ("slaughter_one", "assign_labor") and any(
+                    p.action.get("type") == a.get("type") and p.action.get("job") == a.get("job")
+                    for p in proposals):
+                # (0.105.113 item13) one animal a cycle: a mood's bone and its leather asked one each
+                # (D 20:01: the second refused "1 animal(s) already wait for the butcher")
                 continue
             proposals.append(Proposal("mood", a, f"{name}'s {mood.lower()} mood needs {mood_item_text(x)}"
                                       + (" (the one it is fetching now)" if i == 0 else "")
@@ -1328,8 +1401,8 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
             if sheared or spun:
                 return
     n, have, want = gap("leather")
-    if n and int(su.get("hides") or 0) > 0 and _has_shop(b, "Tanners"):
-        if order("tan_hide", min(n, int(su.get("hides") or 0)), f"{have} leather, a reserve of {want} {FOR}: "
+    if n and raw_hides(s) > 0 and _has_shop(b, "Tanners"):
+        if order("tan_hide", min(n, raw_hides(s)), f"{have} leather, a reserve of {want} {FOR}: "
                                                                  "tan a hide"):
             return
     elif n and _has_shop(b, "Tanners") and not _reserve_slaughter_recent(s, memory, cfg):
@@ -1601,11 +1674,15 @@ def _hospital_share(s: dict, x: dict, what: str, cfg: dict) -> dict | None:
         return {"thread": min(lack, n("hospital"))} if n("hospital") > 0 else None
     if n("hospital") > 0:
         return {"cloth": min(lack, n("hospital"))}
-    free = _by_fibre(usable_thread(s, cfg), fibre)
+    # (0.105.113 item13) whole thread only: the loom weaves no part-used thread (a suture's
+    # leftover, the bridge's thread_short; B: the hospital's thread 97% of a whole one)
+    free = max(0, _by_fibre(usable_thread(s, cfg), fibre)
+               - _by_fibre(_d(_d(s.get("supplies")).get("thread_short")), fibre))
     if free >= lack:
         return None                              # the fort's own thread: the loom weaves it
     kinds = hosp.get("thread_kinds")
     held = _by_fibre(kinds, fibre) if isinstance(kinds, dict) else int(hosp.get("thread") or 0)
+    held = max(0, held - _by_fibre(hosp.get("thread_short"), fibre))
     if held <= 0 or not _has_shop(_d(s.get("buildings")), "Loom"):
         return None                              # (no loom: the mood rule builds one first)
     return {"thread": min(lack - free, held)}

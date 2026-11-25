@@ -143,7 +143,7 @@ def _():
     m = Memory()
 
     class P:
-        rule = "care_feed"
+        rule = "staff"          # (0.105.113 item13) care_feed's own refusals are booked now
         action = {"type": "assign_labor", "job": "FEED_WATER_CIVILIANS", "count": 2}
     PT.note_thirst(P(), {"ok": False, "error": "everybody already does this"}, m, 100)
     assert not getattr(m, "thirst_book", {}).get("labor_all")

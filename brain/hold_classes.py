@@ -94,7 +94,7 @@ _SURVIVAL_RULES = {
     "waterworks_power_run", "magma_guard", "magma_reclaim", "magma_shut", "lure_shut",
     # drink and food
     "drink", "drink_fruit", "booze_variety", "food", "food_barrels", "food_standing", "food_store",
-    "food_store_level", "farms", "farm_crops", "surface_farm", "crops", "kitchen", "seed_reserve", "seed_brew", "fat_ban", "meal_variety",
+    "food_store_level", "farms", "farm_crops", "surface_farm", "crops", "kitchen", "seed_reserve", "seed_brew", "fat_ban", "meal_drink", "meal_variety",
     "good_cooks", "train_cook", "needs_meal", "dairy", "milking", "eggs", "nest_box_order", "fishery",
     "butchery_labor", "butchery_shop", "slaughter", "hunting", "hunting_stop", "fruit_pickers", "fruit_zone",
     "fruit_pause", "fruit_resume",   # (item6)
@@ -117,7 +117,7 @@ _SURVIVAL_RULES = {
     "necro_corpses",
     # the mind: needs, stress, tantrums, justice, moods
     "stress_care", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",
-    "recreation", "calm_burrow", "free_time", "tavern", "tavern_chest", "tavern_urgent", "temple_chest",
+    "recreation", "social_places", "calm_burrow", "free_time", "tavern", "tavern_chest", "tavern_urgent", "temple_chest",
     "quick_temple", "quick_tavern", "break_fights", "fight_watch", "convict", "chronic_care", "chronic_convict", "chronic_posts",
     "jail_urgent", "jail_size", "jail_more", "prisoners_water", "pit_prisoners", "mothers", "mood",
     "mood_reserve", "mood_shelter", "mood_hospital", "hospital_stock", "instrument_orders", "join_levels",
@@ -191,13 +191,13 @@ _SURVIVAL_ACTIONS = {
     # ways in and out for the stranded
     "open_entrance", "dig_way_in", "way_out_open", "way_out_leave", "close_world", "redig_projects", "location_access",
     # food, drink, farms, the herd
-    "farm_plots", "farm_thresholds", "set_farm_crops", "kitchen_brewables", "kitchen_fat", "seed_reserve", "kitchen_skill",
+    "farm_plots", "farm_thresholds", "set_farm_crops", "kitchen_brewables", "kitchen_fat", "kitchen_drinks", "seed_reserve", "kitchen_skill",
     "train_cook", "gather_plants", "trim_gathering", "hunters", "food_standing", "fruit_zone", "food_pile",
     "food_barrels", "keep_mousers", "pasture", "make_pasture", "nest_boxes", "slaughter_one", "herd_targets",
     "tool",
     # beds, rooms, the needs
     "repair_rooms", "give_room", "house_dwarves", "sync_offices", "pair_chairs", "accept_cups", "bootstrap_chair",
-    "recreation", "idle_crafting", "give_trinkets", "quick_location", "trim_instrument_orders",
+    "recreation", "social_places", "idle_crafting", "give_trinkets", "quick_location", "trim_instrument_orders",
     # health and care, the dead
     "hospital_burrow", "hospital_guard", "calm_burrow", "rest_infected", "traction_rest", "add_doctor_post",
     "bed_rest",   # (item5)

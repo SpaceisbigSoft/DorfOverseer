@@ -47,7 +47,7 @@ def _location_supply_rules(s: dict, cfg: dict, proposals: list, notes: list) -> 
                          key=lambda e: bool(e.get("over_dining")))      # the proper tavern before the stop-gap
         # (0.104.78) every tavern zone, and the dining halls the stop-gaps lie
         # over, tried in turn by the bridge
-        zones = [z for e in taverns if e.get("type") == "INN_TAVERN"
+        zones = [z for e in taverns if e.get("type") == "INN_TAVERN" and not e.get("inactive")   # (item9)
                  for z in _l(e.get("zones")) if isinstance(z, int)]
         if zones:
             proposals.append(Proposal("pair_chairs", {"type": "pair_chairs", "zones": zones[:6],
@@ -61,7 +61,8 @@ def _location_supply_rules(s: dict, cfg: dict, proposals: list, notes: list) -> 
     lack = []
     chest_asked = False
     for e in _l(_d(s.get("locations")).get("list")):
-        if isinstance(e, dict) and e.get("type") in ("INN_TAVERN", "TEMPLE"):
+        # (0.105.113 item9) never for one retired (its zones inactive)
+        if isinstance(e, dict) and e.get("type") in ("INN_TAVERN", "TEMPLE") and not e.get("inactive"):
             sh = _location_short(e, ("instruments",))
             if "instruments" in sh:
                 # (0.104.67) a location keeps its instruments in a chest of its
@@ -434,6 +435,7 @@ def _grandeur_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None
     want = int(cfg["location_value_tier1"] * (1 + g / 100))
     halls = [e for e in _l(_d(s.get("locations")).get("list")) if isinstance(e, dict)
              and e.get("type") in ("TEMPLE", "INN_TAVERN", "LIBRARY", "GUILDHALL") and _l(e.get("zones"))
+             and not e.get("inactive")          # (0.105.113 item9) never one retired
              and int(e.get("value") or 0) < want]
     if not halls:
         return

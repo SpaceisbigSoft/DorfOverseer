@@ -165,10 +165,19 @@ def _industry_rules(s: dict, memory, cfg: dict, citizens: int, proposals: list, 
         if memory is None or _refused_wait(memory, p, abs_tick(s)) is None:
             proposals.append(p)
             coke_made = True
+    # (0.105.113 item13) while a crafting mood waits on a bar, one log is enough (one charcoal a
+    # log, one charcoal a bar): D, 22-24 Nov, 19 logs (under the 20 asked) and eight bar moods mad.
+    # The logs counted are those a dwarf can walk to (supplies.wood_reach; an older bridge: all)
+    from planner_moods import mood_wants_bar, reach_wood
+    bar_mood = mood_wants_bar(s)
+    wood = reach_wood(s)
     if (furnaces.get("Smelter") and "fuel" in su and (su.get("fuel") or 0) < cfg["fuel_min"] and not coke_made
-            and (st.get("wood") or 0) >= 20 and furnaces.get("WoodFurnace") and not queued(s, {"make_charcoal"})):
-        proposals.append(Proposal("fuel", {"type": "work_order", "recipe": "make_charcoal", "amount": 10},
-                                  f"only {su.get('fuel') or 0} charcoal or coke for the smelter: burn some wood", 5, True))
+            and wood >= (1 if bar_mood else 20) and furnaces.get("WoodFurnace") and not queued(s, {"make_charcoal"})):
+        n = min(10, wood) if bar_mood else 10
+        proposals.append(Proposal("fuel", {"type": "work_order", "recipe": "make_charcoal", "amount": n},
+                                  f"only {su.get('fuel') or 0} charcoal or coke for the smelter"
+                                  + (f" and a strange mood waits on a bar: burn {n} of the {wood} log(s) a dwarf "
+                                     "can reach" if bar_mood else ": burn some wood"), 3 if bar_mood else 5, True))
     # Smelting: the AI's own orders, one ore stone and one charcoal a bar.
     # DFHack's smelting library (imported since 0.42) only smelts with 100
     # charcoal in stock: region2 sat on 89 ore and 15 charcoal for a season.

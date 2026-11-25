@@ -119,6 +119,20 @@ def thirst_rows(s: dict) -> list:
             and r.get("reason") in REASONS]
 
 
+# (0.105.113 item13) the rules whose refused labour ("everybody already does this") is booked
+LABOR_ALL_RULES = (RULE, "care_feed")
+
+
+def labor_all_done(memory, job: str, now: int) -> bool:
+    """(0.105.113 item13) The bridge said lately (LABOR_ALL_TICKS) that `job`'s work
+    detail is set to everybody: asking for more hands changes nothing (B, 24-25 Nov:
+    care_feed proposed every cycle and was refused "everybody already does this
+    (Orderlies set to everybody)")."""
+    b = getattr(memory, "thirst_book", None) if memory is not None else None
+    t = _d(_d(b).get("labor_all")).get(job)
+    return isinstance(t, int) and not isinstance(t, bool) and 0 <= now - t < LABOR_ALL_TICKS
+
+
 def _book(memory) -> dict:
     if memory is None:
         return {"acted": {}, "told": {}, "journaled": {}, "ladder": {}, "results": {}}
@@ -566,8 +580,9 @@ def note_thirst(p, r, memory, now: int) -> None:
     t = a.get("type")
     if memory is None:
         return
-    if t == "assign_labor" and getattr(p, "rule", None) == RULE:
+    if t == "assign_labor" and getattr(p, "rule", None) in LABOR_ALL_RULES:
         # (item5) B 24 Nov: care_feed asked 33 times for a labour its work detail gave everybody
+        # (0.105.113 item13) care_feed's own refusals booked too: it reads labor_all_done
         err = str(_d(r).get("error") or "")
         if _d(r).get("ok") is False and "everybody already" in err and isinstance(a.get("job"), str):
             b = _book(memory)

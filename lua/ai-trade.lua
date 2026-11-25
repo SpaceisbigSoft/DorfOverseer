@@ -718,7 +718,8 @@ local SIMPLE = {CLOTH = true, THREAD = true, SKIN_TANNED = true, WOOD = true, SE
 
 -- What a merchant good is, in the words the planner asks with: BAR:IRON,
 -- BAR:STEEL, BAR:COAL (fuel), CLOTH, THREAD, SKIN_TANNED (leather), WOOD,
--- SEEDS, ANVIL, DRINK, FOOD, SOAP, TALLOW, ROUGH and SMALLGEM (gems); nil for anything else.
+-- SEEDS, ANVIL, DRINK, FOOD, SOAP, TALLOW, ROUGH and SMALLGEM (gems), the
+-- smelter's stone (BOULDER:ORE_IRON, BOULDER:FLUX, BOULDER:COAL, boulder_kind); nil for anything else.
 function category(item)
     local tname = df.item_type[item:getType()]
     if tname == 'BAR' or tname == 'GLOB' then
@@ -731,13 +732,56 @@ function category(item)
         return nil
     end
     if FOOD_TYPES[tname] then return 'FOOD' end
+    if tname == 'BOULDER' then return boulder_kind(item) end
     if SIMPLE[tname] then return tname end
     return nil
+end
+
+-- (0.105.113 item10) a stone's use to the smelter: BOULDER:ORE_IRON (iron's
+-- ores: hematite, limonite, magnetite), BOULDER:FLUX (steel's limestone,
+-- dolomite, marble, chalk, calcite), BOULDER:COAL (coke), else BOULDER
+local IRON_INDEX
+function boulder_kind(item)
+    local ok, kind = pcall(function()
+        local mi = dfhack.matinfo.decode(item)
+        if not (mi and mi.inorganic) then return nil end
+        if IRON_INDEX == nil then
+            local iron = dfhack.matinfo.find('INORGANIC:IRON')
+            IRON_INDEX = iron and iron.index or false
+        end
+        if IRON_INDEX then
+            for _, m in ipairs(mi.inorganic.metal_ore.mat_index) do
+                if m == IRON_INDEX then return 'BOULDER:ORE_IRON' end
+            end
+        end
+        for _, c in ipairs(mi.material.reaction_class) do
+            if c.value == 'FLUX' then return 'BOULDER:FLUX' end
+        end
+        local tok = mi:getToken()
+        if tok == 'INORGANIC:COAL_BITUMINOUS' or tok == 'INORGANIC:LIGNITE' then return 'BOULDER:COAL' end
+        return nil
+    end)
+    return ok and kind or 'BOULDER'
 end
 
 local function stack(item)
     local ok, n = pcall(function() return item:getStackSize() end)
     return ok and n or 1
+end
+
+-- (0.105.113 item10) an item's weight in DF's units (Γ): volume x density /
+-- 100000 a unit (a bauxite figurine 100 x 3100: 3.1, as DF's own count), with
+-- what it holds; 0 where the game gives neither
+function weight_of(item, depth)
+    local ok, w = pcall(function()
+        return item:getVolume() * item:getSolidDensity() * math.max(1, stack(item)) / 100000
+    end)
+    w = (ok and type(w) == 'number') and w or 0
+    if (depth or 0) < 2 then
+        local okc, inside = pcall(dfhack.items.getContainedItems, item)
+        for _, c in ipairs(okc and inside or {}) do w = w + weight_of(c, (depth or 0) + 1) end
+    end
+    return w
 end
 
 local function perceived(item, mer)
@@ -778,6 +822,8 @@ end
 -- mood was otherwise "met" by the merchants' cheapest (plant) cloth
 function want_matches(key, c)
     if c.cat == key then return true end
+    -- (0.105.113 item10) BOULDER: any stone, whatever its use
+    if key == 'BOULDER' and tostring(c.cat):find('^BOULDER:') then return true end
     local base, fibre = tostring(key):match('^([A-Z_]+):([A-Z]+)$')
     return base ~= nil and (base == 'CLOTH' or base == 'THREAD') and c.cat == base
         and type(c.sub) == 'string' and c.sub:upper() == fibre
@@ -806,9 +852,33 @@ end
 -- Pure: the fort's goods to give for `target` value, overpaying as little
 -- as possible (the smallest reachable sum at or over it; a greedy pick when
 -- the goods are worth too much to search). offers {{idx, value}}.
-function pick_offers(offers, target)
-    local list, total = {}, 0
-    for _, o in ipairs(offers) do if o.value > 0 then table.insert(list, o); total = total + o.value end end
+-- (0.105.113 item10) the merchants answered Weight1/Weight2 (their animals
+-- can't carry it: C and F, 7 deals of 22-24 Nov, 44-159 stone crafts worth
+-- 20 each offered for 1-4 thousand): the goods most valuable for their weight
+-- first, up to OFFER_SLACK times the target (never past max_weight, when
+-- given), and the little-over pick made among those only
+OFFER_SLACK = 1.5
+function dense_first(offers, target, max_weight)
+    local list = {}
+    for _, o in ipairs(offers) do if o.value > 0 then table.insert(list, o) end end
+    local function dens(o) return o.value / math.max(o.weight or 0, 0.01) end
+    table.sort(list, function(a, b)
+        local da, db = dens(a), dens(b)
+        if da ~= db then return da > db end
+        return a.value > b.value
+    end)
+    local out, sum, w = {}, 0, 0
+    for _, o in ipairs(list) do
+        if sum >= target * OFFER_SLACK then break end
+        if not max_weight or w + (o.weight or 0) <= max_weight + 1e-6 then
+            table.insert(out, o); sum, w = sum + o.value, w + (o.weight or 0)
+        end
+    end
+    return out, sum
+end
+
+function pick_offers(offers, target, max_weight)
+    local list, total = dense_first(offers, target, max_weight)
     if total < target then return list, total end
     if total <= 20000 and #list <= 400 then
         local reach = {[0] = {}}
@@ -868,17 +938,17 @@ local function sides(trade, txt)
                     n = n + stack(c)
                 end
                 if cat then table.insert(cands, {idx = i, cat = cat, n = n, value = perceived(item, mer),
-                                                  sub = sub or nil,
+                                                  sub = sub or nil, weight = weight_of(item),
                                                   name = (txt or tostring)(dfhack.items.getDescription(item, 0, true))}) end
             elseif not is_container(item) then
                 cat = category(item)
-                if cat then table.insert(cands, {idx = i, cat = cat, n = stack(item), value = perceived(item, mer),
+                if cat then table.insert(cands, {idx = i, cat = cat, n = stack(item), value = perceived(item, mer), weight = weight_of(item),
                                                   sub = fibre_of(item),
                                                   name = (txt or tostring)(dfhack.items.getDescription(item, 0, true))}) end
             end
         elseif parent_ok then
             local cat = category(item)
-            if cat then table.insert(cands, {idx = i, cat = cat, n = stack(item), value = perceived(item, mer),
+            if cat then table.insert(cands, {idx = i, cat = cat, n = stack(item), value = perceived(item, mer), weight = weight_of(item),
                                               sub = fibre_of(item),
                                               name = (txt or tostring)(dfhack.items.getDescription(item, 0, true))}) end
         end
@@ -889,7 +959,7 @@ local function sides(trade, txt)
     for i, item in ipairs(trade.good[FORT]) do
         if GOOD_TYPE[item:getType()] and trade_material(item) and not is_container(item)
                 and not banned(item) and not is_artifact(item) then
-            table.insert(offers, {idx = i, value = perceived(item, mer),
+            table.insert(offers, {idx = i, value = perceived(item, mer), weight = weight_of(item),
                                   name = (txt or tostring)(dfhack.items.getDescription(item, 0, true))})
         end
     end
@@ -907,8 +977,10 @@ local function clear(trade)
 end
 
 -- Tick a deal on the open trade screen. wants {{key, count}} in order of
--- need. Returns what was ticked; dry_run ticks nothing.
-function deal(wants, margin, dry_run, txt, extra)
+-- need. Returns what was ticked; dry_run ticks nothing. (0.105.113 item10)
+-- max_weight: the most the fort's goods may outweigh the bought ones (after
+-- a Weight1/Weight2 answer, press_lighter)
+function deal(wants, margin, dry_run, txt, extra, max_weight)
     local trade = trade_screen()
     if not trade.open then return {ok = true, waiting = true, error = 'the trade screen is not open'} end
     if not ready(trade) then
@@ -922,6 +994,10 @@ function deal(wants, margin, dry_run, txt, extra)
     local cands, offers = sides(trade, txt)
     local have = 0
     for _, o in ipairs(offers) do have = have + o.value end
+    if max_weight and have > 0 then
+        local _, light = dense_first(offers, math.huge, max_weight)
+        have = light
+    end
     if have == 0 then return {ok = false, rejected = true, error = 'none of the fort\'s crafts are at the depot to pay with'} end
     local buys, spent = pick_buys(cands, wants or {}, math.floor(have / margin))
     local fallback
@@ -934,7 +1010,11 @@ function deal(wants, margin, dry_run, txt, extra)
         return {ok = false, rejected = true, error = 'the merchants have nothing the fort wants that its goods can pay for',
                 offer_value = have, merchant_goods = #cands}
     end
-    local pays, paid = pick_offers(offers, math.ceil(spent * margin))
+    local buy_w = 0
+    for _, b in ipairs(buys) do buy_w = buy_w + (b.weight or 0) end
+    local pays, paid = pick_offers(offers, math.ceil(spent * margin), max_weight and (max_weight + buy_w) or nil)
+    local give_w = 0
+    for _, o in ipairs(pays) do give_w = give_w + (o.weight or 0) end
     local bought, given = {}, {}
     for _, b in ipairs(buys) do table.insert(bought, ('%s (%s x%d, %d)'):format(b.name, b.cat, b.n, b.value)) end
     for _, o in ipairs(pays) do table.insert(given, o.name) end
@@ -944,7 +1024,8 @@ function deal(wants, margin, dry_run, txt, extra)
         for _, o in ipairs(pays) do trade.goodflag[FORT][o.idx].selected = true end
     end
     return {ok = true, dry_run = dry_run or nil, buy_value = spent, give_value = paid, bought = bought, margin = margin,
-            fallback = fallback,
+            fallback = fallback, max_weight = max_weight,
+            give_weight = math.floor(give_w * 10 + 0.5) / 10, buy_weight = math.floor(buy_w * 10 + 0.5) / 10,
             given = #given, given_sample = {table.unpack(given, 1, math.min(8, #given))},
             calibrated = buttons().Trade ~= nil,
             can_search = UNREADABLE ~= true}      -- (r2 h5) the Trade button looked for by its word
@@ -969,7 +1050,7 @@ PART_LOCALS = {U = U, report_units = report_units, depot = depot, caravans = car
 PARTS = {'screen', 'depot'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-trade'] = '0.105.112'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-trade'] = '0.105.113'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

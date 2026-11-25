@@ -8,7 +8,7 @@
 -- and a name swapped there reaches this file.
 
 if not GEAR_PART_LOCALS then qerror('ai-military-gear-ammo is a part of ai-military-gear; run ai-military-gear') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear-ammo'] = '0.105.112'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear-ammo'] = '0.105.113'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, M, fort_squads, memo, eq_ids, gear_items, vec_remove, vec_add, is_ranged_spec = GEAR_PART_LOCALS.U, GEAR_PART_LOCALS.M, GEAR_PART_LOCALS.fort_squads, GEAR_PART_LOCALS.memo, GEAR_PART_LOCALS.eq_ids, GEAR_PART_LOCALS.gear_items, GEAR_PART_LOCALS.vec_remove, GEAR_PART_LOCALS.vec_add, GEAR_PART_LOCALS.is_ranged_spec   -- (r8) handed on by the files before
 
@@ -51,10 +51,14 @@ local function free_quivers(claimed)
     -- never one built in or an artifact
     local eq = equipment_lists()
     local una = eq and eq_ids(eq, 'items_unassigned', 'QUIVER') or {}
+    -- (0.105.113 item11) or on neither list, as free_bolts takes bolts: C's 12
+    -- spare quivers (9 loose, 3 in bins) were on neither, quivers_free 0, and
+    -- 5 of its 10 crossbow soldiers went without one (no bolts carried)
+    local asg = eq and eq_ids(eq, 'items_assigned', 'QUIVER') or nil
     pcall(function()
         for _, it in ipairs(gear_items('QUIVER')) do
             local f = it.flags
-            if una[it.id] and not (claimed[it.id] or f.forbid or f.owned or f.trader or f.removed or f.garbage_collect
+            if (una[it.id] or (asg ~= nil and not asg[it.id])) and not (claimed[it.id] or f.forbid or f.owned or f.trader or f.removed or f.garbage_collect
                     or f.dump or f.hostile or f.in_job or f.construction
                     or f.in_building or f.artifact) and not (f.in_inventory and held_by_unit(it)) then
                 table.insert(out, it)

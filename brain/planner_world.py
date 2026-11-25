@@ -55,7 +55,7 @@ EXPORT_RECIPES = {
 # the fort's trade wants (planner_industry trade_wants keys) -> DF's request
 # categories on the liaison's Requests screen (entity_sell_category)
 WISH_CATEGORIES = {"FOOD": ("Meat", "Cheese"), "DRINK": ("Drinks",), "BAR:STEEL": ("MetalBars",),
-                   "BAR:IRON": ("MetalBars",), "BAR:COAL": ("MetalBars",), "CLOTH": ("ClothPlant",),
+                   "BAR:IRON": ("MetalBars",), "BAR:PIG_IRON": ("MetalBars",), "BAR:COAL": ("MetalBars",), "CLOTH": ("ClothPlant",),
                    "SKIN_TANNED": ("Leather",), "THREAD": ("ThreadPlant",), "WOOD": ("Wood",), "SOAP": ("Extracts",),
                    "TALLOW": ("Extracts",)}
 EXPORT_MIN_PCT = 110            # a price this far over the usual (128 = 100%) is worth making for

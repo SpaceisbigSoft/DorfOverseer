@@ -254,6 +254,48 @@ def _kitchen_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
         proposals.append(Proposal("kitchen", {"type": "kitchen_brewables", "ban": False},
                                   f"drink has recovered ({drink} for {citizens}): the kitchen may cook "
                                   "brewable plants again", 5))
+    _meal_drink_rule(s, memory, cfg, proposals)      # (0.105.113 item10)
+
+
+MEAL_DRINK_LIFT = 0.5     # (0.105.113 item10) meals under this share of their target: drink may be cooked again
+
+
+def _meal_drink_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
+    """(0.105.113 item10) Meals' worth: a barrel of drink cooked is one
+    ingredient of 25-30 servings worth 2-3 each, and the meal's worth a
+    serving sinks to the drink's (the good meal DF's EatGoodMeal wants is one
+    worth over 20 a serving). A, 25 Nov: 1,201 servings cooked with drink at
+    3.4 each, 4,144 without at 9.1; C 4.3 / 6.2; no drink excluded in any of
+    the six forts, while 3-73 dwarves were distracted for want of a good
+    meal. With meals at their target (meals_per_dwarf a citizen) the cooks
+    leave drink alone while the dwarves want good meals and few are kept
+    (DF's kitchen exclusions, asked a week apart so new kinds are kept
+    too); drink may be cooked again when the meals fall under
+    MEAL_DRINK_LIFT of the target (food short, the drink feeds them)."""
+    if memory is None or not _has_shop(_d(s.get("buildings")), "Kitchen"):
+        return
+    st = _d(s.get("stocks"))
+    meals, drink = st.get("prepared_meals"), st.get("drink")
+    if not isinstance(meals, int) or isinstance(meals, bool) or not isinstance(drink, int):
+        return
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    target = citizens * cfg["meals_per_dwarf"]
+    banned = getattr(memory, "drink_cook_ban", False)
+    # only while the dwarves want good meals and few are kept (lavish_due's
+    # measure: EatGoodMeal distracted needs_build_at+, good meals under
+    # good_meals_pd a dwarf); an older report without them: nothing asked
+    sup = _d(s.get("supplies"))
+    good = sup.get("good_meals")
+    wanted = (isinstance(good, int) and not isinstance(good, bool)
+              and good / citizens < cfg["good_meals_pd"] and unmet(s, "EatGoodMeal") >= cfg["needs_build_at"])
+    if meals >= target and drink > 0 and wanted:
+        proposals.append(Proposal("meal_drink", {"type": "kitchen_drinks", "ban": True},
+                                  f"{meals} meals for {citizens} (the target {target}): the cooks leave drink alone "
+                                  "(a barrel cooked makes 25-30 servings worth only the drink's 2-3 each, far "
+                                  "from the good meal the dwarves want)", 8))
+    elif banned and meals < target * MEAL_DRINK_LIFT:
+        proposals.append(Proposal("meal_drink", {"type": "kitchen_drinks", "ban": False},
+                                  f"only {meals} meals for {citizens}: the cooks may use drink again", 3))
 
 
 def _seed_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:

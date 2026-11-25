@@ -505,10 +505,20 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
     # patients and 112 infected wounds; "another hospital" was counted by halls (one per 150
     # dwarves) and only in good times. Counted by beds against the wounded
     # resting, in bad times too (a second hospital brings 4 more posts), with a slot of its own.
+    generous = None   # (0.105.113) Welfare's extra hospital, the season's build only if none other
     if can_use("stocks") and "buildings" not in s["_errors"] and "locations" not in s["_errors"] \
             and len(open_) < (pr.get("max_open") or 2) + 2 and not any(p.get("kind") == "hospital" for p in open_):
         hp = hospital_shortfall(s, traits, cfg)
-        if hp and player_rules(s)["levels"].get("hospital", True):
+        if hp and hp.get("generous") and player_rules(s)["levels"].get("hospital", True):
+            # (0.105.113 item11) Welfare's generosity: no slot of its own, after the
+            # needs (the wounded's case above keeps its urgent slot)
+            # (0.105.113) the season's one build: proposed at the end only when no other level is
+            if len(open_) < (pr.get("max_open") or 2) and settled_times(s, memory, traits, cfg):
+                generous = (Proposal("build", {"type": "start_project", "kind": "hospital", "beds": hp["beds"]},
+                                          f"Welfare {int(traits.get('welfare', 0) or 0):+d}: the hospitals have "
+                                          f"{hp['have']} beds for {hp['citizens']} dwarves and a caring fort keeps "
+                                          f"{hp['want']}: another hospital with {hp['beds']} beds", 5))
+        elif hp and player_rules(s)["levels"].get("hospital", True):
             proposals.append(Proposal("build", {"type": "start_project", "kind": "hospital", "beds": hp["beds"],
                                                 "urgent": True},
                                       f"{hp['resting']} wounded dwarves resting and the hospitals have "
@@ -936,6 +946,9 @@ def _project_rules(s, traits, cfg, proposals, notes, can_use, memory) -> None:
         if where:
             reason += f" (in {where['district']})"
         proposals.append(Proposal("build", action, reason, 6))
+    elif generous is not None and not any(x.rule == "build" and x.action.get("type") == "start_project"
+                                          for x in proposals):
+        proposals.append(generous)
 
 
 def temple_size(traits: dict) -> str:

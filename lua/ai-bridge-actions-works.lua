@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-works is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.112'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.113'   -- bumped with BRIDGE_VERSION
 
 -- (0.99.7) Soldiers who don't pick up their uniforms: DFHack's
 -- uniform-unstick frees items assigned to one soldier but held by another
@@ -98,6 +98,15 @@ function act_recreation(a)
     if not sn or not sd then return reject('recreation: soldiers 0-10, soldier_days 2-14') end
     return reqscript('ai-society').recreation_tick(n, days, a.dry_run == true, txt, f, fd, a.release == true,
                                                    a.unhappy == true, sn, sd)
+end
+
+-- (0.105.113 item9) the taverns and temples drawn together: the fort keeps
+-- `taverns` and `temples` (1-6 each) open, the others' zones made inactive
+-- (lua/ai-society-burrows.lua social_consolidate)
+function act_social_places(a)
+    local nt, ne = int_in(a.taverns or 1, 1, 6), int_in(a.temples or 1, 1, 6)
+    if not nt or not ne then return reject('social_places: taverns 1-6, temples 1-6') end
+    return reqscript('ai-society-burrows').social_consolidate(nt, ne, a.dry_run == true)
 end
 
 -- (0.104.168) The loose cups no finished goods pile takes: the pile with the
@@ -459,6 +468,15 @@ local function mate_row(u)
     return {race = r and r.creature_id or tostring(u.race), male = m, female = f, adult = ad}
 end
 
+-- (0.105.113 item13) only an animal that can walk to a butcher's shop is taken or
+-- waits: one marked that can't gets no job (E: a peafowl in a cut-off pasture
+-- blocked every mood's animal). Returns ok, the ai-herd module, reach(u).
+local function butcher_reach()
+    local okh, H = pcall(reqscript, 'ai-herd')
+    local shops = okh and H.butcher_shops and H.butcher_shops() or {}
+    return okh, H, function(u) return not (okh and H.reaches_butcher) or H.reaches_butcher(u, shops) end
+end
+
 function act_slaughter_one(a)
     local cands, marked = {}, 0
     -- (R1 g6) for a strange mood (mood_unit, or mood = true): any spare tame
@@ -467,10 +485,16 @@ function act_slaughter_one(a)
     -- (0.105.51) the cats and breeders the AI keeps: a list of ids now, no nickname (lua/ai-herd.lua)
     local okk, kept = pcall(function() return reqscript('ai-herd').kept_all() end)
     kept = okk and type(kept) == 'table' and kept or {}
+    local okh, H, reach = butcher_reach()           -- (0.105.113 item13)
+    local stuck = 0
     for _, u in ipairs(df.global.world.units.active) do
         local ok, fit, is_kept = pcall(function()
             if not dfhack.units.isAnimal(u) or not dfhack.units.isFortControlled(u) or dfhack.units.isDead(u) then return false end
-            if u.flags2.slaughter then marked = marked + 1 return false end
+            if u.flags2.slaughter then
+                if reach(u) then marked = marked + 1 else stuck = stuck + 1 end
+                return false
+            end
+            if not reach(u) then return false end
             if dfhack.units.isPet(u) or dfhack.units.isWar(u) or dfhack.units.isHunter(u) then return false end
             if u.flags1.caged then return false end
             if (u.name.nickname or '') == 'Mouser' then return false end      -- (0.104.168) a cat the AI keeps
@@ -532,9 +556,20 @@ function act_slaughter_one(a)
     if not pick then return {ok = false, rejected = true, error = 'no spare tame animal (three or more of a kind, adult, no pet or war animal)'} end
     local out = {ok = true, race = race, of = n, unit_id = pick.id, dry_run = a.dry_run or nil,
                  oldest = a.oldest == true or nil, mood_unit = a.mood_unit,
-                 young = (for_mood and not pick.adult) or nil, kept = (for_mood and pick.kept) or nil}
+                 young = (for_mood and not pick.adult) or nil, kept = (for_mood and pick.kept) or nil,
+                 stuck = stuck > 0 and stuck or nil}
     if a.dry_run then return out end
     pick.unit.flags2.slaughter = true
+    if pick.kept and okh and H.kept_ids and H.kept_save then
+        -- (0.105.113 item13) a kept animal taken for a mood leaves the kept list: the herd's
+        -- upkeep took the butcher's mark off every kept animal each report
+        pcall(function()
+            for _, kind in ipairs(H.KEPT_KINDS or {}) do
+                local ids = H.kept_ids(kind)
+                if ids[pick.id] then ids[pick.id] = nil; H.kept_save(kind, ids) end
+            end
+        end)
+    end
     return out
 end
 
@@ -869,6 +904,8 @@ function act_trade_deal(a)
     -- Trade label by its word (every fort's guess was retired)
     if r.ok and not r.waiting and not a.dry_run and a.press == true and (r.calibrated or r.can_search) then
         local p = T.press('Trade', txt)
+        -- (0.105.113 item10) "we can't carry that": ticked again lighter, pressed again
+        if p.too_heavy then r, p = T.press_lighter(r, p, wants, margin, txt, #extra > 0 and extra or nil) end
         r.press = p
         r.answer, r.traded, r.counter, r.closed = p.answer, p.traded, p.counter, p.closed
         -- not pressed at all (no Trade button found): the AI's screen closed

@@ -48,7 +48,9 @@ NO_COOLDOWN = {"threat_alert", "strategist", "squad_attack", "squad_recall", "tr
 # the prisoners rule waited the 2-day default instead of its 7 days
 COOLDOWN_KEYS = {"prisoners": "prisoner_room_cooldown_ticks",
                  # (r2 h9) one called wave a season; a stuck caravan's merchants told once a month
-                 "migrant_drought": "h9_drought_cooldown_ticks", "stuck_caravan": "h9_caravan_cooldown_ticks"}
+                 "migrant_drought": "h9_drought_cooldown_ticks", "stuck_caravan": "h9_caravan_cooldown_ticks",
+                 # (0.105.113 item10) the drink ban asked again a week apart (new drink kinds kept too)
+                 "meal_drink": "fat_ban_cooldown_ticks"}
 # Rules that may act more than once a cycle (select()).
 MULTI_PER_CYCLE = {"stuck_order", "order_remake", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train",
                    "labor", "well_parts",

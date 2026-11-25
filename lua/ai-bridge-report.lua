@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report'] = '0.105.112'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report'] = '0.105.113'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 
@@ -1074,14 +1074,17 @@ function get_locations()
                 -- (0.104.4) chests standing in its zones: a tavern keeps its goblets
                 -- (and a temple its instruments) in a chest of its own
                 pcall(function()
-                    local n = 0
+                    local n, off = 0, 0
                     for _, bid in ipairs(c.building_ids) do
                         local z = df.building.find(bid)
                         for _, ib in ipairs(z and z.contained_buildings or {}) do
                             if df.building_type[ib:getType()] == 'Box' then n = n + 1 end
                         end
+                        pcall(function() if z.spec_sub_flag.active == false then off = off + 1 end end)
                     end
                     e.chests = n
+                    -- (0.105.113 item9) every zone inactive: nobody gathers there
+                    if off > 0 and off == #c.building_ids then e.inactive = true end
                 end)
                 -- (0.103.13) a location laid over a dining hall (the AI's stop-gap
                 -- temple or tavern, or one the player made so): its zones all

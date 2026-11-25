@@ -6738,7 +6738,8 @@ def _():
     d = by_rule(props, "trade_deal")
     assert d and d[0].action["type"] == "trade_deal" and d[0].action["press"] is True, d
     keys = [w["key"] for w in d[0].action["wants"]]
-    assert keys[:2] == ["BAR:STEEL", "CLOTH"] and "BAR:IRON" not in keys and "WOOD" not in keys \
+    # (0.105.113 item10) the smelter's pig iron and flux after the steel (metal_trade_wants)
+    assert keys[0] == "BAR:STEEL" and "CLOTH" in keys and "BAR:IRON" not in keys and "WOOD" not in keys \
         and "FOOD" not in keys and "DRINK" not in keys, keys
     assert d[0].action["wants"][0]["count"] == 30           # 60 wanted, 6 had: capped at 30 a visit
     assert not any("open the trade screen" in n for n in notes)

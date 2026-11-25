@@ -190,7 +190,7 @@
  "enxah-0.104.52-y73-winter.json:Deep mine": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:c86b6ba332a99745d7fa7085",
+   "props": "sha256:40221beff6159065798f1a5f",
    "rules": [
     "build",
     "hospital",
@@ -218,13 +218,14 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:d9eccf1fd67578ed36127faf",
+   "props": "sha256:76a0e2716b1e3cadfbdbbbd3",
    "rules": [
     "build",
     "hospital",
@@ -252,12 +253,13 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:c86b6ba332a99745d7fa7085",
+   "props": "sha256:40221beff6159065798f1a5f",
    "rules": [
     "build",
     "hospital",
@@ -285,6 +287,7 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -293,7 +296,7 @@
  "enxah-0.104.52-y73-winter.json:Garden fort": [
   {
    "notes": "sha256:1d54210acc6c22f89675941f",
-   "props": "sha256:887e5a9a5d04bee93d7abcad",
+   "props": "sha256:9e647580bba71cd6e4815ec6",
    "rules": [
     "build",
     "hospital",
@@ -324,13 +327,14 @@
     "keep",
     "garden_court",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:c1710684fc0b0b08b1d96694",
+   "props": "sha256:4892ff93cb9f564c784aaadf",
    "rules": [
     "build",
     "hospital",
@@ -361,12 +365,13 @@
     "keep",
     "garden_court",
     "alerts",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:887e5a9a5d04bee93d7abcad",
+   "props": "sha256:9e647580bba71cd6e4815ec6",
    "rules": [
     "build",
     "hospital",
@@ -397,6 +402,7 @@
     "keep",
     "garden_court",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -405,7 +411,7 @@
  "enxah-0.104.52-y73-winter.json:Hermit hold": [
   {
    "notes": "sha256:d8737d8cf05b896b10570ad3",
-   "props": "sha256:4802362b0d6bd0c38c1c1141",
+   "props": "sha256:5597c74f5becbc436825adf0",
    "rules": [
     "build",
     "hospital",
@@ -433,44 +439,13 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink",
     "join_levels"
    ]
   },
   {
    "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:9e9adbd7a90cae5847e61a39",
-   "rules": [
-    "build",
-    "hospital",
-    "cistern",
-    "water_traffic",
-    "build",
-    "doctor_post",
-    "mandate",
-    "fat_ban",
-    "soap",
-    "crossbow_shop",
-    "instrument_orders",
-    "pop_cap",
-    "train",
-    "train",
-    "unstick_uniforms",
-    "labor",
-    "recreation",
-    "well",
-    "burial_others",
-    "squad_trim",
-    "needs_meal",
-    "pair_chairs",
-    "temple_chest",
-    "library_chest",
-    "build",
-    "alerts"
-   ]
-  },
-  {
-   "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:4802362b0d6bd0c38c1c1141",
+   "props": "sha256:69dea374a65a83d201071143",
    "rules": [
     "build",
     "hospital",
@@ -498,6 +473,40 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink"
+   ]
+  },
+  {
+   "notes": "sha256:4ca9b968ae40358552cd1614",
+   "props": "sha256:5597c74f5becbc436825adf0",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "crossbow_shop",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "burial_others",
+    "squad_trim",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "meal_drink",
     "join_levels"
    ]
   }
@@ -505,7 +514,7 @@
  "enxah-0.104.52-y73-winter.json:Merchant city": [
   {
    "notes": "sha256:a67e39d50a50b92f215c9892",
-   "props": "sha256:38c36eeb3abacf7e32dc6a3c",
+   "props": "sha256:1b104bdfdf2c438830ac6d4a",
    "rules": [
     "build",
     "hospital",
@@ -535,13 +544,14 @@
     "reserve_storage",
     "hall",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:0b5c1c5dc17fe297e5b6f30e",
+   "props": "sha256:962dcd7ef67af80c213acc20",
    "rules": [
     "build",
     "hospital",
@@ -571,12 +581,13 @@
     "reserve_storage",
     "hall",
     "alerts",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:38c36eeb3abacf7e32dc6a3c",
+   "props": "sha256:1b104bdfdf2c438830ac6d4a",
    "rules": [
     "build",
     "hospital",
@@ -606,6 +617,7 @@
     "reserve_storage",
     "hall",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -614,7 +626,7 @@
  "enxah-0.104.52-y73-winter.json:Monastery": [
   {
    "notes": "sha256:0825f5818f727f9c3aa6a770",
-   "props": "sha256:b079338951d524487095bdbf",
+   "props": "sha256:7a8d8dc35423a462237c0386",
    "rules": [
     "build",
     "hospital",
@@ -640,13 +652,14 @@
     "grandeur",
     "build",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:18485460882f7f483bf237ab",
-   "props": "sha256:27e6573def978e221ac97fa7",
+   "props": "sha256:ee6e531200b72cda47c97800",
    "rules": [
     "build",
     "hospital",
@@ -672,12 +685,13 @@
     "grandeur",
     "build",
     "alerts",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:18485460882f7f483bf237ab",
-   "props": "sha256:b079338951d524487095bdbf",
+   "props": "sha256:7a8d8dc35423a462237c0386",
    "rules": [
     "build",
     "hospital",
@@ -703,6 +717,7 @@
     "grandeur",
     "build",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -711,7 +726,7 @@
  "enxah-0.104.52-y73-winter.json:War-hold": [
   {
    "notes": "sha256:8b663b55d962e247c281516d",
-   "props": "sha256:3e9f28c47cc4c2fff41270c7",
+   "props": "sha256:3c50b29819d83753a248868d",
    "rules": [
     "build",
     "hospital",
@@ -738,43 +753,13 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink",
     "join_levels"
    ]
   },
   {
    "notes": "sha256:80e7b445551e3b6dccee50ec",
-   "props": "sha256:f63c59efa0b0bc09f89b0bca",
-   "rules": [
-    "build",
-    "hospital",
-    "cistern",
-    "water_traffic",
-    "build",
-    "doctor_post",
-    "mandate",
-    "fat_ban",
-    "soap",
-    "crossbow_shop",
-    "instrument_orders",
-    "pop_cap",
-    "train",
-    "train",
-    "unstick_uniforms",
-    "labor",
-    "recreation",
-    "well",
-    "burial_others",
-    "needs_meal",
-    "pair_chairs",
-    "temple_chest",
-    "library_chest",
-    "build",
-    "alerts"
-   ]
-  },
-  {
-   "notes": "sha256:80e7b445551e3b6dccee50ec",
-   "props": "sha256:3e9f28c47cc4c2fff41270c7",
+   "props": "sha256:17ceb11803f83a4acfa523a2",
    "rules": [
     "build",
     "hospital",
@@ -801,6 +786,39 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink"
+   ]
+  },
+  {
+   "notes": "sha256:80e7b445551e3b6dccee50ec",
+   "props": "sha256:3c50b29819d83753a248868d",
+   "rules": [
+    "build",
+    "hospital",
+    "cistern",
+    "water_traffic",
+    "build",
+    "doctor_post",
+    "mandate",
+    "fat_ban",
+    "soap",
+    "crossbow_shop",
+    "instrument_orders",
+    "pop_cap",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "labor",
+    "recreation",
+    "well",
+    "burial_others",
+    "needs_meal",
+    "pair_chairs",
+    "temple_chest",
+    "library_chest",
+    "build",
+    "alerts",
+    "meal_drink",
     "join_levels"
    ]
   }
@@ -808,7 +826,7 @@
  "enxah-0.104.52-y73-winter.json:own": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:000ee13c0997865d3e41fab0",
+   "props": "sha256:9d2d6bda65873fc5f70c7199",
    "rules": [
     "build",
     "hospital",
@@ -836,13 +854,14 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:7e1ae166c98e9f4af19efb89",
+   "props": "sha256:6edf142d32ae868b7215781e",
    "rules": [
     "build",
     "hospital",
@@ -870,12 +889,13 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:000ee13c0997865d3e41fab0",
+   "props": "sha256:9d2d6bda65873fc5f70c7199",
    "rules": [
     "build",
     "hospital",
@@ -903,6 +923,7 @@
     "library_chest",
     "build",
     "alerts",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -2168,7 +2189,7 @@
  "region2-0.83-y62-spring.json:Deep mine": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:195df2bdf6ae81d8c51ef027",
+   "props": "sha256:9151304e537a351eedcb5f9f",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2195,13 +2216,14 @@
     "build",
     "mechanisms",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:24d5d6944a4cafbde28e6077",
+   "props": "sha256:764f7e3da56aaf8ad800dd7f",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2228,12 +2250,13 @@
     "build",
     "mechanisms",
     "polish",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:195df2bdf6ae81d8c51ef027",
+   "props": "sha256:9151304e537a351eedcb5f9f",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2260,6 +2283,7 @@
     "build",
     "mechanisms",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -2268,7 +2292,7 @@
  "region2-0.83-y62-spring.json:Garden fort": [
   {
    "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
-   "props": "sha256:97538bc70a2e84f930963bde",
+   "props": "sha256:7376c2479a729fc74f17a992",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2297,13 +2321,14 @@
     "keep",
     "garden_court",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
-   "props": "sha256:3a6dae0c33c129127de8f764",
+   "props": "sha256:1dca68eefd01a4006bb0eb58",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2332,12 +2357,13 @@
     "keep",
     "garden_court",
     "polish",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
-   "props": "sha256:97538bc70a2e84f930963bde",
+   "props": "sha256:7376c2479a729fc74f17a992",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2366,6 +2392,7 @@
     "keep",
     "garden_court",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -2374,7 +2401,7 @@
  "region2-0.83-y62-spring.json:Hermit hold": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:30006298bcc6aa82beca4f3d",
+   "props": "sha256:73da0684fe4e0a404e757366",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2401,43 +2428,13 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink",
     "join_levels"
    ]
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:cc9336cc04ebe4ee93fd5463",
-   "rules": [
-    "hospital",
-    "hospital_stock",
-    "staff",
-    "cistern",
-    "build",
-    "fishery",
-    "pop_cap",
-    "train",
-    "train",
-    "train",
-    "train",
-    "unstick_uniforms",
-    "unload_depot",
-    "recreation",
-    "well",
-    "farms",
-    "squad_trim",
-    "needs_meal",
-    "needs_shops",
-    "tavern",
-    "instruments",
-    "feeder",
-    "water_traffic",
-    "build",
-    "polish"
-   ]
-  },
-  {
-   "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:30006298bcc6aa82beca4f3d",
+   "props": "sha256:95790a31b01995551894b399",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2464,6 +2461,39 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink"
+   ]
+  },
+  {
+   "notes": "sha256:dd2912d9055d076539426a5b",
+   "props": "sha256:73da0684fe4e0a404e757366",
+   "rules": [
+    "hospital",
+    "hospital_stock",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "pop_cap",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "squad_trim",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "polish",
+    "meal_drink",
     "join_levels"
    ]
   }
@@ -2471,7 +2501,7 @@
  "region2-0.83-y62-spring.json:Merchant city": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:201456e2d965e74121a37964",
+   "props": "sha256:6f0859f15a4d517f3a150943",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2500,13 +2530,14 @@
     "reserve_storage",
     "hall",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:d41d8536d608feb539303150",
+   "props": "sha256:3921c8ae890312cab97a8820",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2535,12 +2566,13 @@
     "reserve_storage",
     "hall",
     "polish",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:201456e2d965e74121a37964",
+   "props": "sha256:6f0859f15a4d517f3a150943",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2569,6 +2601,7 @@
     "reserve_storage",
     "hall",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -2577,7 +2610,7 @@
  "region2-0.83-y62-spring.json:Monastery": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:fc194c5042222d1691231c1e",
+   "props": "sha256:44ae1f23677fa81e4169622e",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2599,13 +2632,14 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:6d819b745bb7e3522b774f36",
+   "props": "sha256:ad73c8c532dfb6734df12a55",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2627,12 +2661,13 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:fc194c5042222d1691231c1e",
+   "props": "sha256:44ae1f23677fa81e4169622e",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2654,6 +2689,7 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
@@ -2662,7 +2698,7 @@
  "region2-0.83-y62-spring.json:War-hold": [
   {
    "notes": "sha256:40e4e68a3b179d3830c98a0e",
-   "props": "sha256:118a5666cb81cb2317fde6f9",
+   "props": "sha256:3c4fe7c9ddc4d0fc5f5bc438",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2688,42 +2724,13 @@
     "build",
     "mechanisms",
     "polish",
+    "meal_drink",
     "join_levels"
    ]
   },
   {
    "notes": "sha256:40e4e68a3b179d3830c98a0e",
-   "props": "sha256:2e93b6fac96e109f3b0a67de",
-   "rules": [
-    "hospital",
-    "hospital_stock",
-    "staff",
-    "cistern",
-    "build",
-    "fishery",
-    "train",
-    "train",
-    "train",
-    "train",
-    "unstick_uniforms",
-    "unload_depot",
-    "recreation",
-    "well",
-    "farms",
-    "needs_meal",
-    "needs_shops",
-    "tavern",
-    "instruments",
-    "feeder",
-    "water_traffic",
-    "build",
-    "mechanisms",
-    "polish"
-   ]
-  },
-  {
-   "notes": "sha256:40e4e68a3b179d3830c98a0e",
-   "props": "sha256:118a5666cb81cb2317fde6f9",
+   "props": "sha256:dde5d08cada73a36e635fb61",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2749,6 +2756,38 @@
     "build",
     "mechanisms",
     "polish",
+    "meal_drink"
+   ]
+  },
+  {
+   "notes": "sha256:40e4e68a3b179d3830c98a0e",
+   "props": "sha256:3c4fe7c9ddc4d0fc5f5bc438",
+   "rules": [
+    "hospital",
+    "hospital_stock",
+    "staff",
+    "cistern",
+    "build",
+    "fishery",
+    "train",
+    "train",
+    "train",
+    "train",
+    "unstick_uniforms",
+    "unload_depot",
+    "recreation",
+    "well",
+    "farms",
+    "needs_meal",
+    "needs_shops",
+    "tavern",
+    "instruments",
+    "feeder",
+    "water_traffic",
+    "build",
+    "mechanisms",
+    "polish",
+    "meal_drink",
     "join_levels"
    ]
   }
@@ -2756,7 +2795,7 @@
  "region2-0.83-y62-spring.json:own": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:43258404dea0ec0719ba8ed5",
+   "props": "sha256:dd8d4764d2661fa1e7d10b31",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2782,13 +2821,14 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:876dfed08ac762b8721b3bf4",
+   "props": "sha256:9e33cb1a42a35ecae2f7ced6",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2814,12 +2854,13 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink",
     "second_way"
    ]
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:43258404dea0ec0719ba8ed5",
+   "props": "sha256:dd8d4764d2661fa1e7d10b31",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2845,6 +2886,7 @@
     "water_traffic",
     "build",
     "polish",
+    "meal_drink",
     "join_levels",
     "second_way"
    ]

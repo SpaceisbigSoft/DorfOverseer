@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-trade-screen is a part of ai-trade; run ai-trade') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-trade-screen'] = '0.105.112'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-trade-screen'] = '0.105.113'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_units, depot, GOOD_TYPE, is_artifact, goods, trade_screen, perceived, ready, clear = PART_LOCALS.U, PART_LOCALS.report_units, PART_LOCALS.depot, PART_LOCALS.GOOD_TYPE, PART_LOCALS.is_artifact, PART_LOCALS.goods, PART_LOCALS.trade_screen, PART_LOCALS.perceived, PART_LOCALS.ready, PART_LOCALS.clear   -- (r9) the hub's locals
 
@@ -59,6 +59,15 @@ TRADE_REPLIES = {Trade = true, Haggle = true, CounterOffer = true, CouldNotFindC
                  NoMoreTradeHaggleFailure = true}
 -- the lines of the other buttons beside it (a gift, a seize)
 WRONG_REPLIES = {Offer = true, Seize = true, OfferJoke = true, SeizeJoke = true}
+-- (0.105.113 item10) "we can't carry that": the merchants' animals and
+-- wagons are full (C and F, 7 deals 22-24 Nov, each caravan then left with
+-- nothing traded). Not a refusal of the price: the deal ticked again lighter
+-- and pressed again (press_lighter), the caravan not marked done for it
+WEIGHT_REPLIES = {Weight1 = true, Weight2 = true}
+TRADE_REPLIES.Weight1, TRADE_REPLIES.Weight2 = true, true    -- the Trade button's answer all the same
+WEIGHT_RETRIES = 3
+WEIGHT_HAGGLE_MAX = 2      -- the caravan's haggle_fail_count at which no try more is made
+WEIGHT_CUT = {Weight1 = 0.6, Weight2 = 0.4}
 
 -- Pure: what a press did, from the talk line before and after, whether the
 -- goods moved and whether a counter-offer came up: 'worked' (a trade
@@ -345,7 +354,8 @@ function press(name, txt)
     -- done: close the screen (the game goes on; nothing is ticked, so
     -- DFHack's "leave the screen?" question wouldn't come up anyway)
     local closed
-    if traded or moved or talk ~= 'NONE' then
+    local heavy = WEIGHT_REPLIES[talk] == true and not traded
+    if (traded or moved or talk ~= 'NONE') and not heavy then
         without_confirm('trade-cancel', function()
             require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN')
         end)
@@ -355,15 +365,50 @@ function press(name, txt)
     -- (a click that got no answer at all, e.g. a dialog in the way, isn't a refusal)
     -- (0.105.48, K9) the screen closed after the press: this caravan done for the
     -- visit (before, a miss on Greet closed it unmarked: open, press, close each cycle)
-    if traded or moved or (talk ~= 'NONE' and talk ~= 'Greet' and talk ~= 'HarshGreet') or closed then mark_done(trade.mer) end
+    if not heavy and (traded or moved or (talk ~= 'NONE' and talk ~= 'Greet' and talk ~= 'HarshGreet') or closed) then
+        mark_done(trade.mer)
+    end
     local wrong_line = WRONG_REPLIES[talk] == true
     return {ok = not wrong_line, pressed = name, at = {x, y}, answer = talk, answer_before = talk_before,
-            traded = traded, traded_by = traded_by, moved = moved,
+            traded = traded, traded_by = traded_by, moved = moved, too_heavy = heavy or nil,
             bought_now = bought_n, sold_now = sold_n, screen_now = focus, guessed = (how == 'guess') or nil, how = how, verdict = verdict,
             error = wrong_line and ('the merchants answered "' .. tostring(talk) .. '": not a trade') or nil,
             counter = counter, closed = closed,
             counter_offer = trade.counter_offer or nil,
             before = before, after = after}
+end
+
+-- (0.105.113 item10) after a Weight1/Weight2 answer (r: the deal's ticks,
+-- p: the press): the deal ticked again with the fort's goods outweighing the
+-- bought ones by at most WEIGHT_CUT of the last try (the goods most valuable
+-- for their weight first), pressed again, up to WEIGHT_RETRIES times; still
+-- too heavy, or nothing lighter to give: the screen closed, the caravan done.
+-- Returns the last deal and press, with the tries.
+function press_lighter(r, p, wants, margin, txt, extra)
+    local tries = {}
+    while p and p.too_heavy and #tries < WEIGHT_RETRIES do
+        local net = (r.give_weight or 0) - (r.buy_weight or 0)
+        local okh, fails = pcall(function() return trade_screen().mer.haggle_fail_count end)
+        fails = okh and tonumber(fails) or 0
+        table.insert(tries, {answer = p.answer, give_value = r.give_value, given = r.given,
+                             give_weight = r.give_weight, buy_weight = r.buy_weight, haggle_fails = fails})
+        -- nothing heavier on the fort's side, or the merchants' patience wearing thin
+        if net <= 0 or fails >= WEIGHT_HAGGLE_MAX then break end
+        clear(trade_screen())
+        local r2 = deal(wants, margin, false, txt, extra, net * (WEIGHT_CUT[p.answer] or 0.5))
+        if not r2.ok or r2.rejected or r2.waiting then
+            tries[#tries].next_error = r2.error
+            break
+        end
+        r = r2
+        p = press('Trade', txt)
+    end
+    if p and p.too_heavy then
+        local c = close_screen()          -- marks the caravan done
+        p.closed = c.closed
+    end
+    if #tries > 0 then r.weight_tries = tries end
+    return r, p
 end
 
 -- A caravan the AI has traded with (or been turned down by, or found
