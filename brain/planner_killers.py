@@ -351,6 +351,13 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
     # player): the cell action takes them out of the squad, any military office
     # and every other burrow (lua/ai-killers.lua keep_apart; B, 23 Nov)
     rows = {r["id"]: r for r in killer_rows(s)}
+    # (0.105.114) the urgent ones: locked at once, no larder wait (below)
+    urgent = _urgent_holds(s, memory, cell_ids)
+    dry = [i for i in dry if i not in urgent]
+    for i, why in urgent.items():
+        r = rows.get(i) or {}
+        notes.append(f"{r.get('name') or f'unit {i}'} {why}: locked in the AI's cell at once, its doors not "
+                     "opened for the haulers (drink and meals brought in once calm)")
     squadded = [i for i in cell_ids if i in held and i not in pending
                 and isinstance(rows.get(i, {}).get("squad_id"), int)]
     if not cell_ids and not stale:
@@ -360,7 +367,7 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
                      "come first (a jail zone is made by the justice rules)")
         if not stale:
             return
-    waits = [i for i in cell_ids if i in held and _pile_waits(held[i])]
+    waits = [i for i in cell_ids if i in held and _pile_waits(held[i]) and i not in urgent]
     if pending or stale or dry or squadded:
         why = []
         if pending:
@@ -382,7 +389,52 @@ def _killer_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
                     if any(f(held[i]) for i in waits)]
             what = " and ".join(lack) or "drink"
             why.append(f"{len(waits)} cell(s): the cell's pile waits for {what}")
-        proposals.append(Proposal("killer", {"type": "killer_cell", "units": cell_ids}, "; ".join(why), 1))
+        action = {"type": "killer_cell", "units": cell_ids}
+        if urgent:
+            action["urgent"] = sorted(urgent)
+        proposals.append(Proposal("killer", action, "; ".join(why), 1))
+
+
+URGENT_KILL_TICKS = TICKS_PER_DAY
+
+
+def _urgent_holds(s: dict, memory, cell_ids: list) -> dict:
+    """(0.105.114) {unit id: why} of the held killers locked at once: a
+    werebeast, one transformed now, one in a tantrum (or berserk), or one who
+    killed a person within the last day. For them the cell's pile waits for
+    nothing (the larder's doors stay shut; drink and meals come once calm);
+    the larder wait is for calm cases only. Live E, 25 Nov 06:00-08:00: the
+    killer_cell rule ran about every minute on Dentconstruct (a werebeast,
+    certain, people 2) with "the cell's pile waits for drink and meals"; the
+    doors opened for the haulers again and again, he was out of his cell 30
+    of 77 cycles, killed two citizens at 08:00 and was struck down."""
+    from planner_tantrums import tantrum_rows
+    rows = {r["id"]: r for r in killer_rows(s)}
+    tant = {r["id"]: r for r in tantrum_rows(s)}
+    cells = {c["unit_id"]: c for c in _l(_d(s.get("killers")).get("cells"))
+             if isinstance(c, dict) and isinstance(c.get("unit_id"), int)}
+    now = _now(s)
+    book = _d(_d(getattr(memory, "killer_book", None)).get("kills")) if memory is not None else {}
+    out = {}
+    for i in cell_ids:
+        r, t, c = _d(rows.get(i)), _d(tant.get(i)), _d(cells.get(i))
+        if r.get("kind") == "vampire":
+            continue                       # a vampire neither eats nor drinks: nothing to wait for
+        ago = r.get("last_ago")
+        k = _d(book.get(str(i)))
+        recent = (isinstance(ago, int) and 0 <= ago < URGENT_KILL_TICKS and int(r.get("people") or r.get("kills") or 0) > 0) \
+            or (now is not None and isinstance(k.get("last"), int) and 0 <= now - k["last"] < URGENT_KILL_TICKS)
+        if r.get("kind") == "werebeast":
+            out[i] = "carries a werebeast curse"
+        elif r.get("transformed") or c.get("urgent") == "transformed":
+            out[i] = "is transformed"
+        elif t.get("now") or r.get("berserk") or c.get("urgent") == "raging":
+            out[i] = "is in a tantrum"
+        elif recent:
+            out[i] = "killed within the last day"
+        elif isinstance(c.get("urgent"), str):
+            out[i] = {"were": "carries a werebeast curse"}.get(c["urgent"], "is not calm")
+    return out
 
 
 # --- (0.105.112) who stays held ------------------------------------------------
@@ -407,7 +459,12 @@ def note_killer_book(s: dict, memory) -> dict:
              and 0 <= now - v["last"] < TICKS_PER_YEAR}
     for r in killer_rows(s):
         ago = r.get("last_ago")
-        if people_killer(r) and isinstance(ago, int) and not r.get("child") and not r.get("law"):
+        # (0.105.114) a werebeast who killed a person is booked too: a cell he
+        # is in stays (E, 25 Nov: Dentconstruct, booked as a killer, then read
+        # as a werebeast)
+        were_kill = r.get("kind") == "werebeast" and isinstance(r.get("people"), int) \
+            and not isinstance(r.get("people"), bool) and r["people"] >= 1
+        if (people_killer(r) or were_kill) and isinstance(ago, int) and not r.get("child") and not r.get("law"):
             last = now - ago
             old = _d(kills.get(str(r["id"])))
             if not isinstance(old.get("last"), int) or old["last"] < last:

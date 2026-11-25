@@ -825,7 +825,7 @@ PART_LOCALS = {U = U, now_tick = now_tick, txt = txt, is = is, key = key, group_
 PARTS = {'remedies'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-thirst'] = '0.105.113'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-thirst'] = '0.105.114'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-works is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.113'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.114'   -- bumped with BRIDGE_VERSION
 
 -- (0.99.7) Soldiers who don't pick up their uniforms: DFHack's
 -- uniform-unstick frees items assigned to one soldier but held by another
@@ -180,7 +180,7 @@ function act_moon_cell(a)
         if not id then return reject('moon_cell: ids must be whole numbers') end
         table.insert(ids, id)
     end
-    if #ids > 10 then return reject('moon_cell: at most 10 ids') end
+    if #ids > 60 then return reject('moon_cell: at most 60 ids') end   -- (0.105.114) E had 30+ cursed at once
     if a.release ~= nil and type(a.release) ~= 'boolean' then return reject('moon_cell: release is true or false') end
     return reqscript('ai-threats').moon_cell(ids, a.release == true, a.dry_run == true, txt)
 end

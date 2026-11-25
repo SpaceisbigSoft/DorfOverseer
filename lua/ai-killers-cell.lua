@@ -8,7 +8,7 @@
 -- names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-killers-cell is a part of ai-killers; run ai-killers') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-killers-cell'] = '0.105.113'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-killers-cell'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, assign, burrow_named, changed, citizen, count_rooms, dead, free, in_zone, larder_by_name, larder_check, larder_low, let_out, mood_name, name_of, need, now_tick, other_in_zone, resident, restocking, save, taken_zones, zone_by_id = PART_LOCALS.U, PART_LOCALS.assign, PART_LOCALS.burrow_named, PART_LOCALS.changed, PART_LOCALS.citizen, PART_LOCALS.count_rooms, PART_LOCALS.dead, PART_LOCALS.free, PART_LOCALS.in_zone, PART_LOCALS.larder_by_name, PART_LOCALS.larder_check, PART_LOCALS.larder_low, PART_LOCALS.let_out, PART_LOCALS.mood_name, PART_LOCALS.name_of, PART_LOCALS.need, PART_LOCALS.now_tick, PART_LOCALS.other_in_zone, PART_LOCALS.resident, PART_LOCALS.restocking, PART_LOCALS.save, PART_LOCALS.taken_zones, PART_LOCALS.zone_by_id   -- (0.105.113) the hub's locals
 
@@ -126,6 +126,16 @@ function cell(o, dry)
     local out = {ok = true, placed = {}, locked = {}, waiting = {}, out = {}, released = {}, stocking = {},
                  apart = {}, dry_run = dry or nil}
     local memo = {}             -- (0.105.97) each cell's pile read once a call
+    -- (0.105.114) the brain's urgent ones (a werebeast, a killing within a
+    -- day): locked at once, the doors not opened for the haulers (urgent_now)
+    local urg = {}
+    for _, id in ipairs(o.urgent or {}) do urg[tostring(id)] = true end
+    if not o.release_only then
+        for uid, c in pairs(d.cells) do
+            if type(c) == 'table' and not dry then c.urgent_brain = urg[uid] and t or nil end
+        end
+    end
+    out.urgent = {}
     -- let out: those not wanted (unless only the let-outs run), the dead and
     -- gone, and the thirsty or hungry
     for uid, c in pairs(d.cells) do
@@ -148,6 +158,8 @@ function cell(o, dry)
                 local c = d.cells[uid]
                 local z = c and c.zone and zone_by_id(c.zone)
                 -- (0.105.97) the cell's pile made, and a locked cell opened for the haulers when it runs low
+                local why = (c and urgent_now(c, u, t)) or (urg[uid] and 'brain') or nil
+                if why then table.insert(out.urgent, {name = name_of(u), why = why}) end
                 local lk = z and c and larder_check(uid, c, z, t, dry, memo, u)
                 if lk == 'wait' or (lk == 'open' and dry) then table.insert(out.stocking, name_of(u)) end
                 if not z then
@@ -167,7 +179,8 @@ function cell(o, dry)
                             dfhack.burrows.setAssignedUnit(b, u, true)
                         end)
                         if okb then
-                            d.cells[uid] = {zone = z.id, kind = kind, tick = t, doors = {}}
+                            d.cells[uid] = {zone = z.id, kind = kind, tick = t, doors = {},
+                                            urgent_brain = urg[uid] and t or nil}
                             taken[z.id] = true
                         else
                             out.error = 'the cell\'s burrow could not be made: ' .. tostring(eb):sub(1, 100)
@@ -214,6 +227,7 @@ function cell(o, dry)
         end
     end
     if not dry then save(d) end
+    if #out.urgent == 0 then out.urgent = nil end
     local any = #out.placed + #out.locked + #out.released + #out.waiting + #out.out + #out.stocking + #out.apart
     if any == 0 and not out.error then
         return {ok = false, rejected = true, nothing_to_do = true, error = 'every cell is as it should be'}
@@ -313,6 +327,7 @@ function report()
             end
             local crow = {unit_id = tonumber(uid), locked = c.locked or nil, out = c.out and true or nil,
                           kind = c.kind, days = c.tick and (t - c.tick) // DAY or nil}
+            if u and not dead(u) then crow.urgent = urgent_of(u) end    -- (0.105.114) the unit's own, live
             pcall(function() larder_row(crow, c, memo) end)                 -- (0.105.97)
             table.insert(out.cells, crow)
         end

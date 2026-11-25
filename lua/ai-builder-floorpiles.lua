@@ -24,7 +24,7 @@
 -- Nothing is fetched while the part loads: ai-pile-links and
 -- ai-overseer-settings are asked for inside functions, behind pcall.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floorpiles'] = '0.105.113'
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floorpiles'] = '0.105.114'
 
 -- A shop's output pile (a name from layouts.STOCKPILES). Others: none.
 FLOOR_OUTPUTS = {

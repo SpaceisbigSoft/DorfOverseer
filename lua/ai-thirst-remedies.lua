@@ -8,7 +8,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-thirst-remedies is a part of ai-thirst; run ai-thirst') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-thirst-remedies'] = '0.105.113'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-thirst-remedies'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, now_tick, txt, is, key, group_at, mood_of, job_name, patient, drink_map, NEIGH, wells, water_zones, burrow_by_id, held_kind, civ_alert, burrow_holds, stand_facts = PART_LOCALS.U, PART_LOCALS.now_tick, PART_LOCALS.txt, PART_LOCALS.is, PART_LOCALS.key, PART_LOCALS.group_at, PART_LOCALS.mood_of, PART_LOCALS.job_name, PART_LOCALS.patient, PART_LOCALS.drink_map, PART_LOCALS.NEIGH, PART_LOCALS.wells, PART_LOCALS.water_zones, PART_LOCALS.burrow_by_id, PART_LOCALS.held_kind, PART_LOCALS.civ_alert, PART_LOCALS.burrow_holds, PART_LOCALS.stand_facts   -- (r9) the hub's locals
 

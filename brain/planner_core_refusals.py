@@ -124,7 +124,10 @@ def cooldown_key(p: Proposal) -> str:
 # (0.105.36) actions whose rule paces its own tries after a refusal: no
 # refusal back-off on top (the shelter's "tried again in 1 day(s)" stretched
 # to weeks under a siege: SHELTER_RETRY_*_DAYS is its pace)
-OWN_PACE = {"setup_shelter"}
+# (0.105.114) moon_cell too: E, 25 Nov, its refusals held it "13 time(s) in a
+# row; tries again in 308 day(s)" before a werepanther outbreak (it paces
+# itself by DF's moon phase and moon_cell_cooldown_ticks)
+OWN_PACE = {"setup_shelter", "moon_cell"}
 
 
 def _refused_wait(memory: Memory, p: Proposal, now: int, bridge: str | None = None) -> int | None:

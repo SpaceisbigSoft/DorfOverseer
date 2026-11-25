@@ -477,6 +477,7 @@ local function let_out(uid, c, u, t, dry, memo)
     local th, hu = need(u)
     local tl, hl = THIRST_OUT, HUNGER_OUT
     pcall(function() tl, hl = out_levels(c, memo, t) end)
+    if urgent_now(c, u, t) then tl, hl = THIRST_LAST, HUNGER_LAST end   -- (0.105.114) not calm: the last resort only
     if th < tl and hu < hl then return false end
     if not dry then
         set_doors(c, false)
@@ -947,6 +948,51 @@ local function raging(u)
     return okm and (m == 'Tantrum' or m == 'Enraged') or false
 end
 
+-- (0.105.114) a held killer who is not calm: 'raging' (a tantrum, enraged or
+-- berserk), 'transformed' (in a were form now), 'were' (a werebeast curse's
+-- syndrome: WERECURSE or a BODY_TRANSFORMATION effect), else nil. Live E, 25
+-- Nov 06:00-08:00: Dentconstruct (a werebeast, two citizens killed) was out
+-- of his cell 30 of 77 cycles, the doors opened for the haulers each time
+-- the pile ran low ("waits for drink and meals"); he killed two at 08:00.
+-- Such a one is locked at once: the doors never opened for the haulers
+-- (drink and meals come once calm), let out only at the last-resort levels.
+function urgent_of(u)
+    if not u then return nil end
+    if raging(u) or mood_name(u) == 'Berserk' then return 'raging' end
+    if changed(u) then return 'transformed' end
+    local found = nil
+    pcall(function()
+        local BT = nil
+        pcall(function() BT = df.creature_interaction_effect_type.BODY_TRANSFORMATION end)
+        for _, a in ipairs(u.syndromes.active) do
+            local syn = df.syndrome.find(a.type)
+            if syn then
+                pcall(function()
+                    for _, cl in ipairs(syn.syn_class) do
+                        if (type(cl) == 'string' and cl or cl.value) == 'WERECURSE' then found = 'were' end
+                    end
+                end)
+                pcall(function()
+                    for _, ce in ipairs(syn.ce) do
+                        if BT ~= nil and ce:getType() == BT then found = 'were' end
+                    end
+                end)
+                if found then return end
+            end
+        end
+    end)
+    return found
+end
+
+-- the urgency now: the unit's own, or the brain's (the killer_cell action's
+-- `urgent`: a werebeast, one who killed within a day), kept a DAY
+function urgent_now(c, u, t)
+    local own = urgent_of(u)
+    if own then return own end
+    if c and c.urgent_brain and t and t - c.urgent_brain >= 0 and t - c.urgent_brain < DAY then return 'brain' end
+    return nil
+end
+
 local function larder_check(uid, c, z, t, dry, memo, u)
     local sp, why = larder_make(uid, c, z, dry)
     if not dry then c.pile_error = (not sp) and why or nil end
@@ -955,7 +1001,7 @@ local function larder_check(uid, c, z, t, dry, memo, u)
     if not sp or not c.locked or c.out then return nil end
     if not larder_low(c, memo) then return nil end
     -- (0.105.97, merge) never opened while the killer rages (B's killings were tantrums)
-    if raging(u) then return 'wait' end
+    if raging(u) or urgent_now(c, u, t) then return 'wait' end   -- (0.105.114) nor while not calm
     if c.restock_end and t - c.restock_end < RESTOCK_GAP then return 'wait' end
     if not dry then
         set_doors(c, false)
@@ -971,7 +1017,7 @@ end
 -- rage while they stand open (the burrow holds no one in a tantrum)
 local function restocking(c, t, dry, memo, u)
     if not c.restock then return false end
-    if not raging(u) and larder_low(c, memo) and t - c.restock < RESTOCK_TICKS then return true end
+    if not raging(u) and not urgent_now(c, u, t) and larder_low(c, memo) and t - c.restock < RESTOCK_TICKS then return true end
     if not dry then c.restock, c.restock_end = nil, t end
     return false
 end
@@ -1037,7 +1083,7 @@ PART_LOCALS = {U = U, assign = assign, burrow_named = burrow_named, changed = ch
 PARTS = {'cell'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-killers'] = '0.105.113'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-killers'] = '0.105.114'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

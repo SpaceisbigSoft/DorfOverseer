@@ -115,7 +115,7 @@ SECTION_DEFAULTS = {
                   "under_construction": 0, "workshop_jobs_queued": 0},
     "jobs": {"total": 0, "suspended": 0, "by_type": {}},
     "others_on_map": {"threats": [], "threats_that_can_reach_dwarves": 0, "contained_dangers": 0,
-                      "visitors": 0, "merchants": 0, "diplomats": 0, "tame_animals": 0},
+                      "visitors": 0, "merchants": 0, "diplomats": 0, "tame_animals": 0, "hidden_great": []},
     "nobles": [],
     "mandates": [],
     "recent_announcements": [],

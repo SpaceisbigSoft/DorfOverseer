@@ -40,7 +40,7 @@ from digest import _d, _l
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, Proposal, STEER_PROTECTED, TICKS_PER_DAY, abs_tick, ask_player,
                           can_fight, crowded_thief, player_rules, reachable_threats, thief_rows, _traits)
 
-__all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "moon_phase_due", "MOON_PHASES", "WERE_FULL_PHASE", "PRISONER_CHOICES", "THREAT_CONFIG",
+__all__ = ["_threat_rules", "threat_alert", "alarm_held", "threat_rules_of", "moon_due", "moon_phase_due", "moon_clearly_past", "MOON_PHASES", "WERE_FULL_PHASE", "PRISONER_CHOICES", "THREAT_CONFIG",
            "note_intrusions", "unseen_intrusion", "lone_sneaker", "watch_spots", "thief_watchers"]
 
 PRISONER_CHOICES = ("keep", "release", "kill")
@@ -190,6 +190,7 @@ def threat_alert(s: dict, cfg: dict) -> str:
 MOON_PHASES = 28        # DF's world_data.moon_phase runs 0..27 (one turn ~25.5 days)
 WERE_FULL_PHASE = 27    # (verifier) vanilla interaction_werebeast: [CE:PERIODIC:MOON_PHASE:27:0]
 WERE_LEAD_PHASES = 8    # (0.105.96) the cursed into their cells this many phases (~days) before the change
+WERE_PAST_PHASES = 2    # (0.105.114) let out only this many phases (~days) past every change phase, at the least
 
 
 def moon_phase_due(changes: list, phase, cfg: dict) -> bool | None:
@@ -209,6 +210,24 @@ def moon_phase_due(changes: list, phase, cfg: dict) -> bool | None:
         d = (int(phase) - at) % MOON_PHASES
         return d >= MOON_PHASES - _c(cfg, "moon_before_days") or d <= _c(cfg, "moon_after_days")
     return any(near(at) for at in set(phases))
+
+
+def moon_clearly_past(changes: list, phase, cfg: dict) -> bool:
+    """(0.105.114) May the cells be let out, by DF's moon phase? Only when
+    the phase was read and is WERE_PAST_PHASES beyond the moon_after_days
+    window after every phase a change was seen at, and not yet in the lead before
+    the next one. E, 25 Nov: at ~1 phase a cycle the release came 1-3 phases
+    after the change; anything unread or unknown keeps them in."""
+    phases = [int(c["phase"]) for c in changes if isinstance(c, dict) and _num(c.get("phase"))]
+    if not phases or not _num(phase):
+        return False
+    past = _c(cfg, "moon_after_days") + WERE_PAST_PHASES      # d counts from the change's phase: 4 = 3 phases on
+    lead = max(_c(cfg, "moon_before_days"), WERE_LEAD_PHASES)
+    for at in set(phases):
+        d = (int(phase) - at) % MOON_PHASES
+        if d < past or d >= MOON_PHASES - lead:
+            return False
+    return True
 
 
 def moon_due(changes: list, now: int, cfg: dict) -> bool | None:
@@ -530,12 +549,12 @@ def _were(s, cfg, t, rules, proposals, notes):
     rows = [x for x in _l(w.get("list")) if isinstance(x, dict) and x.get("id") is not None]
     cells = [x for x in _l(w.get("cells")) if isinstance(x, dict)]
     _were_outsiders(s, cfg, w, proposals, notes)
-    if not rows and not cells:
+    if not rows and not cells and not (_num(w.get("dead_cells")) and w["dead_cells"] > 0):
         return
     # (0.105.103) someone else in a locked cell (E, 24 Nov 08:31: four killed in Urvad's)
     living = {x.get("id") for x in rows}
     for c in cells:
-        if c.get("unlocked") and c.get("unit_id") in living:
+        if c.get("unlocked") and c.get("unit_id") in living and not c.get("dead"):
             notes.append(f"the cell of werebeast {c.get('unit_id')} is on record as locked but its door is open "
                          "in the game: locked again when they are alone inside")
         if c.get("locked") and _l(c.get("others")) and c.get("unit_id") in living:
@@ -556,6 +575,9 @@ def _were(s, cfg, t, rules, proposals, notes):
     if rows and due is None:
         notes.append(f"{len(rows)} werebeast citizen(s): no change seen yet, so the full moon isn't known "
                      f"(moon phase {w.get('moon_phase')}); the first change teaches it")
+    # (0.105.114) the cells of the living only: a dead werebeast's (the bridge
+    # frees it) is no werebeast to let out (E, 25 Nov: "let 33 out", 3 alive)
+    live_cells = [c for c in cells if c.get("unit_id") in living and not c.get("dead")]
     if not rules["moon_cells"]:
         if cells:
             proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": [], "release": True},
@@ -570,16 +592,27 @@ def _were(s, cfg, t, rules, proposals, notes):
             proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": ids},
                                       f"the full moon is near: {', '.join(str(x.get('name')) for x in rows[:3])} "
                                       "into a cell (a jail or a free bedroom, locked once inside)", 1))
-    elif cells and not any(x.get("changed") for x in rows):
+    elif live_cells or _num(w.get("dead_cells")) and w["dead_cells"] > 0:
         # (0.105.103) let out only when DF's moon phase was read and says the
         # moon is past: an unread phase or the tick count's guess (it slips
-        # ~2.5 days a moon) keeps them in
-        if phase_due is False:
+        # ~2.5 days a moon) keeps them in. (0.105.114) and only when it is
+        # clearly past (WERE_PAST_PHASES), no werebeast is in its beast form
+        # and no cursed one is fighting
+        beast = [x for x in rows if x.get("changed")]
+        fighting = [x for x in rows if x.get("fighting")]
+        past = phase_due is False and moon_clearly_past(_l(w.get("changes")), w.get("moon_phase"), wcfg)
+        if past and not beast and not fighting:
+            n = len(live_cells)
             proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": [], "release": True},
-                                      f"the full moon is past: let {len(cells)} werebeast(s) out of their cells", 3))
-        else:
-            notes.append(f"{len(cells)} werebeast(s) in their cells: kept in until DF's moon phase shows the "
-                         f"full moon past (phase {w.get('moon_phase')})")
+                                      (f"the full moon is past (phase {w.get('moon_phase')}): let {n} werebeast(s) "
+                                       "out of their cells") if n else
+                                      "the cells of dead werebeasts: unlock their doors and drop them", 3))
+        elif live_cells:
+            why = (f": {beast[0].get('name')} is in their beast form" if beast else
+                   f": {fighting[0].get('name')} is in a fight" if fighting else
+                   f" until DF's moon phase shows the full moon past (phase {w.get('moon_phase')}; "
+                   f"{WERE_PAST_PHASES}+ phases past it)")
+            notes.append(f"{len(live_cells)} werebeast(s) in their cells: kept in{why}")
 
 
 ALL_CAVERNS = "all caverns"        # (0.105.26) the seal's record: every cavern opening on record

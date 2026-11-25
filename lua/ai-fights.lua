@@ -205,6 +205,61 @@ local function hostile(u)
     return nil
 end
 
+-- (0.105.114) a werebeast or one turning into one: why, or nil. E 25 Nov: the
+-- werepanther outbreak (slain were citizens of civ 300, race NIGHT_CREATURE_55,
+-- enemy.normal_race DWARF; living citizens bitten carrying syndrome 367, class
+-- WERECURSE, a BODY_TRANSFORMATION effect). Its conflicts are never the fort's own.
+function were_of(u)
+    local U = dfhack.units
+    if is(U.isTransformed, u) then return 'transformed' end
+    local okw, changed = pcall(function()
+        local nr = u.enemy.normal_race
+        return nr ~= nil and nr >= 0 and nr ~= u.race
+    end)
+    if okw and changed then return 'transformed' end
+    -- a citizen of another race than the fort's that is a night creature
+    local fr = field(df.global.plotinfo, 'race_id')
+    if type(fr) == 'number' and fr >= 0 and field(u, 'race') ~= fr and is(U.isNightCreature, u) then
+        local okc, cit = pcall(U.isCitizen, u, true)
+        if (okc and cit) or field(u, 'civ_id') == field(df.global.plotinfo, 'civ_id') then return 'transformed' end
+    end
+    local found = nil
+    pcall(function()
+        local BT = df.creature_interaction_effect_type and df.creature_interaction_effect_type.BODY_TRANSFORMATION
+        for _, a in ipairs(u.syndromes.active) do
+            local syn = df.syndrome.find(a.type)
+            if syn then
+                pcall(function()
+                    for _, c in ipairs(syn.syn_class) do
+                        if (type(c) == 'string' and c or c.value) == 'WERECURSE' then found = 'were syndrome' end
+                    end
+                end)
+                pcall(function()
+                    for _, ce in ipairs(syn.ce) do
+                        if BT ~= nil and ce:getType() == BT then found = 'were syndrome' end
+                    end
+                end)
+                if found then return end
+            end
+        end
+    end)
+    return found
+end
+
+-- (0.105.114) an animal of the fort's civ that DF reads as neither tame nor
+-- domesticated: a pet with an owner, isPet, or a training level other than
+-- wild (df.animal_training_level.WildUntamed 9) is still the fort's own
+function own_animal(u)
+    if is(dfhack.units.isPet, u) then return true end
+    local owner = nil
+    pcall(function() owner = u.relationship_ids.PetOwner end)
+    if type(owner) == 'number' and owner >= 0 then return true end
+    local tl = field(u, 'training_level')
+    local wild = 9
+    pcall(function() wild = df.animal_training_level.WildUntamed or 9 end)
+    return type(tl) == 'number' and tl >= 0 and tl ~= wild
+end
+
 -- the unit's judgement: 'citizen' (a living citizen of the fort), 'pet' (a
 -- living tame animal of the fort's civ, at peace), 'guest' (a resident,
 -- visitor, merchant or diplomat at peace), 'dead' (a dead citizen or pet of
@@ -218,7 +273,12 @@ function unit_kind(u)
     local civ = field(df.global.plotinfo, 'civ_id')
     local own_civ = civ ~= nil and field(u, 'civ_id') == civ
     local animal = is(U.isAnimal, u)
-    local tame = is(U.isTame, u) or is(U.isDomesticated, u)
+    local tame = is(U.isTame, u) or is(U.isDomesticated, u) or (own_civ and animal and own_animal(u))
+    -- (0.105.114) a werebeast first, dead or alive: E 25 Nov a slain werepanther
+    -- citizen read 'dead' (the fort's own dead), its conflict the fort's own
+    -- with died set, and the soldiers who killed it were separated at once
+    local were = were_of(u)
+    if were then return nil, were end
     if is(U.isDead, u) or (U.isAlive and is(U.isAlive, u) == false) then
         if own_civ and (not animal or tame) then return 'dead' end
         return nil, 'dead, not a citizen'
@@ -226,11 +286,6 @@ function unit_kind(u)
     if is(U.isInvader, u) then return nil, 'invader' end
     if is(U.isUndead, u) then return nil, 'undead' end
     if is(U.isCrazed, u) then return nil, 'crazed' end
-    local okw, changed = pcall(function()
-        local nr = u.enemy.normal_race
-        return nr ~= nil and nr >= 0 and nr ~= u.race
-    end)
-    if okw and changed then return nil, 'transformed' end
     if is(U.isForgottenBeast, u) then return nil, 'forgotten beast' end
     if is(U.isNightCreature, u) then return nil, 'night creature' end
     if is(U.isGreatDanger, u) then return nil, 'a great danger' end

@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-world is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.113'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.114'   -- bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 local inc, TICKS_PER_DAY = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.TICKS_PER_DAY
@@ -620,6 +620,17 @@ function get_others_on_map()
                 out.visitors = out.visitors + 1
             elseif dfhack.units.isAnimal(u) and dfhack.units.isFortControlled(u) then
                 out.tame_animals = out.tame_animals + 1
+            end
+        elseif dfhack.units.isActive(u) and not dfhack.units.isDead(u) and dfhack.units.isHidden(u) and not dfhack.units.isCitizen(u, true)
+                and not (u.flags1.caged or u.flags1.chained) and dfhack.units.isGreatDanger(u) then
+            -- (item16) a great beast on unrevealed tiles: B's flier Urnut left the
+            -- threats on alternate pulses (flying over unseen cavern), and the shaft
+            -- guard opened the wells "no danger near"; deep.unseen is in the full report only
+            out.hidden_great = out.hidden_great or {}
+            if #out.hidden_great < 10 then
+                local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
+                table.insert(out.hidden_great, {id = u.id, name = txt(dfhack.units.getReadableName(u)),
+                    pos = pos, layer = layer_at(pos, layers), flier = can_fly(u) or nil})
             end
         end
     end

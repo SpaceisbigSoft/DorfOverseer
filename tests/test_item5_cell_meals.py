@@ -243,9 +243,9 @@ def _():
     low = re.search(r"\nlocal function larder_low\(.*?\nend\n", SRC, re.S).group(0)
     assert "drink <= 0 or (food <= 0 and fort_meals(memo) > 0)" in low, low
     rs = re.search(r"\nlocal function restocking\(.*?\nend\n", SRC, re.S).group(0)
-    assert "not raging(u) and larder_low(c, memo)" in rs           # the doors shut when the killer rages
+    assert "not raging(u) and not urgent_now(c, u, t) and larder_low(c, memo)" in rs   # shut when the killer rages
     chk = re.search(r"\nlocal function larder_check\(.*?\nend\n", SRC, re.S).group(0)
-    assert "if raging(u) then return 'wait' end" in chk
+    assert "if raging(u) or urgent_now(c, u, t) then return 'wait' end" in chk
 
 
 @test("ai-killers: the switches written in the type they read (DF's 0/1)")

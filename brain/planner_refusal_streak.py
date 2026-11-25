@@ -98,7 +98,7 @@ CRITICAL_RULES = {
     "shelter", "shelter_flee", "shelter_pick", "shelter_refresh", "shelter_squads", "shelter_supply",
     "squad_attack", "squad_recall", "archer_post", "caravan_guard", "near_gates", "near_gates_refresh",
     "killer", "cursed", "reanimation", "flood", "fire_guard", "intruder_guard", "thief_watch",
-    "break_fights", "fight_watch", "calm_burrow", "insane", "thirst",
+    "break_fights", "fight_watch", "calm_burrow", "insane", "thirst", "moon_cell",
 }
 CRITICAL_PREFIXES = ("thirst", "fight", "killer", "shelter", "gate", "alarm", "alert")
 # (item7) safety steps that may wait, but never long: at most r112_short_cap_days

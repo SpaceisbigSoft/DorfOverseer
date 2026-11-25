@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.113'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -249,8 +249,15 @@ ACTIONS = {
             if not n then return reject('killer_cell: units is a list of unit ids') end
             table.insert(ids, n)
         end
+        -- (0.105.114) urgent: the ones locked at once, no larder wait (a werebeast, a killing within a day)
+        local urgent = {}
+        for _, id in ipairs(type(a.urgent) == 'table' and a.urgent or {}) do
+            local n = type(id) == 'number' and math.tointeger(id) or nil
+            if n then table.insert(urgent, n) end
+        end
         -- release_only: the thirsty and hungry let out, nobody locked in (run_action sets it while halted)
-        return reqscript('ai-killers').cell({units = ids, release_only = a.release_only == true}, a.dry_run == true)
+        return reqscript('ai-killers').cell({units = ids, urgent = urgent, release_only = a.release_only == true},
+                                            a.dry_run == true)
     end,
     -- (0.105.46, I2) the drink forbidden in a parched dwarf's walk group let
     -- go, the nearest first (lua/ai-thirst.lua; never with the gates shut

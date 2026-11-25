@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-actions is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.113'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.114'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, now_tick, name_of, save_state, unkey, is, citizens, fire_points, each_job, changed, okey, watcher_held, lure_open_ids = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.unkey, PART_LOCALS.is, PART_LOCALS.citizens, PART_LOCALS.fire_points, PART_LOCALS.each_job, PART_LOCALS.changed, PART_LOCALS.okey, PART_LOCALS.watcher_held, PART_LOCALS.lure_open_ids   -- (r8) the hub's and earlier parts' locals
 
@@ -348,15 +348,45 @@ function moon_cell(ids, release, dry_run, txt)
     local want = {}
     for _, id in ipairs(ids or {}) do want[tostring(id)] = true end
     local out = {ok = true, placed = {}, locked = {}, released = {}, waiting = {}, dry_run = dry_run or nil}
+    local function dead_or_gone(u) return (not u) or dfhack.units.isDead(u) end
+    -- (0.105.114) a release waits while any living werebeast is in its beast
+    -- form or a cursed one is fighting (E, 25 Nov: cells let out between
+    -- moons while bitten dwarves were still in fights)
+    if release and not dry_run then
+        for uid, c in pairs(d.cells) do
+            local u = df.unit.find(tonumber(uid))
+            if type(c) == 'table' and not dead_or_gone(u) then
+                local okc, fight = pcall(function() return u.opponent.unit_id ~= -1 end)
+                if changed(u) or (okc and fight) then
+                    return {ok = false, rejected = true, wait = true,
+                            error = name_of(u, txt) .. (changed(u) and ' is in its beast form' or ' is in a fight')
+                                .. ': no werebeast let out yet'}
+                end
+            end
+        end
+    end
     local function free(uid, c)
         local u = df.unit.find(tonumber(uid))
         -- (0.105.0 review) never a cell whose werebeast has changed now (raging):
-        -- a call listing only another werebeast, or a release, let it out
-        if u and changed(u) then
+        -- a call listing only another werebeast, or a release, let it out.
+        -- (0.105.114) a dead one's cell is freed: E kept 40 cells of the dead
+        if u and changed(u) and not dfhack.units.isDead(u) then
             out.kept = out.kept or {}
             table.insert(out.kept, name_of(u, txt))
             return
         end
+        -- (0.105.114) a living cursed dwarf's cell is kept unless this is a
+        -- release: a call that didn't name them (a list cut short) let them out
+        if not release and u and not dead_or_gone(u) and type(were_cursed) == 'function' then
+            local okw, cursed = pcall(were_cursed, u)
+            if okw and cursed then
+                out.kept = out.kept or {}
+                table.insert(out.kept, name_of(u, txt))
+                return
+            end
+        end
+        local pre = {}
+        for _, id in ipairs(type(c.pre) == 'table' and c.pre or {}) do pre[tostring(id)] = true end
         if not dry_run then
             -- (13c) a door left locked, or a burrow not cleared, is said (it was
             -- silently dropped with the cell's record)
@@ -366,6 +396,7 @@ function moon_cell(ids, release, dry_run, txt)
             end
             for _, bid in ipairs(c.doors or {}) do
                 local okd, err = pcall(function()
+                    if pre[tostring(bid)] then return end     -- (0.105.114) locked before the cell: left so
                     local b = df.building.find(bid)
                     if b and not select(2, U.lock_door(b, false, 'cell')) then error('the lock could not be written') end -- (0.105.47) ai-util: the walk map redone
                 end)
@@ -381,7 +412,11 @@ function moon_cell(ids, release, dry_run, txt)
             if not okb then failed('cell burrow ' .. tostring(uid), err) end
             d.cells[uid] = nil
         end
-        table.insert(out.released, u and name_of(u, txt) or uid)
+        if dead_or_gone(u) then
+            out.dead = (out.dead or 0) + 1
+        else
+            table.insert(out.released, name_of(u, txt))
+        end
     end
     for uid, c in pairs(d.cells) do
         if type(c) == 'table' and (release or not want[uid]) then free(uid, c) end
@@ -411,10 +446,13 @@ function moon_cell(ids, release, dry_run, txt)
             if u and not dfhack.units.isDead(u) then
                 local c = d.cells[uid]
                 -- (0.105.103) on record as locked, its doors not held in the game: lock again
+                -- (0.105.114) its doors kept on record (they were wiped, and a door
+                -- still locked was then left off it: E's cells read "doors 0",
+                -- never held, and were relocked every cycle)
                 if c and c.locked and not cell_doors_held(c) then
                     out.relock = out.relock or {}
                     table.insert(out.relock, name_of(u, txt))
-                    if not dry_run then c.locked, c.doors = nil, {} end
+                    if not dry_run then c.locked = nil end
                 end
                 local z = c and c.zone and zone_by_id(c.zone)
                 if not z then
@@ -452,17 +490,26 @@ function moon_cell(ids, release, dry_run, txt)
                         table.insert(out.waiting, name_of(u, txt))       -- (0.105.0 review) someone else inside
                     elseif in_zone(z, u.pos.x, u.pos.y, u.pos.z) then
                         local insane = insane_held()
+                        c.doors = type(c.doors) == 'table' and c.doors or {}
+                        local mine = {}
+                        for _, id in ipairs(c.doors) do mine[tostring(id)] = true end
                         for id, b in pairs(zone_doors(z)) do
                             local okf, f = pcall(function() return b.door_flags.forbidden end)
                             if okf and not f then
                                 if not dry_run then
                                     U.lock_door(b, true, 'cell') -- (0.105.47) ai-util: the walk map redone
-                                    table.insert(c.doors, id)
+                                    if not mine[tostring(id)] then table.insert(c.doors, id) end
                                 end
-                            elseif okf and insane[id] and not dry_run then
+                            elseif okf and not dry_run and not mine[tostring(id)] then
                                 -- (0.105.40b fix) locked by ai-insane already: the cell's now
-                                -- (ai-insane drops it without opening it)
+                                -- (ai-insane drops it without opening it). (0.105.114) any door
+                                -- locked already goes on the record too (held is checked by
+                                -- it), but one not ai-insane's is left locked at the release
                                 table.insert(c.doors, id)
+                                if not insane[id] then
+                                    c.pre = type(c.pre) == 'table' and c.pre or {}
+                                    table.insert(c.pre, id)
+                                end
                             end
                         end
                         if not dry_run then c.locked = true end
@@ -475,7 +522,7 @@ function moon_cell(ids, release, dry_run, txt)
         end
     end
     if not dry_run then save_state(d) end
-    if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) + #(out.relock or {}) == 0 and not out.error then   -- (0.105.96, verifier) a squad left counts
+    if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) + #(out.relock or {}) + (out.dead or 0) == 0 and not out.error then   -- (0.105.96, verifier) a squad left counts
         return {ok = false, rejected = true, nothing_to_do = true, error = 'every cell is as it should be'}
     end
     return out

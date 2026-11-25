@@ -566,19 +566,125 @@ local function owner_civ(item)
     return found
 end
 
+-- (0.105.114 item17) Why dfhack.items.remove never took one of them (B 19
+-- tries, C 17, 0 removed; B probe 25 Nov 08:03): each good in the depot is
+-- flags.in_building with a BUILDING_HOLDER ref to the depot (and its entry in
+-- the depot's contained_items), neither on_ground nor in the block's items,
+-- and DFHack's detachItem refuses any item with a BUILDING_HOLDER ref (or one
+-- neither on the ground nor in an inventory). So a good is first taken out of
+-- the depot (its contained_items entry and its holder ref gone, in_building
+-- off), set on its tile as DF holds a floor item, then removed; DFHack's
+-- other refusals (specific refs, world data, a cage, trigger, zone or
+-- projectile ref, another building holding it) are checked before anything
+-- is touched, so a good that could not go stays as it was.
+local REFUSED_REFS = {'PROJECTILE', 'BUILDING_CAGED', 'BUILDING_TRIGGER', 'BUILDING_TRIGGERTARGET',
+                      'BUILDING_CIVZONE_ASSIGNED'}
+
+local function ref_type(name)
+    local ok, v = pcall(function() return df.general_ref_type[name] end)
+    return ok and v or nil
+end
+
+-- why DFHack would refuse it even out of the depot: nil when it can go
+local function held_why(item, dep_id)
+    local okw, wd = pcall(function() return item.world_data_id end)
+    if okw and wd ~= nil and wd ~= -1 then return 'world_data' end
+    local oks, n = pcall(function() return #item.specific_refs end)
+    if oks and n and n > 0 then return 'specific_ref' end
+    local holder = ref_type('BUILDING_HOLDER')
+    local refused = {}
+    for _, name in ipairs(REFUSED_REFS) do
+        local t = ref_type(name)
+        if t then refused[t] = name end
+    end
+    local why
+    pcall(function()
+        for _, r in ipairs(item.general_refs) do
+            local t = r:getType()
+            if refused[t] then why = why or ('ref ' .. refused[t]) end
+            if holder and t == holder and r.building_id ~= dep_id then why = why or 'other_building' end
+        end
+    end)
+    return why
+end
+
+-- a DF vector or (tests) a Lua list, at the index ipairs gave
+local function vec_erase(v, i)
+    if type(v) == 'table' then table.remove(v, i) else v:erase(i) end
+end
+
+local function vec_insert_sorted(v, id)
+    local at, tbl = nil, type(v) == 'table'
+    for i, x in ipairs(v) do
+        if x == id then return end
+        if x > id then at = i break end
+    end
+    if tbl then table.insert(v, at or (#v + 1), id)
+    elseif at then v:insert(at, id) else v:insert('#', id) end
+end
+
+-- out of the depot onto its tile, so dfhack.items.remove may take it: true,
+-- or nil and why (nothing changed then)
+local function out_of_depot(item, dep)
+    local holder = ref_type('BUILDING_HOLDER')
+    local drop = {}
+    for i, r in ipairs(item.general_refs) do
+        if holder and r:getType() == holder then table.insert(drop, 1, {i, r}) end
+    end
+    local entry
+    for i, ci in ipairs(dep.contained_items) do
+        if ci.item == item then entry = i end
+    end
+    if not item.flags.in_building and #drop == 0 and not entry then return true end
+    local loose = not item.flags.on_ground and not item.flags.in_inventory
+    local x, y, z, blk = dfhack.items.getPosition(item)
+    if loose then
+        if not x or x < 0 then return nil, 'no position' end
+        local okb, b = pcall(dfhack.maps.getTileBlock, x, y, z)
+        if not okb or not b then return nil, 'no map block at its tile' end
+        blk = b
+    end
+    if entry then
+        local ci = dep.contained_items[entry]
+        vec_erase(dep.contained_items, entry)
+        pcall(function() ci:delete() end)
+    end
+    for _, d in ipairs(drop) do                   -- the last first: the indices stay right
+        vec_erase(item.general_refs, d[1])
+        pcall(function() d[2]:delete() end)
+    end
+    item.flags.in_building = false
+    if loose then
+        pcall(function() item.pos.x, item.pos.y, item.pos.z = x, y, z end)
+        vec_insert_sorted(blk.items, item.id)
+        pcall(function() blk.occupancy[x % 16][y % 16].item = true end)
+        item.flags.on_ground = true
+    end
+    return true
+end
+
+-- whether the game has it no more (DF deletes a removed item at its next pass)
+local function gone_now(item, id)
+    local okf, still = pcall(function() return df.item.find(id) end)
+    if okf and still == nil then return true end
+    return item.flags.removed == true or item.flags.garbage_collect == true
+end
+
 -- whether this good and all it holds may go: true, or false and why
-local function goods_free(item, entity, depth)
+local function goods_free(item, entity, depth, dep_id)
     if not merchant_item(item) then return false, 'not_theirs' end
     local o = owner_civ(item)
     if o ~= nil and o ~= entity then return false, 'other_owner' end
     local okj, busy = pcall(function() return item.flags.in_job end)
     if okj and busy then return false, 'busy' end
     if is_artifact(item) then return false, 'artifact' end
+    local held = held_why(item, dep_id)
+    if held then return false, held end
     local okc, inside = pcall(dfhack.items.getContainedItems, item)
     if okc and type(inside) == 'table' and #inside > 0 then
         if depth >= 3 then return false, 'nested' end
         for _, c in ipairs(inside) do
-            local ok, why = goods_free(c, entity, depth + 1)
+            local ok, why = goods_free(c, entity, depth + 1, dep_id)
             if not ok then return false, why end
         end
     end
@@ -642,7 +748,7 @@ function clear_caravan_goods(entity, limit, dry_run, txt)
     for _, ci in ipairs(dep.contained_items) do
         if ci.use_mode == df.building_item_role_type.TEMP and ci.item and merchant_item(ci.item) then
             theirs = theirs + 1
-            local ok, w = goods_free(ci.item, entity, 0)
+            local ok, w = goods_free(ci.item, entity, 0, dep.id)
             if not ok then
                 why[w] = (why[w] or 0) + 1
             else
@@ -670,13 +776,26 @@ function clear_caravan_goods(entity, limit, dry_run, txt)
     if dry_run then
         return {ok = true, dry_run = true, goods = #take, items = n, left = theirs - #take, kept = kept, civ = civ}
     end
-    local gone, inner, failed = 0, 0, 0
+    local gone, inner, failed, first = 0, 0, 0, nil
     for _, list in ipairs(take) do
         local whole = true
         for i, it in ipairs(list) do
-            local ok, r = pcall(dfhack.items.remove, it)
-            if not ok or r == false then
+            local id, why = it.id, nil
+            local okd, d, dwhy = pcall(out_of_depot, it, dep)
+            if not okd then why = 'out of the depot: ' .. tostring(d):sub(1, 100)
+            elseif not d then why = dwhy
+            else
+                local ok, r = pcall(dfhack.items.remove, it)
+                if not ok then why = 'dfhack.items.remove: ' .. tostring(r):sub(1, 100)
+                elseif r == false then why = 'dfhack.items.remove refused it'
+                elseif not gone_now(it, id) then why = 'still in the game after its removal' end
+                if why and not it.flags.in_building then
+                    pcall(function() it.flags.forbid = true end)   -- out on the floor: no hauler takes it
+                end
+            end
+            if why then
                 failed = failed + 1
+                first = first or ('item %d: %s'):format(id, why)
                 whole = false
                 break                      -- a bin whose contents could not all go stays
             elseif i < #list then
@@ -686,10 +805,11 @@ function clear_caravan_goods(entity, limit, dry_run, txt)
         if whole then gone = gone + 1 end
     end
     if gone == 0 and inner == 0 then
-        return {ok = false, failed = failed, civ = civ, error = 'DFHack removed none of their goods'}
+        return {ok = false, failed = failed, first_failure = first, civ = civ,
+                error = 'DFHack removed none of their goods (' .. tostring(first) .. ')'}
     end
     return {ok = true, removed = gone, contents = inner, failed = failed > 0 and failed or nil,
-            left = theirs - gone, kept = kept, civ = civ}
+            first_failure = first, left = theirs - gone, kept = kept, civ = civ}
 end
 
 -- --- the trade screen: automatic trading -------------------------------------------
@@ -1050,7 +1170,7 @@ PART_LOCALS = {U = U, report_units = report_units, depot = depot, caravans = car
 PARTS = {'screen', 'depot'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-trade'] = '0.105.113'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-trade'] = '0.105.114'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

@@ -201,7 +201,8 @@ def _():
 
 SETUP = r"""local env = ...
 env.df.building_item_role_type = {TEMP = 0, PERM = 1}
-env.df.general_ref_type = {ENTITY_ITEMOWNER = 7}
+env.df.general_ref_type = {ENTITY_ITEMOWNER = 7, BUILDING_HOLDER = 9, BUILDING_CAGED = 11,
+                           CONTAINED_IN_ITEM = 12}
 env.df.caravan_state.T_trade_state = {Approaching = 1, AtDepot = 2, Leaving = 3,
                                      [1] = 'Approaching', [2] = 'AtDepot', [3] = 'Leaving'}
 env.df.global.plotinfo.caravans = {{entity = 308, trade_state = 3, time_remaining = 0, flags = {tribute = false}}}
@@ -212,20 +213,41 @@ local function unit(x) return {id = 1, civ_id = 308, x = x, y = 2, z = 1, flags1
 env.df.global.world.units = {active = {unit(287)}}
 env.dfhack.units = {isDead = function() return false end, getPosition = function(u) return u.x, u.y, u.z end}
 REMOVED = {}
-env.dfhack.items.remove = function(it) table.insert(REMOVED, it.id); return true end
+REFUSE = {}
+-- as DFHack's Items::remove (detachItem): refused with a BUILDING_HOLDER ref
+-- or neither on the ground nor in an inventory (B, 25 Nov: every depot good)
+env.dfhack.items.remove = function(it)
+    if REFUSE[it.id] then return false end
+    for _, r in ipairs(it.general_refs) do if r:getType() == 9 then return false end end
+    if not (it.flags.on_ground or it.flags.in_inventory) then return false end
+    it.flags.on_ground, it.flags.removed, it.flags.garbage_collect = false, true, true
+    table.insert(REMOVED, it.id); return true
+end
+BLOCK = {items = {}, occupancy = {}}
+env.dfhack.maps.getTileBlock = function() return BLOCK end
 local inside = {}
 env.dfhack.items.getContainedItems = function(c) return inside[c.id] or {} end
+local dep = env.df.global.world.buildings.other.TRADE_DEPOT[1]
+dep.id = 1328
+dep.x1, dep.x2, dep.y1, dep.y2, dep.z = 4, 6, 4, 6, 1
+local function ref(t, f) local r = f or {}; r.getType = function() return t end; return r end
 local function item(id, trader, extra)
-    local it = {id = id, flags = {trader = trader}, general_refs = {}}
+    local it = {id = id, flags = {trader = trader, in_building = true, on_ground = false, foreign = true},
+                general_refs = {ref(7, {entity_id = 308}), ref(9, {building_id = 1328})}, specific_refs = {},
+                world_data_id = -1, pos = {x = 1, y = 1, z = 1}}
     for k, v in pairs(extra or {}) do it.flags[k] = v end
     return it
 end
-local dep = env.df.global.world.buildings.other.TRADE_DEPOT[1]
-dep.x1, dep.x2, dep.y1, dep.y2, dep.z = 4, 6, 4, 6, 1
+local function content(id, trader)
+    local it = item(id, trader, {in_building = false, in_inventory = true})
+    it.general_refs = {ref(7, {entity_id = 308}), ref(12)}           -- CONTAINED_IN_ITEM, no holder
+    return it
+end
+ITEM = item
 local bin = item(50, true)
-inside[50] = {item(51, true), item(52, true)}
+inside[50] = {content(51, true), content(52, true)}
 local mixed = item(60, true)
-inside[60] = {item(61, true), item(62, false)}            -- one of the fort's inside: the bin stays
+inside[60] = {content(61, true), content(62, false)}            -- one of the fort's inside: the bin stays
 dep.contained_items = {
     {use_mode = 0, item = item(1, true)}, {use_mode = 0, item = item(2, true)},
     {use_mode = 0, item = bin}, {use_mode = 0, item = mixed},
@@ -259,7 +281,64 @@ def _():
     assert r.ok and r.removed == 3 and r.contents == 2 and r.left == 2, dict(r)
     assert removed(lua) == [1, 2, 50, 51, 52], removed(lua)
     assert r.kept.not_theirs == 1 and r.kept.busy == 1, dict(r.kept)
-    assert r.civ == "The Moral Wire"
+    assert r.civ == "The Moral Wire" and r.failed is None and r.first_failure is None
+    left = lua.eval("(function(d) local o = {} for _, ci in ipairs(d.contained_items) do "
+                    "table.insert(o, ci.item.id) end return table.concat(o, ',') end)")(
+        env.df["global"].world.buildings.other.TRADE_DEPOT[1])
+    assert left == "60,3,4,5", left                     # the removed goods out of the depot's list
+    chk = lua.execute("""local found
+        for _, b in ipairs(BLOCK.items) do if b == 1 then found = true end end
+        return found""")
+    assert chk, "the good was not set on its tile before its removal"
+
+
+@test("lua (item17): DFHack's refusal of a depot good is no longer the end: out of the depot first, "
+      "its holder ref gone, its owner and trader flag kept")
+def _():
+    need_lua()
+    lua, env = lua_env()
+    it = lua.execute("""local env = ...
+        return env.df.global.world.buildings.other.TRADE_DEPOT[1].contained_items[1].item""", env)
+    r = env.clear_caravan_goods(308, 1, False, None)
+    assert r.ok and r.removed == 1 and removed(lua) == [1], (dict(r), removed(lua))
+    assert it.flags.removed and not it.flags.in_building and it.flags.trader, dict(it.flags)
+    types = lua.eval("(function(it) local o = {} for _, r in ipairs(it.general_refs) do "
+                     "table.insert(o, r:getType()) end return table.concat(o, ',') end)")(it)
+    assert types == "7", types                          # the BUILDING_HOLDER ref gone, ENTITY_ITEMOWNER kept
+
+
+@test("lua (item17): a good DFHack would refuse anyway (specific ref, cage, world data) is kept untouched")
+def _():
+    need_lua()
+    lua, env = lua_env()
+    lua.execute("""local env = ...
+        local ci = env.df.global.world.buildings.other.TRADE_DEPOT[1].contained_items
+        ci[1].item.specific_refs = {{type = 1}}
+        table.insert(ci[2].item.general_refs, {getType = function() return 11 end})""", env)
+    r = env.clear_caravan_goods(308, 200, True, None)
+    assert r.ok and r.goods == 1 and r.kept.specific_ref == 1 and r.kept["ref BUILDING_CAGED"] == 1, dict(r.kept)
+    r = env.clear_caravan_goods(308, 200, False, None)
+    assert removed(lua) == [50, 51, 52], removed(lua)
+    flags = lua.execute("""local env = ...
+        local ci = env.df.global.world.buildings.other.TRADE_DEPOT[1].contained_items
+        return ci[1].item.flags.in_building and ci[2].item.flags.in_building""", env)
+    assert flags
+
+
+@test("lua (item17): a refusal is counted with the first one's reason; the good left on the floor is forbidden")
+def _():
+    need_lua()
+    lua, env = lua_env()
+    lua.execute("REFUSE[2] = true")
+    it2 = lua.execute("""local env = ...
+        return env.df.global.world.buildings.other.TRADE_DEPOT[1].contained_items[2].item""", env)
+    r = env.clear_caravan_goods(308, 200, False, None)
+    assert r.ok and r.removed == 2 and r.failed == 1 and "item 2" in str(r.first_failure), dict(r)
+    assert it2.flags.forbid and it2.flags.trader and not it2.flags.removed
+    lua, env = lua_env()
+    lua.execute("for _, i in ipairs({1, 2, 50, 51, 52}) do REFUSE[i] = true end")
+    r = env.clear_caravan_goods(308, 200, False, None)
+    assert not r.ok and r.failed == 3 and "refused" in str(r.error) and "item 1" in str(r.error), dict(r)
 
 
 @test("lua: refused while trading, its time not run out, a merchant at the depot, another caravan coming, the screen open")

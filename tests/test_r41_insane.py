@@ -786,7 +786,9 @@ def _():
     got = py(E.claimed_doors())
     assert got.get(31) is True and got.get(32) is True, got
     tsrc = split_src("ai-threats.lua")   # (r8) ai-threats is a hub and parts: their texts together
-    assert "elseif okf and insane[id] and not dry_run then" in tsrc and "table.insert(c.doors, id)" in tsrc
+    # (0.105.114) any door locked already goes on the cell's record; one not ai-insane's stays locked at the release
+    assert "elseif okf and not dry_run and not mine[tostring(id)] then" in tsrc and "table.insert(c.doors, id)" in tsrc
+    assert "if not insane[id] then" in tsrc and "table.insert(c.pre, id)" in tsrc
 
 
 @test("fix 3: the report frees a lock held too long or with nobody near (the guard may not run); while halted "

@@ -17,6 +17,7 @@ from planner_guards import guard_fail, guard_lines, guard_ok
 from planner_core import limit_exempt
 from planner_tantrums import fight_journal, note_tantrum_book
 from planner_society import note_heists
+from planner_shaft_guard import remember_shaft_beasts   # (item16) the shaft guard's great beasts remembered
 from planner_moods import mood_journal
 from planner_missions import mission_journal
 from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words
@@ -306,6 +307,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         cycle_step(memory, state, "note_intrusions", lambda: note_intrusions(state, memory, events))   # (0.105.30) DF's invasion records
         cycle_step(memory, state, "note_thief_targets", lambda: note_thief_targets(state, memory, events))   # (0.105.47) a thief's artifact
         cycle_step(memory, state, "note_deaths", lambda: crisis.note_deaths(state, memory, events))   # (0.104.137) deaths for crisis mode
+        cycle_step(memory, state, "shaft_beasts", lambda: remember_shaft_beasts(state, memory, events))   # (item16) the shaft guard's great beasts remembered
         cycle_step(memory, state, "note_events", lambda: note_events(state, memory, bank if backend else None, events))
         for line in learned_now or []:
             say(f"Learned: {line}")

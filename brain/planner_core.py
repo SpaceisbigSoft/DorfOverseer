@@ -191,6 +191,7 @@ class Memory:
     crisis: dict = field(default_factory=dict)          # (0.104.137) the fort in crisis: since, why
     deaths_seen: list = field(default_factory=list)     # (0.104.137) citizens' deaths (ticks), 12 weeks
     dead_told: list = field(default_factory=list)       # (r5 p2) [unit id, tick] of citizens told dead: a later death of one is a ghost laid to rest
+    shaft_beasts: dict = field(default_factory=dict)    # (item16) {beasts {id: {name, layer, seen, ...}}, held {project id: tick}}: the shaft guard's great beasts remembered (planner_shaft_guard)
     crisis_journal: list = field(default_factory=list)  # (r5 p2) crisis mode entered and left, waiting for the journal
     convict_watch: dict = field(default_factory=dict)   # (0.104.138) cases convicted, sentences then, held until
     fight_deaths: list = field(default_factory=list)    # (0.104.139) citizens killed by citizens (ticks), 4 weeks

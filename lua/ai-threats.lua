@@ -927,6 +927,17 @@ function were_cursed(u)
     return ok and yes or false
 end
 
+-- (0.105.114) a unit in a fight now (DF's opponent set)
+local function in_combat(u)
+    local ok, opp = pcall(function() return u.opponent.unit_id end)
+    return ok and type(opp) == 'number' and opp ~= -1 or false
+end
+
+-- (0.105.114) E, 25 Nov: 30+ werebeasts were cursed at once and the list
+-- stopped at 10, so the brain's moon_cell named only those and the call let
+-- the others' cells go (a cell not named is freed)
+WERE_LIST_MAX = 60
+
 -- werebeast citizens, their cells, and the moon
 local function were_report(d, t, txt)
     local out = {list = {}, cells = {}}
@@ -941,7 +952,7 @@ local function were_report(d, t, txt)
             if own and (now_changed or cursed
                         or (is(dfhack.units.isNightCreature, u) and not is(dfhack.units.isBloodsucker, u))) then
                 local row = {id = u.id, name = name_of(u, txt), changed = now_changed or nil,
-                             by_syndrome = cursed or nil}
+                             by_syndrome = cursed or nil, fighting = in_combat(u) or nil}
                 local c = d.cells[tostring(u.id)]
                 if type(c) == 'table' then
                     row.cell, row.locked = true, c.locked or nil
@@ -951,7 +962,8 @@ local function were_report(d, t, txt)
                         if okh and not h then row.locked, row.unlocked = nil, true end
                     end
                 end
-                if #out.list < 10 then table.insert(out.list, row) end
+                if #out.list < WERE_LIST_MAX then table.insert(out.list, row) end
+                out.count = (out.count or 0) + 1
                 any_changed = any_changed or now_changed
             elseif not own and not changed(u) and were_cursed(u) then
                 -- (0.105.94) an outsider carrying the curse, in its own form
@@ -978,7 +990,15 @@ local function were_report(d, t, txt)
     end
     out.changes = ch
     for uid, c in pairs(d.cells) do
-        if type(c) == 'table' then
+        -- (0.105.114) a dead (or gone) werebeast's cell is said as such: E,
+        -- 25 Nov, 40 cells of the dead counted as werebeasts to let out, the
+        -- release refused "every cell is as it should be" and the refusals
+        -- held moon_cell for 300 days
+        local du = df.unit.find(tonumber(uid) or -1)
+        local dead = (not du) or is(dfhack.units.isDead, du)
+        if type(c) == 'table' and dead then
+            out.dead_cells = (out.dead_cells or 0) + 1
+        elseif type(c) == 'table' then
             local held = true
             if c.locked and type(cell_doors_held) == 'function' then
                 local okh, h = pcall(cell_doors_held, c)
@@ -1061,7 +1081,7 @@ PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = report_u
 PARTS = {'survey', 'actions'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-threats'] = '0.105.113'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-threats'] = '0.105.114'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')
