@@ -1,6 +1,6 @@
 # DF AI Overseer: Handoff
 
-24 Nov 2026 (23:15) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
+24 Nov 2026 (23:35) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
 
 ## Standing instructions
 
@@ -66,6 +66,14 @@ Before (0.105.101-0.105.104, 24 Nov, "B's dump and the law"; delivered 14:02, `2
 
 The road to completion: each phase a few rounds, each checked against the live keeper log; what can lose the fort first, the agent last. Open gaps per phase: the Gap Checklist file. **The full text of every phase below (dates, the history of each decision, what each round built): the archive, "Moved out 22 Nov 2026 (12:00)"; read it before changing a phase.** Order (agreed 21 Nov 11:20, the audit): survival before features; then make built things run; then the agent.
 
+- [ ] **The 24 Nov audit (23:35; local file `DF AI Overseer Audit 2026-11-24.md`, also `docs/audit-2026-11-24.md`).** Survival bars unmet in every fort this run (failed moods A 6, B 17, C 3, D 25, E 9, F 5; thirst deaths A 2, B 21, C 6, D 18, E 8, F 5; unhappy B 50%, D 11%); 12 h to 23:20: B 22 deaths (9 strangled), E 10 (8 strangled). Three causes: citizens strangling in tantrums, failed moods, patients'/the insane's thirst. **Next round 0.105.112, nine groups at once** (the audit's section 4):
+  - [ ] **A1** fight watcher: the fort's pets and visitors no longer keep citizens out of the separation (E: 13 kept for a tame peahen/dog, `kept_why: "not a citizen"`); a strangling grapple separated at once (lua/ai-fights.lua)
+  - [ ] **A2** investigate then fix: E's killers not celled (Muterazor locked 20:29, released 20:35 "no longer needed", killed 21:31; Dentconstruct killed 22:16; no `killer` decision after 20:35)
+  - [ ] **A3** chronic tantrum dwarves who attacked a citizen held until not miserable; chronic_convict's refusal backed off
+  - [ ] **B1** investigate D's 25 failed moods · **B2** `mood` and `mood_hospital` read a mood's want the same way (Sigun: plant vs yarn) · **B3** the hospital's thread/cloth quota capped so free thread always stays
+  - [ ] **C1** B's 3 patients dead of thirst under 0.105.109: why (`thirst_patient`, `get_up`), then the fix
+  - [ ] **D1** F's `disposal_empty` crash · **D2** repeating refusals backed off (B unload_depot 228, burial_others 107, staff 91; E chronic_convict 41, mood 48; A squad_fill 86) · **D3** B's coffin order (no job in 2,349 days), Inod's body and slab
+  - [ ] then 0.105.113: B's social scatter, meal quality, Weight1/Weight2 and steel/iron trade, C's bolts and quivers, the Welfare and Room size sliders (win no line)
 - [ ] **The audit plan (21 Nov; local file `DF AI Overseer Audit 2026-11-21.md`).** Rounds, each one version, all built, to see in game:
   - [x] R1 0.105.56 stop the dying (gate cut-offs, thirst remedies, winter water, the shelter, the alarm and squads, moods, artifact heroes, drink in a crisis, the keeper) · R2 0.105.57 make built things run (the river, slots, crossbows, trade, seeds, refused rules, a messenger post) · R3 0.105.59 hallway floors that keep going · R4 0.105.60 before any `--ai` (token cost, the PC-wide cap) · R5 0.105.61 health and measures
   - [x] R10 0.105.66 petitions by DF's own standing orders (seen live: bound and set), the messenger's post (seen live: open from embark), initial contact for every fort then contact and raids by the AI · R11 0.105.67 the interim messenger and far better office holders (seen live: a swap at A 04:12) · 0.105.68 the World screen by DF's key `D_WORLD` (seen live) · 0.105.69 the site's hovered click, a missed click retried the next day
@@ -192,6 +200,7 @@ In the local log folder (`C:\Users\skulr\Documents\Claude Project Creation Logs\
 | File | What it holds | Read it when | Update it when |
 | --- | --- | --- | --- |
 | `DF AI Overseer Handoff Archive.md` | the full version-by-version notes with every live run, test and probe (the old "Where it stands"); old plans and reviews; every chat's old start notes; what moved and why | you need how something was found or decided, the details of a version, or what a live run showed | each version: the old start notes move in (newest first), with the version's long notes |
+| `DF AI Overseer Audit 2026-11-24.md` | the 24 Nov audit: the survival bars, tonight's findings (pets in the fight watcher, E's killers free, moods' cloth), the plan against the truth, the nine-group plan | planning 0.105.112-113 | a group's finding changes the picture |
 | `DF AI Overseer Gap Checklist.md` | open gaps by phase (the Oct 23 holes, the addendum of game systems left out), the in-game check lists, known issues | planning a phase or step, picking what to build next, before phase 15's final tests | a gap is closed or found, an in-game check is seen, a new known issue |
 | `DF AI Overseer Design Notes.md` | the brain design (who decides, weights, quirks, memory and learning), the milestone roadmap, the world-data and building designs, the phase 14 agent design, the water engineering roadmap | changing how the brain decides, remembers or builds; starting phase 13 or 14 | a design changes or a new one is agreed |
 
@@ -201,13 +210,12 @@ Inside the project folder: `DF-AI\docs\` (code-level design notes: building, mil
 
 Notes for the next chat only (they move to the archive once done).
 
-**24 Nov 23:15 (0.105.111 delivered 23:09). Next, in order:**
-0. **Restart the keepers (S then R)** for 0.105.111's Python.
-1. **0.105.111 in B:** `mood_reserve` no longer orders `process_plants` at 3 of 3; B's shafts into Cavern2 `keep_shut` / `layer_guard` (Cavern1's open unless Bonephantom can reach), the water fallback holds, nobody dehydrated; `caravan_goods` fires once caravan 312 leaves (B: soon), the depot's trader goods gone, the Moral Wire merchant then walks off; `memorial_spare` > 0 and `slabs` quiet when only spares lie.
-2. **0.105.110 still to see:** 2 more re-diagnosis trials (all fail = drop the idea; soldiers?), BeWithFriends/MakeMerry in the burrow, GatherPlants not remade while paused, Inod's slab engraved and placed, the first trade `traded:true` (caravan 312 is at B's depot now), C's/F's quivers fetched.
-3. **Carried:** a thirsty patient under 0.105.109 (`thirst_patient`, `get_up`); `trade.at_depot_busy/stuck`; `not_ours_busy`.
-4. **Found, not built:** the hospital's thread quota (eats all processed thread); Inod's unburied body; Weight1/Weight2 trade answers; no steel/iron bought; `social_shortfall` and B's 15 locations; meal quality; C's iron bolts and quivers.
-5. Older: the next cloth mood (`hospital_release`); E's next full moon (`others`); A's cursed visitor; `squad_fill` `kept_out`; E's `train`; F's fresh start.
+**24 Nov 23:35 (0.105.111 delivered 23:09; the 24 Nov audit written). Next, in order:**
+0. **Restart the keepers (S then R)** for 0.105.111's Python (at 23:20 they still ran 0.105.110's).
+1. **Build 0.105.112: the audit's nine groups at once** (plan above; full briefs' facts in `DF AI Overseer Audit 2026-11-24.md` section 2). Start the three investigators (A2 E's killers, B1 D's moods, C1 B's patients' thirst) and the six builders (A1, A3, B2, B3, D1, D2, D3) together; A3 may wait on A2's answer. Builders' files apart: A1 lua/ai-fights.lua; A2/A3 the killer and tantrum rules (one builder if they touch the same file); B2 planner_moods/planner_mood_help; B3 the hospital supplies (Lua + its rule); D1 lua/ai-disposal.lua; D2 planner_refusal_streak; D3 coffins/burial. `ai-builder-rooms.lua` (59,890) and `ai-bridge-report-supplies.lua` (59,899) are at the 60 KB limit: split before adding.
+2. **0.105.111 in B, once the keepers run it:** no `process_plants` at 3 of 3; Cavern2 shafts `keep_shut`/`layer_guard`; `caravan_goods` once caravan 312 leaves (the Moral Wire's goods gone, its merchant walks off); `memorial_spare` > 0.
+3. **0.105.110 still to see:** 2 more re-diagnosis trials (all fail = drop it); BeWithFriends/MakeMerry in the burrow; GatherPlants not remade while paused; Inod's slab; `traded:true`; C's/F's quivers.
+4. **Carried:** `trade.at_depot_busy/stuck`; `not_ours_busy`; the next cloth mood (`hospital_release`); E's next full moon (`others`); A's cursed visitor; `squad_fill` `kept_out`; E's `train`; F's fresh start.
 
 **How a chat works now:** builders in their own copies (`cp -r` the clone, `git checkout -b item<n>`), one per group, in parallel, plus a verifier; named tests in the cloud (no lupa there: Lua tests run on the PC); the full suite on the PC (`git archive` tar into `inbox-ext`, `run_tests` with `tar_md5`); then commit to `main` (squash, the version in the title, the trailers), push, and **`release`** (version, head; base remembered) pulls the PC clone, tests, installs, verifies and zips in one job. Python changes need the keepers restarted (S then R in the keepers' window); Lua reloads itself. Read the forts with `keepers`, `summary`, `fort_state` (UTF-8), `journal`, and `probe` with `source` (read-only Lua inline). After each handoff edit: save to the project, the log folder, the repo, then `handoff_sync` and `wrap_up`.
 
