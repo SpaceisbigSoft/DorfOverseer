@@ -193,7 +193,7 @@ def _():
     works = (ROOT / "lua" / "ai-bridge-actions-works.lua").read_text(encoding="utf-8")
     assert "killer_out = a.killer_out == true" in works
     for f in ("ai-killers.lua", "ai-nobles-swap.lua", "ai-bridge-actions-works.lua"):
-        assert len((ROOT / "lua" / f).read_bytes()) < 60 * 1024, f
+        assert len((ROOT / "lua" / f).read_bytes().replace(b"\r", b"")) < 60 * 1024, f   # CR left out (a Windows checkout)
 
 
 if __name__ == "__main__":

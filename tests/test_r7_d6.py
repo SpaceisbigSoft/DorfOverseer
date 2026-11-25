@@ -64,9 +64,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # (0.105.110) re-pinned after deliberate keys: bed_rest_* (6, B's untreated wounded), fruit_pause_*/fruit_resume_* (4,
 # B's gatherers), insane_kin_care, insane_kin_longterm, disposal_near_*, disposal_dump_near_cooldown_ticks,
 # dump_move_ramp_edge, disposal_move_dump_cooldown_ticks (B's dump by the ramps): 24 Nov
-DUMP_6298B4A = "e31494a12a57cfd76c8efe9eb88067005c7b009a1138a3bc0539c867ce911094"
-KEYS_6298B4A = "6bf13d0ec2fbe78b3667dec5ff66bc85837843c5114f589aa89f80603027af02"
-COUNT_6298B4A = 1320
+# (0.105.111) re-pinned after three deliberate keys: caravan_goods_days, caravan_goods_max,
+# caravan_goods_cooldown_ticks (B's and C's long-gone caravans' goods): 24 Nov
+DUMP_6298B4A = "c39da37e1fc521338be613d56f8b839021d5b47f12fcfccc1fd85fe328bbce87"
+KEYS_6298B4A = "9ae1f3c8aa98171c1355781e31c397cd833d3822d6ff2c0ff42eb0f61698d93b"
+COUNT_6298B4A = 1323
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 
