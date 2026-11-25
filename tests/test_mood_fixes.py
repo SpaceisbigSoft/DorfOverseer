@@ -131,8 +131,9 @@ def _():
     m = beast_friends()
     m.moods_seen = {"5": abs_tick(s)}
     props, notes = plan(s, m)
-    shop = [p.action for p in mood_props(props) if p.action.get("type") == "start_project"]
-    assert shop and shop[0]["shops"] == ["Butchers"] and shop[0]["mood"] is True, [p.action for p in mood_props(props)]
+    # (item27) placed as one building on free floor first (no level)
+    shop = [p.action for p in mood_props(props) if p.action.get("type") == "place_mood_shop"]
+    assert shop == [{"type": "place_mood_shop", "kind": "Butchers"}], [p.action for p in mood_props(props)]
     assert not any("no bone and no spare tame animal" in n or "can't supply" in n for n in notes), notes
 
 

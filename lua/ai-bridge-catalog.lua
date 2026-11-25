@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.116'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -405,6 +405,11 @@ ACTIONS = {
         local id = math.tointeger(tonumber(a.entrance_id))
         if not id then return reject('place_siege_shop needs entrance_id') end
         return reqscript('ai-siege').place_shop(id, a.dry_run == true)
+    end,
+    -- (0.105.116 item27) a strange mood's workshop as one building on free floor, no level
+    place_mood_shop = function(a)
+        if type(a.kind) ~= 'string' then return reject('place_mood_shop needs kind (Smelter, Jewelers...)') end
+        return reqscript('ai-siege').place_mood_shop(a.kind, a.dry_run == true)
     end,
     -- (0.105.41, item 11) syndromes and miasma (lua/ai-syndromes.lua): the syndrome-carrying
     -- spatter cleaned off the citizens and the fort's floors, the carriers kept in the
@@ -839,7 +844,7 @@ for _, name in ipairs({
     -- (0.105.41, item 4) provisions: each dry run names or finds (quickfort's dry run) and changes nothing
     'hunters', 'food_standing', 'fruit_zone', 'cavern_farm',
     -- (item5) each dry run surveys (and quickfort's dry run) and changes nothing
-    'fortify_post', 'archer_post', 'place_siege_engine', 'place_siege_shop',
+    'fortify_post', 'archer_post', 'place_siege_engine', 'place_siege_shop', 'place_mood_shop',
     'make_pit', 'pit_prisoners',   -- (item6) each dry run finds and checks, and changes nothing
     'magma_guard', 'magma_reclaim',   -- (0.105.41, item 7) each dry run counts and changes nothing
     'cavern_logging', 'keep_grove', 'bench_caps',   -- (item10) each dry run counts and changes nothing

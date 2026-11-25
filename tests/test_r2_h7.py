@@ -406,6 +406,32 @@ def _():
     assert r["rejected"] and "no free 5x5" in r["error"], r
 
 
+@test("2 (item27): place_mood_shop: a mood's smelter on the fort-wide free spot (no level), its quickfort key; "
+      "an unknown kind or one placed and unbuilt: refused")
+def _():
+    need_lua()
+    lua, S = siege_rig()
+    e, inside, T = ascii_fort(lua, A_LEVEL)
+    placed = []
+    e.id = 1
+    mods = {"ai-gates": lua.table_from({"GATES": lua.table_from({"entrances": lua.table_from([e]), "inside": inside})}),
+            "ai-builder": lua.table_from({"qf_try": lambda *a: (placed.append(a) or True)})}
+    S.reqscript = lambda n: mods.get(n)
+    S.tile = T
+    r = py(S.place_mood_shop("Smelter", True))
+    assert r["ok"] is True and r["kind"] == "Smelter" and "by_gate" not in r and placed, r
+    cells = placed[-1][1]
+    assert cells[1].text == "es", cells[1].text
+    r = py(S.place_mood_shop("Throne", True))
+    assert r["rejected"] and "no such mood workshop" in r["error"], r
+    lua.execute("""local S = ...
+        S.df.global.world.buildings.other.FURNACE_ANY = {{type = 'Smelter',
+            getBuildStage = function() return 0 end, getMaxBuildStage = function() return 1 end}}
+        S.df.furnace_type = setmetatable({}, {__index = function(_, k) return k end})""", S)
+    r = py(S.place_mood_shop("Smelter", True))
+    assert r["rejected"] and "waits to be built" in r["error"], r
+
+
 # --- 3. the stuck sweep's give-up -------------------------------------------------------
 
 @test("3: C's dining level (0 of 16 pieces, tables and chairs) and the temples: the sweep's retire leaves "

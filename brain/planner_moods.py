@@ -103,9 +103,19 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         # cycle's one workshops level (ONE_A_CYCLE)
         coming = _shop_coming(s, need)
         if need and not _has_shop(b, need):
-            if coming:
-                notes.append(f"{name} is in a {mood.lower()} mood and needs a {need}; a workshops level "
-                             f"with a {need} is already being built")
+            placed = shop_placed(s, memory, need)
+            if coming or placed:
+                notes.append(f"{name} is in a {mood.lower()} mood and needs a {need}; "
+                             + (f"one is placed and waits to be built (its job first)" if placed and not coming
+                                else f"a workshops level with a {need} is already being built"))
+            elif need in BUILDABLE_SHOPS and split_placeable(s, memory, "mood", [need])[0]:
+                # (0.105.116 item27) one building on free floor, its job first: no level to dig,
+                # no project slot (B, 25 Nov: Såkzul's forge level refused 6 times, no level placeable)
+                proposals.append(Proposal(
+                    "mood", {"type": "place_mood_shop", "kind": need},
+                    f"{name} is in a {mood.lower()} mood and needs a {need} workshop, which the fort "
+                    "doesn't have: one is placed on free floor in the fort, its building done first; "
+                    "without one they go insane", 0))
             elif need in BUILDABLE_SHOPS:
                 proposals.append(Proposal(
                     "mood", {"type": "start_project", "kind": "workshops", "shops": [need], "urgent": True, "mood": True},
@@ -307,7 +317,7 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         kinds = list(want["fibres"]) or \
             sorted(("plant", "yarn", "silk"), key=lambda k: -int(thread.get(k) or 0))
         if not _has_shop(b, "Loom"):
-            if _mood_shop(s, ("Loom",), acts, mood, "cloth woven"):
+            if _mood_shop(s, ("Loom",), acts, mood, "cloth woven", memory=memory):
                 return acts, None
             return acts, "no loom to weave it at"
         for k in kinds:
@@ -381,14 +391,14 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
                 return acts, None
         why = "no hide to tan" + ("" if _has_shop(b, "Tanners") else " and no tanner's")
         # (R1 g6) the butcher's and the tanner's a mood's leather needs, built past the cap
-        shop = _mood_shop(s, ("Butchers", "Tanners"), acts, mood, "an animal butchered and its hide tanned")
+        shop = _mood_shop(s, ("Butchers", "Tanners"), acts, mood, "an animal butchered and its hide tanned", memory=memory)
         if _mood_slaughter(s, memory, cfg, acts, "its hide tanned for leather", mood=mood) or shop:
             return acts, None
         return acts, why + "; " + _slaughter_why(s, memory, cfg, mood) + dead_words()
     if kind in ("bone", "shell"):
         if kind == "shell":
             return acts, "no shell (shells come from turtles and shellfish: fishing, or a caravan's)"
-        shop = _mood_shop(s, ("Butchers",), acts, mood, "an animal butchered for its bones")
+        shop = _mood_shop(s, ("Butchers",), acts, mood, "an animal butchered for its bones", memory=memory)
         if _mood_slaughter(s, memory, cfg, acts, "its bones for the mood", mood=mood) or shop:
             return acts, None
         return acts, "no bone the dwarf can use; " + _slaughter_why(s, memory, cfg, mood)
@@ -398,7 +408,7 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         if not (furnaces.get("Smelter") or magma):
             ores = any(isinstance(v, dict) and int(v.get("n") or 0) > 0
                        for v in _d(_d(s.get("industry")).get("ore_stock_by")).values())
-            if ores and _mood_shop(s, ("Smelter",), acts, mood, "ore smelted into a bar"):
+            if ores and _mood_shop(s, ("Smelter",), acts, mood, "ore smelted into a bar", memory=memory):
                 return acts, None
             return acts, "no smelter"
         if not magma and int(su.get("fuel") or 0) <= 0:
@@ -441,7 +451,7 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         furnaces = _d(b.get("furnaces"))
         if not (_has_shop(b, "GlassFurnace") or furnaces.get("MagmaGlassFurnace")):
             sand = bool(_l(su.get("sand_layers")) or int(su.get("sand_bags") or 0) > 0)
-            if sand and _mood_shop(s, ("GlassFurnace",), acts, mood, "raw green glass made"):
+            if sand and _mood_shop(s, ("GlassFurnace",), acts, mood, "raw green glass made", memory=memory):
                 return acts, None
             return acts, "no glass furnace"
         if int(su.get("sand_bags") or 0) > 0 and (int(su.get("fuel") or 0) > 0 or furnaces.get("MagmaGlassFurnace")):
@@ -469,7 +479,7 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
         if not _has_shop(b, "Jewelers") and rough > 0:
             # (R1 g6) R-AD: rough gems by the hundred and no jeweller's for 1-2
             # game years (the project cap), while three moods died for one cut gem
-            if _mood_shop(s, ("Jewelers",), acts, mood, f"one of the fort's {rough} rough gems cut"):
+            if _mood_shop(s, ("Jewelers",), acts, mood, f"one of the fort's {rough} rough gems cut", memory=memory):
                 return acts, None
             return acts, f"no jeweller's workshop to cut the fort's {rough} rough gems" + dead_words()
         return acts, "no rough gem to cut" + dead_words()
@@ -516,7 +526,7 @@ MOOD_COAL = {"COAL_BITUMINOUS": "coke_bituminous", "LIGNITE": "coke_lignite"}   
 MOOD_SLAUGHTER_MIN_TAME = 1     # (R1 g6) for a mood: any spare animal (the bridge keeps pets, named ones, a last pair)
 
 
-def _mood_shop(s: dict, needs, acts: list, mood: dict | None, what: str) -> bool:
+def _mood_shop(s: dict, needs, acts: list, mood: dict | None, what: str, memory=None) -> bool:
     """(R1 g6) The workshops a waiting mood's material is made at (a
     jeweller's for a cut gem, a butcher's for bone...), one workshops level
     past the AI's project cap (`mood`: the bridge's builder takes no slot for
@@ -529,18 +539,56 @@ def _mood_shop(s: dict, needs, acts: list, mood: dict | None, what: str) -> bool
     missing = [n for n in needs if not _has_shop(b, n)]
     if not missing:
         return False
-    coming = [n for n in missing if _shop_coming(s, n)]
+    coming = [n for n in missing if _shop_coming(s, n) or shop_placed(s, memory, n)]
     want = [n for n in missing if n not in coming and n in BUILDABLE_SHOPS]
     if not want:
         return bool(coming)
-    if any(a.get("type") == "start_project" for a, _ in acts):
+    if any(a.get("type") in ("start_project", "place_mood_shop") for a, _ in acts):
         return True
-    a = {"type": "start_project", "kind": "workshops", "shops": want, "urgent": True, "mood": True}
+    # (0.105.116 item27) one building on free floor first, no level to dig (no project slot)
+    place, level = split_placeable(s, memory, "mood", want)
+    for k in place:
+        acts.append(({"type": "place_mood_shop", "kind": k},
+                     f"no {k}: one is placed for it on free floor in the fort ({what}), no level dug, "
+                     "its building done first, a life being at stake"))
+    if not level:
+        return True
+    a = {"type": "start_project", "kind": "workshops", "shops": level, "urgent": True, "mood": True}
     if mood.get("unit_id") is not None:
         a["mood_unit"] = mood.get("unit_id")
-    acts.append((a, f"no {', '.join(want)}: one is built for it ({what}), past the AI's project cap, "
+    acts.append((a, f"no {', '.join(level)}: one is built for it ({what}), past the AI's project cap, "
                     "a life being at stake"))
     return True
+
+
+# (0.105.116 item27) the mood workshops lua/ai-siege.lua place_mood_shop can place as one building
+PLACE_MOOD_SHOPS = {"Smelter", "MetalsmithsForge", "Jewelers", "Leatherworks", "Clothiers", "GlassFurnace",
+                    "Craftsdwarfs", "Carpenters", "Masons", "Bowyers", "Mechanics", "Butchers", "Tanners", "Loom"}
+SHOP_PLACED_DAYS = 20      # a placed shop counts as coming this long (its building job done first)
+
+
+def shop_placed(s: dict, memory, kind: str) -> bool:
+    """(item27) A place_mood_shop of this kind went through lately (memory.mood_help
+    shop_placed, planner_mood_help.note_mood_help): it is coming."""
+    t = _d(_d(getattr(memory, "mood_help", None)).get("shop_placed")).get(kind) if memory is not None else None
+    return isinstance(t, int) and 0 <= abs_tick(s) - t < SHOP_PLACED_DAYS * TICKS_PER_DAY
+
+
+def split_placeable(s: dict, memory, rule: str, shops) -> tuple[list, list]:
+    """(item27) The shops to place as one building each (place_mood_shop: no
+    level, no project slot) and those left for a workshops level: a kind the
+    bridge can't place, or whose placement was refused lately (no free 5x5 of
+    floor: the refusal's own back-off)."""
+    from planner_core_refusals import _refused_wait
+    place, level = [], []
+    for k in shops:
+        act = {"type": "place_mood_shop", "kind": k}
+        p = Proposal("mood", act, "", 0) if rule == "mood" else Proposal("mood_reserve", act, "", 0)
+        if k in PLACE_MOOD_SHOPS and (memory is None or _refused_wait(memory, p, abs_tick(s)) is None):
+            place.append(k)
+        else:
+            level.append(k)
+    return place, level
 
 
 def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict | None = None) -> bool:
@@ -569,6 +617,12 @@ def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict
     if not (tame >= least and _has_shop(_d(s.get("buildings")), "Butchers")):
         return False
     if banned and not mood:
+        return False
+    if not mood and spare_tame_kinds(s) == 0:
+        # (0.105.116 item27) the bridge's ordinary pick takes only a kind with three or more
+        # adults that are nobody's pet, war or hunting animal: none such, nothing proposed
+        # (A, B, D, E, 25 Nov: "no spare tame animal (three or more of a kind...)" 10-13 times
+        # each in 2.5 hours, the reserve asking again every few minutes)
         return False
     if any(a.get("type") == "slaughter_one" for a, _ in acts):
         return True
@@ -600,6 +654,26 @@ def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict
     else:
         acts.append(({"type": "slaughter_one"}, f"one spare tame animal of the {tame} to the butcher: {why}"))
     return True
+
+
+def spare_tame_kinds(s: dict) -> int | None:
+    """(0.105.116 item27) The tame kinds the bridge's ordinary slaughter pick
+    (lua/ai-bridge-actions-works.lua slaughter_pick: three or more of a kind,
+    adult, no pet, war or hunting animal, no breeder) may take from, at most,
+    by the herd report's kinds: the adults out of a cage (f + m) less the
+    protected (pets, trained, named, breeders) beyond the kind's young. None
+    from a bridge without the herd's kinds (the bridge then decides)."""
+    kinds = _d(s.get("herd")).get("kinds")
+    if not isinstance(kinds, list):
+        return None
+    n = 0
+    for k in kinds:
+        if not isinstance(k, dict):
+            continue
+        num = lambda f: int(k.get(f) or 0) if isinstance(k.get(f), (int, float)) else 0   # noqa: E731
+        if num("f") + num("m") - max(0, num("protected") - num("kids")) >= 3:
+            n += 1
+    return n
 
 
 def marked_waiting(s: dict) -> int:
@@ -666,6 +740,8 @@ def _slaughter_why(s: dict, memory, cfg: dict, mood: dict | None) -> str:
         return f"only {tame} tame animal(s), none to spare for the butcher"
     if not mood and memory is not None and has_rule(getattr(memory, "culture", None), "no_slaughter"):
         return "the fort never slaughters its animals"
+    if not mood and spare_tame_kinds(s) == 0:
+        return "no kind with three or more adults to spare (no pet, war or hunting animal)"
     return "no spare tame animal to butcher"
 
 
@@ -987,6 +1063,15 @@ def mood_trade_wants(s: dict) -> list[dict]:
     reach, as caravan wants (first on the list: a life hangs on it)."""
     out, seen = [], set()
     for m in _l(_d(s.get("moods")).get("list")):
+        if (isinstance(m, dict) and m.get("craft") and not m.get("workshop") and "ANVIL" not in seen
+                and MOOD_WORKSHOPS.get(str(m.get("skill"))) == "MetalsmithsForge"
+                and not _has_shop(_d(s.get("buildings")), "MetalsmithsForge")
+                and "anvils" in _d(s.get("supplies")) and int(_d(s.get("supplies")).get("anvils") or 0) <= 0):
+            # (0.105.116 item27) a metalsmith's mood with no forge and no anvil to build one on
+            # (a forge stands only on an anvil, and an anvil is made only at a forge): the
+            # caravan's. B, 25 Nov: Såkzul, a possessed weaponsmith, waited for a forge, 0 anvils
+            seen.add("ANVIL")
+            out.append({"key": "ANVIL", "count": 1})
         if not isinstance(m, dict) or not m.get("craft") or not m.get("workshop"):
             continue
         for x in _l(m.get("missing")):
@@ -1006,6 +1091,12 @@ def mood_trade_wants(s: dict) -> list[dict]:
                 key = "THREAD" + (":" + fibre[0].upper() if len(fibre) == 1 else "")
             if not key and mood_kind(x) == "bar" and x.get("material") and str(x["material"]).lower() != "rock":
                 key = "BAR:" + str(x["material"]).upper().replace(" ", "_")
+            elif not key and mood_kind(x) == "bar":
+                # (0.105.116 item27) a bar of no named metal: any metal bar (lua/ai-trade.lua
+                # want_matches BAR:METAL). A, 25 Nov: Minkot's fey mood waited 30 days on
+                # "1 bar (metal)" with 11 bars in the caravan at the depot; the deal asked
+                # for food first and no bar (no key), and Minkot went berserk
+                key = "BAR:METAL"
             if key and key not in seen:
                 seen.add(key)
                 out.append({"key": key, "count": max(1, min(10, int(x.get("quantity") or 1)))})
@@ -1459,7 +1550,7 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
                 proposals.append(Proposal("mood_reserve", a, f"{have} {MOOD_RESERVES[key][1]}, a reserve of {want} "
                                           f"{FOR}: {how}", 5, a.get("type") == "work_order"))
             return
-    if _mood_shops_step(s, cfg, proposals):
+    if _mood_shops_step(s, cfg, proposals, memory):
         return
     n, have, want = gap("blocks")
     if n and _has_shop(b, "Masons") and int(_d(s.get("stocks")).get("boulders") or 0) > 0:
@@ -1487,40 +1578,62 @@ def _reserve_slaughter_recent(s: dict, memory, cfg: dict) -> bool:
 # first day, was not dug in 40). Only these: the AI's other rules build the
 # common shops (the basic ladder, the industries) before moods begin.
 MOOD_SHOP_KINDS = {"Leatherworks": "Tanners", "Clothiers": "Loom", "GlassFurnace": "sand",
-                   "Jewelers": "rough"}      # (R1 g6) a cut gem is asked by any mood (R-AD: 3 deaths)
+                   "Jewelers": "rough",      # (R1 g6) a cut gem is asked by any mood (R-AD: 3 deaths)
+                   # (0.105.116 item27) a metal bar is asked by any mood and a metalsmith's
+                   # claims a forge: A, B and D, 25 Nov, a year in with 44-129 ore stones and no
+                   # smelter (the industry rule's level refused by the project cap or the
+                   # builder's placement), the smelter begun on the mood's first day: three
+                   # fey moods (Minkot, Deduk, Litast) went mad for one or two bars
+                   "Smelter": "ore", "MetalsmithsForge": "anvil"}
 MOOD_SHOPS_MIN_CITIZENS = 20        # DF's strange moods begin at 20 citizens
 
 
 def mood_shops_missing(s: dict) -> list:
     """The mood workshop kinds the fort has none of (and none coming) while it
-    works their material: a Tanner's, a Loom, sand on the map."""
+    works their material: a Tanner's, a Loom, sand on the map, rough gems, ore
+    stones (a smelter; a forge with an anvil in stock too)."""
     b = _d(s.get("buildings"))
     su = _d(s.get("supplies"))
     sand = bool(_l(su.get("sand_layers")) or int(su.get("sand_bags") or 0) > 0 or int(su.get("sand_zones") or 0) > 0)
     out = []
     rough = int(_d(s.get("stocks")).get("rough_gems") or 0) > 0
+    ore = any(isinstance(v, dict) and int(v.get("n") or 0) > 0
+              for v in _d(_d(s.get("industry")).get("ore_stock_by")).values())
+    anvil = ore and int(su.get("anvils") or 0) > 0       # a forge stands only on an anvil
     for kind, source in MOOD_SHOP_KINDS.items():
-        works = sand if source == "sand" else rough if source == "rough" else _has_shop(b, source)
+        works = {"sand": sand, "rough": rough, "ore": ore, "anvil": anvil}.get(source)
+        if works is None:
+            works = _has_shop(b, source)
         if works and kind in BUILDABLE_SHOPS and not _has_shop(b, kind) and not _shop_coming(s, kind):
             out.append(kind)
     return out
 
 
-def _mood_shops_step(s: dict, cfg: dict, proposals: list) -> bool:
+def _mood_shops_step(s: dict, cfg: dict, proposals: list, memory=None) -> bool:
     """(0.105.51) One workshops level with every mood workshop the fort lacks
-    (not urgent: the builder's ordinary turn)."""
+    (not urgent: the builder's ordinary turn).
+    (0.105.116 item27) each one first placed as one building on free floor
+    (place_mood_shop: no level, no project slot); the rest a level that takes
+    no slot of the AI's cap (`mood`: the builder's small-needs pool). A, 25
+    Nov: the industry rule's smelter level was refused 4 times by the cap."""
     if int(_d(s.get("dwarves")).get("total") or 0) < MOOD_SHOPS_MIN_CITIZENS or not player_rules(s)["mood_workshops"]:
         return False
     if any(isinstance(p, dict) and p.get("kind") == "workshops" and _workshops_busy([p])
            for p in _l(_d(s.get("projects")).get("open"))):
         return False                   # a workshops level under way first
-    missing = mood_shops_missing(s)
+    missing = [k for k in mood_shops_missing(s) if not shop_placed(s, memory, k)]
     if not missing:
         return False
-    proposals.append(Proposal("mood_reserve", {"type": "start_project", "kind": "workshops", "shops": missing},
-                              f"no {', '.join(missing)}: a strange mood of that craft claims only its own kind "
-                              "of workshop, and fails in about 40 days, too short to dig and build one; one of "
-                              "each kept standing", 5))
+    why = ("a strange mood of that craft claims only its own kind of workshop, and fails in about 40 days, "
+           "too short to dig and build one; one of each kept standing")
+    place, level = split_placeable(s, memory, "mood_reserve", missing)
+    for k in place:
+        proposals.append(Proposal("mood_reserve", {"type": "place_mood_shop", "kind": k},
+                                  f"no {k}: {why} (placed on free floor in the fort, no level dug)", 5))
+    if level:
+        proposals.append(Proposal("mood_reserve", {"type": "start_project", "kind": "workshops", "shops": level,
+                                                   "mood": True},
+                                  f"no {', '.join(level)}: {why}", 5))
     return True
 
 

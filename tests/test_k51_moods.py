@@ -94,8 +94,9 @@ def _():
     m = Memory()
     m.moods_seen["17714"] = planner_core.abs_tick(s) - 2 * 1200
     planner_moods._mood_rules(s, m, CFG, props, notes)
-    shops = [p.action.get("shops") for p in props if p.action.get("type") == "start_project"]
-    assert shops == [["Leatherworks"]], (shops, notes)
+    # (item27) placed as one building on free floor (no level) first
+    shops = [p.action.get("kind") for p in props if p.action.get("type") == "place_mood_shop"]
+    assert shops == ["Leatherworks"], ([p.action for p in props], notes)
 
 
 # ---- 4. the reserves -----------------------------------------------------------------
@@ -168,24 +169,34 @@ def _():
     b["workshops"].pop("Leatherworks", None)
     b["furnaces"].pop("MagmaGlassFurnace", None)
     props, notes = run_reserve(s)
+    # (item27) each placed as one building first (no level, no project slot)
+    pl = [p.action["kind"] for p in props if p.action.get("type") == "place_mood_shop"]
+    assert pl == ["Leatherworks"], ([p.action for p in props], notes)
+    # a placement refused (no free floor): the level, past the cap (`mood`), not urgent
+    m = Memory()
+    for k in ("Leatherworks", "GlassFurnace"):
+        m.refusals[planner_core.refusal_key(planner_core.Proposal("mood_reserve", {"type": "place_mood_shop", "kind": k},
+                                                                  "", 0))] = {
+            "n": 1, "at": planner_core.abs_tick(s), "until": planner_core.abs_tick(s) + 5 * 1200}
+    props, notes = run_reserve(s, m)
     sp = [p.action for p in props if p.action.get("type") == "start_project"]
-    assert sp and sp[0]["shops"] == ["Leatherworks"] and not sp[0].get("urgent"), (sp, notes)
+    assert sp and sp[0]["shops"] == ["Leatherworks"] and not sp[0].get("urgent") and sp[0]["mood"] is True, (sp, notes)
     s["supplies"]["sand_layers"] = ["sand"]
-    props, notes = run_reserve(s)
+    props, notes = run_reserve(s, m)
     sp = [p.action for p in props if p.action.get("type") == "start_project"]
     assert sp[0]["shops"] == ["Leatherworks", "GlassFurnace"], sp
     s["supplies"]["sand_layers"] = []
     b["workshops"].pop("Tanners")                              # no leather worked here: none
     props, notes = run_reserve(s)
-    assert not [p for p in props if p.action.get("type") == "start_project"]
+    assert not [p for p in props if p.action.get("type") in ("start_project", "place_mood_shop")]
     b["workshops"]["Tanners"] = 1
     s["dwarves"]["total"] = 15                                  # no moods under 20
     props, notes = run_reserve(s)
-    assert not [p for p in props if p.action.get("type") == "start_project"]
+    assert not [p for p in props if p.action.get("type") in ("start_project", "place_mood_shop")]
     s["dwarves"]["total"] = 60                                  # a workshops level under way: waits
     s["projects"] = {"open": [{"id": 3, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Kiln"]}}]}
     props, notes = run_reserve(s)
-    assert not [p for p in props if p.action.get("type") == "start_project"]
+    assert not [p for p in props if p.action.get("type") in ("start_project", "place_mood_shop")]
 
 
 @test("4: silk and yarn the fort can't make (no webs in reach, nothing to shear) go on the caravans' list")

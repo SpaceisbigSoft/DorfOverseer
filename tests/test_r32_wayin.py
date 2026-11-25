@@ -418,5 +418,62 @@ def _():
     assert not r.ok and "no fort to dig from" in r.error, dict(r)
 
 
+# ---- (0.105.116 item28) a dwarf sealed in a pocket dug inside the rock ----------------
+
+def pocket(liquid=False):
+    """B's winter cistern: a 3x3 chamber at z23 under the fort's floor (z24), its
+    own walk group (5), nothing open to it but the channel's hole (left out here)."""
+    for x in range(34, 37):
+        for y in range(21, 24):
+            W.set(x, y, 23, LUA.table_from({"shape": "FLOOR", "group": 5, "liquid": liquid}))
+    W.scan_inside()
+
+
+@test("way_in pocket (item28): sealed under the fort's floor: an up stair beside the pocket, a down stair over it")
+def _():
+    pocket()
+    r = way_in(35, 22, 23)
+    assert r.ok and r.pocket and r.project_id == 1, dict(r)
+    assert designated() == [(33, 21, 23, "u1"), (33, 21, 24, "j1")], designated()
+    p = projects()[0]
+    assert p.kind == "way_in" and p.pocket and p.emergency and p.z == 24 and len(p.shaft_stairs) == 2, dict(p)
+    W.dig_all()
+    o = B.projects_report().open[1]
+    assert o.dig.total == 2 and o.dig.dug == 2, dict(o.dig)
+
+
+@test("way_in pocket (item28): the gate's 6 tiles don't hold it, its own water beside it is no bar, an aquifer is")
+def _():
+    pocket(liquid=True)
+    e = W.GATES.entrances[1].equipment[1]
+    e.x1, e.y1, e.x2, e.y2 = 33, 21, 33, 21                   # a gate piece right by the pocket
+    W.set(32, 21, 23, LUA.table_from({"aquifer": True}))      # beside the first rock tried
+    r = way_in(35, 22, 23, dry=True)
+    assert r.ok and r.pocket and r.dry_run, dict(r)
+    assert (r.column.x, r.column.y) != (33, 21), dict(r.column)
+    assert designated() == [], designated()
+
+
+@test("way_in pocket (item28): a corridor of the fort one tile off: dug through on the level")
+def _():
+    pocket()
+    W.set(32, 22, 23, LUA.table_from({"shape": "FLOOR", "group": 1}))
+    r = way_in(35, 22, 23)
+    assert r.ok and r.pocket and r.tunnel == 1, dict(r)
+    assert designated() == [(33, 22, 23, "d1")], designated()
+
+
+@test("way_in pocket (item28): no safe rock round the pocket: refused with the pocket's why, nothing dug")
+def _():
+    pocket()
+    for x in range(32, 39):
+        for y in range(19, 26):
+            if not (34 <= x <= 36 and 21 <= y <= 23):
+                W.set(x, y, 23, LUA.table_from({"aquifer": True}))
+    r = way_in(35, 22, 23)
+    assert not r.ok and "no way out of the dug pocket" in r.error, dict(r)
+    assert designated() == []
+
+
 if __name__ == "__main__":
     finish()

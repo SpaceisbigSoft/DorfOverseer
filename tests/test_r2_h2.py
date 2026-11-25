@@ -320,18 +320,18 @@ if LuaRuntime is not None:
         rock_block()
         r = place()
         assert r.ok and r.filled, (r.ok, r.error)
-        assert 44 <= r.x <= 48 and 57 <= r.y <= 59 and r.chamber == 9, (r.x, r.y, r.chamber)
+        assert 44 <= r.x <= 48 and 57 <= r.y <= 59 and r.chamber == 8, (r.x, r.y, r.chamber)
         top = W.get(r.x, r.y, 71)
         assert top.designated and top.dig_text.startswith("h"), dict(top)
         dug = [(x, y) for x in range(r.x - 1, r.x + 2) for y in range(r.y - 1, r.y + 2)
                if (x, y) != (r.x, r.y) and W.get(x, y, 70).designated and W.get(x, y, 70).dig_text == "d"]
-        assert len(dug) == 8, dug
+        assert len(dug) == 7, dug      # (item28) one side of the ramp kept rock: the digger's way out
         # nothing outside the chamber designated on z70 (the ring stays rock)
         ring = [(x, y) for x in range(r.x - 2, r.x + 3) for y in range(r.y - 2, r.y + 3)
                 if max(abs(x - r.x), abs(y - r.y)) == 2 and W.get(x, y, 70).designated]
         assert not ring, ring
         rep = B.projects_report().open[1]
-        assert rep.dig.total == 9, rep.dig.total
+        assert rep.dig.total == 8, rep.dig.total
         # the project: a well, its pond zone on the well's tile, filled by bucket
         data = B.load_projects()
         p = data.list[len(data.list)]
@@ -362,10 +362,55 @@ if LuaRuntime is not None:
         W.reset()
         rock_block()
         r = place(True, half=2)
-        assert r.ok and (r.x, r.y) == (46, 58) and r.chamber == 25, (r.ok, r.error)
+        assert r.ok and (r.x, r.y) == (46, 58) and r.chamber == 24, (r.ok, r.error)
         W.set(44, 56, 69, LUA.table_from({"shape": "FLOOR"}))      # a hole under its corner
         r = place(True, half=2)
         assert not r.ok and "5x5" in r.error and "no solid rock under the chamber" in r.error, r.error
+
+    @test("bridge: winter cistern (item28): one side of the well's ramp stays rock under a floor, the digger's way out")
+    def _():
+        rock_block()
+        r = place()
+        assert r.ok and r.exit, (r.ok, r.error)
+        ex, ey = r.exit.x, r.exit.y
+        assert abs(ex - r.x) + abs(ey - r.y) == 1, (ex, ey, r.x, r.y)
+        e = W.get(ex, ey, 70)
+        assert e.shape == "WALL" and not e.designated, dict(e)
+        assert W.get(ex, ey, 71).shape == "FLOOR"
+        p = B.load_projects().list[1]
+        assert (p.chamber_exit.x, p.chamber_exit.y, p.chamber_exit.z) == (ex, ey, 70)
+        assert (p.chamber_box.x1, p.chamber_box.x2, p.chamber_box.z) == (r.x - 1, r.x + 1, 70)
+        assert not any(c.x == ex and c.y == ey for c in (p.chamber[i] for i in range(1, len(p.chamber) + 1)))
+
+    @test("bridge: winter cistern (item28): never within 6 tiles of a staircase")
+    def _():
+        rock_block()
+        for z in (70, 71, 72):
+            W.set(47, 52, z, LUA.table_from({"shape": "STAIR_UPDOWN"}))
+        r = place(True)
+        assert not r.ok and "a staircase within 6 tiles of the chamber" in r.error, r.error
+        W.reset()
+        rock_block()
+        for z in (70, 71, 72):
+            W.set(47, 49, z, LUA.table_from({"shape": "STAIR_UPDOWN"}))   # 8 tiles off the nearest chamber
+        r = place(True)
+        assert r.ok and r.y >= 57, (r.ok, r.error)
+
+    @test("bridge: winter cistern (item28): the well and its pond zone wait while a dwarf is in the chamber")
+    def _():
+        rock_block()
+        r = place()
+        assert r.ok
+        p = B.load_projects().list[1]
+        assert B.filled_well_occupant(p) is None
+        W.citizens = LUA.table_from({1: LUA.table_from({"x": r.x + 1, "y": r.y + 1, "z": 70})})
+        who = B.filled_well_occupant(p)
+        assert who and (who.x, who.y, who.z) == (r.x + 1, r.y + 1, 70), who
+        W.citizens = LUA.table_from({1: LUA.table_from({"x": r.x + 1, "y": r.y + 1, "z": 71})})   # on the floor above
+        assert B.filled_well_occupant(p) is None
+        src = (ROOT / "lua" / "ai-builder-projects-finish.lua").read_text(encoding="utf-8")
+        i = src.index("function furnish_project(")
+        assert src.index("filled_well_occupant", i) < src.index("for _, mode in ipairs({'build', 'place', 'zone'})", i)
 
     @test("bridge: the well's frost reading carries the depth of its water (hazards well_water)")
     def _():
@@ -378,7 +423,7 @@ if LuaRuntime is not None:
         water, outside, depth = fn(LUA.table_from({"x": 1, "y": 1, "z": 166}), tf)
         assert (water, outside, depth) == ("water", False, 4), (water, outside, depth)
 else:
-    @plain_test("the 3 Lua test(s) of the bridge block: not run")
+    @plain_test("the 6 Lua test(s) of the bridge block: not run")
     def _():
         skip("needs the lupa package (pip install lupa)")
 

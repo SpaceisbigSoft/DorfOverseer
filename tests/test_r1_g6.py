@@ -39,6 +39,7 @@ import planner_moods  # noqa: E402
 import planner_trade  # noqa: E402
 from planner import Memory, PLANNER_CONFIG as CFG, abs_tick, plan, TICKS_PER_DAY  # noqa: E402
 from planner_core import mood_kind  # noqa: E402
+import planner_core  # noqa: E402
 
 LUA_DIR = ROOT / "lua"
 BASE = json.loads((ROOT / "tests" / "fixtures" / "test_fort.json").read_text(encoding="utf-8"))
@@ -198,6 +199,13 @@ def _():
     m = Memory()
     m.moods_seen = {"5": abs_tick(s) - 3 * TICKS_PER_DAY}
     props, notes = plan(s, m)
+    # (item27) one building on free floor first; its placement refused: the level, past the cap
+    assert [p.action for p in mood_props(props) if p.action.get("type") == "place_mood_shop"] == [
+        {"type": "place_mood_shop", "kind": "Jewelers"}], [p.action for p in mood_props(props)]
+    m.refusals[planner_core.refusal_key(planner_core.Proposal("mood", {"type": "place_mood_shop", "kind": "Jewelers"},
+                                                              "", 0))] = {"n": 1, "at": abs_tick(s),
+                                                                          "until": abs_tick(s) + 5 * TICKS_PER_DAY}
+    props, notes = plan(s, m)
     shop = [p.action for p in mood_props(props) if p.action.get("type") == "start_project"]
     assert shop == [{"type": "start_project", "kind": "workshops", "shops": ["Jewelers"], "urgent": True,
                      "mood": True, "mood_unit": 5}], [p.action for p in mood_props(props)]
@@ -218,10 +226,10 @@ def _():
     m = Memory()
     m.moods_seen = {"6": abs_tick(s)}
     props, _ = plan(s, m)
-    shop = [p.action for p in mood_props(props) if p.action.get("type") == "start_project"]
-    assert shop and shop[0]["shops"] == ["Jewelers"] and shop[0]["mood"] is True, shop
+    shop = [p.action for p in mood_props(props) if p.action.get("type") == "place_mood_shop"]   # (item27)
+    assert shop == [{"type": "place_mood_shop", "kind": "Jewelers"}], [p.action for p in mood_props(props)]
     acts, _ = planner_moods._mood_make(fort(), dict(CUT_GEM), "cut_gem", None, CFG)   # no mood: no shop
-    assert not [a for a, _ in acts if a.get("type") == "start_project"]
+    assert not [a for a, _ in acts if a.get("type") in ("start_project", "place_mood_shop")]
 
 
 BUILDER_HARNESS = re.search(r'HARNESS = r"""(.*?)"""', (ROOT / "tests" / "test_builder.py").read_text(encoding="utf-8"),

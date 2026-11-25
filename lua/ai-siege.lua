@@ -783,30 +783,87 @@ function shop_spot_anywhere(e, inside, T, ctx)
     SHOP_LAST = 'none'; return nil
 end
 
-function place_shop(entrance_id, dry_run)
-    if shop_count() > 0 then return {ok = false, rejected = true, error = 'a siege workshop stands already'} end
-    local e, G = entrance_by_id(entrance_id)
-    if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
-    if not (G.GATES or {}).inside then return {ok = false, rejected = true, error = 'the fort is not mapped yet'} end
+-- (0.105.116 item27) one workshop of `key` (quickfort's) on a free 5x5 of
+-- roofed floor: by entrance `e` (SHOP_RADIUS) when `near_ok`, else the AI's
+-- workshop levels' empty rooms first, then anywhere inside. Returns the
+-- answer of place_shop / place_mood_shop.
+local function place_one(e, G, key, what, near_ok, dry_run)
     local T = reader()
     local okc, ctx = pcall(shop_context)       -- (Y1) the rooms with a purpose, the AI's workshop levels
     ctx = okc and type(ctx) == 'table' and ctx or {}
-    local sp, near = shop_spot(e, G.GATES.inside, T, ctx), true
+    local sp, near = near_ok and shop_spot(e, G.GATES.inside, T, ctx) or nil, near_ok
     if not sp then
         local ok, s2 = pcall(shop_spot_anywhere, e, G.GATES.inside, T, ctx)     -- (r2h7)
         sp, near = ok and s2 or nil, false
         if not sp and ok and SHOP_LAST == 'searching' then
             return {ok = false, rejected = true, searching = true,
-                    error = 'still looking for a free 5x5 room for a siege workshop (the search goes on next time)'}
+                    error = ('still looking for a free 5x5 room for a %s (the search goes on next time)'):format(what)}
         end
     end
     if not sp then
-        return {ok = false, rejected = true, error = 'no free 5x5 of roofed floor in the fort for a siege workshop '
+        return {ok = false, rejected = true, error = ('no free 5x5 of roofed floor in the fort for a %s '):format(what)
             .. '(none by the gate, no empty room or hall elsewhere)'}
     end
-    local ok, fail = qf('build', {{x = sp.x, y = sp.y, text = 'ws'}}, sp.z, dry_run)
-    if not ok then return {ok = false, error = ('quickfort would not place the siege workshop (%s run)'):format(tostring(fail))} end
+    local ok, fail = qf('build', {{x = sp.x, y = sp.y, text = key}}, sp.z, dry_run)
+    if not ok then return {ok = false, error = ('quickfort would not place the %s (%s run)'):format(what, tostring(fail))} end
     return {ok = true, dry_run = dry_run or nil, at = sp, entrance_id = e.id, by_gate = near or nil}
+end
+
+function place_shop(entrance_id, dry_run)
+    if shop_count() > 0 then return {ok = false, rejected = true, error = 'a siege workshop stands already'} end
+    local e, G = entrance_by_id(entrance_id)
+    if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
+    if not (G.GATES or {}).inside then return {ok = false, rejected = true, error = 'the fort is not mapped yet'} end
+    return place_one(e, G, 'ws', 'siege workshop', true, dry_run)
+end
+
+-- (0.105.116 item27) A strange mood's workshop (or one kept standing for the
+-- moods) as one building on free floor inside the fort, no level dug: A, 25
+-- Nov, the smelter's level for Minkot's bar was done a minute after he went
+-- berserk (and four of the industry rule's were refused by the project cap).
+-- Its construction job is done first (do_now).
+MOOD_SHOP_KEYS = {Smelter = 'es', MetalsmithsForge = 'wf', Jewelers = 'wj', Leatherworks = 'we',
+                  Clothiers = 'wk', GlassFurnace = 'eg', Craftsdwarfs = 'wr', Carpenters = 'wc',
+                  Masons = 'wm', Bowyers = 'wb', Mechanics = 'wt', Butchers = 'wu', Tanners = 'wn',
+                  Loom = 'wo'}
+local MOOD_SHOP_TYPES = {Smelter = 'Smelter', GlassFurnace = 'GlassFurnace'}   -- furnaces; the rest workshops
+
+local function shop_unfinished(kind)
+    local n = 0
+    pcall(function()
+        local furnace = MOOD_SHOP_TYPES[kind] ~= nil
+        local list = furnace and df.global.world.buildings.other.FURNACE_ANY or df.global.world.buildings.other.WORKSHOP_ANY
+        for _, b in ipairs(list) do
+            local t = furnace and df.furnace_type[b.type] or df.workshop_type[b.type]
+            if t == kind and b:getBuildStage() < b:getMaxBuildStage() then n = n + 1 end
+        end
+    end)
+    return n
+end
+
+function place_mood_shop(kind, dry_run)
+    local key = MOOD_SHOP_KEYS[kind or '']
+    if not key then return {ok = false, rejected = true, error = 'place_mood_shop: no such mood workshop ' .. tostring(kind)} end
+    if shop_unfinished(kind) > 0 then
+        return {ok = false, rejected = true, waiting = true, error = ('a %s is placed already and waits to be built'):format(kind)}
+    end
+    local G = gates()
+    local e
+    for _, c in ipairs((G.GATES or {}).entrances or {}) do
+        if c.kind ~= 'cavern' then e = c; break end
+        e = e or c
+    end
+    if not e then return {ok = false, rejected = true, error = 'no entrance mapped yet (scan first)'} end
+    if not (G.GATES or {}).inside then return {ok = false, rejected = true, error = 'the fort is not mapped yet'} end
+    local out = place_one(e, G, key, kind, false, dry_run)
+    if out.ok and not dry_run and out.at then
+        pcall(function()
+            local b = dfhack.buildings.findAtTile(xyz2pos(out.at.x, out.at.y, out.at.z))
+            for _, j in ipairs(b and b.jobs or {}) do j.flags.do_now = true; out.do_now = true end
+        end)
+    end
+    out.kind = kind
+    return out
 end
 
 ---------------------------------------------------------------------------

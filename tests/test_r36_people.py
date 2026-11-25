@@ -240,8 +240,9 @@ def _():
     s = _mood_fort([{"id": 501, "kind": "workshops", "phase": "furnish", "furnish": {"days": 20},
                      "summary": {"workshops": ["Jewelers"]}}])
     props, notes = plan(s, Memory())
-    m = [p for p in props if p.rule == "mood" and p.action.get("type") == "start_project"]
-    assert m and m[0].action["shops"] == ["Carpenters"] and m[0].action["urgent"] and m[0].priority == 0, \
+    # (0.105.116 item27) the mood's shop is placed on free floor first (place_mood_shop), the level only after a refusal
+    m = [p for p in props if p.rule == "mood" and p.action.get("type") == "place_mood_shop"]
+    assert m and m[0].action["kind"] == "Carpenters" and m[0].priority == 0, \
         ([(p.rule, p.action) for p in props], [n for n in notes if "mood" in n])
 
 
@@ -249,13 +250,13 @@ def _():
 def _():
     s = _mood_fort([{"id": 501, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Carpenters"]}}])
     props, notes = plan(s, Memory())
-    assert not [p for p in props if p.rule == "mood" and p.action.get("type") == "start_project"]
+    assert not [p for p in props if p.rule == "mood" and p.action.get("type") in ("start_project", "place_mood_shop")]
     assert any("Kib" in n and "with a Carpenters is already being built" in n for n in notes), notes
     # one stuck furnishing past STALE_PROJECT_DAYS doesn't count
     s = _mood_fort([{"id": 501, "kind": "workshops", "phase": "furnish", "furnish": {"days": 40},
                      "summary": {"workshops": ["Carpenters"]}}])
     props, notes = plan(s, Memory())
-    assert [p for p in props if p.rule == "mood" and p.action.get("type") == "start_project"]
+    assert [p for p in props if p.rule == "mood" and p.action.get("type") in ("start_project", "place_mood_shop")]
 
 
 if __name__ == "__main__":

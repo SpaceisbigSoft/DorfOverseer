@@ -1003,6 +1003,11 @@ function want_matches(key, c)
     if c.cat == key then return true end
     -- (0.105.113 item10) BOULDER: any stone, whatever its use
     if key == 'BOULDER' and tostring(c.cat):find('^BOULDER:') then return true end
+    -- (item27) BAR:METAL: a mood's bar of no named metal takes any metal bar
+    if key == 'BAR:METAL' then
+        local m = tostring(c.cat):match('^BAR:(.+)$')
+        return m ~= nil and m ~= 'COAL' and m ~= 'POTASH' and m ~= 'PEARLASH' and m ~= 'ASH'
+    end
     local base, fibre = tostring(key):match('^([A-Z_]+):([A-Z]+)$')
     return base ~= nil and (base == 'CLOTH' or base == 'THREAD') and c.cat == base
         and type(c.sub) == 'string' and c.sub:upper() == fibre
@@ -1229,7 +1234,7 @@ PART_LOCALS = {U = U, report_units = report_units, depot = depot, caravans = car
 PARTS = {'screen', 'depot'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-trade'] = '0.105.115'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-trade'] = '0.105.116'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

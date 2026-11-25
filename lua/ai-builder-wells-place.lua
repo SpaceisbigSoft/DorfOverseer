@@ -7,7 +7,7 @@
 -- (r8) Cut from ai-builder-wells.lua, which had grown to 133 KB; loaded right
 -- after it and its parts before this one, in the old file's order.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-place'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-place'] = '0.105.116'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 
@@ -182,6 +182,52 @@ FILLED_WELL_HALF_MAX = 2               -- at most 5x5 (the brain's h2_winter_cis
 FILLED_WELL_ZONE = 'AI winter cistern' -- the pond zone's name on the well's tile
 FILLED_WELL_SECONDS = 2                -- the search's time
 
+-- (0.105.116 item28) B (25 Nov): the cistern went in 2 tiles from the main
+-- stair, its 3x3 chamber dug wholly out from the channel's ramp. A ramp with
+-- no wall beside it is no way up: the miner was sealed in, the pond zone
+-- filled the chamber over him, and he died of thirst; the water beside the
+-- stair then kept the stair from ever going deeper. Now the chamber keeps one
+-- side of the ramp as rock (FILLED_WELL_EXIT: the digger climbs the ramp onto
+-- the floor over it), it is never within FILLED_WELL_STAIR_APART tiles of a
+-- staircase, and the well and its pond zone wait while anyone stands in it.
+FILLED_WELL_STAIR_APART = 6
+local STAIR_SHAPE = {STAIR_UP = true, STAIR_DOWN = true, STAIR_UPDOWN = true}
+
+-- A staircase on z - 2 .. z + 1 within FILLED_WELL_STAIR_APART tiles of the
+-- chamber's box (half side h round x, y): {x, y, z} or nil. memo: per search.
+function filled_well_stair_near(x, y, z, h, memo)
+    local r = h + FILLED_WELL_STAIR_APART
+    for zz = z - 2, z + 1 do
+        for yy = y - r, y + r do
+            for xx = x - r, x + r do
+                local k = (zz * 4096 + yy) * 4096 + xx
+                local v = memo and memo[k]
+                if v == nil then
+                    local t = tile_info(xx, yy, zz)
+                    v = t ~= nil and STAIR_SHAPE[t.shape] == true
+                    if memo then memo[k] = v end
+                end
+                if v then return {x = xx, y = yy, z = zz} end
+            end
+        end
+    end
+    return nil
+end
+
+-- The chamber's way out: a side of the well's tile on z - 1 left as rock, with
+-- a floor over it on z (the ramp under the channel leads up onto it). nil: none.
+function filled_well_exit(x, y, z)
+    for _, d in ipairs({{0, -1}, {1, 0}, {0, 1}, {-1, 0}}) do
+        local nx, ny = x + d[1], y + d[2]
+        local r = tile_info(nx, ny, z)
+        if r and r.shape == 'FLOOR' and not r.building and not r.designated and not r.liquid
+                and not building_at(nx, ny, z) then
+            return {x = nx, y = ny, z = z - 1}
+        end
+    end
+    return nil
+end
+
 local function filled_rock(t)
     return solid_rock(t) and not t.designated and not t.outside and t.subterranean ~= false
 end
@@ -227,7 +273,7 @@ function find_filled_well_spot(reserved, half)
     local area = fort_scan_area(WELL_SCAN_MARGIN)
     if not area then return nil, 'no citizens' end
     local best, best_score, cut
-    local why_not = {}
+    local why_not, stair_memo = {}, {}
     local deadline = os.clock() + FILLED_WELL_SECONDS
     for i = 1, math.min(FARM_SCAN_LEVELS, #area.levels) do
         local z = area.levels[i].z
@@ -251,10 +297,18 @@ function find_filled_well_spot(reserved, half)
                         if ok_zone and (not best_score or score < best_score)
                                 and well_floor_beside(x, y, z) then
                             local why = filled_well_why(x, y, z, h, reserved)
+                            local st = not why and filled_well_stair_near(x, y, z, h, stair_memo) or nil
+                            if st then
+                                why = ('a staircase within %d tiles of the chamber'):format(FILLED_WELL_STAIR_APART)
+                            end
+                            local exit = not why and filled_well_exit(x, y, z) or nil
+                            if not why and not exit then
+                                why = 'no floor over a side of the chamber for its digger\'s way out'
+                            end
                             if why then
                                 why_not[why] = true
                             else
-                                best, best_score = {x = x, y = y, z = z, half = h, zone = liked}, score
+                                best, best_score = {x = x, y = y, z = z, half = h, zone = liked, exit = exit}, score
                             end
                         end
                     end
@@ -271,15 +325,36 @@ function find_filled_well_spot(reserved, half)
         .. (#reasons > 0 and (' (' .. table.concat(reasons, '; ') .. ')') or ''), cut
 end
 
--- The chamber's tiles (z - 1) but the one under the well (the channel makes it a ramp).
+-- The chamber's tiles (z - 1) but the one under the well (the channel makes it
+-- a ramp) and its way out (spot.exit, left rock beside the ramp: item28).
 function filled_well_chamber(spot)
     local out = {}
+    local e = type(spot.exit) == 'table' and spot.exit or {}
     for dy = -spot.half, spot.half do
         for dx = -spot.half, spot.half do
-            if dx ~= 0 or dy ~= 0 then table.insert(out, {x = spot.x + dx, y = spot.y + dy, z = spot.z - 1}) end
+            local x, y = spot.x + dx, spot.y + dy
+            if (dx ~= 0 or dy ~= 0) and not (x == e.x and y == e.y) then table.insert(out, {x = x, y = y, z = spot.z - 1}) end
         end
     end
     return out
+end
+
+-- (item28) A citizen standing in a winter cistern's chamber (or on the well's
+-- tile): {x, y, z} or nil. The well and its pond zone wait for them to come out.
+function filled_well_occupant(p)
+    local b = type(p) == 'table' and type(p.chamber_box) == 'table' and p.chamber_box or nil
+    if not b and type(p) == 'table' and type(p.chamber) == 'table' then
+        local a = anchor_of(p)
+        b = {x1 = a.x - 2, y1 = a.y - 2, x2 = a.x + 2, y2 = a.y + 2, z = p.z - 1}
+    end
+    if not b then return nil end
+    for _, c in ipairs(citizen_positions()) do
+        if c.x >= b.x1 and c.x <= b.x2 and c.y >= b.y1 and c.y <= b.y2 and (c.z == b.z or c.z == b.z + 1)
+                and (c.z == b.z or (c.x == (b.x1 + b.x2) // 2 and c.y == (b.y1 + b.y2) // 2)) then
+            return {x = c.x, y = c.y, z = c.z}
+        end
+    end
+    return nil
 end
 
 -- (r2 h2) the pond zone on a winter cistern's well, kept filling (quickfort's
@@ -494,7 +569,8 @@ function place_well(params, now, dry_run)
                    gallery = #gallery > 0 and #gallery or nil, from = spot.from, from_gate = spot.from_gate,
                    held = held and 2 or nil, landing = landing and {x = landing.x, y = landing.y} or nil,   -- (0.105.24)
                    dug_up = up and true or nil,   -- (0.105.47)
-                   filled = spot.filled or nil, chamber = #chamber > 0 and #chamber + 1 or nil}   -- (r2 h2)
+                   filled = spot.filled or nil, chamber = #chamber > 0 and #chamber + 1 or nil,   -- (r2 h2)
+                   exit = spot.exit and {x = spot.exit.x, y = spot.exit.y} or nil}   -- (item28)
     if dry_run then
         where.ok, where.dry_run = true, true
         return where
@@ -535,6 +611,9 @@ function place_well(params, now, dry_run)
         summary = {well = 1, drop = spot.drop, cavern = spot.cavern, shore = spot.shore},
         furniture = {Well = 1},
         chamber = #chamber > 0 and chamber or nil,   -- (r2 h2) its tiles one level down
+        chamber_box = spot.filled and {x1 = spot.x - spot.half, y1 = spot.y - spot.half, x2 = spot.x + spot.half,
+                                       y2 = spot.y + spot.half, z = spot.z - 1} or nil,   -- (item28)
+        chamber_exit = spot.exit,                    -- (item28) the rock left beside the ramp
         -- (r2 h2) the winter cistern's pond zone on the well's tile: the dwarves fill it by bucket
         cells = {dig = dig, build = {{x = 0, y = 0, text = 'l'}}, place = {},
                  zone = spot.filled and {{x = 0, y = 0, text = ('p{name="%s"}'):format(FILLED_WELL_ZONE)}} or {},

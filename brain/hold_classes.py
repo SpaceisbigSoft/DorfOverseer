@@ -194,7 +194,7 @@ _SURVIVAL_ACTIONS = {
     # food, drink, farms, the herd
     "farm_plots", "farm_thresholds", "set_farm_crops", "kitchen_brewables", "kitchen_fat", "kitchen_drinks", "seed_reserve", "kitchen_skill",
     "train_cook", "gather_plants", "trim_gathering", "hunters", "food_standing", "fruit_zone", "food_pile",
-    "food_barrels", "keep_mousers", "pasture", "make_pasture", "nest_boxes", "slaughter_one", "herd_targets",
+    "food_barrels", "keep_mousers", "pasture", "make_pasture", "nest_boxes", "slaughter_one", "place_mood_shop", "herd_targets",
     "tool",
     # beds, rooms, the needs
     "repair_rooms", "give_room", "house_dwarves", "sync_offices", "pair_chairs", "accept_cups", "bootstrap_chair",

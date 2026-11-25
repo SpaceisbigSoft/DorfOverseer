@@ -2726,8 +2726,17 @@ def _():
     s["moods"] = {"list": [mood()]}
     p, _ = plan(s, Memory())
     m = by_rule(p, "mood")
+    # (0.105.116 item27) one building on free floor first, no level dug
+    assert m and m[0].action == {"type": "place_mood_shop", "kind": "Jewelers"}, m
+    assert m[0].priority <= 1
+    # its placement refused (no free floor): the level, urgent (R1 g6: it takes no project slot)
+    mem = Memory()
+    import planner_core
+    mem.refusals[planner_core.refusal_key(planner_core.Proposal("mood", m[0].action, "", 0))] = {
+        "n": 1, "at": abs_tick(s), "until": abs_tick(s) + 5 * 1200}
+    m = by_rule(plan(s, mem)[0], "mood")
     assert m and m[0].action == {"type": "start_project", "kind": "workshops", "shops": ["Jewelers"], "urgent": True,
-                                 "mood": True}, m          # (R1 g6) a mood's shop takes no project slot
+                                 "mood": True}, m
     assert m[0].priority <= 1
     # (0.105.36, X1) only a level building its kind holds it; another workshops level does not
     s["projects"]["open"].append({"id": 9, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Masons"]}})
@@ -2745,7 +2754,7 @@ def _():
     s["buildings"]["furnaces"].pop("MagmaGlassFurnace")
     p, notes = plan(s, Memory())
     m = by_rule(p, "mood")
-    assert m and m[0].action["type"] == "start_project" and "GlassFurnace" in m[0].action["shops"], (m, notes)
+    assert m and m[0].action == {"type": "place_mood_shop", "kind": "GlassFurnace"}, (m, notes)   # (item27)
     s["moods"] = {"list": [mood(skill="FORGE_WEAPON")]}
     s["buildings"]["workshops"].pop("MetalsmithsForge")                  # MagmaForge is still there
     p, notes = plan(s, Memory())

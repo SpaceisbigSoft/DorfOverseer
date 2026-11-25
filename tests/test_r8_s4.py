@@ -151,7 +151,7 @@ def _top_locals(src: str) -> set[str]:
 def _():
     texts = {n: text(n) for n in FAMILY}
     family = set().union(*(_top_locals(t) for t in texts.values()))
-    assert len(family) == 26, sorted(family)            # the one file's 26 file-scope locals
+    assert len(family) == 27, sorted(family)            # the one file's 26 file-scope locals; (0.105.116) STAIR_SHAPE, the cistern's stair distance (place part only)
     for n, t in texts.items():
         mine = _top_locals(t)
         code = [_strip(l) for l in t.split("\n")]
@@ -180,7 +180,7 @@ def _():
 
 # the globals lua/ai-builder-wells.lua defined in one file (0.105.63), read from it before the split
 OLD_GLOBALS = """
-CAVERN_NO_SPOT_DAYS CAVERN_SEARCH_SECONDS CAVERN_TOTAL_SECONDS CAVERN_WELL_MIN_DEPTH FILLED_WELL_HALF
+FILLED_WELL_STAIR_APART CAVERN_NO_SPOT_DAYS CAVERN_SEARCH_SECONDS CAVERN_TOTAL_SECONDS CAVERN_WELL_MIN_DEPTH FILLED_WELL_HALF
 FILLED_WELL_HALF_MAX FILLED_WELL_SECONDS FILLED_WELL_ZONE OPEN_SHAPE PART_VERSIONS SHAFT_CLEAR SHAFT_CLIMB
 SHAFT_CLOSE SHAFT_DRY_MARGIN SHAFT_FAR SHAFT_LEVELS SHAFT_LINK_FAILS_MAX SHAFT_MARGIN SHAFT_MIN_SHUT SHAFT_NEAR
 SHAFT_WATCH SHAFT_WATCH_TICKS STAIR_SHAPES WATCH_RELOAD WELL_DIG_UP WELL_FLOOR_SHAPES WELL_GALLERY_MAX
@@ -230,7 +230,8 @@ def _():
     # every global function of the one file, counted (45, and OPEN_SHAPE) and the ones other modules call by name
     # ((r9) 44: shaft_threat_near, kept for callers of the old name, had none and went)
     # ((0.105.98) 45: well_shaft_hatches, the hatches alone for the threats survey's openings)
-    assert len(funcs) == 45, len(funcs)
+    # ((0.105.116 item28) 48: filled_well_exit, filled_well_occupant, filled_well_stair_near: the cistern's way out)
+    assert len(funcs) == 48, len(funcs)
     for fn in ("water_below", "find_well_spot", "find_shore_well_spot", "find_cavern_well_spot",
                "find_gallery_well_spot", "designate", "shaft_gate_state", "well_shaft_step", "hostile_wild",
                "shaft_judge", "shaft_threats", "shaft_watch_start", "well_lids", "seal_well_stairs",

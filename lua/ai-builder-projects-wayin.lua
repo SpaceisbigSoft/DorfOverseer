@@ -7,7 +7,7 @@
 -- The top-level locals the ai-builder-projects files share come through
 -- PROJECTS_PART_LOCALS (the same functions).
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-wayin'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-wayin'] = '0.105.116'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 local founded_site = PROJECTS_PART_LOCALS.founded_site
@@ -337,6 +337,196 @@ local function pos_out(p)
     return p and {x = p.x, y = p.y, z = p.z, elevation = ez(p.z)} or nil
 end
 
+-- (0.105.116 item28) A dwarf sealed in a space dug inside the rock (B, 25
+-- Nov: a miner shut in the winter cistern's chamber he had just dug, one level
+-- under the fort's floor) is not stranded outside: there is no open ground of
+-- theirs under the sky, and the column search's nearer spots lay within
+-- WAY_IN_GATE_APART tiles of the gate (a rule for holes to the outside, which
+-- this is not). Their pocket (at most WAY_IN_POCKET_MAX tiles on their level,
+-- nothing under the sky) gets the shortest way out to the fort's inside: one
+-- rock tile beside it dug to a floor that meets the fort on that level; or an
+-- up stair in that rock and a down stair over it in the fort's floor (or a
+-- down stair and an up stair under it). The pocket's own water may lie beside
+-- it (the cistern's); never other water, magma, a cavern, an aquifer, the sky.
+WAY_IN_POCKET_MAX = 60
+
+-- The pocket round (sx, sy, sz): its tiles {x, y} and a set, or nil, why.
+function way_in_pocket_tiles(sx, sy, sz, target)
+    local seen, list, head = {[sy * 4096 + sx] = true}, {{x = sx, y = sy}}, 1
+    while head <= #list do
+        local c = list[head]
+        head = head + 1
+        local t = info(c.x, c.y, sz)
+        if t and (t.outside or t.feature) then return nil, 'not a dug pocket (open to the sky or a cavern)' end
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                local nx, ny = c.x + dx, c.y + dy
+                local k = ny * 4096 + nx
+                if not seen[k] and walk_group(nx, ny, sz) == target then
+                    seen[k] = true
+                    table.insert(list, {x = nx, y = ny})
+                    if #list > WAY_IN_POCKET_MAX then return nil, 'more than a small dug pocket' end
+                end
+            end
+        end
+    end
+    return list, seen
+end
+
+-- The plan for a pocket: {cells = {{x, y, z, key}}, from, to, z_fort, tunnel} or nil, why.
+function way_in_pocket_plan(sx, sy, sz, target, fort, reserved)
+    local list, set = way_in_pocket_tiles(sx, sy, sz, target)
+    if not list then return nil, set end
+    local function bad(t) return t == nil or t.aquifer or t.feature or t.outside or t.magma or t.warm end
+    -- the rock tile (x, y, z) may be opened: natural rock, ours to dig, and
+    -- nothing but the pocket's own (water) beside it, over or under it
+    local function rock_ok(x, y, z)
+        local t = info(x, y, z)
+        local okw = natural_wall(t)
+        if not okw or reserved(x, y, z) or dig_forbidden(x, y, z) then return false end
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                local n = info(x + dx, y + dy, z)
+                if (dx ~= 0 or dy ~= 0) and (bad(n) or (n.liquid and not (z == sz and set[(y + dy) * 4096 + x + dx]))) then
+                    return false
+                end
+            end
+        end
+        for _, dz in ipairs({1, -1}) do
+            local n = info(x, y, z + dz)
+            if bad(n) or n.liquid then return false end
+        end
+        return true
+    end
+    -- a fort floor a stair may be dug into: inside the fort, natural, nothing on it
+    local whys = {}
+    local function no(w) whys[w] = (whys[w] or 0) + 1 return false end
+    local function floor_ok(x, y, z)
+        local t = info(x, y, z)
+        if not t or t.shape ~= 'FLOOR' then return no('no floor over (or under) the rock') end
+        if t.outside or t.liquid or t.designated or t.building or building_at(x, y, z) then
+            return no('the floor over (or under) it is open, wet, taken or dug')
+        end
+        if not NATURAL[t.material] then return no('the floor over (or under) it is not natural') end
+        if walk_group(x, y, z) ~= fort.group then return no('the floor over (or under) it is not the fort\'s') end
+        if reserved(x, y, z) or dig_forbidden(x, y, z) then return no('another AI project or the dig guard') end
+        for dx = -1, 1 do
+            for dy = -1, 1 do
+                local n = info(x + dx, y + dy, z)
+                if bad(n) or (n and n.liquid) then return no('water, a cavern or the sky by the floor') end
+            end
+        end
+        return true
+    end
+    local sides = WAY_IN_SIDES
+    local flat, up, down
+    for _, c in ipairs(list) do
+        for _, d in ipairs(sides) do
+            local nx, ny = c.x + d[1], c.y + d[2]
+            if not set[ny * 4096 + nx] and rock_ok(nx, ny, sz) then
+                if not flat then
+                    for _, e in ipairs(sides) do
+                        local fx, fy = nx + e[1], ny + e[2]
+                        if walk_group(fx, fy, sz) == fort.group then
+                            local ft = info(fx, fy, sz)
+                            if ft and not ft.outside then
+                                flat = {cells = {{x = nx, y = ny, z = sz, key = 'd'}}, from = {x = c.x, y = c.y, z = sz},
+                                        to = {x = fx, y = fy, z = sz}, z_fort = sz, tunnel = {{x = nx, y = ny}}}
+                                break
+                            end
+                        end
+                    end
+                end
+                if not up and floor_ok(nx, ny, sz + 1) then
+                    up = {cells = {{x = nx, y = ny, z = sz, key = 'u'}, {x = nx, y = ny, z = sz + 1, key = 'j'}},
+                          from = {x = c.x, y = c.y, z = sz}, to = {x = nx, y = ny, z = sz + 1}, z_fort = sz + 1, tunnel = {}}
+                end
+                if not down and floor_ok(nx, ny, sz - 1) then
+                    down = {cells = {{x = nx, y = ny, z = sz, key = 'j'}, {x = nx, y = ny, z = sz - 1, key = 'u'}},
+                            from = {x = c.x, y = c.y, z = sz}, to = {x = nx, y = ny, z = sz - 1}, z_fort = sz - 1, tunnel = {}}
+                end
+            end
+        end
+    end
+    local plans = {}
+    if flat then table.insert(plans, flat) end
+    if up then table.insert(plans, up) end
+    if down then table.insert(plans, down) end
+    if #plans == 0 then
+        local ws = {}
+        for w, n in pairs(whys) do table.insert(ws, ('%s x%d'):format(w, n)) end
+        table.sort(ws)
+        return nil, ('no rock beside the pocket (%d tiles) that opens safely onto the fort on its level, over or '
+            .. 'under it%s'):format(#list, #ws > 0 and (' (' .. table.concat(ws, '; ') .. ')') or '')
+    end
+    return plans
+end
+
+-- The pocket's way out designated (a 'way_in' project, pocket = true), or nil
+-- when (sx, sy, sz) is no small dug pocket (the column search goes on).
+function way_in_pocket_dig(data, sx, sy, sz, target, fort, reserved, now, dry_run)
+    local plans, why = way_in_pocket_plan(sx, sy, sz, target, fort, reserved)
+    if not plans then
+        if why and why:find('^no rock beside') then return refuse(('no way out of the dug pocket at x%d y%d z%d: %s')
+            :format(sx, sy, ez(sz), why)) end
+        return nil
+    end
+    local pri, refused = WAY_IN_PRIORITY, nil
+    for _, best in ipairs(plans) do
+        local good = true
+        for _, c in ipairs(best.cells) do
+            local okd, st = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y, 'run', true)
+            if not okd or stat(st, 'dig_designated') ~= 1 then
+                refused = ('the game would not dig x%d y%d z%d (%s)'):format(c.x, c.y, ez(c.z), c.key)
+                    .. (okd and dig_guard_note(st) or '')
+                good = false
+                break
+            end
+        end
+        if good then
+            local c1 = best.cells[1]
+            local out = {ok = true, pocket = true, from = pos_out(best.from), to = pos_out(best.to), tiles = #best.cells,
+                         levels = #best.cells == 2 and 2 or 1, column = {x = c1.x, y = c1.y, elevation_top = ez(best.to.z),
+                         elevation_bottom = ez(c1.z)}, tunnel = #best.tunnel, dry_run = dry_run or nil}
+            if dry_run then return out end
+            for _, c in ipairs(best.cells) do
+                local st = quickfort_apply('dig', {{x = 0, y = 0, text = c.key .. pri}}, c.z, c.x, c.y)
+                if stat(st, 'dig_designated') ~= 1 then
+                    for _, u in ipairs(best.cells) do
+                        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = u.key .. pri}}, u.z, u.x, u.y, 'undo')
+                    end
+                    return {ok = false, error = ('could not designate x%d y%d z%d: the way out was undone'):format(c.x, c.y, ez(c.z))}
+                end
+            end
+            local stairs = {}
+            for _, c in ipairs(best.cells) do if c.key ~= 'd' then table.insert(stairs, c) end end
+            local p = {
+                id = data.next_id, kind = 'way_in', phase = 'dig', emergency = true, pocket = true,
+                params = {pri = pri}, z = best.z_fort, anchor = {x = c1.x, y = c1.y}, stair = {x = c1.x, y = c1.y},
+                area = {x1 = c1.x, y1 = c1.y, x2 = c1.x, y2 = c1.y, z = best.z_fort},
+                areas = {{x1 = c1.x, y1 = c1.y, x2 = c1.x, y2 = c1.y, z = c1.z}},
+                cells = {dig = {}}, shaft_stairs = #stairs > 0 and stairs or nil, gallery = best.tunnel,
+                from = best.from, to = best.to,
+                stranded = {x = sx, y = sy, z = sz, group = target},
+                summary = {way_in = true, emergency = true, pocket = true, tiles = #best.cells, levels = out.levels,
+                           tunnel = #best.tunnel},
+                started = now, designated = #best.cells,
+            }
+            data.next_id = data.next_id + 1
+            table.insert(data.list, p)
+            if not save_projects(data) then
+                for _, u in ipairs(best.cells) do
+                    pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = u.key .. pri}}, u.z, u.x, u.y, 'undo')
+                end
+                return {ok = false, error = 'could not save the way out with the fort, so it was undone'}
+            end
+            out.project_id = p.id
+            return out
+        end
+    end
+    return refuse(refused or 'no way out of the dug pocket')
+end
+
 function way_in_plan_and_dig(params, now, dry_run)
     local second = params.second == true
     local sx, sy, sz = math.tointeger(params.x), math.tointeger(params.y), math.tointeger(params.z)
@@ -412,6 +602,14 @@ function way_in_plan_and_dig(params, now, dry_run)
             if x >= a.x1 and x <= a.x2 and y >= a.y1 and y <= a.y2 then return true end
         end
         return false
+    end
+    -- (item28) sealed in a small space dug inside the rock: the way out to the fort
+    if not second and not params.second then
+        local here0 = info(sx, sy, sz)
+        if here0 and not here0.outside then
+            local pr = way_in_pocket_dig(data, sx, sy, sz, target, fort, reserved, now, dry_run)
+            if pr then return pr end
+        end
     end
     local function gate_dist(x, y)
         local d = math.huge

@@ -328,6 +328,13 @@ def note_mood_help(p, r: dict, state: dict, memory, now) -> None:
             cap = dict(_d(mh.get("cap_built")))
             cap[str(a["mood_unit"])] = now if isinstance(now, int) else 0
             mh["cap_built"] = cap
+    # (0.105.116 item27) a mood workshop placed as one building: coming (planner_moods.shop_placed)
+    if (getattr(p, "rule", "") in ("mood", "mood_reserve") and a.get("type") == "place_mood_shop"
+            and _d(r).get("ok") is True and not a.get("dry_run") and isinstance(a.get("kind"), str)):
+        sp = {k: v for k, v in _d(mh.get("shop_placed")).items()
+              if isinstance(v, int) and isinstance(now, int) and 0 <= now - v < 40 * 1200}
+        sp[a["kind"]] = now if isinstance(now, int) else 0
+        mh["shop_placed"] = sp
     # (0.105.51) an animal sent to the butcher for the leather reserve: one a fortnight
     if getattr(p, "rule", "") == "mood_reserve" and a.get("type") == "slaughter_one" and _d(r).get("ok") is True:
         mh["reserve_slaughter"] = now if isinstance(now, int) else 0

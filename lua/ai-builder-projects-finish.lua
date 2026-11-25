@@ -8,7 +8,7 @@
 -- The top-level locals the ai-builder-projects files share come through
 -- PROJECTS_PART_LOCALS (the same functions).
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-finish'] = '0.105.115'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-finish'] = '0.105.116'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 
@@ -352,6 +352,16 @@ function furnish_project(id, buildingplan_on, stalled)
     if not buildingplan_on then
         return {ok = false, rejected = true,
                 error = 'buildingplan is off: furniture without materials would vanish'}
+    end
+    -- (item28) a winter cistern: the well over it and its pond zone (which fills
+    -- it) only once nobody stands in the chamber (B: its miner was sealed in)
+    if p.kind == 'well' and type(p.chamber) == 'table' and type(filled_well_occupant) == 'function' then
+        local okw, who = pcall(filled_well_occupant, p)
+        if okw and who then
+            return {ok = false, rejected = true, occupied = true,
+                    error = ('a dwarf is still in the winter cistern\'s chamber (x%d y%d elevation %d): '
+                        .. 'the well and its pond zone wait until they are out'):format(who.x, who.y, ez(who.z))}
+        end
     end
     local results, qf_build = {}, nil
     for _, mode in ipairs({'build', 'place', 'zone'}) do
