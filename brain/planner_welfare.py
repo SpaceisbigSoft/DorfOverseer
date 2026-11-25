@@ -53,7 +53,7 @@ from digest import _d, _l
 from planner_core import (TICKS_PER_DAY, Proposal, _has_shop, abs_tick, player_rules, queued, stone_short,
                           AGENDA_THEMES, COOLDOWN_KEYS)
 from planner_config import PLANNER_CONFIG
-from planner_memorials import memorial_order_rules, slabs_ahead_held
+from planner_memorials import memorial_order_rules, slabs_ahead_held, spare_slab_notes
 
 __all__ = ["_welfare_rules", "tombable_dead", "burial_fallback_due", "cook_train_due", "welfare_days", "welfare_slabs"]
 
@@ -375,5 +375,6 @@ def _welfare_rules(s: dict, cfg: dict, proposals: list, notes: list, memory=None
     """(0.105.47) Called from plan() beside _dead_notes."""
     _burial_rules(s, cfg, proposals, notes, memory, rules_ or {})
     memorial_order_rules(s, proposals, notes)     # (item7) the orders that never end
+    spare_slab_notes(s, notes)                    # (item4) spare slabs left lying: a note
     _others_dead_rule(s, cfg, proposals, notes)
     _cook_rule(s, cfg, proposals, memory)

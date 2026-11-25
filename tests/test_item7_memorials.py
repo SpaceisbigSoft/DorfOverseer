@@ -126,6 +126,35 @@ def _():
     assert not PS.ghost_work_blocked(s, None), PS.ghost_work_blocked(s, None)
 
 
+
+@test("slabs (item4, B): every unbuilt slab a spare (its dead has one up): no place_slabs, a note; the rest still put up")
+def _():
+    # B, 24 Nov: hf 42066's slab stands, two more of hers lie engraved; the bridge counts none of them
+    s = b_state(memorial_slabs=0, memorial_spare=2, dup_memorials=1, ghosts_unslabbed=0)
+    props, notes = [], []
+    PS._dead_notes(s, notes, props, {"engrave_slabs": True}, Memory())
+    PW._welfare_rules(s, PLANNER_CONFIG, props, notes, Memory(), {"engrave_slabs": True})
+    assert not [p for p in props if p.action.get("type") == "place_slabs"], [(p.rule, p.action) for p in props]
+    assert any("2 engraved memorial slab(s) are spares" in n for n in notes), notes
+    assert any("1 dead have more than one memorial slab up" in n for n in notes), notes
+    # one not a spare beside them: put up, that one only
+    s = b_state(memorial_slabs=1, memorial_spare=2, ghost_slabs=1, ghosts_unslabbed=0)
+    props = []
+    PS._dead_notes(s, [], props, {"engrave_slabs": True}, Memory())
+    pl = [p for p in props if p.action.get("type") == "place_slabs"]
+    assert pl and pl[0].action == {"type": "place_slabs", "max": 1}, [(p.rule, p.action) for p in props]
+    # no ghost: slabs_ahead_place the same way
+    s["dead"]["ghosts"] = 0
+    s["supplies"]["memorial_slabs"] = 0
+    props, notes = [], []
+    PW._welfare_rules(s, PLANNER_CONFIG, props, notes, Memory(), {"engrave_slabs": True})
+    assert not [p for p in props if p.action.get("type") == "place_slabs"], [(p.rule, p.action) for p in props]
+    # an old bridge (no spare fields): no note
+    notes = []
+    PM.spare_slab_notes(b_state(), notes)
+    assert not notes, notes
+
+
 # ---- the Lua's text (no lupa here) -----------------------------------------------------------
 
 @test("slab_order makes its EngraveSlab order OneTime, inside the guarded block (a failed write leaks nothing)")
@@ -147,6 +176,8 @@ def _():
     assert "'ai-memorials'," in (LUA / "ai-bridge.lua").read_text(encoding="utf-8")
     sup = (LUA / "ai-bridge-report-supplies.lua").read_text(encoding="utf-8")
     assert "reqscript('ai-memorials').order_scan()" in sup and "out.ghosts_unslabbed = none" in sup
+    # (item4) the spares and the dead with 2+ memorials up, from memorial_slabs' other returns
+    assert "out.memorial_slabs, out.memorial_spare, out.dup_memorials = #m, sp, dup" in sup
     import overseer_words as OW
     import hold_classes as HC
     import crisis
@@ -323,10 +354,33 @@ def _():
     w.slab(3, 41939)
     w.slab(4, 41939)                 # two loose of one dead: one put up
     w.slab(5, OARZEAL)
-    got = [it.id for it in lst(env.memorial_slabs())]
+    got = [it.id for it in lst(env.memorial_slabs()[0])]
     assert got == [5, 3], got
     waiting, none = env.ghost_slab_counts()
     assert (waiting, none) == (1, 0), (waiting, none)
+
+
+@test("memorial_slabs (item4, B): a dead with a memorial up: the rest spares, counted by hf; 2+ up counted")
+def _():
+    if not need_lua():
+        return
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    src = (LUA / "ai-builder-rooms.lua").read_text(encoding="utf-8")
+    env, w = lua.execute(ROOMS_FAKE_MIN, src)
+    w.site(500, w.slab(1, 42066, lua.table_from({"in_building": True})))
+    w.site(501, w.slab(2, 42066, lua.table_from({"in_building": True})))   # two up already
+    w.slab(3, 42066)
+    w.slab(4, 42066)                                                       # two more lie: spares
+    w.site(502, lua.table_from({"id": 9, "topic": 41939, "engraving_type": "Slab"}))   # a blank: names no dead
+    w.slab(5, 41939)
+    one, spare, dup, by = env.memorial_slabs()
+    assert [it.id for it in lst(one)] == [5], lst(one)
+    assert (spare, dup, by[42066]) == (2, 1, 2), (spare, dup)
+    # every one left a spare: place_slabs refuses, saying so, and builds nothing
+    w.slabs[len(w.slabs)].flags.in_building = True
+    r = env.place_slabs(5, False)
+    assert r.ok is False and r.rejected and "spare" in r.error and r.spare == 2, r
+    assert r.spare_hfs[1].hf == 42066 and r.spare_hfs[1].n == 2, r.spare_hfs
 
 
 if __name__ == "__main__":

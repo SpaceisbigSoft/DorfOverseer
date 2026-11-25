@@ -240,6 +240,12 @@ PART.update({
     "h5_trade_fallback_wants": {"FOOD": 20, "DRINK": 20, "CLOTH": 10, "SKIN_TANNED": 5, "THREAD": 5,
                                 "WOOD": 20, "BAR:IRON": 10, "BAR:COAL": 10},
     "h5_caravan_overstay_days": 7,        # a caravan past its leaving with merchants on the map this long: said
+    # (item3) a caravan Leaving, its time run out, this long past its leaving with its goods still in the
+    # depot and none of its merchants at the depot packing them: its goods taken out of the game (never
+    # the fort's; lua/ai-trade.lua clear_caravan_goods). B and C, 24 Nov: 2903 days, 115 goods.
+    "caravan_goods_days": 30,
+    "caravan_goods_max": 200,             # items (a bin's contents count) removed at a time
+    "caravan_goods_cooldown_ticks": 7 * 1200,
 })
 
 

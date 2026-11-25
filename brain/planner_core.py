@@ -173,6 +173,7 @@ class Memory:
     farm_dead_noted: str = ""                            # (0.105.7 review) the season the dead plots were last said
     reserve_noted: str = ""                              # (0.105.31) the mood reserve last said can't be made here
     reserve_swap_off: int | None = None                  # (0.105.31 reserve fixes) the season the fibre swap changed nothing
+    reserve_process: dict = field(default_factory=dict)  # (item1) the plant-cloth reserve's process_plants orders: {last: [thread, cloth], fruitless, paused_until}
     farm_under_asked: dict = field(default_factory=dict)  # (0.105.7 review) {tick, tiles}: underground plots last laid out
     report_season: str = ""                              # the last season the player's report was written for
     found_failure: str = ""                              # why the first staircase couldn't be dug near the wagon

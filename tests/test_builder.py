@@ -1751,6 +1751,59 @@ def _():
         LUA.execute("local B = ...; B.find_cavern_well_spot = CAVERN_REAL", B)
 
 
+@test("cavern well (item2): keep_shut: an open gate shut and marked, the watcher leaves it shut, a call without it opens it")
+def _():
+    r = dug_cavern_well()
+    LUA.execute(GAME_FAKE)
+    try:
+        mk = LUA.eval("MKS")
+        assert B.well_shaft_step(False, False).ok
+        lever = [x for x in W.placed.values() if x.text == "Tl"][-1]
+        mk(lever.x, lever.y, 70, 8, True, 3)
+        LUA.eval("MECH")(2)
+        assert B.well_shaft_step(False, False).ok                             # the hatch placed
+        h = mk(70, 58, 63, 7, True)
+        assert B.well_shaft_step(False, False).wells[1].stage == "linking"
+        assert B.well_lids(False)[1].gate == "closed"
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "opened" and h.door_flags.closed is False, dict(s.wells[1])
+        keep = LUA.table_from({r.project_id: True})
+        s = B.well_shaft_step(False, False, None, keep)                       # a flier beast in its layer
+        assert s.ok and s.wells[1].stage == "closed" and h.door_flags.closed is True, (s.error, dict(s.wells[1]))
+        lids = B.well_lids(False)
+        assert lids[1].layer_guard is True, dict(lids[1])
+        # the watcher (no danger it can see) leaves it shut, the hold long run out
+        later = LUA.eval("LATER")
+        later(5000)
+        tick = lambda: LUA.eval("function() local f = TIMERS[#TIMERS]; TIMERS[#TIMERS] = nil; if f then f() end end")()
+        tick()
+        assert h.door_flags.closed is True
+        # asked again: kept shut, nothing to do, said why
+        s = B.well_shaft_step(False, False, None, keep)
+        assert not s.ok and s.wells[1].stage == "held_shut" and "cavern layer" in s.error, (s.error, dict(s.wells[1]))
+        # the beast gone from the layer: a call without the id opens it, the mark let go
+        s = B.well_shaft_step(False, False)
+        assert s.ok and s.wells[1].stage == "opened" and h.door_flags.closed is False, (s.error, dict(s.wells[1]))
+        assert B.well_lids(False)[1].layer_guard is None
+        # already shut by the watcher for a danger (auto_shut): a keep call marks it (kept_shut)
+        LUA.eval("""function(B, id)
+            local d = B.load_projects()
+            for _, p in ipairs(d.list) do if p.id == id then p.shaft_gate.auto_shut = true end end
+            B.save_projects(d)
+        end""")(B, r.project_id)
+        assert B.well_shaft_step(True, False).wells[1].stage == "closed"
+        LUA.eval("""function(B, id)
+            local d = B.load_projects()
+            for _, p in ipairs(d.list) do if p.id == id then p.shaft_gate.auto_shut = true; p.shaft_gate.layer_guard = nil end end
+            B.save_projects(d)
+        end""")(B, r.project_id)
+        s = B.well_shaft_step(False, False, None, keep)
+        assert s.ok and s.wells[1].stage == "kept_shut" and B.well_lids(False)[1].layer_guard is True, dict(s.wells[1])
+    finally:
+        LUA.eval("function(B) B.SHAFT_WATCH.on = false; B.SHAFT_WATCH.timer = nil end")(B)
+        LUA.execute(GAME_CLEAN)
+
+
 @test("cavern well (0.104.152): a link that keeps failing (not for mechanisms) -> the hatch down, the stair lid instead")
 def _():
     r = dug_cavern_well()

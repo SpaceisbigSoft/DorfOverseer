@@ -366,7 +366,11 @@ function get_supplies()
         if okb and blank then out.slabs = (out.slabs or 0) + 1 end
     end)
     -- (0.103.16) engraved memorial slabs nobody has put up yet
-    pcall(function() out.memorial_slabs = #reqscript('ai-builder').memorial_slabs() end)
+    -- (item4) + spares (dead has one up)
+    pcall(function()
+        local m, sp, dup = reqscript('ai-builder').memorial_slabs()
+        out.memorial_slabs, out.memorial_spare, out.dup_memorials = #m, sp, dup
+    end)
     -- (r1g8) of them the walking ghosts' own; and the ghosts with no memorial
     -- slab at all and no open order of the AI's for one (engrave_memorials ghosts)
     pcall(function()

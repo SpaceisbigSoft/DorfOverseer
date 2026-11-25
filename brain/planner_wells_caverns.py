@@ -273,25 +273,57 @@ def _shaft_turn(s: dict, gates: list, build: list, proposals: list, notes: list)
     shut_now = [x for x in live if x.get("gate") in ("closed", "pulling")]
     short = shaft_water_short(s, gates)
     dry_on = any(x.get("watch_dry") for x in gates)
+    # (item2) a great beast in the cavern layer a shaft opens into (a flier
+    # near any shaft into it, or one unseen there) keeps the shaft shut, short
+    # of water or not, whatever the watcher's per-shaft distance; only a dwarf
+    # dying of thirst with no other water opens one: the farthest from it
+    from planner_shaft_guard import guard_distance, shaft_layer_guard, shaft_thirst_lethal
+    guard = shaft_layer_guard(s, gates)
+    linked = [x for x in live if x.get("gate") in ("open", "closed", "pulling")]
+    lethal = shaft_thirst_lethal(s) if (short and guard) else ""
+    spare = None
+    if lethal:
+        def water_from(x: dict) -> bool:
+            if x.get("project_id") in guard:
+                return False
+            wn = _d(x.get("watch_near"))
+            return x.get("gate") == "open" or (x in shut_now and (not wn or shaft_far_walker(wn)))
+        if not any(water_from(x) for x in linked):
+            cands = [x for x in linked if x.get("project_id") in guard and not _d(x.get("watch_near"))]
+            pool = [x for x in cands if x.get("gate") == "open"] or cands
+            if pool:
+                spare = max(pool, key=lambda x: guard_distance(x, guard[x["project_id"]]))
+    keep = sorted(x["project_id"] for x in linked if x.get("project_id") in guard and x is not spare)
     to_shut = [x for x in gates if x.get("gate") in ("open", "pulling")
-               and (_d(x.get("watch_near")) or x.get("cancelled"))]
+               and (_d(x.get("watch_near")) or x.get("cancelled") or x.get("project_id") in keep)]
     if to_shut:
         near = next((_d(x.get("watch_near")) for x in to_shut if _d(x.get("watch_near"))), None)
-        why = (f"{shaft_danger_words(near)} near the cavern well: shut its shaft (its hatch, at once)" if near
-               else "a given-up cavern well's shaft stands open to the cavern: shut its hatch")
+        kept = [x for x in to_shut if x.get("project_id") in keep and not _d(x.get("watch_near"))]
+        if near:
+            why = f"{shaft_danger_words(near)} near the cavern well: shut its shaft (its hatch, at once)"
+        elif kept:
+            info = guard[kept[0]["project_id"]]
+            why = (f"{info['why']}, the cavern layer the cavern well's shaft opens into: shut the shaft "
+                   "(its hatch, at once; a flier crosses the layer between two looks)")
+        else:
+            why = "a given-up cavern well's shaft stands open to the cavern: shut its hatch"
         # (K48-K4b, A4 14) a given-up shaft alone: close false (the bridge shuts a
         # cancelled one on any call); close true with no danger shut every
         # working well too, each for a day
         act = {"type": "well_shaft", "close": bool(near)}
+        if keep:
+            act["keep_shut"] = keep
         if dry_on and not short:
             act["dry"] = False
         proposals.append(Proposal("well_shaft", act, why, 2))
         return
-    opens, far, held = [], [], []
+    opens, far, held, guarded = [], [], [], []
     for x in shut_now:
         near = _d(x.get("watch_near"))
         hold = x.get("shut_hold") or 0
-        if near and short and shaft_far_walker(near):
+        if x.get("project_id") in keep:
+            guarded.append(x)
+        elif near and short and shaft_far_walker(near):
             far.append(x)
         elif near:
             held.append(x)
@@ -300,6 +332,16 @@ def _shaft_turn(s: dict, gates: list, build: list, proposals: list, notes: list)
                          "opened once the danger has been away long enough (no flapping)")
         else:
             opens.append(x)
+    for x in guarded:
+        info = guard[x["project_id"]]
+        words = (f"the cavern well's shaft at {where(x)} is kept shut: {info['why']}, the cavern layer it opens "
+                 "into, could reach it across the layer")
+        if short:
+            words += (f"; the fort is short of water ({short}): open water outside the caverns is made a water "
+                      "source meanwhile")
+            if lethal and spare is None:
+                words += f" ({lethal}, but every shaft has a danger at it)"
+        notes.append(words + "; opened once it is dead, caged or out of that layer")
     for x in held:
         near = _d(x.get("watch_near"))
         words = shaft_danger_words(near)
@@ -318,7 +360,10 @@ def _shaft_turn(s: dict, gates: list, build: list, proposals: list, notes: list)
     want_dry = bool(short) and bool(far or (opens and any((x.get("shut_hold") or 0) > 0 for x in opens)))
     if want_dry != dry_on and (want_dry or not short):
         act["dry"] = want_dry
+    if keep:
+        act["keep_shut"] = keep
     words = _shaft_build_words(build)
+    unmarked = [x for x in guarded if not x.get("layer_guard")]
     if far:
         near = _d(far[0].get("watch_near"))
         why = (f"the fort is short of water ({short}) and every cavern well is shut, but "
@@ -327,8 +372,20 @@ def _shaft_turn(s: dict, gates: list, build: list, proposals: list, notes: list)
         why = "no danger near the cavern well now: open its shaft again"
         if short and any((x.get("shut_hold") or 0) > 0 for x in opens):
             why = f"the fort is short of water ({short}): open the cavern well's shaft again at once"
+        if spare is not None and spare in opens:
+            info = guard[spare["project_id"]]
+            d = guard_distance(spare, info)
+            how = f"{d} tiles from it" if d >= 0 else "its place unknown"
+            why = (f"{lethal} and no other water: open the one cavern well's shaft farthest from {info['name']} "
+                   f"(at {where(spare)}, {how}) though {info['why']} is in its layer; the others kept shut")
+        elif guarded:
+            why += f"; the shaft(s) into a layer with {guard[guarded[0]['project_id']]['why']} kept shut"
     elif words:
         why = words
+    elif unmarked:
+        # (item2) the bridge told which gates it keeps shut (its watcher no longer opens them)
+        why = (f"{guard[unmarked[0]['project_id']]['why']}, the cavern layer the cavern well's shaft opens into: "
+               "keep the shaft shut (the watcher doesn't open it while the beast is in that layer)")
     elif "dry" in act:
         why = "the fort has water again: the cavern well's shaft watched as usual"
     elif any(x.get("watching") is False for x in gates):
@@ -337,7 +394,8 @@ def _shaft_turn(s: dict, gates: list, build: list, proposals: list, notes: list)
         return
     if words and why != words:
         why += "; " + words
-    proposals.append(Proposal("well_shaft", act, why, 2 if (far or short) else 3))
+    pri = 2 if (far or short or (unmarked and not opens)) else 3
+    proposals.append(Proposal("well_shaft", act, why, pri))
 
 
 def cavern_danger(s: dict, wells: list | None = None, radius: int = SHAFT_DANGER_TILES) -> str:

@@ -36,7 +36,7 @@ sys.path.insert(0, str(ROOT / "brain"))
 from harness import test, finish, skip  # noqa: E402
 from lua_modules_util import module_src, bridge_part_src  # noqa: E402
 from planner import PLANNER_CONFIG, Memory, plan, select, record  # noqa: E402
-from planner_core import Proposal, TICKS_PER_YEAR  # noqa: E402
+from planner_core import Proposal, TICKS_PER_DAY, TICKS_PER_YEAR  # noqa: E402
 from planner_moods import _mood_reserve_rule, RESERVE_BATCH  # noqa: E402
 from planner_army import _flask_rule  # noqa: E402
 
@@ -255,6 +255,66 @@ def _():
         got[leather] = (allowed[0].action["recipe"], allowed[0].action["amount"])
     assert got[0][0] == got[2][0] == "glass_vial", got
     assert got[3] == ("leather_waterskin", 1) and got[6] == ("leather_waterskin", 4), got
+
+
+# ---- (item1) process_plants: below the line only, and paused when fruitless ------------------
+
+def fibre_plants(cloth: int) -> dict:
+    """Plant cloth `cloth`, no free plant thread, fibre plants to spare, a farmer's workshop."""
+    s = base()
+    s["supplies"]["cloth_kinds"]["plant"] = cloth
+    s["supplies"].update({"brewable_plants": 5, "thread_plants": 8, "thread_brewable_plants": 0})
+    s["orders"] = []
+    return s
+
+
+@test("item1: plant cloth AT the reserve (3 of 3), fibre plants at hand: no process_plants; below it: ordered")
+def _():
+    want = CFG["reserve_plant_cloth"]
+    assert "process_plants" not in recipes(reserve(fibre_plants(want))[0])
+    props = reserve(fibre_plants(want - 1))[0]
+    assert "process_plants" in recipes(props), props
+    s = fibre_plants(want)                                  # the weave from free thread still tops up at the line
+    s["supplies"]["thread_kinds"]["plant"] = 5
+    assert "weave_plant_cloth" in recipes(reserve(s)[0])
+
+
+@test("item1 (B, 24 Nov): three process_plants orders in a row raising neither thread nor cloth: paused 28 days, one note naming the hospital")
+def _():
+    want = CFG["reserve_plant_cloth"]
+    m = Memory()
+    s = fibre_plants(want - 1)
+    s["supplies"]["hospital"] = {"thread": 17, "cloth": 3, "thread_kinds": {"plant": 17}}
+    placed, said = 0, []
+    for _ in range(6):                                    # each order done, its thread to the hospital
+        props, notes = reserve(s, m)
+        placed += recipes(props).count("process_plants")
+        said += notes
+        s["date"]["tick"] += 100
+    assert placed == 3, (placed, said)                     # the 4th due finds 3 fruitless: held
+    hosp = [n for n in said if "hospital" in n]
+    assert len(hosp) == 1 and "17 plant thread" in hosp[0] and "28 days" in hosp[0], said
+    assert isinstance(m.reserve_process.get("paused_until"), int)
+    assert Memory.from_dict(m.to_dict()).reserve_process == m.reserve_process     # saved and loaded
+    s["date"]["tick"] += 29 * TICKS_PER_DAY                 # the pause over: processing again
+    assert "process_plants" in recipes(reserve(s, m)[0])
+
+
+@test("item1: an order that raised the thread or cloth resets the count; a queued order isn't judged")
+def _():
+    want = CFG["reserve_plant_cloth"]
+    m = Memory()
+    s = fibre_plants(want - 2)
+    for i in range(5):                                    # judged: -, 1, reset 0 (the cloth), 1, 2
+        if i == 2:
+            s["supplies"]["cloth_kinds"]["plant"] += 1          # one order's cloth arrived
+        assert "process_plants" in recipes(reserve(s, m)[0]), (i, m.reserve_process)
+        if i == 3:                                            # the order still queued: not judged, nothing new
+            s["orders"] = [{"recipe": "process_plants", "by_ai": True, "amount_total": 2, "amount_left": 2}]
+            for _ in range(5):
+                assert not reserve(s, m)[0]
+            s["orders"] = []
+    assert m.reserve_process.get("fruitless") == 2 and "paused_until" not in m.reserve_process, m.reserve_process
 
 
 # ---- 3. a fibre swap that does nothing ----------------------------------------------------------

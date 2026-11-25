@@ -598,6 +598,16 @@ ACTIONS = {
         if not id then return reject('free_caravan needs entity (the caravan\'s civilisation id)') end
         return reqscript('ai-recovery').free_caravan(id, a.dry_run == true, a.step)
     end,
+    -- (item3) the goods a caravan long done (Leaving, its time run out, its merchants
+    -- not coming for them) left in the depot taken out of the game, never given to
+    -- the fort (lua/ai-trade.lua clear_caravan_goods, brain/planner_trade.py)
+    clear_caravan_goods = function(a)
+        local id = math.tointeger(tonumber(a.entity))
+        if not id then return reject('clear_caravan_goods needs entity (the caravan\'s civilisation id)') end
+        local n = int_in(a.max or 200, 1, 300)
+        if not n then return reject('clear_caravan_goods needs max 1-300') end
+        return reqscript('ai-trade').clear_caravan_goods(id, n, a.dry_run == true, txt)
+    end,
     -- (0.105.47, J1) a gathering strange mood's workshop and materials put in the AI
     -- shelter while the alarm is up (lua/ai-mood-help.lua; I7a: 5 moods cancelled "Forbidden area")
     mood_shelter = function(a) return reqscript('ai-mood-help').act_mood_shelter({dry_run = a.dry_run == true}) end,
@@ -822,6 +832,7 @@ for _, name in ipairs({
     'forbid_secrets',    -- (0.105.95) its dry run changes no flag
     'thirst_way', 'thirst_patient', 'thirst_probe',   -- (R1 g2) each dry run plans or counts and changes nothing
     'call_migrants',   -- (0.105.46, I4) its dry run names the script and queues nothing
+    'clear_caravan_goods',   -- (item3) its dry run counts the goods and removes none
     'free_caravan',    -- (r2 h9) its dry run counts the merchants and tells none to leave; (0.105.97) moves none,
                        -- runs only fix/stuck-merchants -n
     'mood_shelter',    -- (0.105.47, J1) its dry run counts the tiles and adds none

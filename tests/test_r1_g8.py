@@ -350,7 +350,11 @@ function W.slab(id, topic, x, y, z, flags)
 end
 function W.site(id, item_ids, stage, asks)
     local ci = {}
-    for _, iid in ipairs(item_ids or {}) do table.insert(ci, {item = {id = iid}}) end
+    for _, iid in ipairs(item_ids or {}) do
+        local it = {id = iid}                  -- (item4) the slab itself when the world has it
+        for _, s in ipairs(W.slabs) do if s.id == iid then it = s end end
+        table.insert(ci, {item = it})
+    end
     local b = {id = id, contained_items = ci,
                jobs = {{items = {}, job_items = {elements = asks and {{}} or {}}}}}
     function b:getBuildStage() return stage or 0 end
@@ -405,7 +409,7 @@ def _():
     b.holder = shop                                       # still the workshop's job
     c = w.slab(23, 704, 110, 150, 169)
     c.holder = other
-    got = [it["id"] for it in py(env.memorial_slabs())]
+    got = [it["id"] for it in py(env.memorial_slabs()[0])]
     assert got == [21], got
     waiting, none = env.ghost_slab_counts()
     assert waiting == 1, waiting
@@ -422,7 +426,7 @@ def _():
     w.slab(13, 701, 102, 150, 167)                       # held by a planned Slab building (not in_job)
     w.slab(14, 702, 103, 150, 167, T(lua, {"in_building": True}))
     w.site(500, T(lua, [13]))
-    got = [it["id"] for it in py(env.memorial_slabs())]
+    got = [it["id"] for it in py(env.memorial_slabs()[0])]
     assert got == [12, 11], got
     waiting, none = env.ghost_slab_counts()
     assert (waiting, none) == (1, 0), (waiting, none)
@@ -456,6 +460,29 @@ def _():
     # nothing left: refused, not "done" again (F: 164 times)
     r = py(env.place_slabs(5, False))
     assert r["ok"] is False and r["rejected"], r
+
+
+@test("place_slabs (item4, B): a dead whose memorial stands gets no more put up; the spares said by hf and left lying")
+def _():
+    if not need_lua():
+        return
+    lua, env, w = rooms_world()
+    w.slab(13, 42066, 100, 150, 170, T(lua, {"in_building": True}))
+    w.site(500, T(lua, [13]), 1, False)                          # hf 42066's memorial, built
+    w.slab(21, 42066, 101, 150, 167)
+    w.slab(22, 42066, 102, 150, 167)                             # two more of hers (B: 3 in an hour)
+    w.slab(23, 700, 103, 150, 167)
+    w.spots[1] = T(lua, {"x": 108, "y": 154})
+    w.spots[2] = T(lua, {"x": 131, "y": 144})
+    w.spots[3] = T(lua, {"x": 115, "y": 161})
+    r = py(env.place_slabs(5, False))
+    assert r["ok"] and [p["hf"] for p in r["placed"]] == [700], r
+    assert r["spare"] == 2 and r["spare_hfs"] == [{"hf": 42066, "n": 2}], r
+    assert [b["slab"] for b in py(w.built)] == [23], py(w.built)
+    # the next call: only spares left: refused, nothing built, nothing destroyed
+    r = py(env.place_slabs(5, False))
+    assert r["ok"] is False and r["rejected"] and r["spare"] == 2 and "spare" in r["error"], r
+    assert len(py(w.built)) == 1 and not py(w.gone), (py(w.built), py(w.gone))
 
 
 @test("place_slabs: no spot the slab can be carried to is a refusal that says so (never a building no dwarf can reach)")

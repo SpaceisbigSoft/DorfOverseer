@@ -758,7 +758,18 @@ function act_well_shaft(a)
     -- (group 2) dry: the brain says the fort is short of water (nil: unchanged)
     local dry = nil
     if a.dry ~= nil then dry = a.dry == true end
-    return reqscript('ai-builder').well_shaft_step(a.close == true, a.dry_run == true, dry)
+    -- (item2) keep_shut: the gates the brain keeps shut for a great beast in the
+    -- cavern layer they open into (shut now if open; the watcher doesn't open them)
+    local keep = nil
+    if a.keep_shut ~= nil then
+        if type(a.keep_shut) ~= 'table' then return reject('keep_shut must be a list of project ids') end
+        keep = {}
+        for _, v in ipairs(a.keep_shut) do
+            local id = math.tointeger(v)
+            if id then keep[id] = true end
+        end
+    end
+    return reqscript('ai-builder').well_shaft_step(a.close == true, a.dry_run == true, dry, keep)
 end
 
 function act_finish_project(a)

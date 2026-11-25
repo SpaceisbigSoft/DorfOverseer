@@ -26,6 +26,7 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
     # unload 50 times while one was there: "a caravan is coming or at the depot")
     real_cs = list(cs)
     _overstay_notes(tr, cfg, notes)
+    _caravan_goods_rule(tr, cfg, proposals, notes)
     # (0.103.18) Hermit Kingdom: no goods to the depot, no broker called, no
     # deal; the caravans come and go (the depot is still emptied after them)
     hermit = memory is not None and has_rule(getattr(memory, "culture", None), "no_trade")
@@ -219,6 +220,46 @@ def _overstay_notes(tr: dict, cfg: dict, notes: list) -> None:
                      f"({o.get('merchants') or 0} merchant(s), {o.get('wagons') or 0} wagon(s) still on the map, "
                      f"state {o.get('state')}): held by {holds}. While it stays no other caravan comes "
                      "(and the fort's exports never reach home)")
+
+
+def _caravan_goods_rule(tr: dict, cfg: dict, proposals: list, notes: list) -> None:
+    """(item3) A caravan DF holds Leaving, its time run out, `caravan_goods_days`
+    past its leaving with its goods still in the depot and none of its
+    merchants at the depot packing them (B and C, 24 Nov: "The Moral Wire",
+    2903 days, 115 goods, one merchant on the map who could walk to the depot
+    and never did): its goods are taken out of the game as if packed
+    (lua/ai-trade.lua clear_caravan_goods). Never given to the fort: that is
+    theft, and DF holds it against the civilisation. Not while another caravan
+    is coming or at the depot (its goods look the same). After it the stuck
+    caravan's steps start again (planner_outside: its merchants have nothing
+    left to wait for)."""
+    if [c for c in _l(tr.get("caravans")) if isinstance(c, dict)]:
+        return
+    wait = int(cfg.get("caravan_goods_days", 30))
+    for o in _l(tr.get("overstay")):
+        if not isinstance(o, dict):
+            continue
+        ent = o.get("entity")
+        goods = o.get("goods_in_depot")
+        left = o.get("time_remaining")
+        if (not isinstance(ent, int) or isinstance(ent, bool) or o.get("state") != "Leaving"
+                or not isinstance(left, (int, float)) or left > 0 or int(o.get("days") or 0) < wait
+                or not isinstance(goods, int) or goods <= 0):
+            continue
+        if int(o.get("in_depot") or 0) > 0:
+            notes.append(f"a caravan from {o.get('civ') or '?'} has been leaving {o.get('days')} days with {goods} "
+                         f"of its goods in the depot; {o.get('in_depot')} of its merchants are at the depot: "
+                         "left to pack them")
+            continue
+        proposals.append(Proposal("caravan_goods",
+                                  {"type": "clear_caravan_goods", "entity": ent,
+                                   "max": int(cfg.get("caravan_goods_max", 200))},
+                                  f"a caravan from {o.get('civ') or '?'} has been leaving {o.get('days')} days, its "
+                                  f"time run out, with {goods} of its goods still in the depot and none of its "
+                                  f"{o.get('merchants') or 0} merchant(s) coming for them: take its goods out of "
+                                  "the game as if packed (never the fort's: that would be theft), so the depot is "
+                                  "clear and its merchants have nothing left to wait for", 5))
+        return
 
 
 # (0.104.95) Metals worth far more as crafts than as anything the fort needs:

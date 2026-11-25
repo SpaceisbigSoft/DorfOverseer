@@ -255,6 +255,7 @@ SHORT_WORDS = {
     "hunt_send": "hunt: send squads after a beast or an enemy",   # (0.105.45)
     "hunt_recall": "hunt back: call the hunting squads home",    # (0.105.45)
     "call_migrants": "call a migrant wave (DFHack's force Migrants) to a fallen fort DF sends none to",  # (0.105.46, I4)
+    "clear_caravan_goods": "the goods a long-gone caravan left in the depot taken away (never the fort's)",  # (item3)
     "free_caravan": "a caravan stuck leaving: its merchants told to walk off the map, taken to its edge, or (gone) DFHack's fixes run",  # (r2 h9; 0.105.97 steps)
     "open_meeting": "open the meeting waiting behind DF's diplomacy light",  # (0.105.47)
     "close_world": "leave DF's World screen",   # (0.105.48, K9) unattended backstop
@@ -531,6 +532,8 @@ def short(a: dict) -> str:
         words = "shut the cavern well's shaft" if a.get("close") else "the cavern well's shaft gate: its next step"
         if a.get("dry") is not None:      # (group 2) the fort short of water, or not
             words += " (short of water: a far walker doesn't keep it shut)" if a.get("dry") else " (water again)"
+        if a.get("keep_shut"):            # (item2) a great beast in the layer the shaft opens into
+            words += f" ({len(a['keep_shut'])} kept shut for a great beast in its cavern layer)"
         return words
     if t == "prioritize_dig":    # (0.104.128)
         return f"dig level {a.get('project_id')} before the rest"

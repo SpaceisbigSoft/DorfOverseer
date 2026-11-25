@@ -184,7 +184,13 @@ end
 -- run out: "held_shut" otherwise, with the danger and the ticks left.
 -- `dry` (true/false; nil: unchanged): the brain says the fort is short of
 -- water (a far walker doesn't keep the shaft shut, no hold).
-function well_shaft_step(want_closed, dry_run, dry)
+-- (item2) `keep` ({[project_id] = true}; nil: none): the gates the brain keeps
+-- shut for a great beast in the cavern layer they open into (a flier near any
+-- shaft into it, one unseen there): shut now if open, never opened by this
+-- call, and marked (layer_guard, brain_shut) so the watcher doesn't open them
+-- once the beast is beyond its own shaft's reach; a later call without the id
+-- opens it again by the usual rules.
+function well_shaft_step(want_closed, dry_run, dry, keep)
     local data = load_projects()
     local wells, changed = {}, false
     local all_closed = want_closed
@@ -233,7 +239,8 @@ function well_shaft_step(want_closed, dry_run, dry)
         local st = p.shaft_stairs
         if shaft_kept(p) then
             local hit = hits[p.id]
-            local want_closed = (all_closed and (hit ~= nil or not any_hit)) or p.phase == 'cancelled'
+            local guarded = (type(keep) == 'table' and keep[p.id] == true and p.phase ~= 'cancelled') or false
+            local want_closed = (all_closed and (hit ~= nil or not any_hit)) or p.phase == 'cancelled' or guarded
             local leave = all_closed and not want_closed      -- another gate's danger: this one left as it is
             local a, hz = anchor_of(p), shaft_bottom(p)
             local g = shaft_gate_state(p)
@@ -408,8 +415,9 @@ function well_shaft_step(want_closed, dry_run, dry)
                         if sg then sg.shut_at, changed = now, true end
                     end
                     if sg and not r.error then
-                        sg.auto_shut, changed = (want_closed and hit ~= nil) or nil, true   -- (K48-K4)
-                        sg.brain_shut = (want_closed and hit == nil and p.phase ~= 'cancelled') or nil   -- (K48-K4b)
+                        sg.auto_shut, changed = (want_closed and hit ~= nil and not guarded) or nil, true   -- (K48-K4)
+                        sg.brain_shut = (want_closed and (hit == nil or guarded) and p.phase ~= 'cancelled') or nil   -- (K48-K4b)
+                        sg.layer_guard = guarded or nil                                  -- (item2)
                     end
                 end
                 if not r.error then r.stage = want_closed and 'closed' or 'opened' end
@@ -433,12 +441,23 @@ function well_shaft_step(want_closed, dry_run, dry)
                             sg.shut_at, changed = now, true
                         end
                         if ok then
-                            sg.auto_shut, changed = (want_closed and hit ~= nil) or nil, true   -- (K48-K4)
+                            sg.auto_shut, changed = (want_closed and hit ~= nil and not guarded) or nil, true   -- (K48-K4)
                             -- (K48-K4b) shut by the brain for its own reason (no danger the
                             -- watcher sees): the watcher never opens it; anything else shut
                             -- with no mark (an older watcher's) it adopts
-                            sg.brain_shut = (want_closed and hit == nil and p.phase ~= 'cancelled') or nil
+                            sg.brain_shut = (want_closed and (hit == nil or guarded) and p.phase ~= 'cancelled') or nil
+                            sg.layer_guard = guarded or nil                              -- (item2)
                         end
+                    end
+                elseif guarded and g.state == 'closed' then
+                    -- (item2) already shut: marked once so the watcher leaves it shut
+                    if not sg.layer_guard or not sg.brain_shut or sg.auto_shut then
+                        if not dry_run then
+                            sg.layer_guard, sg.brain_shut, sg.auto_shut, changed = true, true, nil, true
+                        end
+                        r.stage = 'kept_shut'
+                    else
+                        r.stage, r.guard = 'held_shut', true
                     end
                 else
                     r.stage = g.state
@@ -474,6 +493,9 @@ function well_shaft_step(want_closed, dry_run, dry)
         end
         if not why and r.stage == 'waiting_danger' then      -- (K48-K4b)
             why = 'waiting: ' .. tostring(r.danger) .. ' is near the shaft below (no dwarf sent down beside it)'
+        end
+        if not why and r.stage == 'held_shut' and r.guard then      -- (item2)
+            why = 'kept shut: a great beast is in the cavern layer the shaft opens into'
         end
         if not why and r.stage == 'held_shut' then
             why = 'kept shut: ' .. (r.danger and (tostring(r.danger) .. ' is near') or

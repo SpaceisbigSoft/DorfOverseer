@@ -15,6 +15,12 @@ ghost's" 34 times in 2 hours.
                  stale ones off with their jobs nobody works, makes the rest
                  once-only and puts the walking ghosts' orders first.
 
+spare_slab_notes(s, notes) (item4): the engraved slabs whose dead has a memorial
+up already (supplies.memorial_spare) are spares: never put up, so the `slabs`
+rule (memorial_slabs counts none of them) does not fire for them; said once as
+a note, with the dead who have more than one memorial up (dup_memorials). B,
+24 Nov: three slabs put up for hf 42066 in an hour, 71 for one dwarf.
+
 slabs_ahead_held(s): a walking ghost with no memorial slab at all
 (supplies.ghosts_unslabbed) holds the memorial orders for the unreachable dead
 (planner_welfare slabs_ahead): her slab is engraved first.
@@ -26,7 +32,7 @@ from digest import _d
 from util import int_or_zero as _int
 from planner_core import AGENDA_THEMES, Proposal
 
-__all__ = ["memorial_order_rules", "slabs_ahead_held"]
+__all__ = ["memorial_order_rules", "slabs_ahead_held", "spare_slab_notes"]
 
 AGENDA_THEMES["slabs_orders"] = "end the memorial orders that never end"
 
@@ -53,3 +59,14 @@ def memorial_order_rules(s: dict, proposals: list, notes: list) -> None:
     proposals.append(Proposal("slabs_orders", {"type": "prune_memorial_orders"},
                               "; ".join(parts) + tail + ": take the spent ones off, the rest once each, "
                               "the ghosts' first", 1 if ghosts else 3))
+
+
+def spare_slab_notes(s: dict, notes: list) -> None:
+    """(item4) The spare memorial slabs, left lying, and the dead with two or more up: notes only."""
+    su = _d(s.get("supplies"))
+    spare, dup = _int(su.get("memorial_spare")), _int(su.get("dup_memorials"))
+    if spare > 0:
+        notes.append(f"{spare} engraved memorial slab(s) are spares (their dead have a memorial up already): "
+                     "left where they lie, not put up")
+    if dup > 0:
+        notes.append(f"{dup} dead have more than one memorial slab up (one lays a ghost; the rest are left standing)")

@@ -385,6 +385,7 @@ function well_lids(probe, data)
                     end
                 end
                 if sg.link_lost then r.gate_link_lost = sg.link_lost end
+                if sg.layer_guard then r.layer_guard = true end        -- (item2) kept shut by the brain for its layer's beast
                 if g.hatch then r.gate_hatch_built = g.hatch.built and true or false end
                 r.gate_hatch_standing = g.hatch ~= nil or nil     -- rv2 1: a hatch still at the shaft's bottom
                 if g.state == 'open' or g.state == 'closed' or g.state == 'pulling' then     -- (0.104.153)

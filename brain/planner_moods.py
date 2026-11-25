@@ -1160,6 +1160,59 @@ def _noted_key(s: dict, what: str) -> str:
     return f"{what}:{_season_index(s)}"
 
 
+# (item1) B, 24 Nov: process_plants ordered 14 times in 2 hours, the thread
+# never seen (thread_kinds.plant 0): each order's thread hauled straight to
+# the hospital's chests (DF keeps thread there for sutures). Processing is
+# ordered only below the line (not topped up at it), and after
+# PROCESS_FRUITLESS orders in a row that raised neither the free plant thread
+# nor the plant cloth, it waits PROCESS_PAUSE_DAYS.
+PROCESS_FRUITLESS = 3
+PROCESS_PAUSE_DAYS = 28
+
+
+def _plant_counts(s: dict) -> list:
+    su = _d(s.get("supplies"))
+    return [int(_d(su.get("thread_kinds")).get("plant") or 0), int(_d(su.get("cloth_kinds")).get("plant") or 0)]
+
+
+def _process_ok(s: dict, memory, cfg: dict, head: str, notes: list) -> bool:
+    """(item1) process_plants may be ordered now: not paused, and the last
+    orders (each judged when the next is due) raised the thread or cloth."""
+    if memory is None:
+        return True
+    rp = memory.reserve_process
+    now = abs_tick(s)
+    until = rp.get("paused_until")
+    if isinstance(until, int):
+        if now < until:
+            return False
+        rp.pop("paused_until", None)
+        rp["fruitless"] = 0
+        rp.pop("last", None)
+    last, cur = rp.get("last"), _plant_counts(s)
+    if isinstance(last, list) and len(last) == 2:
+        rp["fruitless"] = 0 if (cur[0] > last[0] or cur[1] > last[1]) else int(rp.get("fruitless") or 0) + 1
+        rp["last"] = cur              # judged once: a second look this cycle compares like with like
+    if int(rp.get("fruitless") or 0) >= int(cfg.get("reserve_process_fruitless", PROCESS_FRUITLESS)):
+        days = int(cfg.get("reserve_process_pause_days", PROCESS_PAUSE_DAYS))
+        rp["paused_until"] = now + days * TICKS_PER_DAY
+        h = _d(_d(s.get("supplies")).get("hospital"))
+        hk = _d(h.get("thread_kinds"))
+        hosp = int((hk.get("plant") if "plant" in hk else h.get("thread")) or 0)
+        where = (f"the hospital's chests hold {hosp} plant thread" if hosp > 0 else "none of it is seen free")
+        notes.append(f"{head}: {rp['fruitless']} orders to process fibre plants in a row brought no free plant "
+                     f"thread or cloth ({where}: DF hauls new thread to the hospital's stock for sutures), so "
+                     f"no fibre plants are processed for {days} days")
+        return False
+    return True
+
+
+def _process_placed(s: dict, memory) -> None:
+    """(item1) a process_plants order placed: the counts it is judged against."""
+    if memory is not None:
+        memory.reserve_process["last"] = _plant_counts(s)
+
+
 def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """(0.105.31) Keep a few of each common mood material (MOOD_RESERVES):
     one step a cycle, plant cloth first (the commonest failed request)."""
@@ -1202,8 +1255,10 @@ def _mood_reserve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list)
                 if memory is not None and getattr(memory, "reserve_noted", "") != _noted_key(s, "plant_cloth_drink"):
                     memory.reserve_noted = _noted_key(s, "plant_cloth_drink")
                     notes.append(f"{head}: the fibre plants aren't processed for thread while {why_not}")
-            elif order("process_plants", n, f"{head}: process the fibre plants for thread before the still "
-                                            "brews them"):
+            elif (have < want and not queued(s, {"process_plants"})          # (item1) judged when the last is done
+                  and _process_ok(s, memory, cfg, head, notes) and order(
+                    "process_plants", n, f"{head}: process the fibre plants for thread before the still brews them")):
+                _process_placed(s, memory)
                 return
         elif route == "seeds" and _swap_off(s, memory):
             pass        # (0.105.31 reserve fixes) no fibre crop grows on the plots this season

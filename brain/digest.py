@@ -157,7 +157,7 @@ SECTION_DEFAULTS = {
     "citizens_taste": {},    # (E4) the grown-ups' leanings, dreams, values and likes, summed (lua/ai-homes.lua citizens_taste)
     "noble_demands": {},     # (0.105.41) {nobles: [{unit_id, name, title, positions, rooms: [{kind, need, zone_id, value...}]}], monarch, capital, land_holders} (lua/ai-noble-demands.lua)
     "noble_rooms": {},       # {nobles: [{unit_id, name, office, needs}], free: {office, bedroom...}} (lua/ai-nobles.lua)
-    "trade": {},             # {depot, caravans: [{civ, state}], goods, goods_value, at_depot} (lua/ai-trade.lua)          # {ores: {METAL: {tiles, ore}}} uncovered near the fort (lua/ai-industry.lua)             # {miners, picks, soldier_picks, dig, want, need, candidates} (lua/ai-labor.lua)
+    "trade": {},             # {depot, caravans: [{civ, state}], goods, goods_value, at_depot, overstay: [{civ, entity (item3), state, days, goods_in_depot, ...}]} (lua/ai-trade.lua)          # {ores: {METAL: {tiles, ore}}} uncovered near the fort (lua/ai-industry.lua)             # {miners, picks, soldier_picks, dig, want, need, candidates} (lua/ai-labor.lua)
     "founding": {},          # {stairs: has the fort a staircase, near: the wagon or the dwarves}
     "constructions": {},     # (0.105.30) built walls, floors...: by shape, item, surface (lua/ai-constructions.lua)
     "landmarks": {"list": []},   # (D0) the Design track's landmarks: id, name, purpose, status, stage, levels, project_ids

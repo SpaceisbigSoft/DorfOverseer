@@ -231,7 +231,7 @@ function overstays(txt, dep)
             local past = (state ~= 'Approaching' and state ~= 'AtDepot') or (tonumber(c.time_remaining) or 1) <= 0
             if not past or c.flags.tribute then return end
             local o = {state = tostring(state), time_remaining = c.time_remaining, merchants = 0, wagons = 0,
-                       reach_depot = 0, in_depot = 0, at = {}}
+                       reach_depot = 0, in_depot = 0, at = {}, entity = c.entity}   -- (item3) entity: for clear_caravan_goods
             for _, u in ipairs(report_units()) do
                 local okm, mine = pcall(function()
                     return u.flags1.merchant and u.civ_id == c.entity and not dfhack.units.isDead(u)
@@ -535,6 +535,161 @@ function unload(limit, dry_run, txt)
     end
     if moved == 0 then return {ok = false, error = 'none moved out of the depot: ' .. tostring(failed)} end
     return {ok = true, items = moved, left = #items - moved, error = failed}
+end
+
+-- (item3) The goods a caravan long done left in the depot (B and C, 24 Nov:
+-- "The Moral Wire" Leaving 2903 days, time run out, 115 of its goods still
+-- in the depot and its one merchant on the map not coming for them; the
+-- stuck caravan's walk-off and edge steps had been tried and DF's
+-- fix/stuck-merchants never runs with a merchant on the map). Its own goods
+-- (flags.trader; an ENTITY_ITEMOWNER ref, where there is one, to its
+-- civilisation) are taken out of the game with dfhack.items.remove, as if
+-- the merchants had packed them: never given to the fort (no flag or owner
+-- changed: that would be theft, and DF counts it against the civilisation),
+-- never moved out onto the floor (haulers would pick the merchants' goods
+-- up, and that is theft too). A bin goes with what is in it, its contents
+-- first; one holding anything not the merchants' stays, as does one on a
+-- job (a merchant's own pick-up), an artifact, or one whose removal DFHack
+-- refuses. Refused unless DF holds that caravan Leaving with its time run
+-- out, no other caravan is coming or at the depot (their goods would look
+-- the same), the trade screen is shut, and none of its merchants stands in
+-- the depot (one there is packing). Up to `limit` items (contents count).
+CARAVAN_GOODS_MAX = 300
+
+local function owner_civ(item)
+    local found
+    pcall(function()
+        for _, r in ipairs(item.general_refs) do
+            if r:getType() == df.general_ref_type.ENTITY_ITEMOWNER then found = r.entity_id end
+        end
+    end)
+    return found
+end
+
+-- whether this good and all it holds may go: true, or false and why
+local function goods_free(item, entity, depth)
+    if not merchant_item(item) then return false, 'not_theirs' end
+    local o = owner_civ(item)
+    if o ~= nil and o ~= entity then return false, 'other_owner' end
+    local okj, busy = pcall(function() return item.flags.in_job end)
+    if okj and busy then return false, 'busy' end
+    if is_artifact(item) then return false, 'artifact' end
+    local okc, inside = pcall(dfhack.items.getContainedItems, item)
+    if okc and type(inside) == 'table' and #inside > 0 then
+        if depth >= 3 then return false, 'nested' end
+        for _, c in ipairs(inside) do
+            local ok, why = goods_free(c, entity, depth + 1)
+            if not ok then return false, why end
+        end
+    end
+    return true
+end
+
+-- the item and what it holds, the contents first
+local function goods_list(item, out, depth)
+    local okc, inside = pcall(dfhack.items.getContainedItems, item)
+    if okc and type(inside) == 'table' and depth < 3 then
+        for _, c in ipairs(inside) do goods_list(c, out, depth + 1) end
+    end
+    table.insert(out, item)
+    return out
+end
+
+function clear_caravan_goods(entity, limit, dry_run, txt)
+    limit = math.max(1, math.min(tonumber(limit) or 200, CARAVAN_GOODS_MAX))
+    local dep = depot()
+    if not dep then return {ok = false, rejected = true, error = 'no trade depot built yet'} end
+    local T = df.caravan_state.T_trade_state
+    local c
+    for _, x in ipairs(df.global.plotinfo.caravans) do
+        if x.entity == entity then c = x end
+    end
+    if not c then return {ok = false, rejected = true, error = 'no caravan of entity ' .. tostring(entity)} end
+    local _, state = pcall(function() return T[c.trade_state] end)
+    local left = tonumber(c.time_remaining) or 1
+    if state ~= 'Leaving' or left > 0 then
+        return {ok = false, rejected = true, state = tostring(state),
+                error = ('that caravan is %s with %d ticks left: its goods are its merchants\' to pack')
+                        :format(tostring(state), math.floor(left))}
+    end
+    for _, x in ipairs(df.global.plotinfo.caravans) do
+        local ok, about = pcall(function()
+            return x ~= c and not x.flags.tribute and x.time_remaining > 0
+                and (x.trade_state == T.Approaching or x.trade_state == T.AtDepot)
+        end)
+        if ok and about then
+            return {ok = false, rejected = true, error = 'another caravan is coming or at the depot: its goods would look the same'}
+        end
+    end
+    local okt, open = pcall(function() return df.global.game.main_interface.trade.open end)
+    if okt and open then return {ok = false, rejected = true, error = 'the trade screen is open'} end
+    local packing = 0
+    pcall(function()
+        for _, u in ipairs(df.global.world.units.active) do
+            pcall(function()
+                if u.flags1.merchant and u.civ_id == entity and not u.flags1.inactive
+                        and not (dfhack.units.isDead and dfhack.units.isDead(u)) and at_depot(u, dep) then
+                    packing = packing + 1
+                end
+            end)
+        end
+    end)
+    if packing > 0 then
+        return {ok = false, rejected = true, packing = packing,
+                error = packing .. ' of its merchant(s) at the depot: left to pack their goods'}
+    end
+    local why, theirs, take, n = {}, 0, {}, 0
+    for _, ci in ipairs(dep.contained_items) do
+        if ci.use_mode == df.building_item_role_type.TEMP and ci.item and merchant_item(ci.item) then
+            theirs = theirs + 1
+            local ok, w = goods_free(ci.item, entity, 0)
+            if not ok then
+                why[w] = (why[w] or 0) + 1
+            else
+                local list = goods_list(ci.item, {}, 0)
+                if n > 0 and n + #list > limit then break end
+                n = n + #list
+                table.insert(take, list)
+            end
+        end
+    end
+    local civ = '?'
+    pcall(function()
+        local ent = df.historical_entity.find(entity)
+        if ent then civ = (txt or tostring)(translate(ent.name, true)) end
+    end)
+    local kept = next(why) and why or nil
+    if #take == 0 then
+        local bits = {}
+        for k, v in pairs(why) do table.insert(bits, v .. ' ' .. k) end
+        table.sort(bits)
+        return {ok = false, rejected = true, goods = theirs, kept = kept, civ = civ,
+                error = theirs == 0 and 'none of the merchants\' goods is in the depot'
+                        or ('none of their %d goods may go (%s)'):format(theirs, table.concat(bits, ', '))}
+    end
+    if dry_run then
+        return {ok = true, dry_run = true, goods = #take, items = n, left = theirs - #take, kept = kept, civ = civ}
+    end
+    local gone, inner, failed = 0, 0, 0
+    for _, list in ipairs(take) do
+        local whole = true
+        for i, it in ipairs(list) do
+            local ok, r = pcall(dfhack.items.remove, it)
+            if not ok or r == false then
+                failed = failed + 1
+                whole = false
+                break                      -- a bin whose contents could not all go stays
+            elseif i < #list then
+                inner = inner + 1
+            end
+        end
+        if whole then gone = gone + 1 end
+    end
+    if gone == 0 and inner == 0 then
+        return {ok = false, failed = failed, civ = civ, error = 'DFHack removed none of their goods'}
+    end
+    return {ok = true, removed = gone, contents = inner, failed = failed > 0 and failed or nil,
+            left = theirs - gone, kept = kept, civ = civ}
 end
 
 -- --- the trade screen: automatic trading -------------------------------------------

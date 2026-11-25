@@ -176,9 +176,18 @@ def _book_stuck(o: dict, mig: dict, seen: dict, now: int, cfg: dict) -> None:
     o.pop("frees", None)
 
 
+def _live(e: dict) -> list:
+    """(item3) The tries that count: those since its goods were last cleared
+    from the depot (planner_trade's caravan_goods); its merchants may have
+    waited on them, so the steps start again after."""
+    gc = e.get("goods_cleared")
+    return [t for t in _l(e.get("tries")) if not isinstance(gc, int)
+            or (isinstance(t, list) and t and isinstance(t[0], int) and t[0] > gc)]
+
+
 def _counts(e: dict) -> dict:
     n = {k: 0 for k in STEPS}
-    for t in _l(e.get("tries")):
+    for t in _live(e):
         st = t[1] if isinstance(t, list) and len(t) > 1 else "walk"
         n[st if st in n else "walk"] += 1
     return n
@@ -242,6 +251,9 @@ def note_caravan_try(p, r, memory, now: int) -> None:
     its step and what the bridge said (refused ones too: a step DF refuses
     counts, so the next step comes). A dry run books nothing."""
     a = _d(getattr(p, "action", None))
+    if a.get("type") == "clear_caravan_goods" and not a.get("dry_run"):
+        _goods_cleared(a, _d(r), memory, now)
+        return
     if a.get("type") != "free_caravan" or a.get("dry_run"):
         return
     step = a.get("step") if a.get("step") in STEPS else "walk"
@@ -253,6 +265,20 @@ def note_caravan_try(p, r, memory, now: int) -> None:
         e = books[k] = {"since": now, "tries": []}
     tries = [t for t in _l(e.get("tries")) if not (isinstance(t, list) and t and t[0] == now)]
     e["tries"] = (tries + [[now, step, _said(step, _d(r))]])[-12:]
+
+
+def _goods_cleared(a: dict, r: dict, memory, now: int) -> None:
+    """(item3, record) a caravan's goods taken from the depot: its book marks
+    when, so its steps (walk off, the edge, DFHack's fixes) start again."""
+    if r.get("ok") is not True or not (int(r.get("removed") or 0) or int(r.get("contents") or 0)):
+        return
+    o = _mem(memory, True)
+    books = o.setdefault("stuck", {})
+    k = str(a.get("entity"))
+    e = books.get(k)
+    if not isinstance(e, dict):
+        e = books[k] = {"since": now, "tries": []}
+    e["goods_cleared"] = now
 
 
 def gone_caravans(s: dict, memory, cfg: dict) -> list:

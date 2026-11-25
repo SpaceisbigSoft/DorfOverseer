@@ -944,16 +944,18 @@ end
 -- building already held was counted free and given to a new building.
 function slab_sites()
     local held, dead, tops = {}, {}, {}   -- tops: the dead a Slab building names already (item7)
-    local function top(it)
-        local ok, t = pcall(function() return it.topic end)
-        if ok and t ~= nil then tops[t] = true end
+    -- (item4) a memorial's topic only; built: Slab buildings a dead's memorial is in
+    local built = {}
+    local function top(it, inb)
+        local ok, t = pcall(function() return it.engraving_type == df.slab_engraving_type.Memorial and it.topic end)
+        if ok and t then tops[t] = true; if inb then built[t] = (built[t] or 0) + 1 end end
     end
     pcall(function()
         for _, b in ipairs(df.global.world.buildings.other.SLAB) do
             pcall(function()
                 local has = false
                 pcall(function()
-                    for _, ci in ipairs(b.contained_items) do held[ci.item.id] = b.id; has = true; top(ci.item) end
+                    for _, ci in ipairs(b.contained_items) do held[ci.item.id] = b.id; has = true; top(ci.item, true) end
                 end)
                 local asks, read = false, true
                 local okj = pcall(function()
@@ -977,7 +979,7 @@ function slab_sites()
             end)
         end
     end)
-    return held, dead, tops
+    return held, dead, tops, built
 end
 
 -- Engraved memorial slabs nobody has put up yet: free, on no job, in no
@@ -985,15 +987,13 @@ end
 -- first (a slab for someone else lays no ghost), then the rest.
 function memorial_slabs()
     local out = {}
-    local held, _, tops = slab_sites()
+    local held, _, tops, built = slab_sites()
     local ghosts = ghost_hfs()
     pcall(function()
         for _, it in ipairs(df.global.world.items.other.SLAB) do
             local okh, hb = pcall(dfhack.items.getHolderBuilding, it)
             -- (0.105.94) a finished slab left in the workshop that made it
-            -- (not in a job there) is free to put up: B, 23 Nov: both of the
-            -- one ghost's slabs lay in mason's workshops, the count read 0,
-            -- nothing was put up and the ghost haunted 55 citizens
+            -- (not in a job there) is free to put up (B, 23 Nov: read 0)
             if okh and hb then
                 local okt, wk = pcall(function() return hb:getType() == df.building_type.Workshop end)
                 if okt and wk and not it.flags.in_job then hb = nil end
@@ -1012,11 +1012,24 @@ function memorial_slabs()
     -- (item7) one slab a dead, and none for a dead a Slab building names
     -- already: B (24 Nov) put up 136 slabs, 67 of them one dwarf's, as the
     -- AI's EngraveSlab orders never ended; the ghost's own waited behind them
-    local one, seen = {}, {}
+    -- (item4) the rest spares, left lying (one lays a ghost; B: 3 for one hf
+    -- in an hour): + spares, dead with 2+ memorials up, spares by hf
+    local one, seen, spare, n, dup = {}, {}, {}, 0, 0
     for _, it in ipairs(out) do
-        if not tops[it.topic] and not seen[it.topic] then seen[it.topic] = true; table.insert(one, it) end
+        if tops[it.topic] then
+            spare[it.topic] = (spare[it.topic] or 0) + 1; n = n + 1
+        elseif not seen[it.topic] then seen[it.topic] = true; table.insert(one, it) end
     end
-    return one
+    for _, k in pairs(built) do if k > 1 then dup = dup + 1 end end
+    return one, n, dup, spare
+end
+
+local function spare_list(spare)     -- (item4) most first, 10 at most
+    local out = {}
+    for hf, k in pairs(spare) do table.insert(out, {hf = hf, n = k}) end
+    table.sort(out, function(a, b) return a.n > b.n or (a.n == b.n and a.hf < b.hf) end)
+    while #out > 10 do table.remove(out) end
+    return out[1] and out or nil
 end
 
 -- (r1g8) How many of the walking ghosts' own slabs wait to be put up, and how
@@ -1038,11 +1051,16 @@ end
 
 function place_slabs(max, dry_run)
     OFFSET = elevation_offset()
-    local slabs = memorial_slabs()
-    if #slabs == 0 then return {ok = false, rejected = true, error = 'no engraved memorial slab waits to be put up'} end
+    local slabs, nspare, dup, spare = memorial_slabs()
+    local sp = nspare > 0 and nspare or nil
+    if #slabs == 0 then
+        return {ok = false, rejected = true, spare = sp, spare_hfs = spare_list(spare),
+                error = sp and 'every engraved memorial slab left is a spare: its dead has one up already'
+                        or 'no engraved memorial slab waits to be put up'}
+    end
     local n = math.min(#slabs, max or 5)
     local _, dead = slab_sites()
-    if dry_run then return {ok = true, dry_run = true, slabs = n, waiting = #slabs, dead_sites = #dead} end
+    if dry_run then return {ok = true, dry_run = true, slabs = n, waiting = #slabs, dead_sites = #dead, spare = sp} end
     -- (r1g8) the AI's dead slab sites taken down: they hold the spots and the
     -- next slab was put elsewhere again and again (F: 164 sites)
     local cleared = 0
@@ -1104,7 +1122,8 @@ function place_slabs(max, dry_run)
     local for_ghosts = 0
     for _, p in ipairs(placed) do if p.ghost then for_ghosts = for_ghosts + 1 end end
     return {ok = true, placed = placed, waiting = #slabs - #placed, for_ghosts = for_ghosts,
-            dead_sites = cleared > 0 and cleared or nil}
+            dead_sites = cleared > 0 and cleared or nil, spare = sp, spare_hfs = spare_list(spare),
+            dup_memorials = dup > 0 and dup or nil}
 end
 
 ---------------------------------------------------------------------------
