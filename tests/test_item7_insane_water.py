@@ -180,8 +180,7 @@ def _():
     assert "reqscript('ai-insane').water({units = ids}, a.dry_run == true)" in body, body
     assert "'insane_water',   -- (item7)" in cat
     assert "insane_water =" not in cat.split("RELEASE_WHILE_HALTED = {")[1].split("}")[0], "runs while halted"
-    if LuaRuntime is None:
-        return
+    need_lua()
     lua = LuaRuntime(unpack_returned_tuples=True)
     fn = body.replace("insane_water = function(a)", "return function(a)", 1) + "\nend"
     calls = []

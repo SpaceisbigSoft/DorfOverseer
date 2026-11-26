@@ -156,9 +156,10 @@ NAMES_AT_6298B4A["planner_building"] = """
     "winter_cistern_action", "winter_factor", "winter_water_need", "winter_wells", "wool_route", "young_fort",
     "zone_full_days"
 """
+# (item6, 26 Nov) planner_wells gained CISTERN_PULL_DAYS, CISTERN_PULL_KEY, _cistern_pull_wait (B's cistern shut every cycle)
 NAMES_AT_6298B4A["planner_wells"] = """
     "ADJUST_BOUNDS", "AGENDA_THEMES", "ALL_FOOD", "BREW_RECIPES", "BUILDABLE_SHOPS", "CHAIN_SKIP",
-    "CISTERN_RELINK_ROUNDS", "CISTERN_RETRY_SEALS", "CISTERN_SHUT_RULE", "CISTERN_WORDS", "COOLDOWN_KEYS",
+    "CISTERN_PULL_DAYS", "CISTERN_PULL_KEY", "CISTERN_RELINK_ROUNDS", "CISTERN_RETRY_SEALS", "CISTERN_SHUT_RULE", "CISTERN_WORDS", "COOLDOWN_KEYS",
     "CROWD_LOCATIONS", "DISPOSAL_ACTION_MAX", "DISPOSAL_LEVELS", "EMERGENCY", "GEAR_METALS", "GEAR_WEAPONS",
     "GREAT_LIKE_KINDS", "IDLE_OLD_LINES", "JOB_SHOPS", "LABOR_CAPS", "LIMIT_EXEMPT", "LOCATION_UNITS",
     "LOOP_EXEMPT", "LOOP_LIMITS", "LOOP_LIMIT_DEFAULT", "MAINTAIN_SKIPS", "MANDATE_RECIPES", "MEAL_RECIPES",
@@ -198,7 +199,7 @@ NAMES_AT_6298B4A["planner_wells"] = """
     "thief_rows", "thread_plants_here", "timeout_streak", "unfound_cavern", "unmet", "unstored_cups",
     "update_idle", "usable_wells", "watch_since", "water_summary", "water_zones_usable", "well_parts_plan",
     "wild_pack", "wild_rows", "wildlife_threat", "wildlife_threats", "winter_cistern_action", "winter_factor",
-    "winter_water_need", "winter_wells", "wool_route", "young_fort", "zone_full_days"
+    "winter_water_need", "winter_wells", "wool_route", "young_fort", "zone_full_days", "_cistern_pull_wait"
 """
 NAMES_AT_6298B4A = {k: [x.strip().strip('"') for x in v.replace("\n", " ").split(",") if x.strip()]
                     for k, v in NAMES_AT_6298B4A.items()}

@@ -219,8 +219,7 @@ def _doors_words(r: dict) -> str:
             "locked)")
 
 
-def _num(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _num  # (item7) util's helper
 
 
 def _water_bars(s: dict, cfg: dict) -> tuple[int, int]:
