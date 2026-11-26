@@ -254,6 +254,9 @@ def _lockdown_cap_why(s: dict, cfg: dict, ids: list, quiet_ticks: int, rec: dict
     if (len(ids) > cfg.get("lockdown_cap_threats", 2) or great_present(s)
             or any(i not in rows or rows[i].get("great_danger") or rows[i].get("fire_breather") for i in ids)):
         return ""
+    from planner_gates_why import release_void
+    if release_void(s, cfg, ids):
+        return ""                       # (R32 b) a destroyer or flier, or one among the dwarves: held
     out = int(_d(s.get("entrances")).get("citizens_outside") or 0)
     if s.get("fps_low"):
         return f"the game runs slowly (FPS {s.get('fps_low')})"
@@ -292,11 +295,20 @@ def note_lockdown(s: dict, memory, cfg: dict) -> list[str]:
     if new:
         rec["new"] = now
         rec["seen"] = (seen + new)[-100:]
-    if (new or came_in) and isinstance(rec.get("released"), int):
+    from planner_gates_why import release_void
+    void = release_void(s, cfg, ids) if isinstance(rec.get("released"), int) else ""
+    if (new or came_in or void) and isinstance(rec.get("released"), int):
         rec.pop("released", None)
         rec.pop("released_ids", None)
-        notes.append(f"{len(new) or len(came_in)} " + ("new enemy/enemies" if new else "enemy/enemies able to reach "
-                     "the dwarves now") + ": the gates and alarm may close again")
+        rec.pop("released_why", None)
+        if void and not (new or came_in):
+            # (R32 b) the lift taken back: the alarm goes up and the gates close
+            # again, and the cap's days count afresh (never lifted again next cycle)
+            rec["new"] = now
+            notes.append(f"the lifted lockdown is taken back: {void}: the gates and alarm may close again")
+        else:
+            notes.append(f"{len(new) or len(came_in)} " + ("new enemy/enemies" if new else "enemy/enemies able to "
+                         "reach the dwarves now") + ": the gates and alarm may close again")
     if new:
         rec.pop("lone_ids", None)       # a new enemy: read afresh from the map
     few = few_ordinary(s, cfg, traits)
@@ -327,6 +339,7 @@ def note_lockdown(s: dict, memory, cfg: dict) -> list[str]:
         if why:
             rec["released"] = now
             rec["released_ids"] = reach_now[:50]
+            rec["released_why"] = why[:120]
             notes.append(f"the AI has kept the fort shut {(now - rec['new']) // TICKS_PER_DAY} day(s) with no new "
                          f"enemy and only {len(ids)} left, and {why}: the gates open and the alarm comes down "
                          "(a new enemy closes them again)")

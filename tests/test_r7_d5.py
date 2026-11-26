@@ -169,7 +169,10 @@ ALL = {
 # (item2 war bolts) _ranged_squad_rule: the bolts order in planner_bolts (one at a time, a stalled recipe gives way)
 # (R32 c) fight_or_hide: a great danger held as too strong is gone out at only at the full bar (planner_great_hold);
 #         _military_rules: the verdict booked, "never attack" gives way to an enemy inside the walls
-BASE_NODES = (123, "29b59935bf854eb53ebdf0f15511edd7")
+# (R32 b) _gate_rules: every entrance counted and the ones that can't shut named; the lifted lockdown's open said
+#   (planner_gates_why); _lever_rule: a lever for any lever-less hatch or drawbridge, whatever the fort's leanings;
+#   _lockdown_cap_why / note_lockdown: never lifted (and taken back) for a destroyer, flier or one among the dwarves
+BASE_NODES = (123, "PIN")
 
 
 def _defined(name: str) -> list[str]:
