@@ -61,7 +61,7 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "notes": "sha256:a76be1d185e69e105d3b5eb9",
-   "props": "sha256:a1e2fbf845028da3cffb862b",
+   "props": "sha256:09eda0991c6132bceb0d1bfa",
    "rules": [
     "build",
     "hospital",
@@ -97,7 +97,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:4b4604253d59b494def3104b",
-   "props": "sha256:ed7755a0712bcda8eec37f0a",
+   "props": "sha256:f83d4ce427ed120409d57980",
    "rules": [
     "build",
     "hospital",
@@ -132,7 +132,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:4b4604253d59b494def3104b",
-   "props": "sha256:a1e2fbf845028da3cffb862b",
+   "props": "sha256:09eda0991c6132bceb0d1bfa",
    "rules": [
     "build",
     "hospital",
@@ -170,7 +170,7 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "notes": "sha256:a91dad8c20039451a725ea87",
-   "props": "sha256:42510ebcfb8edc42f70354c0",
+   "props": "sha256:5aee1c7fd919f7ef91f14f00",
    "rules": [
     "build",
     "hospital",
@@ -206,7 +206,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:667cf5fa75465464ebcb3b84",
-   "props": "sha256:eb5440d56d1839660f1c1c4f",
+   "props": "sha256:bd55806458acb979a398ab1e",
    "rules": [
     "build",
     "hospital",
@@ -241,7 +241,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:667cf5fa75465464ebcb3b84",
-   "props": "sha256:42510ebcfb8edc42f70354c0",
+   "props": "sha256:5aee1c7fd919f7ef91f14f00",
    "rules": [
     "build",
     "hospital",
@@ -609,7 +609,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:52b2e896d6eb2a2103e304fd",
+   "props": "sha256:00c777fde1528133e98c7f7c",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -644,7 +644,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:3fb3687a451b99b414d0e0d6",
+   "props": "sha256:71af41819c054d139fd53729",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -678,7 +678,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:52b2e896d6eb2a2103e304fd",
+   "props": "sha256:00c777fde1528133e98c7f7c",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -715,7 +715,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:71d5f3f2e917a699edbeada3",
-   "props": "sha256:1e83feadb73e4753dbe774af",
+   "props": "sha256:727c44e393cda5f4a1860f29",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -751,7 +751,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:71d5f3f2e917a699edbeada3",
-   "props": "sha256:a926c16f404a539aeed04737",
+   "props": "sha256:633640c31364e278bae77561",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -786,7 +786,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:71d5f3f2e917a699edbeada3",
-   "props": "sha256:1e83feadb73e4753dbe774af",
+   "props": "sha256:727c44e393cda5f4a1860f29",
    "rules": [
     "hospital",
     "hospital_stock",
