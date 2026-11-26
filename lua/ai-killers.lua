@@ -1082,7 +1082,7 @@ PART_LOCALS = {U = U, assign = assign, burrow_named = burrow_named, changed = ch
 PARTS = {'cell'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-killers'] = '0.105.123'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-killers'] = '0.105.124'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')
