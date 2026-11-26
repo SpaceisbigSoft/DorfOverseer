@@ -69,7 +69,7 @@ NAMES_6298B4A = (
     '__loader__', '__name__', '__package__', '__spec__', '_alerts_rule', '_alloy_rule', '_anvil_rule',
     '_approve_rule', '_army_gear_rule', '_artifact_rule', '_bench_caps_rule', '_bench_coffins_rule',
     '_best_metal', '_bolts_rule', '_booze_variety_rule', '_bottleneck_rule', '_bowyer_rule',
-    '_break_fights_rule', '_calm_burrow_rule', '_captives_rule', '_cavern_logging_rule', '_cistern_parts',
+    '_break_fights_rule', '_calm_burrow_rule', '_captives_rule', '_cavern_logging_rule', '_cavern_way_rule', '_cistern_parts',
     '_cistern_rule', '_citizenship_notes', '_clamp', '_cleanup_rule', '_cloth_rule', '_clutter_rules',
     '_coal_rule', '_comfort_rules', '_complaint_notes', '_construction_blocks_rule', '_contact_rule',
     '_convict_rule', '_crop_rules', '_crossbow_order', '_crossing_rule', '_d', '_dairy_rule', '_dead_notes',
