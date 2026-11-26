@@ -183,22 +183,26 @@ def _():
     assert pulls(G) == [137] and not G.blds[9].gate_flags.raised
 
 
-@test("item2 (2): a unit read standing by the bridge but not who it is: a raise and a lowering with no "
-      "enemy near wait; one whose position can't be read is no evidence (fix2)")
+@test("item2 (2): a unit read standing by the bridge, not hostile, not the fort's civ, whose isCitizen "
+      "can't be read: a raise and a lowering with no enemy near wait; one whose position can't be read is no "
+      "evidence (fix2)")
 def _():
+    for raised in (False, True):
+        E, G = bridge_rig(raised=raised)
+        u = unit(G, 107, 149, 171)
+        u.civ_id = 99                          # (fix3) the fort's civ would make it own
+        E.dfhack.units.isCitizen = LUA.eval("function(u) error('gone') end")
+        (lowered if raised else close)(E)
+        assert pulls(G) == [], (raised, pulls(G))
+        w = E.bridge_watch(G.blds[9])
+        assert w.unknown is True and w.near is False and w.enemy is False and w.blind is False
+        assert E.own_on_bridge(G.blds[9]) is None
+    # isCitizen unread but the fort's civ: own (near)
     E, G = bridge_rig()
     unit(G, 107, 149, 171)
     E.dfhack.units.isCitizen = LUA.eval("function(u) error('gone') end")
-    close(E)
-    assert pulls(G) == [] and E.GATES.bridge_holds == 1
     w = E.bridge_watch(G.blds[9])
-    assert w.unknown is True and w.near is False and w.enemy is False and w.blind is False
-    assert E.own_on_bridge(G.blds[9]) is None
-    E, G = bridge_rig(raised=True)
-    unit(G, 107, 149, 171)
-    E.dfhack.units.isCitizen = LUA.eval("function(u) error('gone') end")
-    lowered(E)
-    assert pulls(G) == []
+    assert w.near is True and w.unknown is False
     # (fix2) where it is can't be read: not counted
     E, G = bridge_rig()
     u = unit(G, 107, 149, 171)
@@ -207,8 +211,9 @@ def _():
     assert pulls(G) == [137]
     # an unreadable unit 5 tiles off (past NEAR_BOX): not a hold
     E, G = bridge_rig()
-    E.dfhack.units.isDead = LUA.eval("function(u) if u.pos.x < 105 then error('gone') end return false end")
-    unit(G, 103, 149, 171)
+    u = unit(G, 103, 149, 171)
+    u.civ_id = 99
+    E.dfhack.units.isCitizen = LUA.eval("function(u) error('gone') end")
     close(E)
     assert pulls(G) == [137]
 
@@ -216,11 +221,34 @@ def _():
 @test("item2 (2): can't tell, but an enemy within IMMINENT read: the raise still goes")
 def _():
     E, G = bridge_rig()
-    unit(G, 107, 149, 171)
+    u = unit(G, 107, 149, 171)
+    u.civ_id = 99
     unit(G, 115, 149, 171, own=False, danger=True)
     E.dfhack.units.isCitizen = LUA.eval("function(u) if u.danger then return false end error('gone') end")
     close(E)
     assert pulls(G) == [137]
+
+
+@test("fix3: a danger is never own nor can't-tell: one beside the bridge with no civ_id, no path, isDead and "
+      "isCitizen missing (test_r36 X1's fake) still lets the close go, and counts as the enemy")
+def _():
+    E, G = bridge_rig()
+    E.dfhack.units.isDead = None
+    E.dfhack.units.isCitizen = None
+    G.units[1] = t({"id": 99, "danger": True, "flags1": t({"caged": False, "chained": False}),
+                    "pos": t({"x": 109, "y": 149, "z": 171})})
+    w = E.bridge_watch(G.blds[9])
+    assert w.enemy is True and w.unknown is False and w.near is False and w.on is False
+    close(E)
+    assert pulls(G) == [137]
+    # X1's own setup: the danger 4 tiles off, an entrance still being opened
+    E, G = bridge_rig(raised=False)
+    E.dfhack.units.isDead = None
+    E.GATES.closed, E.GATES.opening = t({1: True}), t({1: True})
+    G.units[1] = t({"id": 99, "danger": True, "flags1": t({"caged": False, "chained": False}),
+                    "pos": t({"x": 112, "y": 149, "z": 171})})
+    r = E.close_threatened_gates(False)
+    assert r.ok and G.blds[9].gate_flags.raised and not E.GATES.opening[1], dict(r)
 
 
 def two_bridges(E, G):
@@ -334,8 +362,9 @@ def _():
         E, G = bridge_rig(raised=raised)
         E.df["global"].world.units = None          # the units list can't be read
         (lowered if raised else close)(E)
-        # the raise goes; the lowering waits on bridge_occupied's own "can't tell: occupied" (0.100, unchanged)
-        assert pulls(G) == ([] if raised else [137]), (raised, pulls(G))
+        # (fix3) both go: bridge_occupied (whose "can't tell: occupied" would hold the lowering in
+        # the game) is stubbed false in bridge_rig; item2's own holds don't hold
+        assert pulls(G) == [137], (raised, pulls(G))
         w = E.bridge_watch(G.blds[9])
         assert w.blind is True and w.enemy is None
     for raised in (False, True):

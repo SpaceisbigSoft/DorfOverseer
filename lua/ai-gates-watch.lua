@@ -211,7 +211,8 @@ end
 --           steps or destination are on it (on counts as near)
 --   enemy   a live, loose danger or invader (not the fort's) within IMMINENT of
 --           the bridge (|dz| <= 3): true / false, nil when the units can't be read
---   unknown a unit within NEAR_BOX (or the units list itself) couldn't be read
+--   unknown a unit standing within NEAR_BOX (one level), not hostile, whose isCitizen can't be read
+--           and whose civ isn't the fort's (fix3: never a danger or invader)
 BRIDGE_PATH_STEPS = 3
 local NEAR_BOX = BRIDGE_PATH_STEPS + 1     -- tiles: past this no step or ring tile can touch the bridge
 function bridge_watch(b)
@@ -230,43 +231,55 @@ function bridge_watch(b)
     local function on(x, y, zz)
         return zz == z and x >= x1 and x <= x2 and y >= y1 and y <= y2
     end
+    -- (fix3) each of a unit's reads on its own: a danger or invader is never
+    -- own and never can't-tell (an enemy whose isDead or isCitizen can't be
+    -- read still counts as the enemy); can't-tell is only a unit read standing
+    -- at the bridge, not hostile, whose isCitizen can't be read and whose civ
+    -- isn't the fort's
     local okl = pcall(function()
         for _, u in ipairs(units) do
-            local d, dz = math.huge, math.huge
-            local ok = pcall(function()
+            local okp, d, dz = pcall(function()
                 local p = u.pos
-                dz = math.abs(p.z - z)
-                d = math.max(x1 - p.x, p.x - x2, y1 - p.y, p.y - y2, 0)
-                if dz > 3 or d > reach or dfhack.units.isDead(u) then return end
-                local own = dfhack.units.isCitizen(u, true) or (civ ~= nil and u.civ_id == civ)
-                local okd, danger = pcall(function() return dfhack.units.isDanger(u) end)
-                danger = okd and danger
-                if own and not danger then
-                    if dz == 0 and d == 0 then w.on = true end
-                    if not w.near and dz <= 1 and d <= NEAR_BOX then
-                        if d <= 1 and (dz == 0 or d == 1) then
-                            w.near = true          -- on it or beside it (the ramp levels: beside only)
-                        else
-                            pcall(function()
-                                local path = u.path
-                                local dst = path.dest
-                                if dst and on(dst.x, dst.y, dst.z) then w.near = true; return end
-                                local px, py, pz = path.path.x, path.path.y, path.path.z
-                                for i = 0, math.min(#px, BRIDGE_PATH_STEPS) - 1 do
-                                    if on(px[i], py[i], pz[i]) then w.near = true; return end
-                                end
-                            end)
+                return math.max(x1 - p.x, p.x - x2, y1 - p.y, p.y - y2, 0), math.abs(p.z - z)
+            end)
+            -- (fix2) a unit whose position can't be read is no evidence: not counted
+            if okp and dz <= 3 and d <= reach then
+                local okdead, dead = pcall(function() return dfhack.units.isDead(u) end)
+                if not (okdead and dead) then
+                    local okd, danger = pcall(function() return dfhack.units.isDanger(u) end)
+                    local oki, invader = pcall(function() return dfhack.units.isInvader(u) end)
+                    local hostile = (okd and danger == true) or (oki and invader == true)
+                    local okc, citizen = pcall(function() return dfhack.units.isCitizen(u, true) end)
+                    local okv, same_civ = pcall(function() return civ ~= nil and u.civ_id == civ end)
+                    local own = (okc and citizen == true) or (okv and same_civ == true)
+                    if hostile then
+                        -- one of the fort's own turned dangerous (a were) is neither own nor the enemy, as before
+                        if not own and not w.enemy then
+                            local okf, loose = pcall(function() return not u.flags1.caged and not u.flags1.chained end)
+                            if not okf or loose then w.enemy = true end
                         end
-                    end
-                elseif not own and not w.enemy then
-                    if not u.flags1.caged and not u.flags1.chained and (danger or dfhack.units.isInvader(u)) then
-                        w.enemy = true
+                    elseif own then
+                        if dz == 0 and d == 0 then w.on = true end
+                        if not w.near and dz <= 1 and d <= NEAR_BOX then
+                            if d <= 1 and (dz == 0 or d == 1) then
+                                w.near = true          -- on it or beside it (the ramp levels: beside only)
+                            else
+                                pcall(function()
+                                    local path = u.path
+                                    local dst = path.dest
+                                    if dst and on(dst.x, dst.y, dst.z) then w.near = true; return end
+                                    local px, py, pz = path.path.x, path.path.y, path.path.z
+                                    for i = 0, math.min(#px, BRIDGE_PATH_STEPS) - 1 do
+                                        if on(px[i], py[i], pz[i]) then w.near = true; return end
+                                    end
+                                end)
+                            end
+                        end
+                    elseif not okc and dz <= 1 and d <= NEAR_BOX then
+                        w.unknown = true               -- at the bridge, not hostile, who it is unread
                     end
                 end
-            end)
-            -- (fix2) a unit read standing at the bridge but not who it is: unknown
-            -- (one whose position can't be read is no evidence: not counted)
-            if not ok and d ~= math.huge and dz <= 1 and d <= NEAR_BOX then w.unknown = true end
+            end
             if w.on and w.enemy then break end
         end
     end)
