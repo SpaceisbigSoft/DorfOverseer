@@ -166,7 +166,8 @@ ALL = {
 # (0.105.119 item32) _military_rules: weres in beast form a target at once; _hazard_rules: every free squad
 # (R29 item6) _sortie_on: the sortie's targets and squads kept for its result
 # (R30c item24) _military_rules: no fill when everyone draftable is in avoid
-BASE_NODES = (123, "406053b8956af23c34b1527ba0310fb8")   # (0.105.123 merge) item24 and item23 (_hazard_rules: sealed weres get no squads) together
+# (item2 war bolts) _ranged_squad_rule: the bolts order in planner_bolts (one at a time, a stalled recipe gives way)
+BASE_NODES = (123, "b7658c0e758d8b343e19e6f6945519fb")
 
 
 def _defined(name: str) -> list[str]:

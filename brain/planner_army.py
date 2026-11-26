@@ -218,8 +218,37 @@ def _flask_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                      "furnace with sand and fuel, to make one")
 
 
+def war_stock_due(s: dict, memory, cfg: dict) -> str:
+    """(item2) Why the crossbow squads keep a war reserve of bolts now ("" if
+    not): a civilization at war with the fort, an enemy in reach or a siege
+    (planner_war_hold._war_now), or a siege invitation open."""
+    if not cfg.get("bolts_reserve_per_soldier"):
+        return ""
+    for c in _l(_d(s.get("world")).get("civs")):
+        if isinstance(c, dict) and (c.get("relation") in ("TotalWar", "Skirmishing") or c.get("hostile")
+                                    or c.get("at_war")):
+            return f"at war with {c.get('name') or 'a civilization'}"
+    try:
+        from planner_war_hold import _war_now
+        why = _war_now(s, memory, cfg)
+        if why:
+            return why
+    except Exception:  # noqa: BLE001  (never stops the rule)
+        pass
+    try:
+        from planner_siege_watch import _invited
+        if _invited(s, memory):
+            return "a siege invitation is open"
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
 def _bolts_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
-    """A squad with crossbows and no ammunition entry: bolts for it."""
+    """A squad with crossbows and no ammunition entry: bolts for it. (item2)
+    At war, a combat-only reserve split off the squad's entry first, so the
+    range's training doesn't shoot the war stock away."""
+    war = None
     for q in _l(_d(s.get("military")).get("squads")):
         if not isinstance(q, dict) or q.get("id") is None or not (q.get("members") or 0):
             continue
@@ -230,6 +259,22 @@ def _bolts_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                                       "bolts for combat and training", 3))
             return
         g = _d(_d(s.get("military")).get("gear"))
+        # (item2) A, the War-hold (25 Nov): 10 crossbow soldiers at their range,
+        # one entry for combat and training, the stock 125 -> 61 -> 19 -> 0 in
+        # an hour while at war with the goblins. The bridge (squad_ammo
+        # `reserve`, 0 when none) splits a combat-only entry off it.
+        res = a.get("reserve") if isinstance(a, dict) else None
+        if isinstance(res, int) and not isinstance(res, bool) and res == 0 and int(a.get("wanted") or 0) > 0:
+            if war is None:
+                war = war_stock_due(s, memory, cfg)
+            n = int(q.get("members") or 0) * int(cfg.get("bolts_reserve_per_soldier") or 0)
+            n = min(n, int(a.get("wanted") or 0) // 2)
+            if war and n > 0:
+                proposals.append(Proposal("bolts", {"type": "split_bolts", "squad_id": q["id"], "reserve": n},
+                                          f"{war}: {q.get('name') or 'a crossbow squad'} keeps {n} of its "
+                                          f"{a.get('wanted')} bolts for combat only (training at the range "
+                                          "uses the rest up)", 3))
+                return
         # (r2h4) DF hands bolts to an entry only when its equipment update
         # runs: 0 assigned in every crossbow squad of the 15-16 Nov run, with
         # 300-500 bolts in stock; the bridge (0.105.56+, `units`, gear

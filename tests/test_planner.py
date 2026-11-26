@@ -4100,7 +4100,10 @@ def _():
     assert not any(x.action["recipe"] == "metal_battle_axe" for x in p)   # 20 armed covers the melee squad
     s["military"]["gear"].update(ranged_armed=10)
     p = by_rule(plan(s, Memory())[0], "arms")
-    assert p and p[0].action["recipe"] == "metal_bolts" and p[0].action["amount"] == 5, p     # iron 200: metal
+    # iron 200: metal; (item2) one order sized to the gap, at most bolts_order_max lots
+    want = sum(q["members"] for q in sq if q["id"] == newest) * PLANNER_CONFIG["bolts_per_soldier"]
+    assert p and p[0].action["recipe"] == "metal_bolts" and p[0].action["amount"] == min(
+        PLANNER_CONFIG["bolts_order_max"], -(-want // 25)), p
     s["military"]["gear"]["bars"] = {"IRON": 5}
     p = by_rule(plan(s, Memory())[0], "arms")
     assert p and p[0].action["recipe"] == "wooden_bolts", p
