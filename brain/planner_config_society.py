@@ -459,7 +459,7 @@ PART = {
     "trim_margin_share": 0.25,         # ...or this share of it, whichever is more
     "max_trim_per_cycle": 2,
     "trim_week_max": 3,                # (item8) soldiers trimmed a week at most...
-    "trim_season_max": 10,             # ...and a squad's worth a season (trim_season_days)
+    "trim_season_max": 4,              # ...and 4 a season (trim_season_days; the player, 26 Nov 14:31: "slower")
     "trim_season_days": 84,
     "trim_continue_days": 28,          # ...once begun (a trim this recent) it goes on down to the wanted number
     "squad_trim_cooldown_ticks": 1200,  # (0.105.97) a day (was 3): a floor that fell lets the extra go a few a day

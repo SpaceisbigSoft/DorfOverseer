@@ -109,7 +109,7 @@ def _():
         [x.reason for x in p if "soldier" in x.reason]
     r = t[0].reason
     assert r.startswith("39 soldiers, the fort wants ") and "Militarism +0" in r, r
-    assert "unhappiest and least skilled first" in r and "2 of at most 10 this season" in r, r
+    assert "unhappiest and least skilled first" in r and "2 of at most 4 this season" in r, r
 
 
 @test("a fort under its target, or within the margin: no trim")
@@ -159,18 +159,18 @@ def _():
     assert not out.get("count") and "berserk" in out["note"], out
 
 
-@test("at most a squad's worth a season and 3 a week; once begun it goes on down to the wanted number")
+@test("at most 4 a season (0.105.129) and 3 a week; once begun it goes on down to the wanted number")
 def _():
     s = fort_e()
     now = DF.abs_tick(s)
     m = e_memory(s)
-    m.trimmed = {str(100 + i): now - (10 + i) * DAY for i in range(10)}          # 10 this season
+    m.trimmed = {str(100 + i): now - (10 + i) * DAY for i in range(4)}           # 4 this season (0.105.129: at most 4)
     out = trim_plan(s, m, CFG, 29, 13, {}, False, False)
     assert not out.get("count") and "this season already" in out["note"], out
     m.trimmed = {str(100 + i): now - DAY for i in range(3)}                       # 3 this week
     out = trim_plan(s, m, CFG, 36, 13, {}, False, False)
     assert not out.get("count") and "this week" in out["note"], out
-    m.trimmed = {str(100 + i): now - 9 * DAY for i in range(9)}                   # 9: one place left
+    m.trimmed = {str(100 + i): now - 9 * DAY for i in range(3)}                   # 3: one place left
     assert trim_plan(s, m, CFG, 30, 13, {}, False, False)["count"] == 1
     # within the margin: nothing unless a trim is under way, then down to the wanted number exactly
     assert trim_plan(s, Memory(), CFG, 15, 13, {}, False, False) == {}
@@ -217,7 +217,7 @@ def _():
     home = recently_home(s, m)
     assert 501 in home and 502 in home, home
     out = trim_plan(s, m, CFG, 37, 13, {}, False, False)
-    assert out["count"] == 1 and "3 of at most 10" in out["why"], out       # 2 this week already: one more
+    assert out["count"] == 1 and "3 of at most 4" in out["why"], out       # 2 this week already: one more
 
 
 @test("the floor remembers when a threat was last on the map")

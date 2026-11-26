@@ -8,7 +8,7 @@
 -- names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-killers-cell is a part of ai-killers; run ai-killers') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-killers-cell'] = '0.105.128'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-killers-cell'] = '0.105.129'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, assign, burrow_named, changed, citizen, count_rooms, dead, free, in_zone, larder_by_name, larder_check, larder_low, let_out, mood_name, name_of, need, now_tick, other_in_zone, resident, restocking, save, taken_zones, zone_by_id = PART_LOCALS.U, PART_LOCALS.assign, PART_LOCALS.burrow_named, PART_LOCALS.changed, PART_LOCALS.citizen, PART_LOCALS.count_rooms, PART_LOCALS.dead, PART_LOCALS.free, PART_LOCALS.in_zone, PART_LOCALS.larder_by_name, PART_LOCALS.larder_check, PART_LOCALS.larder_low, PART_LOCALS.let_out, PART_LOCALS.mood_name, PART_LOCALS.name_of, PART_LOCALS.need, PART_LOCALS.now_tick, PART_LOCALS.other_in_zone, PART_LOCALS.resident, PART_LOCALS.restocking, PART_LOCALS.save, PART_LOCALS.taken_zones, PART_LOCALS.zone_by_id   -- (0.105.113) the hub's locals
 
