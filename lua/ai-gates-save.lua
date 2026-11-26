@@ -98,7 +98,8 @@ function open_saved_gates(saved)
             if g.kind == 'bridge' then
                 local ok, raised = pcall(function() return b.gate_flags.raised end)
                 if ok and raised then
-                    if g.lever_id and #b.jobs == 0 and not bridge_occupied(b) and pull(g.lever_id) then
+                    if g.lever_id and #b.jobs == 0 and not bridge_occupied(b) and not bridge_hold(b, false)   -- (item2)
+                            and pull(g.lever_id) then
                         opened = opened + 1
                     end
                     waiting = waiting + 1

@@ -83,7 +83,7 @@ def _():
     E, G = bridge_rig()
     u = unit(G, 107, 149, 171)
     close(E)
-    assert pulls(G) == [] and E.GATES.bridge_near_holds == 1
+    assert pulls(G) == [] and E.GATES.bridge_holds == 1
     assert not G.blds[9].gate_flags.raised
     u.pos.x = 100
     close(E)
@@ -148,7 +148,7 @@ def _():
     unit(G, 115, 149, 171, own=False, danger=True)
     close(E)
     assert pulls(G) == [137] and G.blds[9].gate_flags.raised
-    assert not E.GATES.bridge_near_holds
+    assert not E.GATES.bridge_holds
     # a path through the bridge is no hold then either
     E, G = bridge_rig()
     unit(G, 105, 149, 171, path=[(106, 149, 171), (107, 149, 171), (108, 149, 171)])
@@ -183,15 +183,152 @@ def _():
     assert pulls(G) == [137] and not G.blds[9].gate_flags.raised
 
 
-@test("item2: can't tell (a unit unreadable): not held, a siege gate still closes")
+@test("item2 (2): a unit by the bridge that can't be read: a raise and a lowering with no enemy near wait")
 def _():
     E, G = bridge_rig()
+    u = unit(G, 107, 149, 171)
+    u.pos = None                           # unreadable: where it is can't be told
+    close(E)
+    assert pulls(G) == [] and E.GATES.bridge_holds == 1
+    E, G = bridge_rig(raised=True)
     unit(G, 107, 149, 171)
     E.dfhack.units.isDead = LUA.eval("function(u) error('gone') end")
+    lowered(E)
+    assert pulls(G) == []
+    w = E.bridge_watch(G.blds[9])
+    assert w.unknown is True and w.near is False and w.enemy is False
+    assert E.own_on_bridge(G.blds[9]) is None
+    # an unreadable unit far off (where it is still read): not a hold
+    E, G = bridge_rig()
+    E.dfhack.units.isDead = LUA.eval("function(u) if u.pos.x < 105 then error('gone') end return false end")
+    unit(G, 103, 149, 171)                 # 5 tiles off: past NEAR_BOX
     close(E)
     assert pulls(G) == [137]
-    near, enemy = E.own_near_bridge(G.blds[9])
-    assert near is False and enemy is False
+
+
+@test("item2 (2): can't tell, but a siege close: an enemy within IMMINENT read, or the units list "
+      "unreadable: the gate still closes; a lowering waits")
+def _():
+    E, G = bridge_rig()
+    u = unit(G, 107, 149, 171)
+    u.pos = None
+    unit(G, 115, 149, 171, own=False, danger=True)
+    close(E)
+    assert pulls(G) == [137]
+    E, G = bridge_rig()
+    E.df["global"].plotinfo = None         # nothing can be read
+    close(E)
+    assert pulls(G) == [137]
+    w = E.bridge_watch(G.blds[9])
+    assert w.enemy is None and w.unknown is True
+    E, G = bridge_rig(raised=True)
+    E.df["global"].plotinfo = None
+    lowered(E)
+    assert pulls(G) == []
+
+
+def two_bridges(E, G):
+    """A second bridge 10 (x108 y151) of entrance 1 on the same lever 137."""
+    G.blds[10] = t({"id": 10, "x1": 108, "y1": 151, "x2": 108, "y2": 151, "z": 171, "jobs": t({}),
+                    "gate_flags": t({"raised": False, "raising": False, "lowering": False})})
+    br2 = t({"id": 10, "kind": "bridge", "lever_id": 137, "x1": 108, "y1": 151, "x2": 108, "y2": 151, "z": 171})
+    E.GATES.entrances[1].equipment[2] = br2
+
+
+@test("item2 (3): two of an entrance's bridges on one lever: pulled once per call (a second undoes the first)")
+def _():
+    E, G = bridge_rig()
+    two_bridges(E, G)
+    # the pull taken but nothing moved yet (and no job to see at the lever): both still read down
+    E.dfhack.run_command_silent = LUA.eval("""function(G) return function(_, _, _, id)
+        table.insert(G.pulled, tonumber(id)); return '', CR_OK end end""")(G)
+    close(E)
+    assert pulls(G) == [137], pulls(G)
+
+
+def queue_pull(E, G):
+    """A PullLever job queued at lever 137 (a dwarf on the way); removeJob takes it off the lever."""
+    job = t({"job_type": "PullLever"})
+    jobs = G.blds[137].jobs
+    jobs[len(jobs) + 1] = job
+    E.dfhack.job = t({"removeJob": LUA.eval("""function(lv) return function(j)
+        for i = #lv.jobs, 1, -1 do if lv.jobs[i] == j then table.remove(lv.jobs, i) end end
+        return true end end""")(G.blds[137])})
+    return job
+
+
+def pull_jobs(G):
+    return [j for j in G.blds[137].jobs.values() if j.job_type == "PullLever"]
+
+
+@test("item2 (1): a queued raise pull is taken away while a citizen is beside the bridge (its K2 mark dropped); "
+      "kept with the bridge clear, and kept with an enemy within IMMINENT")
+def _():
+    E, G = bridge_rig()
+    queue_pull(E, G)
+    E.GATES.close_pulled = t({9: 1000})
+    E.GATES.repulled = t({9: 900})
+    unit(G, 107, 149, 171)
+    assert E.hold_queued_bridge_pulls() == 1
+    assert pull_jobs(G) == [] and E.GATES.close_pulled[9] is None and E.GATES.repulled[9] is None
+    assert E.GATES.bridge_pulls_held == 1
+    # clear: kept
+    E, G = bridge_rig()
+    queue_pull(E, G)
+    unit(G, 100, 149, 171)
+    assert E.hold_queued_bridge_pulls() == 0 and len(pull_jobs(G)) == 1
+    # siege: a citizen beside it doesn't stop the raise
+    E, G = bridge_rig()
+    queue_pull(E, G)
+    unit(G, 107, 149, 171)
+    unit(G, 115, 149, 171, own=False, danger=True)
+    assert E.hold_queued_bridge_pulls() == 0 and len(pull_jobs(G)) == 1
+    # ... one on its tile still does
+    E, G = bridge_rig()
+    queue_pull(E, G)
+    unit(G, 108, 149, 171)
+    unit(G, 115, 149, 171, own=False, danger=True)
+    assert E.hold_queued_bridge_pulls() == 1 and pull_jobs(G) == []
+
+
+@test("item2 (1): a queued lowering pull is taken away while a citizen paths onto the bridge, even in a siege; "
+      "the lure's bridges and a moving bridge are left alone")
+def _():
+    E, G = bridge_rig(raised=True)
+    queue_pull(E, G)
+    unit(G, 105, 149, 171, path=[(106, 149, 171), (107, 149, 171), (108, 149, 171)])
+    unit(G, 115, 149, 171, own=False, danger=True)
+    assert E.hold_queued_bridge_pulls() == 1 and pull_jobs(G) == []
+    E, G = bridge_rig(raised=True)
+    queue_pull(E, G)
+    unit(G, 107, 149, 171)
+    assert E.hold_queued_bridge_pulls(t({9: True})) == 0 and len(pull_jobs(G)) == 1
+    G.blds[9].gate_flags.lowering = True
+    assert E.hold_queued_bridge_pulls() == 0 and len(pull_jobs(G)) == 1
+
+
+@test("item2 (1): the watcher's look takes the queued pulls to bridge_hold (with the lure's pieces)")
+def _():
+    E, G = bridge_rig()
+    E.GATES_ORIG.arm()
+    seen = LUA.eval("{}")
+    E.hold_queued_bridge_pulls = LUA.eval("function(seen) return function(skip) seen.n = (seen.n or 0) + 1; "
+                                          "seen.skip = skip; return 0 end end")(seen)
+    E.GATES_ORIG.check()
+    assert seen.n == 1 and seen.skip is not None
+
+
+@test("item2 (1): the look's repull of a closed entrance's bridge found down waits for a citizen beside it")
+def _():
+    E, G = bridge_rig()
+    E.GATES_ORIG.arm()
+    E.GATES.closed = t({1: True})
+    E.GATES.mine = t({9: True})
+    unit(G, 107, 149, 171)
+    unit(G, 115, 149, 171, own=False, danger=True)    # a danger near: no "found open, let go"
+    E.bridge_hold = LUA.eval("function() return true, 'own near' end")
+    E.GATES_ORIG.check()
+    assert pulls(G) == [], pulls(G)
 
 
 finish()
