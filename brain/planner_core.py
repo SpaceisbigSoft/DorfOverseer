@@ -212,6 +212,7 @@ class Memory:
     locations_yours: list = field(default_factory=list)      # (0.105.12) ones the AI shut and you opened: left alone
     locations_yours_at: dict = field(default_factory=dict)   # (0.105.51) location id (str) -> tick it was found yours
     heists: list = field(default_factory=list)               # (0.105.24) [tick, who] artifact heists and visitors' killings
+    visitor_kills: list = field(default_factory=list)        # (item6) [tick, who] visitors' killings of citizens alone (the library's danger)
     visitor_shut: dict = field(default_factory=dict)         # (0.105.24) {tick, until, visitors, meetings, unheard}: shut for the mayor
     locations_acted: dict = field(default_factory=dict)      # (0.105.26) location id (str) -> tick the AI last shut or opened it
     intrusion: dict = field(default_factory=dict)            # (0.105.30) {tick, civ, invaders, cleared}: DF's last invasion record
@@ -256,6 +257,7 @@ class Memory:
     welfare: dict = field(default_factory=dict)          # (0.105.47, I7b) {short_since: tick the dead first outnumbered the free tombs} (planner_welfare)
     beast_hunt: dict = field(default_factory=dict)       # (0.105.54) the cavern beast's kill plan: {id, name, tactic, goal, stage, since, opened, retry, squads} (planner_threats)
     lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)
+    cavern_way: dict = field(default_factory=dict)       # (item3) {job, opened, rest: {job: tick}, danger_seen}: the guarded cavern way (planner_cavern_way)
     holdfast: dict = field(default_factory=dict)         # (0.105.47, R2 item 7) {kill, guards, named, walls}: planner_holdfast
     defence_floor: dict = field(default_factory=dict)    # (0.105.54) {peak {power, tick, why}}: the biggest threat seen (planner_defence_floor)
     ranged_need: dict = field(default_factory=dict)      # (r2h4) {tick, why}: a fire breather or a flier was met (crossbows wanted: planner_military)

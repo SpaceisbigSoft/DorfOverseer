@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-works is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.124'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.125'   -- bumped with BRIDGE_VERSION
 
 -- (0.99.7) Soldiers who don't pick up their uniforms: DFHack's
 -- uniform-unstick frees items assigned to one soldier but held by another
@@ -842,7 +842,8 @@ function act_make_squad(a)
     return reqscript('ai-military').make_squad(a.dry_run == true, txt)
 end
 
--- A vein of the metal the fort needs marked for digging (lua/ai-industry.lua).
+-- A vein of the metal the fort needs marked for digging (lua/ai-industry.lua);
+-- (item4) metal 'GEM': a vein of any gem (the idle miners' exploratory mining).
 function act_mine_ore(a)
     if type(a.metal) ~= 'string' or not a.metal:match('^[A-Z_]+$') then return reject('mine_ore needs metal') end
     local n = int_in(a.count or 40, 1, 80)       -- (0.105.9) 80: Mining's top (E asked 80, refused 30 times)

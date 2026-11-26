@@ -224,6 +224,15 @@ def _approve_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
                                   f"{cfg['approve_after_days']}+ days for the manager's approval ({why}): approve them", 2))
 
 
+def _sheet_hint(s: dict, what: str) -> str:
+    """(item5) A quire or scroll order stalled by sheets stuck in a workshop: why."""
+    from planner_paper import SHEET_RECIPES, sheet_stall
+    if what not in SHEET_RECIPES:
+        return ""
+    why = sheet_stall(s)
+    return f" ({why})" if why else ""
+
+
 def _stuck_orders_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     """The AI's own work orders that have stood still: copies of one order
     (0.54 piled up two dozen coke orders on one smelter) after 2 weeks, all
@@ -284,7 +293,8 @@ def _stuck_orders_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
             continue
         if days >= cfg["order_stuck_you_days"] and not _stuck_before(memory, what, now, cfg):
             out.append((1, k, what, f"the AI's {what} order ({w.get('left')} left) hasn't moved in {days} days: "
-                                    f"cancel it (not placed again for {cfg['stuck_retry_days']} days)", True))
+                                    f"cancel it (not placed again for {cfg['stuck_retry_days']} days)"
+                                    + _sheet_hint(s, what), True))
     taken = {p.action.get("order_id") for p in proposals if p.action.get("type") == "cancel_work_order"}
     for _, k, what, why, single in sorted(out)[:cfg["stuck_cancel_max"]]:
         try:

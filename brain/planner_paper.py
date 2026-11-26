@@ -39,7 +39,8 @@ from digest import _d, _l
 from planner_core import (AGENDA_THEMES, BUILDABLE_SHOPS, Proposal, _has_shop, _location, _location_short, _workshops_busy,
                           food_per_dwarf, queued, young_fort)
 
-__all__ = ["PAPER_RECIPES", "KILN_PAPER", "DEFAULT_SHOPS", "paper_section", "paper_need", "_paper_rule"]
+__all__ = ["PAPER_RECIPES", "KILN_PAPER", "DEFAULT_SHOPS", "paper_section", "paper_need", "_paper_rule",
+           "sheets_usable", "sheet_stall", "SHEET_RECIPES"]
 
 PAPER_RECIPES = ("make_slurry", "press_paper", "make_papyrus", "make_scroll", "bind_codex",
                  "wooden_scroll_rollers", "wooden_book_binding")
@@ -48,11 +49,13 @@ KILN_PAPER = ("make_quicklime", "make_milk_of_lime", "make_parchment", "make_qui
 DEFAULT_SHOPS = {"slurry": ("Quern", "Millstone"), "press": ("ScrewPress",), "papyrus": ("Farmers",),
                  "scroll": ("Craftsdwarfs",), "codex": ("Craftsdwarfs",)}
 AGENDA_THEMES["paper"] = AGENDA_THEMES["paper_shop"] = AGENDA_THEMES["paper_press"] = "paper for the library"
+AGENDA_THEMES["paper_pile"] = "paper for the library"   # (item5) a sheet pile by the press
 
 # (0.105.51) built only when nothing else listed will do
 LAST_RESORT_SHOPS = {"Millstone"}
 SHOP_WORDS = {"ScrewPress": "a screw press", "Quern": "a quern", "Millstone": "a millstone",
-              "Farmers": "a farmer's workshop", "Craftsdwarfs": "a craftsdwarf's workshop"}
+              "Farmers": "a farmer's workshop", "Craftsdwarfs": "a craftsdwarf's workshop",
+              "Tanners": "a tanner's shop"}
 
 
 def paper_section(s: dict) -> dict | None:
@@ -73,6 +76,63 @@ def _shops(e: dict, kind: str) -> tuple:
 
 def _at(b: dict, shops: tuple) -> str | None:
     return next((x for x in shops if _has_shop(b, x)), None)
+
+
+# (item5) the orders that take sheets (the stuck-order rule says why they stall)
+SHEET_RECIPES = ("make_quire", "make_scroll")
+
+
+def _stuck_sheets(paper: dict | None) -> int:
+    return max(0, int(_d(paper).get("sheets_in_shops") or 0))
+
+
+def sheets_usable(s: dict, paper: dict | None = None) -> int:
+    """(item5) The free sheets a quire or scroll job can reach: all of them
+    less those held by a workshop other than a craftsdwarf's (the screw
+    press's, the farmer's, the tanner's), which DF leaves there until a pile
+    that takes sheets calls for them. Fort A, 26 Nov: 2 of its sheets in the
+    press, every make_quire order stuck at "2 left"."""
+    paper = paper if paper is not None else paper_section(s)
+    total = max(int(_d(s.get("supplies")).get("sheets") or 0), int(_d(paper).get("sheets") or 0))
+    return max(0, total - _stuck_sheets(paper))
+
+
+def sheet_stall(s: dict, paper: dict | None = None) -> str | None:
+    """(item5) Why the sheets can't be used, or None: they sit in a workshop
+    with no pile taking sheets (DF 53 keeps sheets in their own stockpile
+    group, which none of the AI's piles had), or wait to be hauled out."""
+    paper = paper if paper is not None else paper_section(s)
+    n = _stuck_sheets(paper)
+    if n <= 0:
+        return None
+    shop = str(_d(paper).get("sheets_shop") or "a workshop")
+    where = SHOP_WORDS.get(shop, f"the {shop}")
+    where = where.replace("a ", "the ", 1) if where.startswith("a ") else where
+    if int(_d(paper).get("sheet_piles") or 0) <= 0:
+        return (f"{n} sheet(s) of paper sit in {where} and no stockpile takes sheets: DF leaves them there "
+                "and the craftsdwarf's quire and scroll jobs don't fetch them")
+    return f"{n} sheet(s) of paper sit in {where}, waiting to be hauled to the sheet pile"
+
+
+def _sheet_pile(s: dict, paper: dict, proposals: list, notes: list) -> None:
+    """(item5) Sheets held by a workshop and no pile taking sheets: a small
+    sheet pile beside that workshop (place_feeder: Quickfort's S), so they
+    are hauled out where the quire and scroll jobs find them."""
+    why = sheet_stall(s, paper)
+    if why is None or int(paper.get("sheet_piles") or 0) > 0:
+        return
+    sid = paper.get("sheets_shop_id")
+    if not isinstance(sid, int):
+        return
+    rows = [r for r in _l(_d(s.get("logistics")).get("feeders")) if isinstance(r, dict) and r.get("id") == sid]
+    if rows and (rows[0].get("has") or rows[0].get("room") is False):
+        if rows[0].get("room") is False:
+            notes.append(f"{why}; no room beside it for a sheet pile")
+        return
+    if any(_d(p.action).get("type") == "feeder_pile" and _d(p.action).get("building_id") == sid for p in proposals):
+        return
+    proposals.append(Proposal("paper_pile", {"type": "feeder_pile", "building_id": sid},
+                              f"{why}: put a small pile for sheets beside it", 6))
 
 
 def paper_need(s: dict, paper: dict | None) -> tuple[int, int, int]:
@@ -128,6 +188,8 @@ def _shop_missing(s: dict, cfg: dict, proposals: list, notes: list, shops: tuple
 def _paper_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     paper = paper_section(s)
     lib = _location(s, "LIBRARY")
+    if paper is not None:
+        _sheet_pile(s, paper, proposals, notes)     # (item5) whatever else waits
     if paper is None or lib is None or young_fort(s, cfg):
         return
     # one step a cycle: nothing while a paper or kiln-chain order waits, or the
@@ -138,13 +200,17 @@ def _paper_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -
         return
     b = _d(s.get("buildings"))
     sup = _d(s.get("supplies"))
-    sheets = max(int(sup.get("sheets") or 0), int(paper.get("sheets") or 0))
+    sheets = sheets_usable(s, paper)            # (item5) not those stuck in a workshop
     batch = int(cfg["paper_batch"])
     have, want, need = paper_need(s, paper)
     _scholar_note(s, lib, notes, memory)
     if need > 0:
         if sheets > 0:
             return      # the kiln rule binds them into quires
+        stall = sheet_stall(s, paper)
+        if stall:
+            notes.append(f"the library has {have} of {want} sheets of paper: {stall}")
+            return      # (item5) the pile beside the shop first (_sheet_pile), not more sheets to stick
         _plant_route(s, cfg, paper, b, need, have, want, batch, proposals, notes)
         return
     if want and have < want:

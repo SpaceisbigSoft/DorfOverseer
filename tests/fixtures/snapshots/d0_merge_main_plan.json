@@ -1407,7 +1407,7 @@
  "region2-0.48-y52-spring.json:Deep mine": [
   {
    "notes": "sha256:a3740856dd64378e6e9c3a13",
-   "props": "sha256:67ad605114f11ec68dc9259d",
+   "props": "sha256:b5151331c9196fc17634956b",
    "rules": [
     "build",
     "appoint",
@@ -1415,13 +1415,14 @@
     "furniture",
     "furniture",
     "smelting",
+    "prospect",
     "polish",
     "join_levels"
    ]
   },
   {
    "notes": "sha256:a3740856dd64378e6e9c3a13",
-   "props": "sha256:d6ac54a9becf9042204a3554",
+   "props": "sha256:93a7781ba3c08f8588c469b7",
    "rules": [
     "build",
     "appoint",
@@ -1429,12 +1430,13 @@
     "furniture",
     "furniture",
     "smelting",
+    "prospect",
     "polish"
    ]
   },
   {
    "notes": "sha256:a3740856dd64378e6e9c3a13",
-   "props": "sha256:67ad605114f11ec68dc9259d",
+   "props": "sha256:b5151331c9196fc17634956b",
    "rules": [
     "build",
     "appoint",
@@ -1442,6 +1444,7 @@
     "furniture",
     "furniture",
     "smelting",
+    "prospect",
     "polish",
     "join_levels"
    ]
@@ -1735,13 +1738,14 @@
  "region2-0.50-y52-summer.json:Deep mine": [
   {
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:89e26c8e864c990176287358",
+   "props": "sha256:fb0ebc7c34c514654e046dfe",
    "rules": [
     "appoint",
     "crossbow_shop",
     "bags",
     "smelt",
     "cloth",
+    "prospect",
     "bottleneck",
     "build",
     "mechanisms",
@@ -1752,13 +1756,14 @@
   },
   {
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:8cbfe0014971842e690499c4",
+   "props": "sha256:8595850a528d3bee3ac6cd88",
    "rules": [
     "appoint",
     "crossbow_shop",
     "bags",
     "smelt",
     "cloth",
+    "prospect",
     "bottleneck",
     "build",
     "mechanisms",
@@ -1768,13 +1773,14 @@
   },
   {
    "notes": "sha256:70e14defccb62b8f7bdeee54",
-   "props": "sha256:89e26c8e864c990176287358",
+   "props": "sha256:fb0ebc7c34c514654e046dfe",
    "rules": [
     "appoint",
     "crossbow_shop",
     "bags",
     "smelt",
     "cloth",
+    "prospect",
     "bottleneck",
     "build",
     "mechanisms",

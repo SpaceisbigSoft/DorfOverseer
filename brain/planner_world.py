@@ -108,7 +108,7 @@ def _contact_sends(s: dict) -> bool:
     t = last.get("tick") if isinstance(last.get("tick"), int) else None
     if (t is not None and 0 <= abs_tick(s) - t < SEND_RETRY_TICKS and last.get("result") in ("stopped", "error")
             and last.get("reason") not in SOFT_STOPS and not interrupted(last)
-            and not click_missed(last)):          # (0.105.74) a missed click or unread goal: tomorrow
+            and not click_missed(last)):          # (0.105.74) a missed click or unread goal: a day (a week once stuck: retry_ticks)
         return False
     return True
 
@@ -575,7 +575,7 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
     if not rules["make_contact"]:
         return
     ms = _d(s.get("missions"))
-    from planner_missions import last_of_goal, interrupted, retry_ticks, click_missed
+    from planner_missions import last_of_goal, interrupted, retry_ticks, retry_words, click_missed
     out = _messenger_out(ms)      # (0.105.39 review 2) a leftover of a stopped run isn't the messenger out
     if out:
         c = out[0]
@@ -620,21 +620,22 @@ def _contact_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
         pass                # (0.105.47) that site is dropped (unreachable_sites); the next one is tried
         #                     (r9) DF's NO_CIV / ALREADY_IN_CONTACT / ... too (unavailable_sites)
     elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and last.get("reason") == "no_messenger":
-        # (0.105.47) DF listed no messenger: the messenger rule appoints one; tried again tomorrow
+        # (0.105.47) DF listed no messenger: the messenger rule appoints one; tried again after retry_ticks
         if blocked:
-            notes.append("the messenger's last send found no messenger on DF's list; tried again tomorrow")
+            notes.append("the messenger's last send found no messenger on DF's list; " + retry_words(last, SEND_RETRY_TICKS))
             return
     elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and click_missed(last):
-        # (r12, live 22 Nov) DF didn't take the click on the site: tried again tomorrow
+        # (r12, live 22 Nov) DF didn't take the click on the site: tried again in a day (a week once stuck)
         if blocked:
             notes.append("the messenger's last send: " + ("the Diplomacy button wasn't read on New mission"
                          if last.get("reason") == "goal_unread" else
-                         "DF didn't take the AI's click on the site on the World screen") + "; tried again tomorrow")
+                         "DF didn't take the AI's click on the site on the World screen") + "; "
+                         + retry_words(last, SEND_RETRY_TICKS))
             return
     elif rules["send_messenger"] and last.get("result") in ("stopped", "error") and interrupted(last):
         # (0.105.39 review 2) the player took the game back: tried again after a day
         if blocked:
-            notes.append("the messenger's last send was interrupted by the player; tried again tomorrow")
+            notes.append("the messenger's last send was interrupted by the player; " + retry_words(last, SEND_RETRY_TICKS))
             return
     elif rules["send_messenger"] and recent and last.get("result") in ("stopped", "error"):
         # said once a season (the same cooldown as the site's name)

@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-gates').name
 -- and the helpers defined there (tile, building_at, key, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-scan'] = '0.105.124'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-scan'] = '0.105.125'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local key, unkey, STAIR_UP, STAIR_DOWN = key, unkey, STAIR_UP, STAIR_DOWN   -- (13e) the hub's and earlier parts' locals
 
@@ -579,6 +579,10 @@ function well_shaft_keys()
             local h = w.shaft_hatch
             if type(h) == 'table' and math.tointeger(h.x) then out[key(h.x, h.y, h.z)] = true end
         end
+    end)
+    -- (item3) the cavern way's gate (its hatch): worked by ai-cavern-way and its watcher
+    pcall(function()
+        for k in pairs(reqscript('ai-cavern-way').own_keys()) do out[k] = true end
     end)
     return out
 end

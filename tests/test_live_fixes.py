@@ -190,7 +190,7 @@ def access(s, m, notes=None):
     return props
 
 
-@test("1c a stranger seeking a meeting: tavern, temple and library shut to visitors 7 days, said in a note")
+@test("1c a stranger seeking a meeting: tavern and temple shut to visitors 7 days (item6: the library stays open), said in a note")
 def _():
     s, m = town(), Memory()
     assert strangers_seeking(s) == ["Tustong, Weasel Woman Lasher"]
@@ -198,21 +198,21 @@ def _():
     assert m.stranger_shut["seen"] == abs_tick(s), m.stranger_shut
     notes = []
     p = access(s, m, notes)
-    assert len(p) == 1 and p[0].action == {"type": "location_access", "ids": [0, 1, 2], "visitors": False}, p
+    assert len(p) == 1 and p[0].action == {"type": "location_access", "ids": [0, 1], "visitors": False}, p
     assert "a stranger (Tustong" in p[0].reason and p[0].priority == 3, p[0].reason
     assert any("sought a meeting" in n and "7 more day(s)" in n for n in notes), notes
-    record([(p[0], {"ok": True, "changed": [0, 1, 2]})], s, m)
-    assert m.locations_closed == [0, 1, 2]
+    record([(p[0], {"ok": True, "changed": [0, 1]})], s, m)
+    assert m.locations_closed == [0, 1]
     # 7 days with no stranger: open again
     calm = later(town(stranger=False), 7 * TICKS_PER_DAY)
     for e in calm["locations"]["list"]:
-        if e["id"] in (0, 1, 2):
+        if e["id"] in (0, 1):
             e["flags"] = ["NON_CITIZENS_ALLOWED"]
     calm["locations"]["built"] = abs_tick(calm)
     note_locations(calm, m, PLANNER_CONFIG)
     assert stranger_shut(calm, m, PLANNER_CONFIG) is None
     r = access(calm, m)
-    assert r and r[0].action["visitors"] is True and sorted(r[0].action["ids"]) == [0, 1, 2], r
+    assert r and r[0].action["visitors"] is True and sorted(r[0].action["ids"]) == [0, 1], r
     assert "no stranger sought a meeting" in r[0].reason, r[0].reason
 
 
@@ -236,7 +236,7 @@ def _():
     s, m = town(), Memory(locations_yours=[1])
     note_locations(s, m, PLANNER_CONFIG)
     p = access(s, m)
-    assert p and p[0].action["ids"] == [0, 2], p
+    assert p and p[0].action["ids"] == [0], p       # (item6) the library stays open
 
 
 @test("1c the bridge: a stranger in a meeting is marked; waiting strangers counted and named")

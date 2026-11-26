@@ -6,7 +6,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.124'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-rooms'] = '0.105.125'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, ez = info, has, ez
 -- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
@@ -239,7 +239,15 @@ FEEDERS = {
     Loom = {key = 'h', flag = 'cloth', what = 'thread'},
     Leatherworks = {key = 'l', flag = 'leather', what = 'leather'},
     Depot = {key = 'g', flag = 'finished_goods', what = 'goods for the caravans', ground = true, reach = 8},
+    -- (item5) the sheets pressed there: DF 53 stores sheets in their own
+    -- group (stockpile_group_set.sheet, Quickfort key S); with no pile taking
+    -- them they stay in the press and the craftsdwarf's quire job never gets
+    -- them (fort A: 2 sheets in the press, make_quire stuck at "2 left")
+    ScrewPress = {key = 'S', flag = 'sheet', what = 'paper sheets'},
 }
+-- (item5) any other workshop holding free sheets (the farmer's papyrus, the
+-- tanner's parchment) gets this pile when asked (place_feeder)
+SHEET_FEEDER = {key = 'S', flag = 'sheet', what = 'paper sheets'}
 FEEDER_NEAR = 6
 
 local function bkind(b)
@@ -247,6 +255,7 @@ local function bkind(b)
     if t == df.building_type.Workshop then
         local n = df.workshop_type[b.type]
         if n == 'MagmaForge' then n = 'MetalsmithsForge' end
+        if n == 'Custom' then n = workshop_name(b) end     -- (item5) the screw press
         return n
     elseif t == df.building_type.Furnace then
         local n = df.furnace_type[b.type]
@@ -350,10 +359,12 @@ STORE_KINDS = {
     weapons = {'WEAPON', 'TRAPCOMP'},
     armor = {'ARMOR', 'HELM', 'PANTS', 'GLOVES', 'SHOES', 'SHIELD'},
     ammo = {'AMMO'},   -- (0.100) bolts: with no pile they wait at the bowyer's and forge
+    sheet = {'SHEET'},  -- (item5) paper and parchment: DF 53's own pile group
 }
 -- kinds whose products waiting in a workshop count as wanting storage
 STORE_FROM_WORKSHOPS = {weapons = true, armor = true, ammo = true,   -- (0.100) ammo too
                         finished_goods = true,   -- (0.104.157) cups and crafts left in the craftsdwarf's
+                        sheet = true,    -- (item5) sheets left in the screw press
                         food = true}   -- (0.104.159) meat left at the butcher's rots: miasma (Teacheroar, 1 Nov)
 
 local function in_workshop(item)
@@ -419,11 +430,26 @@ function storage_survey()
     return out
 end
 
+-- (item5) a free sheet held by the workshop
+function holds_sheets(b)
+    local found = false
+    pcall(function()
+        for _, ci in ipairs(b.contained_items) do
+            local it = ci.item
+            if it:getType() == df.item_type.SHEET and not (it.flags.forbid or it.flags.in_job) then
+                found = true; return
+            end
+        end
+    end)
+    return found
+end
+
 function place_feeder(building_id, dry_run)
     OFFSET = elevation_offset()
     local b = df.building.find(building_id)
     local kind = b and bkind(b)
     local f = kind and FEEDERS[kind]
+    if not f and b and holds_sheets(b) then f = SHEET_FEEDER end      -- (item5)
     if not f then return {ok = false, rejected = true, error = 'not a workshop that takes a feeder stockpile'} end
     if pile_near(f.flag, b.x1, b.y1, b.x2, b.y2, b.z, f.reach or FEEDER_NEAR) then
         return {ok = false, rejected = true, stale = {'logistics'},
@@ -463,7 +489,8 @@ ZONE_FURNITURE = {traction_bench = {key = 'R', what = 'a traction bench'},
                   statue = {key = 's', what = 'a statue'},    -- (0.90) a location's value
                   chest = {key = 'h', what = 'a chest'},       -- (0.104.4) a tavern's goblets, a temple's instruments
                   chain = {key = 'v', what = 'a chain'},       -- (0.104.52) a jail's restraint
-                  nest_box = {key = 'N', what = 'a nest box'}} -- (0.104.80) where the hens lay
+                  nest_box = {key = 'N', what = 'a nest box'}, -- (0.104.80) where the hens lay
+                  bed = {key = 'b', what = 'a bed'}}           -- (item7) a hospital's beds by its population
 
 -- The zone's tiles: {x1, y1, x2, y2, z, has(x, y)} or nil (swapped by the tests).
 function zone_area(id)

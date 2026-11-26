@@ -419,6 +419,10 @@ function held_openings()
                     local ok, yes = pcall(G.ai_planned_building, b)
                     mine = ok and yes
                 end
+                if not mine then    -- (item3) the guarded cavern way's door
+                    local ok, yes = pcall(function() return reqscript('ai-cavern-way').is_way_door(b.id) end)
+                    mine = ok and yes
+                end
                 if mine then
                     table.insert(out, {key = okey(o.x, o.y, o.z), x = o.x, y = o.y, z = o.z, door_id = b.id})
                 end
@@ -437,6 +441,11 @@ local function own_levels()
     for _, p in ipairs(list) do
         if type(p) == 'table' and tonumber(p.z) then out[tonumber(p.z)] = true; any = true end
     end
+    -- (item3) the guarded cavern way's door level: the AI's own too
+    pcall(function()
+        local w = reqscript('ai-cavern-way').door_opening()
+        if w then out[w.z] = true; any = true end
+    end)
     return any and out or nil
 end
 

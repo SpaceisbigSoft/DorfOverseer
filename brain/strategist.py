@@ -49,7 +49,7 @@ SECTIONS = ("needs", "water", "trade", "military", "society", "projects", "healt
 # tests/test_r4_k5.py keeps WANTABLE level with the Lua's list.
 SECTIONS_NOT_OFFERED = ("bridge_version", "paused")
 WANTABLE = SECTIONS + (
-            "alerts", "artifacts", "benches", "buildings", "captives", "citizens_taste", "civ_alert",
+            "alerts", "artifacts", "benches", "buildings", "captives", "cavern_way", "citizens_taste", "civ_alert",
             "civ_alert_ready", "civ_alert_shelter", "cleanup", "constructions", "crossings", "date", "dead",
             "deep", "descent", "diplomacy", "disposal", "dwarves", "env_hazards", "events_waiting", "field_watch",
             "fights", "floors", "food_store", "forestry", "fort", "founding", "garden_court", "hauling", "hazards", "herd",

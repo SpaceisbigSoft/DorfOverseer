@@ -541,7 +541,7 @@ AGENDA_THEMES = {
     "arms": "arm and armour the soldiers", "uniform": "dress the squads", "barracks_assign": "house the squads",
     "squad_fill": "fill the squads", "grandeur": "dress the halls", "quick_temple": "a place to pray", "quick_tavern": "a tavern", "stress_care": "care for dwarves near breaking", "squad_trim": "send extra soldiers back to work", "unload_depot": "empty the depot after the caravans", "needs_finery": "jewellery to wear", "good_cooks": "the best cooks to the kitchen", "cook_staff": "keep the best cooks cooking", "squad_make": "raise a new squad", "uniform_adopt": "dress the squads", "staff": "staff the hospital, library and tavern", "tavern": "stock the tavern", "kiln": "plaster and paper", "anvil": "an anvil for a new forge", "petitions": "answer petitions", "residency": "answer petitions to stay", "citizenship": "answer citizenship petitions", "train": "train the soldiers",
     "build": "build the fort's next level", "furniture": "furnish the new levels",
-    "steel": "make steel", "alloy": "alloy bronze and finer metals", "smelt": "smelt the ore", "ore": "mine ore", "fuel": "make fuel",
+    "steel": "make steel", "alloy": "alloy bronze and finer metals", "smelt": "smelt the ore", "ore": "mine ore", "prospect": "exploratory mining", "fuel": "make fuel",
     "trade": "trade with the caravans", "trade_deal": "trade with the caravans", "crafts": "make goods to sell",
     "gems": "cut gems", "encrust": "set gems into crafts", "drink": "keep the drink flowing",
     "needs_meal": "cook good meals", "needs_craft": "let dwarves craft",

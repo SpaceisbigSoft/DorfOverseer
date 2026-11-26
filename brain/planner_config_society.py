@@ -413,7 +413,19 @@ PART = {
     "uniform_cooldown_ticks": 1200,       # a squad's uniform: once a day
     "crafts_cooldown_ticks": 14 * 1200,
     "hauling_cooldown_ticks": 14 * 1200,
-    "ore_cooldown_ticks": 7 * 1200,    # a vein mined: at most once a week
+    # (item4) a vein mined at most every ore_days / factor(Mining) (E, Mining 150: 2.5 days; F, -60: 10.6);
+    # the cooldown is the floor under it. A vein waits for the digging to fall under
+    # vein_dig_per_miner tiles a miner x factor (never under vein_when_dig_below: the old 50; E's plan
+    # kept 150-300 tiles waiting, so its veins stopped). planner_prospect.py
+    "ore_cooldown_ticks": 2 * 1200,
+    "ore_days": 7,
+    "vein_when_dig_below": 50, "vein_dig_per_miner": 5,
+    # (item4) exploratory mining (rule `prospect`): miners with under prospect_dig_per_miner tiles a
+    # miner x factor to dig (D: 12 miners, 0 tiles, 25-35% idle) dig a vein of ore (dug ore under the
+    # Mining line) or gems (rough gems under prospect_gems_below x factor), every prospect_days / factor,
+    # prospect_tiles x factor tiles (10-80)
+    "prospect_cooldown_ticks": 1200, "prospect_days": 3, "prospect_dig_per_miner": 2,
+    "prospect_gems_below": 20, "prospect_tiles": 30,
     "industry_cooldown_ticks": 7 * 1200,
     "gather_cooldown_ticks": 7 * 1200, # shrubs marked for gathering: at most once a week
     "train_min_citizens": 15,

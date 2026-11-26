@@ -45,6 +45,7 @@ BY_ACTION = {"strategist"}
 _EXPANSION_RULES = {
     # hunts, kill zones, lures, missions and contact
     "hunt", "killzone", "killzone_parts", "lure_build", "lure_open", "lure_archer", "invite_siege",
+    "cavern_way_build", "cavern_way_open",   # (item3) the guarded cavern way built, its gate opened for a job
     "beast_hunt",   # (0.105.54) the seal opened for a fight with the cavern beast: waits in a crisis
     "mission", "mission_pets", "mission_way", "contact", "training_squad",
     # building above ground and set pieces, landmarks, the grove, the garden court
@@ -58,7 +59,7 @@ _EXPANSION_RULES = {
     "instruments", "artifact_display", "artifact_furniture", "artifact_pedestals", "library_chest",
     # industry that can wait
     "export", "paper", "paper_press", "paper_shop", "alloy", "leather_gear", "industry", "bottleneck", "kiln", "idle",
-    "war_animals", "quarry", "ore", "reserve_storage", "cavern_logging", "cavern_farm",
+    "war_animals", "quarry", "ore", "prospect", "reserve_storage", "cavern_logging", "cavern_farm",
     # the fort's reach: new ways, crossings, the deep
     "crossing", "deep_descent", "prisoner_pit",   # (0.105.48 merge) join_levels: survival (cut-off levels, the thirst watch)
     # petitions agreed to, rooms furnished to taste ((r2h6) the answer itself
@@ -78,6 +79,7 @@ _DEFENCE_RULES = {
     "gate_stuck", "gate_dogs", "mechanism_stock", "entrances", "cavern_openings", "cavern_scan", "seal_cavern", "destroyer_gate",
     "intruder_guard", "thief_watch", "traps", "cages", "near_gates", "near_gates_refresh", "fire_guard", "moon_cell",
     "were_cells",   # (0.105.115 item24) werebeast cells behind drawbridges: the level and its links
+    "cavern_way_shut",   # (item3) the guarded cavern way's gate shut for a danger
     "squad_make", "squad_fill", "squad_trim", "squad_attack", "squad_recall", "soldier_swap", "train",
     "uniform", "uniform_adopt", "unstick_uniforms", "assign_kit", "assign_weapons", "barracks_assign", "kit",
     "arms", "arms_forge", "anvil", "bolts", "crossbow_shop", "quivers", "quivers_order", "gear_fix", "gear_fix_order", "stray_gear",
@@ -96,7 +98,7 @@ _SURVIVAL_RULES = {
     # drink and food
     "drink", "drink_fruit", "booze_variety", "food", "food_barrels", "food_standing", "food_store",
     "food_store_level", "farms", "farm_crops", "surface_farm", "crops", "kitchen", "seed_reserve", "seed_brew", "fat_ban", "meal_drink", "meal_cheap", "meal_variety",
-    "good_cooks", "cook_staff", "train_cook", "needs_meal", "dairy", "milking", "eggs", "nest_box_order", "fishery",
+    "good_cooks", "cook_staff", "train_cook", "needs_meal", "mill_flour", "dairy", "milking", "eggs", "nest_box_order", "fishery",
     "butchery_labor", "butchery_shop", "slaughter", "hunting", "hunting_stop", "fruit_pickers", "fruit_zone",
     "fruit_pause", "fruit_resume",   # (item6)
     "gather", "gather_trim", "tree_quota", "vermin", "herd", "herd_cull", "herd_targets", "pasture",
@@ -105,7 +107,7 @@ _SURVIVAL_RULES = {
     "rooms", "homes", "homes_dig", "homes_liked", "noble_rooms", "sync_offices", "furniture", "bootstrap_chair",
     "pair_chairs", "comfort", "cups_home",
     # health and care
-    "hospital", "hospital_burrow", "hospital_guard", "doctor_patient", "doctor_post", "staff", "staff_tantrum",
+    "hospital", "hospital_beds", "hospital_burrow", "hospital_guard", "doctor_patient", "doctor_post", "staff", "staff_tantrum",
     "tantrum_soldier",
     "care_clean", "care_diagnose", "care_feed", "infected_rest", "traction", "traction_parts", "traction_rest",
     "bed_rest",   # (item5)
@@ -137,7 +139,7 @@ _SURVIVAL_RULES = {
     "cleanup_items_dry", "cleanup_units", "cleanup_units_dry", "approve_orders", "order_slots", "orphan_jobs",
     "unsuspend", "stuck_order", "order_remake", "stuck_sweep", "tools", "mechanisms", "bins", "picks", "fuel", "fuel_trim",
     "smelt", "smelting", "steel", "cloth", "crafts", "hauling", "hauling_add", "hauling_back", "hauling_relieve",
-    "hauling_shrink", "barrows", "barrow_order", "feeder", "feeder_link", "bench_caps", "excess_shops",
+    "hauling_shrink", "barrows", "barrow_order", "feeder", "paper_pile", "feeder_link", "bench_caps", "excess_shops",
     "disposal_dump", "disposal_empty", "disposal_melt", "disposal_melt_order", "redig", "disposal_orders", "disposal_outside", "disposal_outside_off",
     "disposal_place_dump", "disposal_dump_near", "disposal_move_dump",
     "disposal_unforbid", "dump", "refuse", "prune", "prune_keep_parts", "depot", "traffic_audit", "traffic_paint",
@@ -160,6 +162,7 @@ STEP_CLASS = {
 
 _EXPANSION_ACTIONS = {
     "hunt_send", "build_killzone", "build_lure", "lure_open", "send_mission", "mission_way", "mission_pets", "invite_siege",
+    "cavern_way",   # (item3) its shut (shut: True) always goes
     "training_squad", "polish", "polish_room", "blueprint_sites", "build_blueprint", "landmark_step",
     "place_hall", "build_wings", "floor_rooms", "place_keep", "place_garden_court", "keep_grove",
     "place_siege_engine", "place_siege_shop", "fortify_post", "build_gatehouse", "cut_entrance",

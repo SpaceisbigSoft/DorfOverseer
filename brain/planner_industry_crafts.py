@@ -316,7 +316,8 @@ def _keep_rule(s: dict, cfg: dict, citizens: int, traits: dict, proposals: list,
 
 # workshops given a feeder stockpile first (the busiest hauling first)
 FEEDER_ORDER = ("Masons", "Carpenters", "Smelter", "MetalsmithsForge", "Craftsdwarfs", "Depot", "Kitchen", "Still",
-                "WoodFurnace", "Bowyers", "Loom", "Clothiers", "Leatherworks")
+                "WoodFurnace", "Bowyers", "Loom", "Clothiers", "Leatherworks",
+                "ScrewPress")       # (item5) its sheets: no pile took them
 
 
 def _feeder_rule(s: dict, cfg: dict, proposals: list) -> None:
@@ -326,8 +327,10 @@ def _feeder_rule(s: dict, cfg: dict, proposals: list) -> None:
     if young_fort(s, cfg):
         return
     # (0.104.138) never one with no room for a pile (the bridge's own check)
+    # (item5) never one a paper rule asked for this cycle
+    taken = {_d(p.action).get("building_id") for p in proposals if _d(p.action).get("type") == "feeder_pile"}
     rows = [r for r in _l(_d(s.get("logistics")).get("feeders")) if isinstance(r, dict) and not r.get("has")
-            and r.get("room") is not False]
+            and r.get("room") is not False and r.get("id") not in taken]
     rows.sort(key=lambda r: FEEDER_ORDER.index(r.get("kind")) if r.get("kind") in FEEDER_ORDER else 99)
     # (0.102.2) the stills' piles first while drink is short (Monastery's 5
     # stills on three levels had none: plants were hauled across the fort)

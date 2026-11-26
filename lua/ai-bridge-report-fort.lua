@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-fort is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-fort'] = '0.105.124'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-fort'] = '0.105.125'   -- bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 local inc = REPORT_PART_LOCALS.inc
@@ -577,6 +577,17 @@ function hospital_survey()
                             end
                         end
                         ze.traction_planned = n
+                    end)
+                    -- (item7) and beds, at any stage (one placed waits for its bed)
+                    pcall(function()
+                        local n = 0
+                        for _, b in ipairs(df.global.world.buildings.other.BED) do
+                            if b.z == z.z and b.centerx >= z.x1 and b.centerx <= z.x2
+                                    and b.centery >= z.y1 and b.centery <= z.y2 then
+                                n = n + 1
+                            end
+                        end
+                        ze.beds_planned = n
                     end)
                     table.insert(e.zones, ze)
                 end

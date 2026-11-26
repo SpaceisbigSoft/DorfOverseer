@@ -168,7 +168,11 @@ def _():
             assert r["flag"] in piles and r["shop"] == shop and r["room_size"] == 5, (shop, r)
         assert len(set(flags(rows))) == len(rows), (shop, rows)
         feeder = B.FEEDERS[shop]
-        if feeder is not None:
+        # (0.105.125 item5) the screw press's sheet feeder is placed beside the shop by feeder_pile,
+        # never in a floor plan: 'sheet' is not a layouts.STOCKPILES room kind, so its floor gets none
+        if feeder is not None and feeder.flag not in piles:
+            assert rows == [], (shop, rows)
+        elif feeder is not None:
             assert rows and rows[0]["flag"] == feeder.flag and rows[0]["output"] is False, (shop, rows)
     for out_shop, flag in B.FLOOR_OUTPUTS.items():
         assert flag in piles and out_shop in shops, (out_shop, flag)
