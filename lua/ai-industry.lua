@@ -64,8 +64,30 @@ local function is_wall(x, y, z)
     return a and df.tiletype_shape[a.shape] == 'WALL'
 end
 
+-- (item4) A gem's stone (IS_GEM in its raws: the rough gems a gem vein or
+-- cluster gives), remembered by material index as metals_of is. The
+-- exploratory mining of an idle fort (mine_ore with metal 'GEM') follows
+-- these as it follows ore.
+GEM_OF = GEM_OF or {}
+function is_gem(idx)
+    local known = GEM_OF[idx]
+    if known ~= nil then return known end
+    local inorg = inorganic(idx)
+    local ok, v = pcall(function() return inorg.material.flags.IS_GEM end)
+    known = ok and v == true
+    GEM_OF[idx] = known
+    return known
+end
+GEM_METALS = {'GEM'}        -- what each_vein hands on for a gem's vein (mine's `metal` 'GEM')
+
 -- Each mineral vein event in the area: calls fn(block, ev, metals).
-local function each_vein(a, fn)
+-- (item4) gems true: a gem's vein too, with metals {'GEM'}
+local function each_vein(a, fn, gems)
+    local function one(block, ev)
+        local metals = metals_of(ev.inorganic_mat)
+        if #metals > 0 then fn(block, ev, metals)
+        elseif gems and is_gem(ev.inorganic_mat) then fn(block, ev, GEM_METALS) end
+    end
     -- (0.104.140) only the area's own blocks, looked up by position, where
     -- DFHack can (the whole map's blocks were walked: ~460 ms a rebuild)
     local okg = dfhack.maps and dfhack.maps.getBlock ~= nil
@@ -76,10 +98,7 @@ local function each_vein(a, fn)
                     local block = dfhack.maps.getBlock(bx, by, z)
                     if block then
                         for _, ev in ipairs(block.block_events) do
-                            if df.block_square_event_mineralst:is_instance(ev) then
-                                local metals = metals_of(ev.inorganic_mat)
-                                if #metals > 0 then fn(block, ev, metals) end
-                            end
+                            if df.block_square_event_mineralst:is_instance(ev) then one(block, ev) end
                         end
                     end
                 end
@@ -91,10 +110,7 @@ local function each_vein(a, fn)
         local p = block.map_pos
         if p.z >= a.z1 and p.z <= a.z2 and p.x + 15 >= a.x1 and p.x <= a.x2 and p.y + 15 >= a.y1 and p.y <= a.y2 then
             for _, ev in ipairs(block.block_events) do
-                if df.block_square_event_mineralst:is_instance(ev) then
-                    local metals = metals_of(ev.inorganic_mat)
-                    if #metals > 0 then fn(block, ev, metals) end
-                end
+                if df.block_square_event_mineralst:is_instance(ev) then one(block, ev) end
             end
         end
     end
@@ -429,7 +445,7 @@ function find_drift(a, metal, areas, groups, zs)
                 end
             end
         end
-    end)
+    end, metal == 'GEM')
     table.sort(seeds, function(p1, p2) return p1.d < p2.d end)
     for i = 1, math.min(#seeds, DRIFT_SEEDS_MAX) do
         local t = seeds[i]
@@ -496,6 +512,7 @@ function find_drift(a, metal, areas, groups, zs)
     return nil
 end
 
+-- (item4) metal 'GEM': a vein of any gem (is_gem), the same way: exploratory mining
 function mine(metal, count, dry_run)
     local a = area()
     if not a then return {ok = false, error = 'no citizens'} end
@@ -535,7 +552,7 @@ function mine(metal, count, dry_run)
                 end
             end
         end
-    end)
+    end, metal == 'GEM')
     local drift
     if not best then
         -- (0.105.9) every uncovered vein lies in the walls of the AI's own
@@ -549,8 +566,9 @@ function mine(metal, count, dry_run)
     end
     if not best then
         return {ok = false, rejected = true,
-                error = ('no uncovered %s ore the dwarves can reach safely, and no vein within %d tiles '
-                         .. 'of the fort through safe rock'):format(metal:lower(), DRIFT_MAX)}
+                error = ('no uncovered %s the dwarves can reach safely, and no vein within %d tiles '
+                         .. 'of the fort through safe rock'):format(metal == 'GEM' and 'gems' or (metal:lower() .. ' ore'),
+                                                                  DRIFT_MAX)}
     end
     -- follow the vein (same stone, same level), safe tiles only
     local marked, seen, queue, head = {}, {}, {best}, 1

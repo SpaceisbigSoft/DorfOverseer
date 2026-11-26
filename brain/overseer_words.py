@@ -469,7 +469,9 @@ def short(a: dict) -> str:
     if t == "clear_gate":
         return f"take down the gate at x{a.get('x')} y{a.get('y')}"
     if t == "mine_ore":
-        return f"mine a vein of {str(a.get('metal')).lower()} ore"
+        if a.get("metal") == "GEM":       # (item4) exploratory mining: any gem's vein
+            return "dig for gems: a gem vein near the fort"
+        return (("dig for ore: " if a.get("prospect") else "") + f"mine a vein of {str(a.get('metal')).lower()} ore")
     if t == "appoint":
         office = str(a.get('office')).lower().replace('_', ' ')
         if a.get("replace_stale"):   # (r14 m1)

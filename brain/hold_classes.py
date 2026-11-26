@@ -58,7 +58,7 @@ _EXPANSION_RULES = {
     "instruments", "artifact_display", "artifact_furniture", "artifact_pedestals", "library_chest",
     # industry that can wait
     "export", "paper", "paper_press", "paper_shop", "alloy", "leather_gear", "industry", "bottleneck", "kiln", "idle",
-    "war_animals", "quarry", "ore", "reserve_storage", "cavern_logging", "cavern_farm",
+    "war_animals", "quarry", "ore", "prospect", "reserve_storage", "cavern_logging", "cavern_farm",
     # the fort's reach: new ways, crossings, the deep
     "crossing", "deep_descent", "prisoner_pit",   # (0.105.48 merge) join_levels: survival (cut-off levels, the thirst watch)
     # petitions agreed to, rooms furnished to taste ((r2h6) the answer itself

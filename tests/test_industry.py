@@ -146,6 +146,25 @@ def _():
     assert r.ok and r.tiles == 7 and dig(6, 2) == 1 and dig(9, 3) == 1 and dig(1, 1) == 0, dict(r)
 
 
+@test("(item4) metal 'GEM': a gem's vein is followed the same way (never beside water); none reachable is refused")
+def _():
+    rows = list(MAP)
+    rows[4] = "#.....##mmmmm###"
+    rows[5] = "#............w##"
+    rows[6] = "################"
+    for rs, reach in ((MAP, False), (rows, True)):
+        lua = LuaRuntime(unpack_returned_tuples=True)
+        env, dig = lua.execute(FAKE, SRC, lua.table_from(rs))
+        env.METALS_OF[2] = lua.table()        # the 'm' vein a gem's stone here, no ore
+        env.GEM_OF[2] = True
+        r = env.mine("GEM", 40, False)
+        if reach:
+            assert r.ok and r.tiles == 4 and r.ore == "MALACHITE" and dig(11, 4) == 1 and dig(12, 4) == 0, dict(r)
+        else:
+            assert not r.ok and "no uncovered gems" in r.error, dict(r)
+        assert env.mine("COPPER", 40, True).ok is not True     # no ore of it now
+
+
 @test("never beside water; nothing reachable is refused")
 def _():
     env, dig = game()
