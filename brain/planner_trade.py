@@ -182,17 +182,29 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
                           "python brain\\probe_trade.py --here-depot")
     dw = _d(s.get("dwarves"))
     idle = (dw.get("idle_adults") or 0) / max(1, dw.get("adults") or 1)
+    line = cfg["idle_share"]
+    # (r33c) the truly idle share (no job, no prayer or tavern, not a soldier,
+    # not in the recreation burrow, not mad) when the bridge counts it, against
+    # the line for that measure (as the idle rule's blocks: idle_blocks_share
+    # leaning with idle_share). B (26 Nov) said "48% of the dwarves are idle"
+    # of idle_adults over all adults while 12-33% were truly idle
+    honest = isinstance(dw.get("idle_free"), int) and not isinstance(dw.get("idle_free"), bool)
+    if honest:
+        idle = _idle_share(s)
+        line = idle_line(s, cfg, "idle_blocks_share") * cfg["idle_share"] / PLANNER_CONFIG["idle_share"]
     # (0.105.13) a trading fort (Trade 50+) makes goods to sell as its trade,
     # not only with idle hands
     merchant = tv >= 50
-    if (_has_shop(s["buildings"], "Craftsdwarfs") and not young_fort(s, cfg) and (idle >= cfg["idle_share"] or merchant)
-            and not stone_short(s, 10) and not hermit
+    crafts = CRAFT_ORDERS if honest else ("stone_crafts", "metal_crafts")
+    stone_low = stone_short(s, 10)
+    if (_has_shop(s["buildings"], "Craftsdwarfs") and not young_fort(s, cfg) and (idle >= line or merchant)
+            and (not stone_low or honest) and not hermit
             and not (memory is not None and has_rule(getattr(memory, "culture", None), "small_storage"))   # (0.103.19) Waste Not
             and (tr.get("goods") or 0) < citizens * 2 * factor(traits or {}, "trade")
             * (2 if memory is not None and has_rule(getattr(memory, "culture", None), "merchant_princes") else 1)
-            and not queued(s, {"stone_crafts", "metal_crafts"})
+            and not queued(s, set(crafts))
             # (0.105.51) not beside the idle hands' own crafts this cycle
-            and not any(_d(p.action).get("recipe") in ("stone_crafts", "metal_crafts") for p in proposals)):
+            and not any(_d(p.action).get("recipe") in crafts for p in proposals)):
         # (0.104.95) a precious metal the fort has to spare first: its crafts sell
         # for 10-40 times rock's
         metal = precious_metal(s, cfg)
@@ -203,11 +215,39 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
                                       f"{tr.get('goods') or 0} crafts to sell: make 3 of {metal.lower()} (worth far "
                                       "more than rock)", 6, True))
             return
-        why = (f"a trading fort (Trade {tv})" if merchant and idle < cfg["idle_share"]
+        why = (f"a trading fort (Trade {tv})" if merchant and idle < line
                else f"{round(100 * idle)}% of the dwarves are idle")
-        proposals.append(Proposal("crafts", {"type": "work_order", "recipe": "stone_crafts", "amount": 10},
-                                  f"{why} and there are only {tr.get('goods') or 0} "
-                                  "crafts to sell: make some from rock", 6, True))
+        if not honest:
+            proposals.append(Proposal("crafts", {"type": "work_order", "recipe": "stone_crafts", "amount": 10},
+                                      f"{why} and there are only {tr.get('goods') or 0} "
+                                      "crafts to sell: make some from rock", 6, True))
+            return
+        # (r33c) the order sized to the idle hands (two jobs each, 10 to
+        # idle_order_max: B's 10 rock crafts went to 9 Craftsdwarf's workshops
+        # in a day, and the idle stood again), and with little rock bone or
+        # wood (E, 26 Nov: 9 usable boulders, its rock crafts stuck 10 days,
+        # 33% idle)
+        free_n = int(dw.get("idle_free") or 0)
+        amount = max(10, min(cfg["idle_order_max"], 2 * free_n))
+        recipe, what = "stone_crafts", "from rock"
+        if stone_low:
+            bones = int(_d(s.get("needs")).get("bones") or 0)
+            wood = int(_d(s.get("stocks")).get("wood") or 0) - citizens * cfg["wood_per_dwarf"]
+            if bones >= max(cfg["bone_crafts_min"], amount):
+                recipe, what = "bone_crafts", f"from bone (little rock: {bones} bones)"
+            elif wood >= amount + 5:
+                recipe, what = "wood_crafts", f"from wood (little rock, {wood} logs spare)"
+            else:
+                notes.append(f"{why} and there are only {tr.get('goods') or 0} crafts to sell, but the fort has "
+                             "little rock the masons may use, few bones and no wood to spare: no crafts ordered")
+                return
+        proposals.append(Proposal("crafts", {"type": "work_order", "recipe": recipe, "amount": amount},
+                                  f"{why} ({free_n} free) and there are only {tr.get('goods') or 0} "
+                                  f"crafts to sell: make {amount} {what}", 6, True))
+
+
+# (r33c) the craft orders that give idle hands crafts to sell (planner.IDLE_CRAFTS)
+CRAFT_ORDERS = ("stone_crafts", "metal_crafts", "wood_crafts", "bone_crafts")
 
 
 def _overstay_notes(tr: dict, cfg: dict, notes: list) -> None:

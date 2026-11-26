@@ -85,9 +85,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # (item8 trim to the slider) re-pinned after five deliberate keys: floor_quiet_half_life_days,
 # trim_week_max, trim_season_max, trim_season_days, trim_continue_days (E's 39 soldiers at Militarism 0): 26 Nov
 # (0.105.129) re-pinned after one value: trim_season_max 10 -> 4 (the player: trims slower in every fort): 26 Nov
-DUMP_6298B4A = "e8762c52d3773551dcdce1bcee00b37791af33c962b6668fa87ae13b30893da1"
-KEYS_6298B4A = "2d33240c0971ea0b126a968efb20a4e28ad7c0b13352acd8b5de8bfe81860ebc"
-COUNT_6298B4A = 1358
+# (r33c idle hands) re-pinned after two deliberate keys: free_time_widen_idle, free_time_wait_per_holder
+# (A's narrowed gatherers with 16 jobs waiting; farming and gathering narrowed at 25-48% idle): 26 Nov
+DUMP_6298B4A = "1c8b8d37be0f3b771c3cacdd6d8c0d8115fabe6771c881d19bf60f6bcd01c2e2"
+KEYS_6298B4A = "b6769ed2daa023d405ce2f48db47e46d06f33625c89b95a26c2f29a8ff4febaa"
+COUNT_6298B4A = 1360
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 
