@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.130'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.131'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -111,6 +111,7 @@ ACTIONS = {
     mark_run = act_mark_run,      -- (0.105.0) a scenario copy's run id
     make_squad = act_make_squad,
     mine_ore = act_mine_ore,
+    explore_dig = act_explore_dig,               -- (r34a) idle miners, no vein: exploratory tunnels
     clear_gate = act_clear_gate,
     bring_goods = act_bring_goods,
     unload_depot = act_unload_depot,
@@ -823,7 +824,7 @@ DRY_OK = {}
 for _, name in ipairs({
     'start_project', 'farm_plots', 'place_well', 'make_pasture', 'link_lever', 'save_game',
     'quiet_announcements', 'found_fort', 'assign_labor', 'gather_plants', 'trim_gathering', 'appoint',
-    'place_surface', 'place_keep', 'deep_depot', 'make_squad', 'mine_ore', 'clear_gate', 'bring_goods',
+    'place_surface', 'place_keep', 'deep_depot', 'make_squad', 'mine_ore', 'explore_dig', 'clear_gate', 'bring_goods',
     'unload_depot', 'kitchen_skill', 'place_slabs', 'give_room', 'set_uniform', 'adopt_uniform',
     'petition_orders', 'set_uniform_weapon', 'allow_stone', 'prioritize_dig', 'renew_well_dig', 'redig_projects', 'convict', 'quarry', 'polish',
     'trade_deal', 'call_trader', 'open_trade', 'close_trade', 'squad_barracks', 'feeder_pile',

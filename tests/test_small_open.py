@@ -46,7 +46,7 @@ def _():
     assert mining_plan({"mining": -100}, PLANNER_CONFIG)["quarry"] < mining_plan({}, PLANNER_CONFIG)["quarry"] \
         < mining_plan({"mining": 100}, PLANNER_CONFIG)["quarry"] == 30
     bridge = "".join(f.read_text(encoding="utf-8") for f in sorted((ROOT / "lua").glob("ai-bridge*.lua")))   # (13c) with its parts
-    assert "int_in(a.count or 30, 1, 30)" in bridge          # what the bridge takes (the clamp's other half)
+    assert "int_in(a.count or 30, 1, 60)" in bridge          # what the bridge takes (r34a: 1-60, quarries through hidden rock)
 
 
 # --- stone orders cancelled for want of stone ---------------------------------

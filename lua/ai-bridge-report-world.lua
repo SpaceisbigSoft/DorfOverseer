@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-world is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.130'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.131'   -- bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 local inc, TICKS_PER_DAY = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.TICKS_PER_DAY
@@ -482,6 +482,8 @@ local function can_fly(u)
     return ok and flier or false
 end
 
+-- (r34b) were_curse and sneak_threat live in ai-threat-facts (this file's size limit)
+
 function get_others_on_map()
     local out = {
         threats = {},
@@ -505,8 +507,18 @@ function get_others_on_map()
     local okth, TH = pcall(reqscript, 'ai-threats')         -- (0.105.51) thieves marked
     if not okth then TH = nil end
     for _, u in ipairs(report_units()) do
+        -- (r34b) a hidden hostile night creature, were or ambusher: a threat row (sneak_threat)
+        local hidden = dfhack.units.isHidden(u)
+        local sneak, ambush = false, false
+        if hidden and dfhack.units.isActive(u) and not dfhack.units.isDead(u)
+                and not dfhack.units.isCitizen(u, true) then
+            local oks, v, a = pcall(function()
+                return TF.sneak_threat(u, layer_at({x = u.pos.x, y = u.pos.y, z = u.pos.z}, layers), TH)
+            end)
+            sneak, ambush = (oks and v) == true, (oks and a) == true
+        end
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u)
-                and not dfhack.units.isHidden(u)
+                and (not hidden or sneak)
                 and not dfhack.units.isCitizen(u, true) then
             local contained = u.flags1.caged or u.flags1.chained
             -- (r1 g7) a visitor turned killer (or a hero spotted after an
@@ -516,9 +528,21 @@ function get_others_on_map()
                 local okt2, yes = pcall(TH.is_turned, u)
                 turned = okt2 and yes == true
             end
-            if (dfhack.units.isDanger(u) or turned) and contained then
+            -- (r34b) a were outsider in its own form (its curse known: were_race or
+            -- WERECURSE) is a threat though DF calls it no danger: not a merchant
+            -- or a diplomat (C's weregecko representative killed 6 at the moon)
+            local cursed = TF ~= nil and TF.were_curse(u, TH) or false
+            local cursed_threat = false
+            if cursed and not dfhack.units.isDanger(u) and not turned then
+                local okm, m = pcall(dfhack.units.isMerchant, u)
+                local okp, dip = pcall(dfhack.units.isDiplomat, u)
+                -- never one of the fort's own group (a resident: the moon cells' were list)
+                local okg, og = pcall(dfhack.units.isOwnGroup, u)
+                cursed_threat = not (okm and m) and not (okp and dip) and not (okg and og)
+            end
+            if (dfhack.units.isDanger(u) or turned or cursed_threat) and contained then
                 out.contained_dangers = out.contained_dangers + 1
-            elseif dfhack.units.isDanger(u) or turned then
+            elseif dfhack.units.isDanger(u) or turned or cursed_threat then
                 local pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
                 local group = dfhack.maps.getWalkableGroup(pos)
                 -- true / false, or nil when DF's path data can't say
@@ -545,6 +569,12 @@ function get_others_on_map()
                     great_danger = dfhack.units.isGreatDanger(u),
                     invader = dfhack.units.isInvader(u),
                     turned = turned or nil,     -- (r1 g7) a visitor turned killer
+                    -- (r34b) hidden from the player (an ambusher, or unseen tiles) and still a threat;
+                    -- a were by its curse (either form); DF's own danger flag
+                    hidden = sneak or nil,
+                    ambush = ambush or nil,
+                    were_curse = cursed or nil,
+                    hostile = dfhack.units.isDanger(u) or nil,
                     -- (0.105.119 item32) a were in beast form now (its race not its own)
                     transformed = (function()
                         local okw, v = pcall(function()
@@ -628,7 +658,7 @@ function get_others_on_map()
             elseif dfhack.units.isAnimal(u) and dfhack.units.isFortControlled(u) then
                 out.tame_animals = out.tame_animals + 1
             end
-        elseif dfhack.units.isActive(u) and not dfhack.units.isDead(u) and dfhack.units.isHidden(u) and not dfhack.units.isCitizen(u, true)
+        elseif dfhack.units.isActive(u) and not dfhack.units.isDead(u) and hidden and not dfhack.units.isCitizen(u, true)
                 and not (u.flags1.caged or u.flags1.chained) and dfhack.units.isGreatDanger(u) then
             -- (item16) a great beast on unrevealed tiles: B's flier Urnut left the
             -- threats on alternate pulses (flying over unseen cavern), and the shaft

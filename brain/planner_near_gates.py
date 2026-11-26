@@ -126,6 +126,16 @@ def _near_gates_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
     dangers = surface_dangers(s)
     bad, why = unbeatable(s, memory, cfg, dangers)
     names = ", ".join(str(t.get("name") or t.get("id")) for t in dangers[:3])
+    if not bad:
+        # (r34b) a stalker out of the deep layers (a hidden hostile, a were, a night
+        # creature, a hostile arrival: planner_hostile_arrivals) hunts the dwarves out
+        # far whatever the matchup: B's tavern keeper died 100 tiles from the gates
+        from planner_hostile_arrivals import stalker_rows
+        prowl = stalker_rows(s)
+        if prowl:
+            bad = True
+            why = "it stalks the dwarves outside (hidden, a were or a night creature)"
+            names = ", ".join(str(t.get("name") or t.get("id")) for t in prowl[:3])
     if bad:
         book["last"], book["who"] = now, names[:120]
     last = book.get("last")

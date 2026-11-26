@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-works is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.130'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-works'] = '0.105.131'   -- bumped with BRIDGE_VERSION
 
 -- (0.99.7) Soldiers who don't pick up their uniforms: DFHack's
 -- uniform-unstick frees items assigned to one soldier but held by another
@@ -853,6 +853,16 @@ function act_mine_ore(a)
     if not n then return reject('mine_ore needs count 1-80') end
     -- (item6) prospect: exploratory mining goes on past a small pocket to the next
     return reqscript('ai-industry').mine(a.metal, n, a.dry_run == true, a.prospect == true)
+end
+
+-- (r34a) Exploratory tunnels for idle miners with no vein to dig
+-- (lua/ai-industry.lua explore): count tiles in all, in up to `tunnels` tunnels.
+function act_explore_dig(a)
+    local n = int_in(a.count or 40, 1, 80)
+    if not n then return reject('explore_dig needs count 1-80') end
+    local t = int_in(a.tunnels or 1, 1, 6)
+    if not t then return reject('explore_dig needs tunnels 1-6') end
+    return reqscript('ai-industry').explore(n, t, a.dry_run == true)
 end
 
 -- Take down a gate the AI built at an entrance that wasn't one (lua/ai-gates.lua).

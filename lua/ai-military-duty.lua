@@ -8,7 +8,7 @@
 -- reqscript('ai-military').name and a name swapped there reaches this file.
 
 if not MILITARY_PART_LOCALS then qerror('ai-military-duty is a part of ai-military; run ai-military') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-duty'] = '0.105.130'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-duty'] = '0.105.131'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units, gear, save_shelter_marks, order_tick, is_guard_order, is_ai_order = MILITARY_PART_LOCALS.U, MILITARY_PART_LOCALS.report_citizens, MILITARY_PART_LOCALS.report_units, MILITARY_PART_LOCALS.gear, MILITARY_PART_LOCALS.save_shelter_marks, MILITARY_PART_LOCALS.order_tick, MILITARY_PART_LOCALS.is_guard_order, MILITARY_PART_LOCALS.is_ai_order   -- (r8) the hub's locals
 
@@ -47,6 +47,20 @@ function kill_target_ok(u)
     -- in 65 s while DF called him neither a danger nor an invader
     local okt, turned = pcall(function() return reqscript('ai-threats').is_turned(u) end)
     if okt and turned == true then return true end
+    -- (r34b) an outsider carrying the were curse, in its own form (enemy.were_race
+    -- another race than its own and its birth race, or the WERECURSE syndrome):
+    -- the report counts it a threat (ai-bridge-report-world were_curse) and the
+    -- were rules send a squad before the moon (C's weregecko representative,
+    -- B's Weregiraffe Child changed back). Never one of the fort's own group.
+    if not is(U.isOwnGroup) then
+        local okw, were = pcall(function()
+            local w = u.enemy.were_race
+            return w ~= nil and w ~= -1 and w ~= u.race and w ~= u.enemy.normal_race
+        end)
+        if okw and were == true then return true end
+        local okc, cursed = pcall(function() return reqscript('ai-threats').were_cursed(u) end)
+        if okc and cursed == true then return true end
+    end
     -- (item1, 14 Nov) a unit DF's own job cancellations show keeping the
     -- dwarves from drink, food or sleep ("cancels Drink: Interrupted by a
     -- human spearman"): B lost 66 to thirst beside 845 drinks while a beaten

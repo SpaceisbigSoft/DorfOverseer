@@ -139,12 +139,19 @@ def _():
     assert reachable_threats(s, {}, CFG) == [13479]
 
 
-@test("2 a night creature walking the upper levels (no invader, reach unknown) keeps no lone thief off the triage")
+@test("2 a night creature walking the upper levels (no invader, reach unknown) is a threat itself (r34b), "
+      "the thief with it")
 def _():
     poet = {"id": 777, "name": "èrith Rîsenåm, Olon's Eye Poet", "can_reach_dwarves": None, "invader": False,
             "great_danger": False, "kinds": ["NightCreature"], "layer": "upper_levels", "size": 70000,
             "distance_to_nearest_dwarf": 30, "levels_from_nearest_dwarf": 0}
     s = fort([dict(OM, thief="thief"), poet])
+    # (r34b) a hostile night creature out of the deep layers whose reach DF can't deny is
+    # a stalker (planner_hostile_arrivals): B's Weregiraffe Child killed 76 s after it came.
+    # Before r34b the poet was left out and the thief alone was the thieves rule's
+    assert reachable_threats(s, {}, CFG) == [13479, 777], reachable_threats(s, {}, CFG)
+    # reach denied by the walk groups: the lone thief is the thieves rule's as before
+    s = fort([dict(OM, thief="thief"), dict(poet, can_reach_dwarves=False)])
     assert reachable_threats(s, {}, CFG) == [], reachable_threats(s, {}, CFG)
     # a siege held off at the gates still keeps the thief in the defence
     gob = {"id": 900, "name": "goblin", "can_reach_dwarves": False, "invader": True, "great_danger": False,

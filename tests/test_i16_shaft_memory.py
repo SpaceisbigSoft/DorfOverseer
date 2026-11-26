@@ -185,7 +185,7 @@ def _():
     pl = (ROOT / "brain" / "planner.py").read_text(encoding="utf-8")
     assert 's["_shaft_memory"] = getattr(memory, "shaft_beasts", None) or {}' in pl
     lua = (ROOT / "lua" / "ai-bridge-report-world.lua").read_text(encoding="utf-8")
-    assert "out.hidden_great = out.hidden_great or {}" in lua and "dfhack.units.isHidden(u) and not" in lua
+    assert "out.hidden_great = out.hidden_great or {}" in lua and ("dfhack.units.isHidden(u) and not" in lua or "and hidden and not dfhack.units.isCitizen(u, true)" in lua)  # (r34b) hidden read once
     from digest import SECTION_DEFAULTS as DEFAULTS
     assert DEFAULTS["others_on_map"]["hidden_great"] == []
 

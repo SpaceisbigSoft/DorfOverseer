@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-civic is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.130'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.131'   -- bumped with BRIDGE_VERSION
 
 local string_list = ACTIONS_PART_LOCALS.string_list
 
@@ -632,9 +632,10 @@ function act_allow_stone(a)
 end
 
 -- A small chamber dug in ordinary stone, for boulders (lua/ai-industry.lua).
+-- (r34a) up to 60 tiles: DF leaves a boulder for about one tile in four
 function act_quarry(a)
-    local n = int_in(a.count or 30, 1, 30)
-    if not n then return reject('quarry needs count 1-30') end
+    local n = int_in(a.count or 30, 1, 60)
+    if not n then return reject('quarry needs count 1-60') end
     return reqscript('ai-industry').quarry(n, a.dry_run == true)
 end
 

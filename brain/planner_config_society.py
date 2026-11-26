@@ -85,6 +85,8 @@ PART = {
     "polish_recheck_days": 14,         # (item7) "every finished level is polished": no polish this long (doubled in a row)
     "polish_recheck_max_days": 112,
     "quarry_min_tiles": 8,             # (item7) a quarry's size: what lifts the stone to twice stone_low, at least this
+    "quarry_tiles_per_boulder": 4,     # (r34a) DF leaves a boulder for about one layer-stone tile in four dug
+    "quarry_max_tiles": 60,            # (r34a) ...so a quarry asks this many at most (the bridge's top; E's were 1-5 tiles)
     "picks_per_dwarves": 30,           # (0.99.4) a pick for every this many dwarves while stone is short (3 at least)...
     "picks_max": 20,                   # (0.104.117) was 10: a fort of 300 dug with 9 miners, two levels stalled for years
     "picks_per_backlog": 40,           # (0.104.4) a pick more for every this many tiles waiting to be dug
@@ -427,6 +429,11 @@ PART = {
     # prospect_tiles x factor tiles (10-80)
     "prospect_cooldown_ticks": 1200, "prospect_days": 3, "prospect_dig_per_miner": 2,
     "prospect_gems_below": 20, "prospect_tiles": 30,
+    # (r34a) no vein to be had (prospect refused or not wanted) and the miners still idle (E: 27 miners,
+    # 0 tiles, 32-36% idle): exploratory tunnels (rule `explore`, the bridge's explore_dig),
+    # explore_tiles x factor tiles (10-80), a tunnel for each explore_per_tunnel_miners miners (1-6),
+    # every explore_days / factor (a day at least). planner_prospect.py
+    "explore_cooldown_ticks": 1200, "explore_days": 1, "explore_tiles": 24, "explore_per_tunnel_miners": 5,
     "industry_cooldown_ticks": 7 * 1200,
     "gather_cooldown_ticks": 7 * 1200, # shrubs marked for gathering: at most once a week
     "train_min_citizens": 15,

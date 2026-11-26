@@ -190,7 +190,7 @@
  "enxah-0.104.52-y73-winter.json:Deep mine": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:97d95a260b12f488cbb43691",
+   "props": "sha256:4534db9163e9084790962f8b",
    "rules": [
     "build",
     "hospital",
@@ -217,6 +217,7 @@
     "pair_chairs",
     "temple_chest",
     "library_chest",
+    "explore",
     "build",
     "alerts",
     "meal_drink",
@@ -227,7 +228,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:2ebecaf78936986fb45ac14d",
+   "props": "sha256:90bb9bcfc3a722b4fef04bd3",
    "rules": [
     "build",
     "hospital",
@@ -254,6 +255,7 @@
     "pair_chairs",
     "temple_chest",
     "library_chest",
+    "explore",
     "build",
     "alerts",
     "meal_drink",
@@ -263,7 +265,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:97d95a260b12f488cbb43691",
+   "props": "sha256:4534db9163e9084790962f8b",
    "rules": [
     "build",
     "hospital",
@@ -290,6 +292,7 @@
     "pair_chairs",
     "temple_chest",
     "library_chest",
+    "explore",
     "build",
     "alerts",
     "meal_drink",

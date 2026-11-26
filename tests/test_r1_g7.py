@@ -447,7 +447,7 @@ def _():
     br = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
     assert code_has(rep, "pcall(function() reqscript('ai-threats').note_death(ev) end)")
     assert code_has(br, "pcall(function() reqscript('ai-threats').note_report(ev, txt) end)")
-    assert code_has(rep, "elseif dfhack.units.isDanger(u) or turned then")
+    assert code_has(rep, "elseif dfhack.units.isDanger(u) or turned or cursed_threat then")   # (r34b) + a were outsider
     assert code_has(rep, "turned = turned or nil,")
     art = (LUA_DIR / "ai-artifacts.lua").read_text(encoding="utf-8")
     assert code_has(art, "dfhack.job.attachJobItem(job, it, role, -1, -1)")

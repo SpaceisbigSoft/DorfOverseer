@@ -306,6 +306,11 @@ def reachable_threats(s: dict, traits: dict, cfg: dict) -> list:
             if (t.get("can_reach_dwarves") is None and lv is not None and lv <= levels
                     and t.get("id") not in ids):
                 ids.append(t.get("id"))
+    # (r34b) a stalker (planner_hostile_arrivals: hidden, a were by form or curse, a night
+    # creature, a hostile arrival) out of the deep layers whose reach the walk groups don't
+    # deny: B's Weregiraffe Child came hidden at the map's edge and killed 76 s later
+    from planner_hostile_arrivals import stalker
+    ids += [t.get("id") for t in threats if t.get("id") not in ids and stalker(t)]
     if not unlisted and not pack and _lone_thieves(s, cfg, ids, {t.get("id"): t for t in threats}):
         return []
     ids += [i for i in pack if i not in ids]
