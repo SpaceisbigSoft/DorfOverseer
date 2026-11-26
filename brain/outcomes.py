@@ -59,8 +59,7 @@ METRICS = {
 }
 
 
-def _int(v) -> int | None:
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # (r33c) util's helper
 
 
 def work_base(dw: dict) -> int:

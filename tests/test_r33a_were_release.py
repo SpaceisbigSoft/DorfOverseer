@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
-from harness import test, finish  # noqa: E402
+from harness import test, finish, need_lua  # noqa: E402
 
 from planner import Memory, plan  # noqa: E402
 
@@ -137,7 +137,7 @@ def env():
 def _():
     LUA, E = env()
     if LUA is None:
-        return
+        need_lua()
     G = E.G
     T = LUA.table_from
     r = E.moon_cell(T([]), True, False, None, T({"dead_only": True}))
@@ -172,7 +172,7 @@ def _():
 def _():
     LUA, E = env()
     if LUA is None:
-        return
+        need_lua()
     G = E.G
     T = LUA.table_from
     E.moon_cell(T([5]), False, False, None, T({"reserve": True}))
@@ -185,7 +185,7 @@ def _():
 def _():
     LUA, E = env()
     if LUA is None:
-        return
+        need_lua()
     G = E.G
     T = LUA.table_from
     LUA.execute("""local E = ...; local G = E.G
