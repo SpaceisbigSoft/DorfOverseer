@@ -56,6 +56,15 @@ def trees_this_year(s: dict, memory) -> tuple[int, int | None]:
     return felled, cap
 
 
+def fort_idle_share(s: dict, citizens: int) -> float:
+    """(r33c) The idle share the free-time rule widens by: the needs
+    report's idle over the citizens, or the fort's truly idle share
+    (planner_core._idle_share), whichever is more."""
+    soc = _d(_d(s.get("needs")).get("social"))
+    soc_share = int(soc.get("idle") or 0) / max(1, int(soc.get("citizens") or citizens))
+    return max(soc_share, _idle_share(s))
+
+
 def _free_time_rule(s: dict, citizens: int, cfg: dict, proposals: list, notes: list) -> None:
     """(0.104.10) Time to be with friends: DF's "everybody does this" for
     planting and plant gathering keeps every dwarf on call (Enxah: 3 of 88
@@ -72,11 +81,21 @@ def _free_time_rule(s: dict, citizens: int, cfg: dict, proposals: list, notes: l
     idle_share = int(soc.get("idle") or 0) / max(1, int(soc.get("citizens") or citizens))
     narrowed = lb.get("narrowed") if isinstance(lb.get("narrowed"), dict) else {}
     jobs = _d(lb.get("jobs"))
+    # (r33c) the fort's truly idle share (planner_core._idle_share): a detail
+    # narrowed while nobody was idle goes back to everybody once many are
+    # (free_time_widen_idle, over the narrowing's free_time_idle_below: the
+    # gap keeps the two apart), or when its jobs wait for its few holders.
+    # A, B, E (26 Nov) had farming and gathering narrowed for months at
+    # 25-48% idle: widened only once fewer than 5% badly wanted friends
+    fort_idle = fort_idle_share(s, citizens)
+    waits = {job: narrowed_waiting(lb, job, cfg) for job in NARROW_LABOR}
     if friends >= citizens * cfg["free_time_friends_share"] and idle_share < cfg["free_time_idle_below"]:
         plots = int(_d(s.get("farms")).get("built") or 0)
         for job, keep in (("farming", max(3, min(12, plots))), ("gathering", 3)):
             if job in narrowed or _d(jobs.get(job)).get("mode") != "EverybodyDoesThis":
                 continue
+            if waits.get(job):
+                continue                                        # (r33c) its jobs wait already
             proposals.append(Proposal("free_time", {"type": "narrow_detail", "job": job, "keep": keep},
                                       f"{friends} dwarves badly want time with friends and only "
                                       f"{round(idle_share * 100)}% are ever idle: {job} goes to a crew of {keep} "
@@ -86,6 +105,18 @@ def _free_time_rule(s: dict, citizens: int, cfg: dict, proposals: list, notes: l
         job = sorted(narrowed)[0]
         proposals.append(Proposal("free_time", {"type": "narrow_detail", "job": job, "widen": True},
                                   f"only {friends} dwarves badly want company now: {job} back to everybody", 6))
+    elif narrowed and fort_idle >= cfg.get("free_time_widen_idle", 0.2):
+        # (r33c) the fort idle: a narrowed detail back to everybody, the one
+        # whose jobs wait first (with nobody idle, _labor_rules adds a few
+        # to its crew instead)
+        job = next((j for j in sorted(narrowed) if waits.get(j)), sorted(narrowed)[0])
+        w = waits.get(job)
+        proposals.append(Proposal("free_time", {"type": "narrow_detail", "job": job, "widen": True},
+                                  f"{round(fort_idle * 100)}% of the fort is idle"
+                                  + (f" and {w.get('jobs')} {job} job(s) wait for the {w.get('holders')} on it"
+                                     if w else "")
+                                  + f": {job} back to everybody (narrowed while nobody was idle; idle hands "
+                                  "can farm and gather)", 5 if w else 6))
 
 
 def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list, memory=None) -> None:
@@ -199,6 +230,24 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
                                   "they miss their friends, crafts and prayer)", 3))
     if farms:
         want("farming", 2 if small else max(3, citizens // 10), "farm plots to tend")
+    # (r33c) a detail the free-time rule narrowed whose jobs wait for its few
+    # holders: a few more on its crew (A, 26 Nov: 16 plant-gathering jobs from
+    # the fruit zones, 3 gatherers, the detail narrowed for months; the
+    # gathering rule above asks only for shrubs marked). The fort idle: the
+    # free-time rule widens it instead
+    narrowed = lb.get("narrowed") if isinstance(lb.get("narrowed"), dict) else {}
+    widening = (bool(_d(_d(s.get("needs")).get("social"))) and citizens >= cfg["free_time_min_pop"]
+                and fort_idle_share(s, citizens) >= cfg.get("free_time_widen_idle", 0.2))
+    for job in sorted(narrowed) if not widening else ():
+        w = narrowed_waiting(lb, job, cfg)
+        doing = int(_d(jobs.get(job)).get("doing") or 0)
+        # never past a quarter of the fort (as _labor_waiting_rule): the crew
+        # grows, the detail stays narrowed (Enxah's 100 farming jobs would
+        # otherwise put the whole fort back on call, 3 a day)
+        if w and doing < max(2, citizens // 4):
+            n = min(3, max(1, math.ceil(int(w.get("jobs") or 0) / 5)), max(2, citizens // 4) - doing)
+            want(job, doing + n, f"{w.get('jobs')} {job} job(s) wait for the {w.get('holders')} dwarves on the "
+                 f"narrowed detail ({free_holders(w)} free)", 4)
     wc = _d(jobs.get("woodcutting"))
     axes = int(wc.get("tools") or 0)
     if axes:
@@ -290,6 +339,38 @@ def gatherers(traits: dict, small: bool) -> int:
 DEAD_LABORS = ("STONE_CARVER", "ENGRAVER")
 
 
+def free_holders(w: dict) -> int:
+    """(r33c) A waiting row's holders free to take its jobs now: the
+    bridge's `free` (no job, no social activity, not in the recreation
+    burrow, not mad or caged) when it reports one, else `idle` (no job) as
+    before. B, 26 Nov: 17 "idle" holders of every labour, 8 of them free."""
+    f = w.get("free")
+    if isinstance(f, int) and not isinstance(f, bool):
+        return max(0, f)
+    return max(0, int(w.get("idle") or 0))
+
+
+# (r33c) the details the free-time rule narrows -> their labour
+NARROW_LABOR = {"farming": "PLANT", "gathering": "HERBALIST"}
+
+
+def narrowed_waiting(lb: dict, job: str, cfg: dict) -> dict | None:
+    """(r33c) A narrowed detail's labour whose jobs wait for its few
+    holders: at least labor_waiting_jobs jobs, at least free_time_wait_per_holder
+    a holder, and fewer free holders than a quarter of the jobs. A, 26 Nov:
+    16 plant-gathering jobs (the fruit zones) for the 3 gatherers the free-time
+    rule kept, the detail narrowed for months. The waiting row, else None."""
+    lab = NARROW_LABOR.get(job)
+    for w in _l(lb.get("waiting")):
+        if not isinstance(w, dict) or str(w.get("labor")) != lab:
+            continue
+        jobs, holders = int(w.get("jobs") or 0), int(w.get("holders") or 0)
+        if (jobs >= cfg["labor_waiting_jobs"] and jobs >= cfg.get("free_time_wait_per_holder", 2) * holders
+                and free_holders(w) * 4 < jobs):
+            return w
+    return None
+
+
 def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thirsty: bool = False,
                         haunted: bool = False, unwanted: set | frozenset = frozenset()) -> None:
     """Work that waits for a worker (lua/ai-labor.lua's waiting_work): a
@@ -317,7 +398,7 @@ def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thi
             else cfg["labor_waiting_jobs"]
         # (hauling: brain/planner_hauling.py, through the AI's own hauling detail)
         if (lab in OWN_LABOR_RULES or lab.startswith("HAUL") or jobs < least
-                or (w.get("idle") or 0) > 0 or w.get("mode") in LABOR_MODES_FIXED
+                or free_holders(w) > 0 or w.get("mode") in LABOR_MODES_FIXED
                 or holders >= max(2, citizens // 4)):
             continue
         n = min(3, max(1, math.ceil(jobs / 5)))

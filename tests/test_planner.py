@@ -2579,7 +2579,10 @@ def _():
     f = by_rule(plan(s, Memory())[0], "free_time")
     assert f and f[0].action == {"type": "narrow_detail", "job": "gathering", "keep": 3}, f
     s["needs"]["social"]["idle"] = 30                                  # plenty idle: nothing to cut
-    assert not by_rule(plan(s, Memory())[0], "free_time")
+    f = by_rule(plan(s, Memory())[0], "free_time")
+    # (r33c) and the narrowed detail back to everybody: idle hands can farm
+    assert f and f[0].action == {"type": "narrow_detail", "job": "farming", "widen": True}, f
+    assert "idle" in f[0].reason, f[0].reason
     s["needs"]["needs"]["BeWithFriends"]["badly"] = 2                  # met: back to everybody
     f = by_rule(plan(s, Memory())[0], "free_time")
     assert f and f[0].action == {"type": "narrow_detail", "job": "farming", "widen": True}, f

@@ -395,6 +395,8 @@ def short(a: dict) -> str:
             return "retire the cistern (its floodgate shut)"
         if a.get("relink"):
             return "the cistern: ask for its lever link afresh"
+        if a.get("instant") and not a.get("shut"):     # (r33b) the refill pulled at once
+            return "open the cistern's floodgate at once"
         return "shut the cistern's floodgate" if a.get("shut") else "the cistern: next step"
     if t == "water_work":        # (0.105.0)
         what = {"moat": "the moat", "pump": "the pump stack", "irrigation": "the muddied farm level",
@@ -504,6 +506,8 @@ def short(a: dict) -> str:
     if t == "magma_guard":    # (0.105.41, item 7)
         return "paths round the spilt magma back to normal" if a.get("lift") else "keep the dwarves away from the spilt magma"
     if t == "moon_cell":
+        if a.get("release") and a.get("dead_only"):        # (r33a)
+            return "unlock and drop the cells of dead werebeasts"
         return "let the werebeasts out of their cells" if a.get("release") else "lock the werebeasts in for the full moon"
     if t == "seal_cavern":
         if a.get("openings") or a.get("layer") == "all caverns":       # (0.105.26) every cavern opening

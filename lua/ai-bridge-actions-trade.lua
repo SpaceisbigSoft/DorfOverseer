@@ -9,7 +9,7 @@
 -- and the bridge's shared helpers are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-trade is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-trade'] = '0.105.129'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-trade'] = '0.105.130'   -- bumped with BRIDGE_VERSION
 
 -- Goods to the depot for a caravan (lua/ai-trade.lua); the trade is yours.
 function act_bring_goods(a)
@@ -164,7 +164,9 @@ function act_cistern_step(a)
     -- (0.105.3) the tunnel's reach, as the survey planned it (Hammerstirred's pool 53-66 tiles off)
     local tun = whole_number(a.tunnel)
     far_reach_of(a)
-    return reqscript('ai-builder').cistern_step(a.dry_run == true, prefs, tun and math.max(2, math.min(tun, map_width())) or nil)
+    -- (r33b) instant: the done step's top-up pull at once (the brain: 3 dwarf pulls left the floodgate as it was)
+    return reqscript('ai-builder').cistern_step(a.dry_run == true, prefs, tun and math.max(2, math.min(tun, map_width())) or nil,
+                                                a.instant == true)
 end
 
 -- (0.105.0) Water works and magma (lua/ai-waterworks.lua): one step of the

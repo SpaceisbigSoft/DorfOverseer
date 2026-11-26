@@ -629,6 +629,8 @@ def measures(s: dict, j: dict) -> dict:
     social = _d(needs.get("social"))
     if _num_or_none(dw.get("idle_free")) is not None:
         idle_n = dw["idle_free"]
+        from outcomes import work_base     # (r33c) of the work-capable when reported
+        civilians = work_base(dw)
     elif _num_or_none(social.get("idle")) is not None:
         idle_n = social["idle"]
     else:
@@ -1387,6 +1389,15 @@ def fmt(v) -> str:
     return str(v)
 
 
+def _idle_base(dw: dict, adults: int, in_squads: int) -> int:
+    """(r33c) The truly idle share's base: outcomes.work_base when the
+    bridge counts idle_free, else the adults outside the squads."""
+    if _num_or_none(dw.get("idle_free")) is not None:
+        from outcomes import work_base
+        return work_base(dw)
+    return max(0, adults - in_squads)
+
+
 def health(s: dict, j: dict) -> dict:
     """(0.105.26) The fort's health against fixed bars, not a ranking."""
     dw = _d(s.get("dwarves"))
@@ -1409,7 +1420,8 @@ def health(s: dict, j: dict) -> dict:
     return {"failed_moods": max(0, rep.get("mood", 0) - rep.get("artifact_made", 0) - working),
             "moods": rep.get("mood", 0), "artifacts": rep.get("artifact_made", 0),
             "thirst_deaths": deaths.get("THIRST", 0),
-            "unhappy_pct": pct(unhappy, total), "idle_pct": pct(idle_n, max(0, adults - in_squads)),
+            "unhappy_pct": pct(unhappy, total),
+            "idle_pct": pct(idle_n, _idle_base(dw, adults, in_squads)),     # (r33c) the work-capable when reported
             "deaths": dict(deaths)}
 
 

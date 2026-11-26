@@ -6,7 +6,7 @@
 -- (r8) Split off ai-builder-cistern.lua by theme; the top-level locals the
 -- ai-builder-cistern files share with this one come from CISTERN_PART_LOCALS.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-step'] = '0.105.129'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-step'] = '0.105.130'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 local still_water, river_water = CISTERN_PART_LOCALS.still_water, CISTERN_PART_LOCALS.river_water
@@ -22,7 +22,12 @@ CISTERN_HOLD_WHY = 'the cistern is on hold (the player: as built it would flood 
 CISTERN_TUNNEL_ASKED = nil       -- (0.105.3) the brain's cistern_tunnel_max, set by cistern_step's caller
 CISTERN_SEARCH = CISTERN_SEARCH or nil   -- (R29 W3) the level-a-call search's progress: {i, tick, tunnel, best, why, cut}
 CISTERN_SEARCH_DAYS = 14         -- (R29 W3) a search older than this (game days) begins again
-function cistern_step(dry_run, prefs, tunnel)
+-- (r33b) instant: the done step's top-up pull made at once (lever pull
+-- --instant), the dwarves' queued pulls on the lever taken away first (one
+-- walking up after would toggle it back, 0.105.33 L5). The brain asks it
+-- after 3 dwarf pulls left the floodgate as it was (B, 26 Nov: the militia
+-- captain took the PullLever job and dropped it, every cycle for hours)
+function cistern_step(dry_run, prefs, tunnel, instant)
     CISTERN_TUNNEL_ASKED = math.tointeger(tonumber(tunnel))
     OFFSET = elevation_offset()
     if prefs then cistern_prefs(prefs) end
@@ -631,6 +636,14 @@ function cistern_step(dry_run, prefs, tunnel)
         return advance('done', {depth = st.depth})
     end
     -- done: keep it topped up
+    -- (r33b) top_up_pull: a dwarf's pull, or (instant) the lever at once, the
+    -- queued pulls taken away first
+    local function top_up_pull(lever_id, now_)
+        if not now_ then return pull(lever_id) end
+        local cancelled = lever_pull_pending(lever_id) and cancel_lever_pulls(lever_id) or nil
+        local ok, out = pull(lever_id, true)
+        return ok, out, nil, cancelled
+    end
     if gate and gate.built and d.lever_id then
         if gate.closed and st.depth < CISTERN_LOW and not CISTERN_HOLD then
             local sealed, where, gaps = cistern_sealed(p, d.stage)
@@ -642,14 +655,16 @@ function cistern_step(dry_run, prefs, tunnel)
             if not dry_run and (d.unsealed or d.sealing or d.unsealed_why) then
                 d.unsealed, d.sealing, d.unsealed_why = nil, nil, nil; save_cistern(d)
             end
-            if dry_run then return {ok = true, dry_run = true, refill = true} end
-            local ok, out, pending = pull(d.lever_id)
+            if dry_run then return {ok = true, dry_run = true, refill = true, instant = instant and true or nil} end
+            local ok, out, pending, cancelled = top_up_pull(d.lever_id, instant)
             return {ok = ok, stage = 'done', refill = true, depth = st.depth, pending = pending,
+                    instant = instant and true or nil, cancelled_pulls = cancelled,
                     error = not ok and out or nil}
         elseif not gate.closed and st.depth >= CISTERN_FULL then
-            if dry_run then return {ok = true, dry_run = true, shut = true} end
-            local ok, out, pending = pull(d.lever_id)
+            if dry_run then return {ok = true, dry_run = true, shut = true, instant = instant and true or nil} end
+            local ok, out, pending, cancelled = top_up_pull(d.lever_id, instant)
             return {ok = ok, stage = 'done', shut = true, depth = st.depth, pending = pending,
+                    instant = instant and true or nil, cancelled_pulls = cancelled,
                     error = not ok and out or nil}
         end
     end

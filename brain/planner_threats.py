@@ -683,7 +683,8 @@ def _were(s, cfg, t, rules, proposals, notes):
     _were_cell_notes(cfg, rows, notes)                         # (0.105.119 item31/34)
     if not rules["moon_cells"]:
         if cells:
-            proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": [], "release": True},
+            # (r33a) all: the reserved cells too (a release keeps a living cursed one's reserved cell)
+            proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": [], "release": True, "all": True},
                                       "moon cells are off on the Rules tab: let every werebeast out", 1))
         return
     if due:
@@ -720,7 +721,13 @@ def _were(s, cfg, t, rules, proposals, notes):
         past = phase_due is False and moon_clearly_past(_l(w.get("changes")), w.get("moon_phase"), wcfg)
         if past and not beast and not fighting:
             n = len(live_cells)
-            proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": [], "release": True},
+            # (r33a) only the dead's cells left: a release of those only (dead_only). B, 26 Nov
+            # 14:23+: this release freed Asob's cell, reserved by the call before, and the two
+            # flipped it every 20-40 s; Asob never had a cell
+            act = {"type": "moon_cell", "ids": [], "release": True}
+            if not n:
+                act["dead_only"] = True
+            proposals.append(Proposal("moon_cell", act,
                                       (f"the full moon is past (phase {w.get('moon_phase')}): let {n} werebeast(s) "
                                        "out of their cells") if n else
                                       "the cells of dead werebeasts: unlock their doors and drop them", 3))

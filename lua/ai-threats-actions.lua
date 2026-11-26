@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-actions is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.129'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.130'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, now_tick, name_of, save_state, unkey, is, citizens, fire_points, each_job, changed, okey, watcher_held, lure_open_ids = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.unkey, PART_LOCALS.is, PART_LOCALS.citizens, PART_LOCALS.fire_points, PART_LOCALS.each_job, PART_LOCALS.changed, PART_LOCALS.okey, PART_LOCALS.watcher_held, PART_LOCALS.lure_open_ids   -- (r8) the hub's and earlier parts' locals
 
@@ -557,12 +557,38 @@ function cell_sealed(c, u)
     return ok and yes == true
 end
 
+-- (r33a) A were cell (kind 'were') whose drawbridge can't hold anyone now:
+-- no bridge on its doorway (never built, or gone), no lever, not built, or
+-- the cell itself gone from the AI's levels. The reason, or nil (worked as a
+-- were cell). B, 26 Nov 14:23+: the dead weresheep Bomrek's cell was on
+-- record behind a drawbridge that was not there; free() refused "stays up"
+-- every call and the record never cleared. Can't tell (no ai-werecells,
+-- an error): nil, as before.
+function were_unworkable(c)
+    if type(c) ~= 'table' or c.kind ~= 'were' then return nil end
+    local ok, why = pcall(function()
+        local wc = W().find(c.zone)
+        if not wc then return 'the cell is gone' end
+        local st = W().cell_state(wc)
+        if type(st) ~= 'table' or st.built then return nil end     -- built: both stand there
+        if not st.bridge_id then return 'no drawbridge on the cell\'s doorway' end
+        if not st.lever_id then return 'no lever in front of the cell' end
+        return 'the cell\'s bridge or lever is not built'
+    end)
+    return ok and why or nil
+end
+
 -- Werebeasts in cells for the full moon: each id given gets a burrow on its
 -- room (a jail, else a free bedroom); once the dwarf is inside, the room's
 -- doors are locked. release: unlocked (only the doors the AI locked), the
 -- dwarf out of the burrow, every cell not in `ids` let out too.
-function moon_cell(ids, release, dry_run, txt, opts)
+function moon_cell(ids, release, dry_run, txt, opts, raw)
     opts = type(opts) == 'table' and opts or {}
+    -- (r33a) the bridge's action, for its dead_only and all (booleans, checked there)
+    if type(raw) == 'table' then
+        if raw.dead_only == true then opts.dead_only = true end
+        if raw.all == true then opts.all = true end
+    end
     local d = load_state()
     local t = now_tick()
     local want = {}
@@ -572,7 +598,13 @@ function moon_cell(ids, release, dry_run, txt, opts)
     -- (0.105.114) a release waits while any living werebeast is in its beast
     -- form or a cursed one is fighting (E, 25 Nov: cells let out between
     -- moons while bitten dwarves were still in fights)
-    if release and not dry_run then
+    -- (r33a) dead_only: a release of the dead (or gone) werebeasts' cells only
+    -- (B, 26 Nov: "the cells of dead werebeasts" freed Asob's cell, reserved
+    -- the call before, and the two calls flipped it every 20-40 s). A release
+    -- keeps a living cursed dwarf's reserved cell unless `all` (the Rules
+    -- switch off): nobody is in it, and the reserve would only take it again.
+    local dead_only = release and opts.dead_only == true
+    if release and not dry_run and not dead_only then
         for uid, c in pairs(d.cells) do
             local u = df.unit.find(tonumber(uid))
             if type(c) == 'table' and not dead_or_gone(u) then
@@ -587,6 +619,17 @@ function moon_cell(ids, release, dry_run, txt, opts)
     end
     local function free(uid, c)
         local u = df.unit.find(tonumber(uid))
+        local living = u and not dead_or_gone(u)
+        -- (r33a) a release of the dead's cells: a living dwarf's cell untouched (said
+        -- as kept only when cursed: a cell for the living isn't this call's)
+        if dead_only and living then
+            return
+        end
+        if release and living and c.reserved and not c.locked and opts.all ~= true then
+            out.kept = out.kept or {}
+            table.insert(out.kept, name_of(u, txt) .. ' (reserved)')
+            return
+        end
         -- (0.105.0 review) never a cell whose werebeast has changed now (raging):
         -- a call listing only another werebeast, or a release, let it out.
         -- (0.105.114) a dead one's cell is freed: E kept 40 cells of the dead
@@ -607,12 +650,29 @@ function moon_cell(ids, release, dry_run, txt, opts)
         end
         -- (0.105.115 item24) a were cell: its bridge lowered first; not lowered
         -- (someone on the tile, the lever unlinked), the cell is kept as it is
-        if c.kind == 'were' then
+        -- (r33a) a were cell whose bridge isn't there (or the cell gone): freed as a
+        -- plain room (its doors unlocked, the record dropped), said in notes
+        local gone = c.kind == 'were' and were_unworkable(c)
+        if gone then
+            out.notes = out.notes or {}
+            table.insert(out.notes, ('the cell of %s was on record behind a drawbridge (%s): freed as a plain room')
+                :format(u and name_of(u, txt) or ('unit ' .. tostring(uid)), gone))
+        end
+        if c.kind == 'were' and not gone then
             local okr, down, why = pcall(function()
                 local wc = W().find(c.zone)
                 if not wc then return true end
                 return W().set_raised(wc, false, dry_run)
             end)
+            -- (r33a) a dead one's cell whose bridge stands down already (its lever
+            -- unlinked: set_raised refuses before it looks): nothing to lower
+            if not (okr and down) and dead_or_gone(u) then
+                local okd, isdown = pcall(function()
+                    local st = W().cell_state(W().find(c.zone))
+                    return not st.raised and not st.moving
+                end)
+                if okd and isdown then okr, down = true, true end
+            end
             if not (okr and down) then
                 out.errors = out.errors or {}
                 table.insert(out.errors, 'the drawbridge of ' .. (u and name_of(u, txt) or ('unit ' .. tostring(uid))) .. '\'s cell stays up: '
@@ -656,6 +716,10 @@ function moon_cell(ids, release, dry_run, txt, opts)
     end
     for uid, c in pairs(d.cells) do
         if type(c) == 'table' and (release or not want[uid]) then free(uid, c) end
+    end
+    -- (r33a) a dead-only release with nothing dead left to free: as a nothing-to-do
+    if dead_only and (out.dead or 0) == 0 and not out.errors then
+        return {ok = false, rejected = true, nothing_to_do = true, error = 'no dead werebeast\'s cell on record'}
     end
     -- (0.105.115 item18) a cursed dwarf outside the cell moved in (said either way)
     local function try_move(u, z)
@@ -732,6 +796,20 @@ function moon_cell(ids, release, dry_run, txt, opts)
                         local st = wc and W().cell_state(wc)
                         if st and st.built and st.linked and not dry_run then c.kind = 'were' end
                     end)
+                end
+                -- (r33a) a were cell whose drawbridge isn't there (never built, gone):
+                -- nothing holds them in it. Not locked (or its record says locked and
+                -- nothing holds it): the record dropped, another room taken (a jail,
+                -- a bedroom, a room with a door, else one dug); said
+                if c and c.kind == 'were' and not (c.locked and cell_doors_held(c)) then
+                    local why = were_unworkable(c)
+                    if why then
+                        out.rekind = out.rekind or {}
+                        table.insert(out.rekind, name_of(u, txt) .. ': ' .. why .. ': another room')
+                        if not dry_run then d.cells[uid] = nil end
+                        if c.zone then taken[c.zone] = true end      -- not this one again this call
+                        c = nil
+                    end
                 end
                 local z = c and c.zone and zone_by_id(c.zone)
                 -- (item31) a cell made ready before the moon (reserved): still free for them?
@@ -904,7 +982,7 @@ function moon_cell(ids, release, dry_run, txt, opts)
         hold_cell_doors(d)       -- (0.105.115 item18) the locked cells' doors: no other rule unlocks them
     end
     if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) + #(out.relock or {}) + (out.dead or 0) + #(out.moved or {})
-            + #(out.reserved or {}) + #(out.digging or {}) + #(out.escaped or {}) + #(out.side or {}) == 0 and not out.error and not out.errors then   -- (item31)   -- (0.105.96, verifier) a squad left counts
+            + #(out.reserved or {}) + #(out.digging or {}) + #(out.escaped or {}) + #(out.side or {}) + #(out.rekind or {}) == 0 and not out.error and not out.errors then   -- (item31)   -- (0.105.96, verifier) a squad left counts
         return {ok = false, rejected = true, nothing_to_do = true, error = 'every cell is as it should be'}
     end
     return out

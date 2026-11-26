@@ -190,7 +190,7 @@
  "enxah-0.104.52-y73-winter.json:Deep mine": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:11ca98f0b5d830a8dba8573d",
+   "props": "sha256:97d95a260b12f488cbb43691",
    "rules": [
     "build",
     "hospital",
@@ -207,6 +207,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -226,7 +227,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:73f1ee1e21c21930d9fd8df1",
+   "props": "sha256:2ebecaf78936986fb45ac14d",
    "rules": [
     "build",
     "hospital",
@@ -243,6 +244,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -261,7 +263,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:11ca98f0b5d830a8dba8573d",
+   "props": "sha256:97d95a260b12f488cbb43691",
    "rules": [
     "build",
     "hospital",
@@ -278,6 +280,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -299,7 +302,7 @@
  "enxah-0.104.52-y73-winter.json:Garden fort": [
   {
    "notes": "sha256:1d54210acc6c22f89675941f",
-   "props": "sha256:f3bc9dbde28e38ccefe1900e",
+   "props": "sha256:554ad77b8fc8433aec3c45c1",
    "rules": [
     "build",
     "hospital",
@@ -316,6 +319,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -338,7 +342,7 @@
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:3c7cf22ae940ba5ca7305df4",
+   "props": "sha256:f3a5d555f4809ef006019124",
    "rules": [
     "build",
     "hospital",
@@ -355,6 +359,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -376,7 +381,7 @@
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:f3bc9dbde28e38ccefe1900e",
+   "props": "sha256:554ad77b8fc8433aec3c45c1",
    "rules": [
     "build",
     "hospital",
@@ -393,6 +398,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -417,7 +423,7 @@
  "enxah-0.104.52-y73-winter.json:Hermit hold": [
   {
    "notes": "sha256:d8737d8cf05b896b10570ad3",
-   "props": "sha256:70464a479a8886a5d0d61207",
+   "props": "sha256:afb225da93f7e660247f2ea7",
    "rules": [
     "build",
     "hospital",
@@ -434,6 +440,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -452,7 +459,7 @@
   },
   {
    "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:c5d49971c6ca6bc53f562e56",
+   "props": "sha256:fcb5f698ccf2ecc7ec636eff",
    "rules": [
     "build",
     "hospital",
@@ -470,6 +477,7 @@
     "train",
     "unstick_uniforms",
     "labor",
+    "labor",
     "recreation",
     "well",
     "burial_others",
@@ -486,7 +494,7 @@
   },
   {
    "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:70464a479a8886a5d0d61207",
+   "props": "sha256:afb225da93f7e660247f2ea7",
    "rules": [
     "build",
     "hospital",
@@ -503,6 +511,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -523,7 +532,7 @@
  "enxah-0.104.52-y73-winter.json:Merchant city": [
   {
    "notes": "sha256:a67e39d50a50b92f215c9892",
-   "props": "sha256:18d72c67bc1ab0662010a3c3",
+   "props": "sha256:56e62f2519524a697ed45ac9",
    "rules": [
     "build",
     "hospital",
@@ -540,6 +549,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -561,7 +571,7 @@
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:c40649294d8bd511283219f6",
+   "props": "sha256:8e28024192cd3f0940acf694",
    "rules": [
     "build",
     "hospital",
@@ -578,6 +588,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -598,7 +609,7 @@
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:18d72c67bc1ab0662010a3c3",
+   "props": "sha256:56e62f2519524a697ed45ac9",
    "rules": [
     "build",
     "hospital",
@@ -615,6 +626,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -638,7 +650,7 @@
  "enxah-0.104.52-y73-winter.json:Monastery": [
   {
    "notes": "sha256:0825f5818f727f9c3aa6a770",
-   "props": "sha256:810bde48930d322798222dac",
+   "props": "sha256:77d29eff0b1dc0bc47c46e5b",
    "rules": [
     "build",
     "hospital",
@@ -652,6 +664,7 @@
     "instrument_orders",
     "pop_cap",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -672,7 +685,7 @@
   },
   {
    "notes": "sha256:18485460882f7f483bf237ab",
-   "props": "sha256:08fe857716366859123cfcb9",
+   "props": "sha256:ccb4361d38584b2e3551c298",
    "rules": [
     "build",
     "hospital",
@@ -686,6 +699,7 @@
     "instrument_orders",
     "pop_cap",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -705,7 +719,7 @@
   },
   {
    "notes": "sha256:18485460882f7f483bf237ab",
-   "props": "sha256:810bde48930d322798222dac",
+   "props": "sha256:77d29eff0b1dc0bc47c46e5b",
    "rules": [
     "build",
     "hospital",
@@ -719,6 +733,7 @@
     "instrument_orders",
     "pop_cap",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -741,7 +756,7 @@
  "enxah-0.104.52-y73-winter.json:War-hold": [
   {
    "notes": "sha256:8b663b55d962e247c281516d",
-   "props": "sha256:36afedaddeb0617b70552807",
+   "props": "sha256:0f0c6628da175aa5f06f3cdb",
    "rules": [
     "build",
     "hospital",
@@ -758,6 +773,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -775,7 +791,7 @@
   },
   {
    "notes": "sha256:80e7b445551e3b6dccee50ec",
-   "props": "sha256:0f7f25ffd037b82814ffde98",
+   "props": "sha256:155d3da12e05a3d0909871d1",
    "rules": [
     "build",
     "hospital",
@@ -793,6 +809,7 @@
     "train",
     "unstick_uniforms",
     "labor",
+    "labor",
     "recreation",
     "well",
     "burial_others",
@@ -808,7 +825,7 @@
   },
   {
    "notes": "sha256:80e7b445551e3b6dccee50ec",
-   "props": "sha256:36afedaddeb0617b70552807",
+   "props": "sha256:0f0c6628da175aa5f06f3cdb",
    "rules": [
     "build",
     "hospital",
@@ -825,6 +842,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -844,7 +862,7 @@
  "enxah-0.104.52-y73-winter.json:own": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:a90f39547c73cb56b537978b",
+   "props": "sha256:8f1c97b59120ff18ec2ecee6",
    "rules": [
     "build",
     "hospital",
@@ -861,6 +879,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -880,7 +899,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:035c1be167b0081ef1310d22",
+   "props": "sha256:3555a0cb91d80d7164967004",
    "rules": [
     "build",
     "hospital",
@@ -897,6 +916,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",
@@ -915,7 +935,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:a90f39547c73cb56b537978b",
+   "props": "sha256:8f1c97b59120ff18ec2ecee6",
    "rules": [
     "build",
     "hospital",
@@ -932,6 +952,7 @@
     "train",
     "train",
     "unstick_uniforms",
+    "labor",
     "labor",
     "recreation",
     "well",

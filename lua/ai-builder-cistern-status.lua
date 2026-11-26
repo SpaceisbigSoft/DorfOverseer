@@ -6,7 +6,7 @@
 -- (r8) Split off ai-builder-cistern.lua by theme; the top-level locals the
 -- ai-builder-cistern files share with this one come from CISTERN_PART_LOCALS.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-status'] = '0.105.129'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-status'] = '0.105.130'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 local DIR8 = CISTERN_PART_LOCALS.DIR8
@@ -171,7 +171,8 @@ function cistern_status()
     -- (item6, R32 e) built and full, its floodgate open: a pull already
     -- waiting for a dwarf (the brain asked for the shut every cycle meanwhile:
     -- "the cistern is 7/7 deep: shut the floodgate", B every ~25 s)
-    if d.stage == 'done' and d.lever_id and gate and gate.built and not gate.closed then
+    -- (r33b) either way (the open when low too: the brain paces both)
+    if d.stage == 'done' and d.lever_id and gate and gate.built then
         out.pull_pending = lever_pull_pending(d.lever_id) or nil
     end
     if d.stage == 'filling' or d.stage == 'plug' then

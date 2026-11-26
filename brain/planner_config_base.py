@@ -176,6 +176,8 @@ PART = {
     "free_time_friends_share": 0.2,         # this share badly wanting friends ...
     "free_time_idle_below": 0.1,            # ... while fewer than this share are idle: narrow
     "free_time_widen_share": 0.05,          # back to everybody below this share
+    "free_time_widen_idle": 0.2,            # (r33c) ...or with this share truly idle (_idle_share; over free_time_idle_below)
+    "free_time_wait_per_holder": 2,         # (r33c) ...or its jobs wait, this many a holder (and few holders free)
     "instruments_cooldown_ticks": 28 * 1200,   # (0.104.8) an instrument order a month
     "unsuspend_cooldown_ticks": 2 * 1200,
     "burial_cooldown_ticks": 3 * 1200,

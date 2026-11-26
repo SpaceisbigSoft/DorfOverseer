@@ -9,7 +9,7 @@
 -- in_fort, NOT_IN_FORT, OUT_DIR) are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report'] = '0.105.129'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report'] = '0.105.130'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 
@@ -117,12 +117,22 @@ function get_dwarves(include_units)
         -- job) and truly free (no job, no activity). in_activity + idle_free
         -- == idle_adults; soldiers are in neither (they are never idle here)
         in_activity = 0, idle_free = 0,
+        -- (r33c) the idle with an excuse, apart from idle_free: the AI's
+        -- recreation burrow's members (labours off on purpose), the unfit
+        -- (insane, caged or chained), DF's break. in_activity + idle_free +
+        -- the excused == idle_adults. work_capable: the adults outside the
+        -- squads but the recreation members and the unfit (the base of the
+        -- truly idle share; a dwarf on break works otherwise)
+        idle_excused = {recreation = 0, unfit = 0, on_break = 0}, work_capable = 0,
         stress = {},
         professions = {},
     }
     for _, label in pairs(STRESS_LABELS) do summary.stress[label] = 0 end
 
     local units = {}
+    -- (r33c) ai-labor's idle_excuse and the recreation burrow's members
+    local LAB, rec = nil, {}
+    pcall(function() LAB = reqscript('ai-labor'); rec = LAB.rec_member_ids() or {} end)
     for _, u in ipairs(report_citizens()) do
         local is_child = dfhack.units.isChild(u) or dfhack.units.isBaby(u)
         local job = u.job.current_job
@@ -138,11 +148,22 @@ function get_dwarves(include_units)
             summary.children = summary.children + 1
         else
             summary.adults = summary.adults + 1
+            -- (r33c) why a dwarf outside the squads isn't one to put to work
+            local excuse = nil
+            if not in_squad and LAB then
+                local oke, e = pcall(LAB.idle_excuse, u, rec)
+                excuse = oke and e or nil
+            end
+            if not in_squad and excuse ~= 'recreation' and excuse ~= 'unfit' then
+                summary.work_capable = summary.work_capable + 1
+            end
             if not job and not in_squad then
                 summary.idle_adults = summary.idle_adults + 1
                 local oka, busy = pcall(function() return #u.social_activities > 0 end)
                 if oka and busy then
                     summary.in_activity = summary.in_activity + 1
+                elseif excuse then
+                    summary.idle_excused[excuse] = (summary.idle_excused[excuse] or 0) + 1
                 else
                     summary.idle_free = summary.idle_free + 1
                 end
