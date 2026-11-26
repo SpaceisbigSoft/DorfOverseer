@@ -41,11 +41,50 @@ from __future__ import annotations
 from digest import _d, _l
 from planner_core import Proposal, TICKS_PER_DAY, abs_tick, can_fight, player_rules
 
-__all__ = ["DEEP_LAYERS", "GREAT_KINDS", "surface_dangers", "unbeatable", "_near_gates_rule"]
+__all__ = ["DEEP_LAYERS", "GREAT_KINDS", "surface_dangers", "unbeatable", "_near_gates_rule", "stalker_kind", "stalker_why"]
 
 DEEP_LAYERS = ("Cavern", "MagmaSea", "Underworld")
 GREAT_KINDS = {"Titan", "Megabeast", "SemiMegabeast"}
 FAR_NAMES = 4
+
+
+def stalker_kind(t: dict) -> str:
+    """(r36) What a stalker row is, in a word or two, from its own fields."""
+    kinds = t.get("kinds") if isinstance(t.get("kinds"), list) else []
+    if t.get("transformed") is True or t.get("were_curse") is True:
+        return "a were"
+    if "NightCreature" in kinds:
+        return "a night creature"
+    if t.get("ambush") is True:
+        return "a hidden ambusher"
+    if t.get("hidden") is True:
+        return "hidden"
+    if t.get("arrival") is True:
+        return "a hostile arrival"
+    return "a stalker"
+
+
+def stalker_why(s: dict, prowl: list) -> str:
+    """(r36) The near-gates reason for stalkers: inside the fort or outside it
+    (B 26 Nov 18:22: an ambusher in the tavern was said to stalk "outside")."""
+    from planner_holdfast import _inside_ids
+    ins = _inside_ids(s)
+    inside = [t for t in prowl if t.get("id") in ins or t.get("inside") is True]
+    outside = [t for t in prowl if t not in inside]
+
+    def what(rows):
+        ks = []
+        for t in rows:
+            k = stalker_kind(t)
+            if k not in ks:
+                ks.append(k)
+        return ", ".join(ks)
+    parts = []
+    if inside:
+        parts.append(f"{'it is' if len(inside) == 1 else f'{len(inside)} are'} inside the fort ({what(inside)})")
+    if outside:
+        parts.append(f"{'it stalks' if len(outside) == 1 else f'{len(outside)} stalk'} the dwarves outside ({what(outside)})")
+    return "; ".join(parts)
 
 
 def _section(s: dict) -> dict | None:
@@ -134,7 +173,7 @@ def _near_gates_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
         prowl = stalker_rows(s)
         if prowl:
             bad = True
-            why = "it stalks the dwarves outside (hidden, a were or a night creature)"
+            why = stalker_why(s, prowl)
             names = ", ".join(str(t.get("name") or t.get("id")) for t in prowl[:3])
     if bad:
         book["last"], book["who"] = now, names[:120]
