@@ -330,10 +330,44 @@ def hiding(s: dict, memory, cfg: dict) -> tuple[bool, list]:
             or (threats[i].get("great_danger") and melee_bar(threats[i]))}
     great = [i for i in reach if threats[i].get("great_danger") and i not in fire]
     if policy == "never":
-        return bool(great) or bool(fire), []
+        # (R32 c, the player) never attack is no sortie outside: one inside the
+        # walls is the squads' (a great one only when they are strong enough)
+        from planner_great_hold import great_inside
+        ins = great_inside(s, [threats[i] for i in reach])
+        g_in = [i for i in great if i in ins]
+        fight = fight_judged(s, memory, cfg, [threats[i] for i in g_in], able)[0] if g_in else False
+        targets = [i for i in reach if i in ins and i not in fire
+                   and (not threats[i].get("great_danger") or fight)]
+        return (bool(great) or bool(fire)) and not targets, targets
     fight = fight_judged(s, memory, cfg, [threats[i] for i in great], able)[0] if great else False
     targets = [i for i in reach if i not in fire and (not threats[i].get("great_danger") or fight)]
     return ((bool(great) and not fight) or bool(fire)) and not targets, targets
+
+
+def hold_words(s: dict, memory, cfg: dict) -> str:
+    """(R32 c) "too strong to go out at (N against M, Kx needed): the squads
+    hold the choke" for the great dangers in reach the squads aren't sent
+    at, with the numbers the military rules judge by (fight_or_hide, the
+    recall's too); "" when there is no such verdict."""
+    try:
+        from planner_matchup import fight_judged, melee_bar
+        from planner_great_hold import great_inside, too_strong_words
+        traits = _d(_d(s.get("settings")).get("traits"))
+        threats = {t.get("id"): t for t in _l(_d(s.get("others_on_map")).get("threats")) if isinstance(t, dict)}
+        reach = [i for i in reachable_threats(s, traits, cfg) if i in threats]
+        great = [i for i in reach if threats[i].get("great_danger") and threats[i].get("fire_breather") is not True
+                 and not melee_bar(threats[i])]
+        if player_rules(s).get("attack_policy") == "never":
+            ins = great_inside(s, [threats[i] for i in great])
+            great = [i for i in great if i in ins]
+        if not great:
+            return ""
+        able = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict) and can_fight(q, cfg)]
+        info: dict = {}
+        fight = fight_judged(s, memory, cfg, [threats[i] for i in great], able, info=info)[0]
+        return "" if fight else too_strong_words(info)
+    except Exception:  # noqa: BLE001  (the words only)
+        return ""
 
 
 def fall_back(s: dict, cfg: dict, ids: list, why: str, proposals: list | None = None) -> list:
@@ -465,9 +499,11 @@ def _shelter_squads_rule(s: dict, memory, cfg: dict, proposals: list, notes: lis
                                  "they carry water and food there, and go out to eat one squad at a time")
                 out = [q for q in ready if _d(q.get("stationed")) != at]
                 if out:
+                    ts = hold_words(s, memory, cfg)       # (R32 c) the verdict's numbers, said
                     proposals.append(Proposal("shelter_squads", {"type": "shelter_squads",
                                                                  "squads": [q["id"] for q in out], "station": at},
-                                              f"the dwarves hide from a great danger: {len(out)} squad(s) stand "
+                                              f"the dwarves hide from a great danger"
+                                              + (f", {ts}" if ts else "") + f": {len(out)} squad(s) stand "
                                               f"between it and the civilians' shelter, at x{at['x']} y{at['y']} "
                                               f"z{at['z']} ({spot['why']})", 0))
                 return

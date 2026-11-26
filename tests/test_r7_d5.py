@@ -167,7 +167,9 @@ ALL = {
 # (R29 item6) _sortie_on: the sortie's targets and squads kept for its result
 # (R30c item24) _military_rules: no fill when everyone draftable is in avoid
 # (item2 war bolts) _ranged_squad_rule: the bolts order in planner_bolts (one at a time, a stalled recipe gives way)
-BASE_NODES = (123, "b7658c0e758d8b343e19e6f6945519fb")
+# (R32 c) fight_or_hide: a great danger held as too strong is gone out at only at the full bar (planner_great_hold);
+#         _military_rules: the verdict booked, "never attack" gives way to an enemy inside the walls
+BASE_NODES = (123, "29b59935bf854eb53ebdf0f15511edd7")
 
 
 def _defined(name: str) -> list[str]:
