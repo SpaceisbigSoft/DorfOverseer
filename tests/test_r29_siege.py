@@ -323,17 +323,18 @@ def _():
     assert len(made) == 1, made
     mk = made[0]
     # the farthest reachable edge tile from the entrance (3,3): 17,19 (x 19 is another walkable group)
-    assert (mk.x, mk.y, mk.z) == (17, 19, 5) and mk.ltype == "Walkable" and mk.spread == 3, dict(mk)
+    assert (mk.x, mk.y, mk.z) == (17, 19, 5) and mk.ltype == "Walkable" and mk.spread in (3, 6, 9, 12), dict(mk)   # (0.105.127) grown to fit the party
     assert mk.race == "GOBLIN" and mk.civ == 314 and mk.qty == 16 and mk.equip == 4, dict(mk)
     assert mk.flags == "active_invader,invader_origin"
     u = w.units[1]
     assert u.civ_id == 314 and u.flags1.active_invader and u.flags1.invader_origin
     assert r.civ_name == "The near" and w.site["ai-overseer/siege-spawned"].count == 16
+    # (0.105.127) the party still alive: no second one; the switch on again is refused while it lives
+    res = env.spawn_party(lua_tbl({"id": 314, "race": "GOBLIN"}))
+    assert isinstance(res, tuple) and res[0] is None and "still on the map" in res[1], res
     w.settings.invite_siege = True
     again = env.invite_siege(False)
-    assert again.rejected and "never again" in again.error and len(list(w.made.values())) == 1
-    res = env.spawn_party(lua_tbl({"id": 314, "race": "GOBLIN"}))
-    assert isinstance(res, tuple) and res[0] is None and "once already" in res[1], res
+    assert again.rejected and "not over" in again.error and len(list(w.made.values())) == 1, dict(again)
 
 
 @test("invite_siege (Lua): the war party's equipment refused: placed unarmed; no create-unit: no_army, said why")
@@ -401,7 +402,7 @@ def _():
     assert w.saved.invite_siege is False
 
 
-@test("invite_siege (Lua): an army set out for the fort: came; then never again")
+@test("invite_siege (Lua): an army set out for the fort: came; then again once it is over")
 def _():
     need_lua()
     env, w = _lua()
@@ -411,10 +412,11 @@ def _():
     w.armies[1].controller.site_id = 1430
     r = env.invite_siege(False)
     assert r.ok and r.came and r.armies == 1 and r.state == "came", dict(r)
+    # (0.105.127) again once it is over: the army's civ sent one, so it is invited again (no direct war party)
     w.settings.invite_siege = True
     again = env.invite_siege(False)
-    assert not again.ok and again.rejected and "never again" in again.error, dict(again)
-    assert len(w.events) == 1, "never a second army"
+    assert again.ok and again.invited and not again.direct, dict(again)
+    assert len(w.events) == 2, "a second invitation once the first is over"
 
 
 @test("invite_siege (Lua): the brain saw invaders (came): no next civ after 7 days; the elves' caravan army is no army")

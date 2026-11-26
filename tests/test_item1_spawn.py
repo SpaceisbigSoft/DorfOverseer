@@ -85,7 +85,7 @@ def _():
         assert "'modtools/create-unit'" not in _src(n)
         assert "pcall(reqscript, 'ai-spawn')" in _src(n)
     s = _src("ai-siege-invite.lua")
-    assert code_has(s, "local ids, why, info = SP.spawn_units{race = civ.race, count = SPAWN_COUNT,")
+    assert code_has(s, "local ids, why, info = SP.spawn_units{race = civ.race, count = count,")
     assert code_has(s, "equipped = info.equipped == true, equip_error = info.equip_error, route = info.route, ids = ids, "
                        "spawn_info = brief}")
     assert code_has(s, "equipped = sp.equipped, route = sp.route, spawn_info = sp.spawn_info}")

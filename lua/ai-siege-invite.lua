@@ -37,7 +37,7 @@
 -- started by the switch turned on again.
 
 if not PART_LOCALS then qerror('ai-siege-invite is a part of ai-siege; run ai-siege') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-siege-invite'] = '0.105.126'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-siege-invite'] = '0.105.127'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, is, entrances_of = PART_LOCALS.U, PART_LOCALS.is, PART_LOCALS.entrances_of   -- the hub's locals
 
@@ -52,6 +52,8 @@ INVITE_DAY = 1200
 -- ends with a war party placed at the map edge by the AI itself, once a fort
 SPAWN_KEY = 'ai-overseer/siege-spawned'
 SPAWN_COUNT = 16              -- goblins (the civ's race) placed
+SPAWN_COUNT_NEXT = 30         -- (0.105.127) a later war party, bigger: the gates and kill zones brought into play
+SPAWN_SPREAD_MAX = 12         -- (0.105.127) the spread grows by 3 to this until the tiles hold the party (A 26 Nov: 9 of 16 at 3)
 SPAWN_SPREAD = 3              -- tiles round the edge tile they are spread over
 SPAWN_EQUIP = {'ITEM_WEAPON_SPEAR:INORGANIC:IRON', 'ITEM_ARMOR_MAIL_SHIRT:INORGANIC:IRON',
                'ITEM_HELM_HELM:INORGANIC:IRON', 'ITEM_SHIELD_BUCKLER:INORGANIC:IRON'}
@@ -455,8 +457,26 @@ end
 -- armed by dfhack.items, ai-spawn.lua), marked invaders of the civ. Returns the
 -- record, or nil, the reason (up to SPAWN_WHY chars) and the spawner's info
 -- (route, each route's error, counts: ai-spawn brief).
-function spawn_party(civ)
-    if spawned() then return nil, 'a war party was placed at this fort once already' end
+-- (0.105.127) a war party placed before and still alive on the map (any of its ids)
+function party_alive(rec)
+    rec = rec or spawned()
+    if not rec or type(rec.ids) ~= 'table' then return false end
+    for _, id in ipairs(rec.ids) do
+        local ok, alive = pcall(function()
+            local u = df.unit.find(id)
+            return u ~= nil and not dfhack.units.isDead(u) and dfhack.units.isActive(u)
+        end)
+        if not ok or alive then return true end   -- can't tell: counted alive (no second party on a guess)
+    end
+    return false
+end
+
+-- (0.105.127) the player's switch is the yes for each test: a war party again once the
+-- last one is dead (was once a fort); a later one is SPAWN_COUNT_NEXT strong
+function spawn_party(civ, count)
+    local before = spawned()
+    if before and party_alive(before) then return nil, 'the last war party (' .. tostring(before.count) .. ') is still on the map' end
+    count = count or (before and SPAWN_COUNT_NEXT or SPAWN_COUNT)
     if not civ or not civ.id or not civ.race or civ.race == '?' then return nil, 'no civ at war to send it' end
     local okm, SP = pcall(reqscript, 'ai-spawn')
     if not okm or type(SP) ~= 'table' or not SP.spawn_units then
@@ -469,15 +489,25 @@ function spawn_party(civ)
         local g = civ.group_id and df.historical_entity.find(civ.group_id)
         if g and df.historical_entity_type[g.type] ~= 'Civilization' then group = civ.group_id end
     end)
-    local ids, why, info = SP.spawn_units{race = civ.race, count = SPAWN_COUNT, pos = {x = at.x, y = at.y, z = at.z},
-                                          spread = SPAWN_SPREAD, civ_id = civ.id, group_id = group,
+    local spread = SPAWN_SPREAD
+    if SP.spawn_tiles then
+        while spread < SPAWN_SPREAD_MAX do
+            local okt, tiles = pcall(SP.spawn_tiles, {x = at.x, y = at.y, z = at.z}, spread)
+            if not okt or type(tiles) ~= 'table' or #tiles >= count then break end   -- unreadable: as it was
+            spread = spread + 3
+        end
+        spread = math.min(spread, SPAWN_SPREAD_MAX)
+    end
+    local ids, why, info = SP.spawn_units{race = civ.race, count = count, pos = {x = at.x, y = at.y, z = at.z},
+                                          spread = spread, civ_id = civ.id, group_id = group,
                                           flags = SPAWN_FLAGS, equip = SPAWN_EQUIP}
     info = type(info) == 'table' and info or {}
     local brief = SP.brief and SP.brief(info) or {route = info.route}
     if not ids or #ids == 0 then
         return nil, ('no war party placed: ' .. tostring(why or 'no unit')):sub(1, SPAWN_WHY), brief
     end
-    local rec = {tick = now_tick(), year = df.global.cur_year, count = #ids, civ_id = civ.id, civ_name = civ.name,
+    local rec = {tick = now_tick(), year = df.global.cur_year, count = #ids, asked = count, spread = spread,
+                 parties = ((before and before.parties) or (before and 1) or 0) + 1, civ_id = civ.id, civ_name = civ.name,
                  race = civ.race, group_id = group, x = at.x, y = at.y, z = at.z, distance = at.distance,
                  equipped = info.equipped == true, equip_error = info.equip_error, route = info.route, ids = ids,
                  spawn_info = brief}
@@ -553,11 +583,16 @@ function invite_siege(dry, opts)
         if not dry then switch_off() end
         return step(rec, dry, type(opts) == 'table' and opts.came == true)
     end
+    -- (0.105.127) after a siege that came: again once it is over (no invader alive on the map);
+    -- the switch is the player's yes each time (was never again)
     if rec and rec.state ~= 'no_army' then
-        if not dry then switch_off() end
-        return {ok = false, rejected = true, done = rec, state = rec.state,
-                error = 'a siege was invited at this fort once already and an army came (year ' .. tostring(rec.year)
-                        .. ', ' .. tostring(rec.civ_name or 'no civ named') .. '): never again; the switch is off'}
+        local busy = army_watch()
+        if busy.invaders > 0 or party_alive() then
+            if not dry then switch_off() end
+            return {ok = false, rejected = true, done = rec, state = rec.state,
+                    error = 'the last siege (year ' .. tostring(rec.year) .. ', ' .. tostring(rec.civ_name or 'no civ named')
+                            .. ') is not over: invaders on the map; the switch is off'}
+        end
     end
     if rec and not dry and not switch_on() then
         return {ok = false, rejected = true, done = rec, state = rec.state,
@@ -568,15 +603,48 @@ function invite_siege(dry, opts)
     if not name then return {ok = false, error = 'this DF has no army event (timed_event_type) to queue'} end
     local before = {}
     if rec then for _, t in ipairs(rec.tries or {}) do if t.civ_id then before[t.civ_id] = true end end end
-    local ranking = short_rank(rank_civs(reach_rows(), before))
+    -- (0.105.127) every civ an earlier invitation waited on sent no army: those are tried again,
+    -- and when all the ranked ones are among them, the war party at once (no 7-day waits)
+    local quiet = {}
+    if rec then
+        for _, c in ipairs(rec.no_army_civs or {}) do quiet[c] = true end
+        for _, t in ipairs(rec.tries or {}) do if t.civ_id and t.outcome == 'no_army' then quiet[t.civ_id] = true end end
+    end
+    local ranking = short_rank(rank_civs(reach_rows(), rec and rec.state == 'no_army' and before or {}))
     local civ = ranking[1]
+    -- only a repeat test after a war party (state 'came' with `spawned`): a plain no-army
+    -- invitation gives DF's armies another try (the civs tried before go last)
+    local direct = rec ~= nil and rec.state == 'came' and rec.spawned ~= nil and #ranking > 0
+    for _, r in ipairs(ranking) do if not quiet[r.id] then direct = false end end
+    local quiet_list = {}
+    for c in pairs(quiet) do table.insert(quiet_list, c) end
+    table.sort(quiet_list)
     local new = {tick = now_tick(), year = df.global.cur_year, invitation = rec and (rec.invitation or 1) + 1 or 1,
-                 ranking = ranking, tries = {}}
+                 ranking = ranking, tries = {}, no_army_civs = quiet_list}
     if rec then new.previous = {state = rec.state, tick = rec.tick, year = rec.year, tried = names_of(rec.tries)} end
     if dry then
         return {ok = true, dry_run = true, event = name, civ_id = civ and civ.id, civ_name = civ and civ.name,
                 race = civ and civ.race, relation = civ and civ.relation, ranking = ranking,
-                invitation = new.invitation, reinvite = rec ~= nil or nil}
+                invitation = new.invitation, reinvite = rec ~= nil or nil, direct = direct or nil}
+    end
+    if direct then
+        new.state, new.ended, new.direct = 'no_army', now_tick(), true
+        local sp, why, sinfo = spawn_party(civ)
+        if sp then
+            new.state, new.came = 'came', now_tick()
+            new.spawned = {count = sp.count, asked = sp.asked, spread = sp.spread, civ_id = sp.civ_id, civ_name = sp.civ_name,
+                           race = sp.race, x = sp.x, y = sp.y, z = sp.z, tick = sp.tick, equipped = sp.equipped,
+                           route = sp.route, spawn_info = sp.spawn_info}
+            new.civ_id, new.civ_name, new.race = sp.civ_id, sp.civ_name, sp.race
+        else
+            new.spawn_error = why and tostring(why):sub(1, SPAWN_WHY) or nil
+            new.spawn_info = sinfo
+        end
+        save(new)
+        switch_off()
+        return answer(new, {gave_up = true, direct = true, no_army = 'every ranked civ sent none before',
+                            spawned = new.spawned, spawn_error = new.spawn_error, spawn_info = new.spawn_info,
+                            reinvite = true, previous = new.previous})
     end
     local tr, q = try_civ(new, name, v, civ)
     if not tr then return {ok = false, error = q.error, force_said = q.force_said} end

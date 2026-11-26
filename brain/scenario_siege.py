@@ -13,7 +13,7 @@ and checks the whole response:
   0b. (0.105.123) an invitation waiting: looked at daily with the switch off;
      no army in 7 days: the next civ's line; none from 3 civs: "DF sent no
      army: tried X, Y, Z"; then the switch on again: a new invitation (not
-     refused); an army that came: refused for good; the 30-day line names
+     refused); an army that came: again once it is over (0.105.127); the 30-day line names
      the civs tried; the fallback's war party placed at the map edge: its
      journal line, and the watch takes it as the invited siege;
   1. the army at the map edge, 60 tiles off, citizens outside: the alarm
@@ -163,8 +163,8 @@ def run() -> list:
     s1b["settings"]["invite_siege"] = True
     props, _, _ = cycle(s1b, m)
     again = [p for p in props if p.action.get("type") == "invite_siege"]
-    _check(out, "0 invite: switched on again: the action goes only to be refused", len(again) == 1
-           and "refuses" in again[0].reason, str([p.reason for p in again]))
+    _check(out, "0 invite: switched on again: a new test once the last is over (0.105.127)", len(again) == 1
+           and "the last invited siege came" in again[0].reason, str([p.reason for p in again]))
 
     # 0b. (0.105.123) waiting, the next civ, no army, the re-invite
     out.extend(_invite_flow())
@@ -315,8 +315,8 @@ def _invite_flow() -> list:
            len(inv) == 1 and "refuses" not in inv[0].reason and "again" in inv[0].reason, str([p.reason for p in inv]))
     props, _, _ = cycle(_waiting(25, [CIV2], state="came", invite=True), Memory())
     inv = [p for p in props if p.action.get("type") == "invite_siege"]
-    _check(out, "0b an invitation that brought an army: refused for good",
-           len(inv) == 1 and "refuses" in inv[0].reason, str([p.reason for p in inv]))
+    _check(out, "0b an invitation that brought an army: again once it is over, a bigger party (0.105.127)",
+           len(inv) == 1 and "bigger war party" in inv[0].reason, str([p.reason for p in inv]))
     m2 = Memory()
     cycle(_waiting(31, [CIV, CIV2], state="came"), m2, invite_answer={"ok": False, "rejected": True, "error": "x"})
     j = [e for e in siege_journal(m2) if e.get("what") == "siege_no_show"]
