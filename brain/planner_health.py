@@ -411,7 +411,10 @@ def _staff_rule(s: dict, cfg: dict, proposals: list) -> None:
     for h in _l(_d(s.get("health")).get("hospital")):
         if not isinstance(h, dict) or h.get("id") is None:
             continue
+        # (R30c item24) a member of the recreation burrow keeps its labours off on
+        # purpose (the burrow takes them off at every report): not asked for
         short = [st.get("post") for st in _l(h.get("staff")) if isinstance(st, dict)
+                 and st.get("recreation") is not True
                  and set(POST_LABORS.get(st.get("post"), ())) - set(_l(st.get("labors")))]
         if short:
             proposals.append(Proposal("staff", {"type": "staff_labors", "location_id": h["id"]},

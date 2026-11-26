@@ -61,7 +61,10 @@ The rules (_siege_rules), each behind its Rules switch:
     war with the fort), never while enemies are already on the map or in a
     crisis; the bridge records it in the save (field_watch.invited) and
     turns the switch off, so it happens once per fort; a switch turned on
-    again after that is turned off by the same action's refusal. The
+    again after that is turned off by the same action's refusal.
+    (0.105.123) The civ by reach; an invitation waiting is looked at daily
+    (the bridge watches 7 days for its army, then tries the next civ, 3 at
+    most); one that ended with no army allows a new one by the switch. The
     siege's watch and its summary: planner_siege_watch.
 Without a `siege` / `field_watch` section (an older bridge) nothing here
 proposes or notes anything.
@@ -619,12 +622,33 @@ def _keep_on(s: dict, guarded: set, proposals: list, notes: list, near: set | No
 
 def _invite_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     """(R29 W2) The Rules' "Invite a siege (test)": one army called by
-    DFHack's force, once a fort (the bridge keeps the record and turns the
-    switch off). Waits while enemies are on the map or the fort is in a crisis."""
+    DFHack's force (the bridge keeps the record and turns the switch off).
+    Waits while enemies are on the map or the fort is in a crisis.
+    (0.105.123) An invitation waiting (field_watch.invited.state 'waiting')
+    is looked at once a day, switch or no switch: the bridge looks for an
+    army set out for the fort and, after 7 days with none, tries the next
+    civ (3 at most). One that brought an army is the fort's one; one that
+    ended with no army ('no_army') allows a new one when the switch is on."""
+    done = _d(field_of(s).get("invited"))
+    state = done.get("state") if done.get("tick") is not None else None
+    if state == "waiting":
+        tries = [t for t in _l(done.get("tries")) if isinstance(t, dict)]
+        civ = done.get("civ_name") or "no civ named"
+        from planner_holdfast import holdfast
+        mine = _d(holdfast(memory).get("invited")) if memory is not None else {}
+        if mine.get("tick") == done.get("tick") and mine.get("came"):
+            proposals.append(Proposal("invite_siege", {"type": "invite_siege", "came": True},
+                                      f"the invited siege came (invaders seen since the invitation, {civ}): the "
+                                      "bridge records it as the fort's one", 6))
+            return
+        proposals.append(Proposal("invite_siege", {"type": "invite_siege"},
+                                  f"the invited siege waits on {civ} (civ {len(tries) or 1} of at most 3): the bridge "
+                                  "looks for its army set out for the fort, and after 7 days with none tries the "
+                                  "next civ", 6))
+        return
     if _d(s.get("settings")).get("invite_siege") is not True:
         return
-    done = _d(field_of(s).get("invited"))
-    if done.get("tick") is not None:
+    if done.get("tick") is not None and state != "no_army":
         proposals.append(Proposal("invite_siege", {"type": "invite_siege"},
                                   f"the Rules' \"Invite a siege (test)\" is on again, but this fort had its invited "
                                   f"siege (year {done.get('year')}, {done.get('civ_name') or 'no civ named'}): the "
@@ -637,9 +661,13 @@ def _invite_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
     if _d(getattr(memory, "crisis", None)).get("why") if memory is not None else False:
         notes.append("Invite a siege (test) is on: it waits until the crisis is over")
         return
+    again = ""
+    if state == "no_army":
+        tried = [str(t.get("civ_name") or t.get("civ_id")) for t in _l(done.get("tries")) if isinstance(t, dict)]
+        again = f" (again: the last invitation brought no army, tried {', '.join(tried) or 'no civ'})"
     proposals.append(Proposal("invite_siege", {"type": "invite_siege"},
-                              "the Rules' \"Invite a siege (test)\" is on: DFHack's force calls one army of a civ at "
-                              "war with the fort, once (the switch then turns itself off)", 6))
+                              "the Rules' \"Invite a siege (test)\" is on: DFHack's force calls one army of the "
+                              f"nearest civ at war with the fort{again} (the switch then turns itself off)", 6))
 
 
 def _siege_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:

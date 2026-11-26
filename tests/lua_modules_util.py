@@ -49,6 +49,7 @@ SPLIT += ("ai-blueprints.lua", "ai-layouts.lua")   # (r9 t8)
 SPLIT += ("ai-util.lua",)   # (r9 t9) the shared helpers: UTIL_SRC carries its parts
 SPLIT += ("ai-killers.lua",)   # (0.105.113) ai-killers-cell: the cell row's pile, keep_apart, cell, report
 SPLIT += ("ai-fights.lua",)   # (0.105.119) ai-fights-scan: beatings, cursed chokes, scan_units, the holds
+SPLIT += ("ai-siege.lua",)   # (0.105.123) ai-siege-invite: the Rules' "Invite a siege (test)"
 
 
 def split_parts(name: str) -> list[str]:

@@ -9,7 +9,7 @@
 -- reqscript('ai-military').name and a name swapped there reaches this file.
 
 if not MILITARY_PART_LOCALS then qerror('ai-military-draft is a part of ai-military; run ai-military') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-draft'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-draft'] = '0.105.123'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, COMBAT_SKILLS, wants_fight, fight_focus = MILITARY_PART_LOCALS.U, MILITARY_PART_LOCALS.report_citizens, MILITARY_PART_LOCALS.COMBAT_SKILLS, MILITARY_PART_LOCALS.wants_fight, MILITARY_PART_LOCALS.fight_focus   -- (r8) the hub's locals
 
@@ -197,6 +197,22 @@ local function candidates(strict)
         end
     end
     return out
+end
+
+-- (R30c item24) the ids squad_fill could draft at its loosest (not strict, not a
+-- training squad): candidates() less draft_bar and post_bar, for the report's
+-- `military.draft_ids`. A, 25 Nov: 78 fills in 3 h refused "no suitable dwarves
+-- could be added (26 candidates, 0 tried, ...)": every one was in the brain's
+-- `avoid` (sent home lately), which the brain now sees before asking.
+DRAFT_IDS_MAX = 200
+function draft_pool_ids()
+    local okc, care = pcall(care_need)
+    if not okc then care = nil end
+    local ids = {}
+    for _, c in ipairs(candidates(false)) do
+        if not draft_bar(c.unit) and not post_bar(c.unit, care) then table.insert(ids, c.id) end
+    end
+    return ids
 end
 
 -- The leader's seat (place 0): DFHack's addToSquad won't fill it, so it's

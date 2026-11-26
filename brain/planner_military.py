@@ -683,11 +683,21 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             home = recently_home(s, memory)              # (0.104.138) not those just sent home
             if home:
                 act["avoid"] = home
-            proposals.append(Proposal("squad_fill", act,
-                                      f"{have} soldiers, the fort wants {want}{floor_tag}"
-                                      + (f" ({want - base_want} more for the civilians who badly want to train, "
-                                         "while the fort is in crisis)" if want > base_want else "")
-                                      + f": add {count} to {q.get('name') or 'a squad'}", 3))
+            from planner_draft_pool import draft_pool_left     # (R30c item24)
+            pool = draft_pool_left(mil, home)
+            if pool == 0 and q.get("leader"):
+                # (R30c item24) every dwarf the fill could draft was sent home lately
+                # (the report's `draft_ids` less `avoid`): A asked 78 times in 3 h,
+                # refused "no suitable dwarves could be added (26 candidates, 0 tried)"
+                notes.append(f"{have} soldiers, the fort wants {want}{floor_tag}: nobody left to draft "
+                             f"({int(mil.get('draft_pool') or 0)} could be, all sent home from the squads lately "
+                             "or kept out)")
+            else:
+                proposals.append(Proposal("squad_fill", act,
+                                          f"{have} soldiers, the fort wants {want}{floor_tag}"
+                                          + (f" ({want - base_want} more for the civilians who badly want to train, "
+                                             "while the fort is in crisis)" if want > base_want else "")
+                                          + f": add {count} to {q.get('name') or 'a squad'}", 3))
         else:
             # (0.97: "Raise and fill squads" governs new squads too; it was
             # appoint_nobles, which said nothing about squads)

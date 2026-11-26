@@ -706,8 +706,13 @@ def measures(s: dict, j: dict) -> dict:
                                              - lv["rooms"] * (lv.get("room_size") or 3) ** 2)
                                          for lv in beds) / sum(lv["rooms"] for lv in beds), 1)
         if beds else None,
-        # (0.105.115 item23) Room size: tiles a bedroom, a floor's new hall taken out
-        "bedroom_room_tiles": round(sum(max(0, lv["tiles"] - (_num_or_none(_d(lv.get("floor")).get("hall_new")) or 0))
+        # (0.105.115 item23) Room size: tiles a bedroom, a floor's new hall taken out.
+        # (R30c item24) the room's own tiles only (room_size x room_size, up to what the
+        # level dug): that line less Spacing's "beyond the room". It counted the doors and
+        # gaps too, so the Hermit's spacing won it (D 25.3, W1 25 Nov) over the Merchant
+        # city's +50 suites; Spacing keeps those tiles on its own line
+        "bedroom_room_tiles": round(sum(min(max(0, lv["tiles"] - (_num_or_none(_d(lv.get("floor")).get("hall_new")) or 0)),
+                                            lv["rooms"] * (lv.get("room_size") or 3) ** 2)
                                         for lv in beds) / sum(lv["rooms"] for lv in beds), 1)
         if beds else None,
         "stockpiles": b.get("stockpiles"),
@@ -1221,7 +1226,7 @@ FLOOR_LINES = [
     # (floor_room_tiles), which mostly measured which kinds of level a fort had (B's temples
     # gave 48). The slider sizes the bedrooms (room_size: 2x2 at -50 or lower, 4x4 at 50+),
     # so the line is the fort's mean tiles a bedroom (bedroom_room_tiles: a floor's new hall
-    # taken out); the player gave the Monastery -50 (cells) and the Merchant city +50 (roomy
+    # taken out; (R30c item24) the room's own tiles, Spacing's beyond it left to Spacing); the player gave the Monastery -50 (cells) and the Merchant city +50 (roomy
     # suites), the four others 0.
     ("Room size", "tiles a bedroom", "bedroom_room_tiles", {ME}, {M}),
 ]

@@ -442,6 +442,9 @@ def _():
 def _():
     s = fort()
     s["moods"] = {"list": [mood([dict(SILK)], skill="WEAVING", workshop="Clothiers")]}
+    # (0.105.123 item22) and its thread after it, where a Loom weaves it
+    assert planner_moods.mood_trade_wants(s) == [{"key": "CLOTH:SILK", "count": 3}, {"key": "THREAD:SILK", "count": 3}]
+    s["buildings"]["workshops"].pop("Loom", None)
     assert planner_moods.mood_trade_wants(s) == [{"key": "CLOTH:SILK", "count": 3}]
 
 
@@ -460,7 +463,7 @@ def _():
     props, notes = [], []
     planner_trade._trade_rules(s, CFG, 50, props, notes, {}, m)
     deal = [p.action for p in props if p.action.get("type") == "trade_deal"]
-    assert deal and deal[0]["wants"] == [{"key": "CLOTH:SILK", "count": 3}], [p.action for p in props]
+    assert deal and deal[0]["wants"] == [{"key": "CLOTH:SILK", "count": 3}, {"key": "THREAD:SILK", "count": 3}], [p.action for p in props]
     bring = [p.action for p in props if p.action.get("type") == "bring_goods"]
     assert bring and bring[0]["count"] == 10, bring
     assert any("only for what a strange mood waits for" in n for n in notes), notes

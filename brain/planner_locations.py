@@ -25,9 +25,20 @@ def zone_has_chairs(loc: dict, zone_id: int) -> bool:
     if not isinstance(zc, dict):
         return True
     try:
-        return int(zc.get(str(zone_id)) or 0) > 0
+        if int(zc.get(str(zone_id)) or 0) <= 0:
+            return False
     except (TypeError, ValueError):
         return True
+    # (R30c item24) and one of them lone (the report's `zone_lone_chairs`, zone id
+    # -> chairs with none beside them; an older bridge: not known, asked): A 5 and C 2
+    # refused "every chair in zone N has one beside it" in 3 h
+    lone = loc.get("zone_lone_chairs")
+    if isinstance(lone, dict) and str(zone_id) in lone:
+        try:
+            return int(lone.get(str(zone_id)) or 0) > 0
+        except (TypeError, ValueError):
+            return True
+    return True
 
 def _location_supply_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     """(0.84) What the tavern, temple and library keep: mugs for the tavern

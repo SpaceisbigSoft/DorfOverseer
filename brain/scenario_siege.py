@@ -10,6 +10,12 @@ and checks the whole response:
   0. the Rules' "Invite a siege (test)" on, no enemy about: one invite_siege
      action; its answer is a journal line and the record; the switch off
      (the bridge's doing) and no second invitation;
+  0b. (0.105.123) an invitation waiting: looked at daily with the switch off;
+     no army in 7 days: the next civ's line; none from 3 civs: "DF sent no
+     army: tried X, Y, Z"; then the switch on again: a new invitation (not
+     refused); an army that came: refused for good; the 30-day line names
+     the civs tried; the fallback's war party placed at the map edge: its
+     journal line, and the watch takes it as the invited siege;
   1. the army at the map edge, 60 tiles off, citizens outside: the alarm
      (the shelter burrow made first when there is none), the gates armed and
      NOT shut (gates close late: danger within 12 tiles or everyone inside),
@@ -96,12 +102,15 @@ def at(s: dict, day: float, threats: list, **kw) -> dict:
     return s
 
 
-def fake_bridge(chosen: list, state: dict) -> list:
-    """Every action answered ok, as the bridge would."""
+def fake_bridge(chosen: list, state: dict, invite_answer: dict | None = None) -> list:
+    """Every action answered ok, as the bridge would (invite_answer: the
+    invite_siege action's answer instead of a new invitation's)."""
     out = []
     for p in chosen:
         a = p.action
-        if a.get("type") == "invite_siege":
+        if a.get("type") == "invite_siege" and invite_answer is not None:
+            out.append((p, dict(invite_answer)))
+        elif a.get("type") == "invite_siege":
             out.append((p, {"ok": True, "civ_id": 314, "civ_name": CIV, "race": "GOBLIN", "relation": "TotalWar",
                             "event": "EvaluateAttackAndSendImmediateArmy", "how": "force", "queued": 1,
                             "tick": state["date"]["year"] * 403200 + state["date"]["tick"],
@@ -111,14 +120,14 @@ def fake_bridge(chosen: list, state: dict) -> list:
     return out
 
 
-def cycle(s: dict, m: Memory, events: list | None = None):
+def cycle(s: dict, m: Memory, events: list | None = None, invite_answer: dict | None = None):
     """One overseer cycle: note_cycle, the atlas, plan, select, the fake bridge, record."""
     note_cycle(s, m)
     atlas.note_entrances(s, m)
     atlas.note_events(s, m, events or [])
     props, notes = plan(s, m)
     chosen, _held = select(props, s, m)
-    results = fake_bridge(chosen, s)
+    results = fake_bridge(chosen, s, invite_answer)
     record(results, s, m)
     return props, chosen, notes
 
@@ -156,6 +165,9 @@ def run() -> list:
     again = [p for p in props if p.action.get("type") == "invite_siege"]
     _check(out, "0 invite: switched on again: the action goes only to be refused", len(again) == 1
            and "refuses" in again[0].reason, str([p.reason for p in again]))
+
+    # 0b. (0.105.123) waiting, the next civ, no army, the re-invite
+    out.extend(_invite_flow())
 
     # 1. the army at the map edge, citizens outside
     base = copy.deepcopy(s1)
@@ -247,6 +259,91 @@ def run() -> list:
            e.get("alarm") is True and e.get("shelter") == "AI shelter" and e.get("squads")
            and "field_watch" in e and "Siege over" in str(e.get("text")), str(e.get("text"))[:400])
     _check(out, "4 end: the watch is closed", "siege_watch" not in m.holdfast)
+    return out
+
+
+CIV2, CIV3 = "The Witch of Hardiness", "The Third Horde"
+
+
+def _waiting(day: float, tries: list, state: str = "waiting", invite: bool = False) -> dict:
+    s = at(base_state(invite=invite), day, [])
+    t0 = _t0()
+    s["field_watch"]["invited"] = {"tick": t0, "year": 148, "invitation": 1, "state": state,
+                                   "civ_name": tries[-1], "how": "force",
+                                   "tries": [{"civ_name": c, "tick": t0} for c in tries]}
+    return s
+
+
+def _t0() -> int:
+    """The invitation's tick (absolute: year * 403200 + the year's tick), day 0."""
+    return base_state()["date"]["year"] * 403200 + 100 * DAY
+
+
+def _invite_flow() -> list:
+    out: list = []
+    m = Memory()
+    s = _waiting(1, [CIV])
+    props, chosen, _ = cycle(s, m, invite_answer={"ok": True, "waiting": True, "quiet": True, "state": "waiting",
+                                                   "tick": _t0(), "civ_name": CIV, "tried": [CIV]})
+    j = [e for e in siege_journal(m) if str(e.get("what", "")).startswith("siege_")]
+    _check(out, "0b waiting: looked at with the switch off, and quietly",
+           _types(chosen).count("invite_siege") == 1 and not j, str(_types(props)) + str(j)[:300])
+    props, chosen, _ = cycle(_waiting(1.5, [CIV]), m)
+    _check(out, "0b waiting: once a day at most", "invite_siege" not in _types(chosen), str(_types(chosen)))
+    retry = {"ok": True, "retried": True, "no_army": CIV, "state": "waiting", "tick": _t0(), "civ_id": 304,
+             "civ_name": CIV2, "race": "GOBLIN", "relation": "Skirmishing", "how": "force", "entity_set": True,
+             "tried": [CIV, CIV2]}
+    cycle(_waiting(8, [CIV]), m, invite_answer=retry)
+    j = siege_journal(m)
+    _check(out, "0b 7 days, no army: the next civ's journal line",
+           any(e.get("what") == "siege_invite_retried" and CIV in e["text"] and CIV2 in e["text"]
+               and "read back: set" in e["text"] for e in j), str(j)[:300])
+    gave = {"ok": True, "gave_up": True, "no_army": CIV3, "state": "no_army", "tick": _t0(),
+            "civ_name": CIV3, "tried": [CIV, CIV2, CIV3]}
+    cycle(_waiting(23, [CIV, CIV2, CIV3]), m, invite_answer=gave)
+    j = siege_journal(m)
+    _check(out, "0b none from 3 civs: \"DF sent no army: tried X, Y, Z\"",
+           any(e.get("what") == "siege_invite_no_army" and f"DF sent no army: tried {CIV}, {CIV2}, {CIV3}" in e["text"]
+               for e in j), str(j)[:300])
+    props, _, _ = cycle(_waiting(24, [CIV, CIV2, CIV3], state="no_army"), m)
+    _check(out, "0b ended with no army, switch off: nothing", "invite_siege" not in _types(props), str(_types(props)))
+    cycle(_waiting(31, [CIV, CIV2, CIV3], state="no_army"), m)
+    _check(out, "0b ended with no army: no 30-day line on top", not siege_journal(m))
+    props, _, _ = cycle(_waiting(25, [CIV, CIV2, CIV3], state="no_army", invite=True), Memory())
+    inv = [p for p in props if p.action.get("type") == "invite_siege"]
+    _check(out, "0b switch on again after no army: a new invitation, not a refusal",
+           len(inv) == 1 and "refuses" not in inv[0].reason and "again" in inv[0].reason, str([p.reason for p in inv]))
+    props, _, _ = cycle(_waiting(25, [CIV2], state="came", invite=True), Memory())
+    inv = [p for p in props if p.action.get("type") == "invite_siege"]
+    _check(out, "0b an invitation that brought an army: refused for good",
+           len(inv) == 1 and "refuses" in inv[0].reason, str([p.reason for p in inv]))
+    m2 = Memory()
+    cycle(_waiting(31, [CIV, CIV2], state="came"), m2, invite_answer={"ok": False, "rejected": True, "error": "x"})
+    j = [e for e in siege_journal(m2) if e.get("what") == "siege_no_show"]
+    _check(out, "0b 30 days, none on the map: the line names the civs tried",
+           len(j) == 1 and f"tried {CIV}, {CIV2}" in j[0]["text"] and "set out" in j[0]["text"], str(j)[:300])
+    m4 = Memory()
+    placed = {"ok": True, "gave_up": True, "no_army": CIV2, "state": "came", "tick": _t0(), "civ_name": CIV,
+              "tried": [CIV, CIV2], "spawned": {"count": 16, "civ_id": 314, "civ_name": CIV, "race": "GOBLIN",
+                                                "x": 287, "y": 1, "z": 176, "equipped": True}}
+    cycle(_waiting(15, [CIV, CIV2]), m4, invite_answer=placed)
+    j = siege_journal(m4)
+    _check(out, "0b the fallback: \"No army came: placed 16 goblins of X at the map edge (the siege test)\"",
+           any(e.get("what") == "siege_spawned" and f"No army came: placed 16 goblins of {CIV} at the map edge "
+               "(the siege test)" in e["text"] for e in j), str(j)[:300])
+    s = at(_waiting(15.2, [CIV, CIV2], state="came"), 15.2, army(16, 170))
+    s["field_watch"]["invited"].update(civ_name=CIV, spawned=placed["spawned"])   # the bridge's record names the party's civ
+    cycle(s, m4)
+    _check(out, "0b the placed party is watched as the invited siege",
+           (m4.holdfast.get("siege_watch") or {}).get("invited", {}).get("civ") == CIV,
+           str(m4.holdfast.get("siege_watch"))[:200])
+    m3 = Memory()
+    s = at(_waiting(3, [CIV]), 3, army(4, 50))
+    cycle(s, m3, invite_answer={"ok": True, "waiting": True, "quiet": True, "state": "waiting", "tick": _t0()})
+    props, _, _ = cycle(_waiting(5, [CIV]), m3)
+    came = [p for p in props if p.action.get("type") == "invite_siege"]
+    _check(out, "0b invaders seen while it waits: the look says so (came)",
+           len(came) == 1 and came[0].action.get("came") is True, str([p.action for p in came]))
     return out
 
 

@@ -23,10 +23,14 @@ from the atlas' located events in the siege's span, each gate's threats,
 deaths and kills from the same events) goes to memory.holdfast.journal,
 which siege_journal() empties into the fort's journal (kind "siege").
 
-The Rules' "Invite a siege (test)" (lua/ai-siege.lua invite_siege) leaves
-its record in field_watch.invited; note_invite() turns the action's answer
-into a journal line, and an invitation no army followed in
-`invite_wait_days` is said once.
+The Rules' "Invite a siege (test)" (lua/ai-siege-invite.lua invite_siege)
+leaves its record in field_watch.invited; note_invite() turns the action's
+answers into journal lines (invited, with the civs ranked by reach and
+whether the event's civ held; its army set out; no army in 7 days, the next
+civ; "DF sent no army: tried X, Y, Z"; the fallback's war party: "No army
+came: placed N goblins of X at the map edge (the siege test)", which the
+watch then takes as the siege it is), and an invitation no army reached
+the map from in `invite_wait_days` is said once, with the civs tried.
 """
 
 from __future__ import annotations
@@ -111,7 +115,7 @@ def note_siege_watch(s: dict, memory, cfg: dict | None = None) -> None:
         inv_rec = _invited(s, memory)
         if inv_rec and 0 <= now - inv_rec["tick"] <= 60 * TICKS_PER_DAY:
             w["invited"] = {"tick": inv_rec["tick"], "civ": inv_rec.get("civ_name"), "race": inv_rec.get("race")}
-            h.setdefault("invited", dict(inv_rec))["came"] = now
+            _mine(h, inv_rec)["came"] = now
     w["last"] = now
     ids = list(dict.fromkeys(_l(w.get("ids")) + [t["id"] for t in inv]))
     w["ids"] = ids[-int(_c(cfg, "siege_watch_ids_max")):]
@@ -232,44 +236,127 @@ def siege_summary(s: dict, memory, w: dict, now: int) -> dict | None:
             "field_watch": {"caravan_hostiles": w.get("caravan") or 0}, "text": text}
 
 
+def _mine(h: dict, rec: dict) -> dict:
+    """memory's copy of the invitation `rec` (the bridge's record): a new
+    invitation (another tick) replaces the copy of the one before."""
+    mine = h.get("invited") if isinstance(h.get("invited"), dict) else None
+    if mine is None or mine.get("tick") != rec.get("tick"):
+        mine = dict(rec)
+        h["invited"] = mine
+    else:
+        for k in ("state", "tries", "civ_name", "civ_id", "race", "relation", "how", "ranking"):
+            if k in rec:
+                mine[k] = rec[k]
+    return mine
+
+
+def _civ(t: dict) -> str:
+    return str(t.get("civ_name") or (f"civ {t.get('civ_id')}" if t.get("civ_id") is not None else "no civ named"))
+
+
+def _tried(r: dict) -> list:
+    """The civs tried by an invitation, by name (the bridge's `tried`, or its tries)."""
+    names = [str(x) for x in _l(r.get("tried")) if x]
+    return names or [_civ(t) for t in _l(r.get("tries")) if isinstance(t, dict)]
+
+
+def _ranking_words(r: dict) -> str:
+    rows = [x for x in _l(r.get("ranking")) if isinstance(x, dict)]
+    return "; ".join(f"{x.get('name') or x.get('id')} ({x.get('relation')}, "
+                     + (f"{x['reach']} world tiles" if isinstance(x.get("reach"), int) else "reach unknown") + ")"
+                     for x in rows[:5])
+
+
+def _set_words(r: dict) -> str:
+    if r.get("entity_set") is True:
+        return "; the event's civ read back: set"
+    if r.get("civ_id") is not None and r.get("entity_set") is False:
+        return f"; the event's civ read back: NOT set (it holds {r.get('entity_read')})"
+    return ""
+
+
 def note_invite(p, r: dict, state: dict, memory, now: int) -> None:
     """After acting (note_holdfast): the invitation's answer as a journal
-    line, and its record kept for the watch."""
+    line, and its record kept for the watch. (0.105.123) A daily look at a
+    waiting invitation says nothing until its army sets out (came), the next
+    civ is tried (retried) or it ends with none (gave_up)."""
     a = p.action if isinstance(getattr(p, "action", None), dict) else {}
     if memory is None or a.get("type") != "invite_siege" or a.get("dry_run") or not isinstance(r, dict):
         return
     h = _hold(memory)
-    if r.get("ok"):
-        civ = r.get("civ_name") or (f"civ {r.get('civ_id')}" if r.get("civ_id") is not None else None)
-        h["invited"] = {"tick": r.get("tick") if isinstance(r.get("tick"), int) else now, "civ_name": civ,
-                        "civ_id": r.get("civ_id"), "race": r.get("race"), "relation": r.get("relation"),
-                        "how": r.get("how")}
-        text = (f"Siege invited (the Rules' test switch): DFHack's force queued DF's army event ({r.get('event')}, "
-                f"by {r.get('how')})" + (f" for {civ} ({r.get('race')}, {r.get('relation')})" if civ else
-                                         ", no civ at war found: DF picks the attacker")
-                + "; recorded in the save (never again at this fort) and the switch turned off")
+    if not r.get("ok"):
+        if r.get("done") or r.get("rejected"):
+            _queue(h, {"what": "siege_invite_refused", "text": f"Siege invitation refused: {str(r.get('error'))[:200]}"})
+        else:
+            _queue(h, {"what": "siege_invite_failed", "text": f"Siege invitation failed: {str(r.get('error'))[:200]}"})
+        return
+    civ = r.get("civ_name") or (f"civ {r.get('civ_id')}" if r.get("civ_id") is not None else None)
+    rec = {"tick": r.get("tick") if isinstance(r.get("tick"), int) else now, "civ_name": civ,
+           "civ_id": r.get("civ_id"), "race": r.get("race"), "relation": r.get("relation"), "how": r.get("how"),
+           "state": r.get("state"), "invitation": r.get("invitation")}
+    if r.get("tried") is not None:
+        rec["tried"] = _l(r.get("tried"))
+    mine = _mine(h, rec)
+    tried = _tried(r)
+    if r.get("came"):
+        mine["state"], mine["set_out"] = "came", now
+        text = (f"The invited siege set out: {r.get('armies') or 0} army(ies) and {r.get('controllers') or 0} "
+                f"army order(s) for this fort, {r.get('invaders') or 0} invader(s) on the map ({civ or 'no civ named'}"
+                f"; tried {', '.join(tried) or 'none'}); the invitation is this fort's one")
+        _queue(h, {"what": "siege_invite_came", "civ": civ, "tried": tried, "text": text})
+    elif r.get("retried"):
+        text = (f"DF sent no army from {r.get('no_army')} in 7 days of the invited siege: the next civ by reach, "
+                f"{civ} ({r.get('race')}, {r.get('relation')}), invited (by {r.get('how')})" + _set_words(r)
+                + f"; tried so far: {', '.join(tried)}")
+        _queue(h, {"what": "siege_invite_retried", "civ": civ, "no_army": r.get("no_army"), "tried": tried,
+                   "entity_set": r.get("entity_set"), "text": text})
+    elif r.get("gave_up") and isinstance(r.get("spawned"), dict):
+        sp = r["spawned"]
+        mine["state"], mine["spawned"] = "came", dict(sp)
+        race = str(sp.get("race") or "goblin").lower()
+        text = (f"No army came: placed {sp.get('count')} {race}s of {sp.get('civ_name') or 'the enemy civ'} at the map "
+                f"edge (the siege test), x{sp.get('x')} y{sp.get('y')} z{sp.get('z')}"
+                + ("" if sp.get("equipped") else ", unarmed (create-unit's equipment failed)")
+                + f"; DF sent no army: tried {', '.join(tried) or 'no civ'} (7 days each). Once a fort")
+        _queue(h, {"what": "siege_spawned", "tried": tried, "spawned": dict(sp), "text": text})
+    elif r.get("gave_up"):
+        mine["state"] = "no_army"
+        text = (f"DF sent no army: tried {', '.join(tried) or 'no civ'} (7 days each); the invitation ended"
+                + (f" (no war party placed: {str(r.get('spawn_error'))[:120]})" if r.get("spawn_error") else "")
+                + ". The Rules' \"Invite a siege (test)\" turned on again starts a new one")
+        _queue(h, {"what": "siege_invite_no_army", "tried": tried, "spawn_error": r.get("spawn_error"), "text": text})
+    elif r.get("invited") or not r.get("waiting"):
+        ranks = _ranking_words(r)
+        text = (f"Siege invited (the Rules' test switch{', again' if r.get('reinvite') else ''}): DFHack's force "
+                f"queued DF's army event ({r.get('event')}, by {r.get('how')})"
+                + (f" for {civ} ({r.get('race')}, {r.get('relation')})" if civ else ", no civ at war found: DF picks the attacker")
+                + _set_words(r)
+                + (f"; ranked by reach: {ranks}" if ranks else "")
+                + "; recorded in the save, its army looked for 7 days (then the next civ, 3 at most); the switch turned off")
         _queue(h, {"what": "siege_invited", "civ": civ, "race": r.get("race"), "relation": r.get("relation"),
-                   "how": r.get("how"), "event": r.get("event"), "text": text})
-    elif r.get("done") or r.get("rejected"):
-        _queue(h, {"what": "siege_invite_refused", "text": f"Siege invitation refused: {str(r.get('error'))[:200]}"})
-    else:
-        _queue(h, {"what": "siege_invite_failed", "text": f"Siege invitation failed: {str(r.get('error'))[:200]}"})
+                   "how": r.get("how"), "event": r.get("event"), "entity_set": r.get("entity_set"),
+                   "ranking": _l(r.get("ranking"))[:5], "reinvite": r.get("reinvite"), "text": text})
 
 
 def _invite_wait(s: dict, memory, h: dict, now: int, cfg) -> None:
-    """An invitation no army followed in `invite_wait_days`: said once."""
+    """An invitation no army reached the map from in `invite_wait_days`:
+    said once, with the civs tried (an invitation that ended with no army
+    said so itself: nothing more)."""
     rec = _invited(s, memory)
     if not rec:
         return
-    mine = h.setdefault("invited", dict(rec))
-    if mine.get("came") or mine.get("no_show") or h.get("siege_watch"):
+    mine = _mine(h, rec)
+    if mine.get("came") or mine.get("no_show") or h.get("siege_watch") or rec.get("state") == "no_army":
         return
     if now - rec["tick"] > int(_c(cfg, "invite_wait_days")) * TICKS_PER_DAY:
         mine["no_show"] = now
-        _queue(h, {"what": "siege_no_show", "civ": rec.get("civ_name"),
+        tried = _tried(rec) or [_civ(rec)]
+        how = ("an army set out (DF's army order for this fort) but none reached the map"
+               if rec.get("state") == "came" else
+               "DF's army event found no army to send, or it is still on its way")
+        _queue(h, {"what": "siege_no_show", "civ": rec.get("civ_name"), "tried": tried, "state": rec.get("state"),
                    "text": f"No army came in {_c(cfg, 'invite_wait_days')} days of the invited siege "
-                           f"({rec.get('civ_name') or 'no civ named'}, by {rec.get('how')}): DF's army event "
-                           "found no army to send, or it is still on its way"})
+                           f"(tried {', '.join(tried)}; by {rec.get('how')}): {how}"})
 
 
 def siege_journal(memory) -> list:

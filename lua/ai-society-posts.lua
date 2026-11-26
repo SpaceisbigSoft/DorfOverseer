@@ -6,7 +6,7 @@
 -- and the names defined there and in the parts before it are in reach.
 
 if not SOCIETY_PART_LOCALS then qerror('ai-society-posts is a part of ai-society; run ai-society') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-posts'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-posts'] = '0.105.123'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units = SOCIETY_PART_LOCALS.U, SOCIETY_PART_LOCALS.report_citizens, SOCIETY_PART_LOCALS.report_units   -- (r8) the hub's locals
 
@@ -306,10 +306,13 @@ function staff_labors(loc_id, dry_run, txt)
     local loc = find_location(loc_id)
     if not loc then return {ok = false, rejected = true, error = 'no such location in this fort'} end
     local out = {}
+    -- (R30c item24) never a member of the recreation burrow (its labours are off on purpose)
+    local okrm, rec = pcall(function() return reqscript('ai-labor').rec_member_ids() end)
+    if not okrm or type(rec) ~= 'table' then rec = {} end
     for _, o in ipairs(loc.occupations) do
         local post = df.occupation_type[o.type]
         local u = o.unit_id ~= -1 and df.unit.find(o.unit_id)
-        if u and POST_LABORS[post] then
+        if u and POST_LABORS[post] and not rec[u.id] then
             local missing = {}
             for _, l in ipairs(POST_LABORS[post]) do
                 local id = df.unit_labor[l]

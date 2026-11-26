@@ -1174,8 +1174,18 @@ def mood_trade_wants(s: dict) -> list[dict]:
             # the cheapest cloth: plant): CLOTH:SILK, THREAD:YARN... (lua/ai-trade.lua)
             w = mood_want(x)                    # (0.105.112 item3) the one reading of the want
             fibre = list(w["fibres"])
+            thread_w = None
             if w["what"] == "cloth" and len(fibre) == 1:
                 key = "CLOTH:" + fibre[0].upper()
+                # (0.105.123 item22) and its thread, woven at the Loom (the mood's
+                # cloth rule weaves thread on hand): silk thread is a second chance
+                # when the caravan carries no silk cloth (25 Nov: 5 of 7 failed
+                # moods waited on silk; A, B, C and F's caravans sold none)
+                tkey = "THREAD:" + fibre[0].upper()
+                if (_has_shop(_d(s.get("buildings")), "Loom") and tkey not in seen
+                        and not dead_order(s, f"weave_{fibre[0]}_cloth")):
+                    seen.add(tkey)
+                    thread_w = {"key": tkey, "count": max(1, min(10, int(x.get("quantity") or 1)))}
             elif w["what"] == "thread":
                 key = "THREAD" + (":" + fibre[0].upper() if len(fibre) == 1 else "")
             if not key and mood_kind(x) == "bar" and x.get("material") and str(x["material"]).lower() != "rock":
@@ -1189,6 +1199,8 @@ def mood_trade_wants(s: dict) -> list[dict]:
             if key and key not in seen:
                 seen.add(key)
                 out.append({"key": key, "count": max(1, min(10, int(x.get("quantity") or 1)))})
+            if thread_w:
+                out.append(thread_w)          # after the cloth: the cloth itself first
     return out
 
 
@@ -1297,10 +1309,17 @@ def mood_reserve_counts(s: dict) -> dict:
     su, st, nd = _d(s.get("supplies")), _d(s.get("stocks")), _d(s.get("needs"))
     ck = su.get("cloth_kinds")
     ck = ck if isinstance(ck, dict) else None
+    # (0.105.123 item22) whole cloths only: a part-used one (the bridge's
+    # cloth_part) is no mood's (E, 25 Nov: 5 yarn and 3 silk "partial")
+    part = _d(su.get("cloth_part"))
+
+    def whole(k):
+        n = _int_or_none(ck.get(k)) if ck else None
+        return None if n is None else max(0, n - (_int_or_none(part.get(k)) or 0))
     return {
-        "plant_cloth": _int_or_none(ck.get("plant")) if ck else None,
-        "silk_cloth": _int_or_none(ck.get("silk")) if ck else None,
-        "yarn_cloth": _int_or_none(ck.get("yarn")) if ck else None,
+        "plant_cloth": whole("plant"),
+        "silk_cloth": whole("silk"),
+        "yarn_cloth": whole("yarn"),
         "leather": _int_or_none(st.get("leather")),
         "bones": _int_or_none(nd.get("bones")),
         "rough_gems": _int_or_none(st.get("rough_gems")),

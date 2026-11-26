@@ -89,7 +89,7 @@ def _():
     s = fort()
     s["moods"] = {"list": [mood([{"index": 0, "item": "CLOTH", "quantity": 1, "flags": ["yarn"],
                                   "avail": av(trader=33)}])]}
-    assert [w["key"] for w in planner_moods.mood_trade_wants(s)] == ["CLOTH:YARN"]
+    assert [w["key"] for w in planner_moods.mood_trade_wants(s)][:1] == ["CLOTH:YARN"]   # (item22) its thread after it
 
 
 @test("Sigun: the yarn cloth's mood_hospital release is yarn; once 'nothing of that kind', not asked again "

@@ -972,6 +972,11 @@ local function were_report(d, t, txt)
                         local okc, inside = pcall(cell_has, c, u)
                         if okc and inside == false then row.locked, row.outside = nil, true end
                     end
+                    -- (R30b) held by stone and a raised bridge (ai-threats-actions cell_sealed): no squad sent
+                    if row.locked and type(cell_sealed) == 'function' then
+                        local oks, shut = pcall(cell_sealed, c, u)
+                        row.sealed = (oks and shut) or nil
+                    end
                 end
                 if #out.list < WERE_LIST_MAX then table.insert(out.list, row) end
                 out.count = (out.count or 0) + 1
@@ -1105,7 +1110,7 @@ PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = report_u
 PARTS = {'survey', 'actions', 'seal'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-threats'] = '0.105.122'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-threats'] = '0.105.123'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

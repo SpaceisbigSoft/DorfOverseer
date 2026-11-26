@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-actions is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.123'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, now_tick, name_of, save_state, unkey, is, citizens, fire_points, each_job, changed, okey, watcher_held, lure_open_ids = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.unkey, PART_LOCALS.is, PART_LOCALS.citizens, PART_LOCALS.fire_points, PART_LOCALS.each_job, PART_LOCALS.changed, PART_LOCALS.okey, PART_LOCALS.watcher_held, PART_LOCALS.lure_open_ids   -- (r8) the hub's and earlier parts' locals
 
@@ -493,6 +493,21 @@ end
 -- a fight, caged or chained; never with anyone else in the cell. Their job is
 -- dropped first (DF's removeWorker) so they don't walk off to it.
 -- Returns true when moved, or nil and why not.
+-- (R30b) E, 25 Nov 22:04 and 22:18: the cursed moved in, the bridge raised,
+-- and found outside 30 s later, levels away. DFHack's units.teleport sets the
+-- position and leaves the unit's path (unit.path) as it was: DF walks the unit
+-- on along the old path's next steps from wherever it stands, out through the
+-- wall. The old path and its goal dropped (DF finds a new one, inside).
+function drop_path(u)
+    local ok = pcall(function()
+        local pp = u.path.path
+        pp.x:resize(0); pp.y:resize(0); pp.z:resize(0)
+        u.path.dest.x, u.path.dest.y, u.path.dest.z = -30000, -30000, -30000
+        pcall(function() u.path.goal = df.unit_path_goal.None end)
+    end)
+    return ok
+end
+
 local function move_in(u, z, uid)
     if changed(u) then return nil, 'in beast form' end
     local okf, fight = pcall(function() return u.opponent.unit_id ~= -1 end)
@@ -505,6 +520,7 @@ local function move_in(u, z, uid)
     pcall(function() if u.job.current_job then dfhack.job.removeWorker(u.job.current_job, 0) end end)
     local ok, done = pcall(dfhack.units.teleport, u, p)
     if not ok or done == false then return nil, 'the move was refused: ' .. tostring(done):sub(1, 60) end
+    drop_path(u)
     return true
 end
 
@@ -518,6 +534,27 @@ function cell_has(c, u)
     end)
     if ok then return yes end
     return nil
+end
+
+-- (R30b) Is the cell's werebeast held by stone and a raised bridge now? A
+-- were cell on record as locked, its bridge raised and still, its shell
+-- sealed (ai-werecells sealed: wall all round, roof above), DF's walk map
+-- parting the cell from the lever's tile in front of it (joined false, not
+-- unread), and the dwarf inside it. A, 25 Nov 19:21-22:24: 105 squad
+-- orders at Zuglar in beast form while he stood locked in such a cell, six
+-- squads every moon: the threats report says `sealed` and no squad is sent.
+function cell_sealed(c, u)
+    if type(c) ~= 'table' or c.kind ~= 'were' or not c.locked or c.reserved or not u then return false end
+    local ok, yes = pcall(function()
+        local wc = W().find(c.zone)
+        if not wc then return false end
+        local st = W().cell_state(wc)
+        if not st.raised or st.moving or st.joined then return false end
+        if W().sealed(wc) ~= true then return false end
+        if W().joined(wc) ~= false then return false end
+        return cell_has(c, u) == true
+    end)
+    return ok and yes == true
 end
 
 -- Werebeasts in cells for the full moon: each id given gets a burrow on its
@@ -793,7 +830,20 @@ function moon_cell(ids, release, dry_run, txt, opts)
                             if not wc then return false, 'the cell is gone' end
                             return W().set_raised(wc, true, dry_run)
                         end)
-                        if okr and up then
+                        -- (R30b) raised, yet DF's walk map still joins the cell to the corridor:
+                        -- not locked (said; the next call looks again)
+                        local okj, open = false, nil
+                        if okr and up and not dry_run then
+                            okj, open = pcall(function()
+                                local wc = W().find(c.zone)
+                                return wc and W().joined(wc)
+                            end)
+                        end
+                        if okr and up and okj and open == true then
+                            table.insert(out.waiting, name_of(u, txt))
+                            out.not_sealed = out.not_sealed or {}
+                            table.insert(out.not_sealed, name_of(u, txt) .. ': the bridge is up, yet DF walks out of the cell')
+                        elseif okr and up then
                             if not dry_run then c.locked = true end
                             table.insert(out.locked, name_of(u, txt))
                         else

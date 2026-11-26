@@ -131,8 +131,9 @@ def _():
     assert not set(NEW) & set(a) and set(NEW) & set(b)
     old = set(a) - set(NEW)
     assert old == set(b) - set(NEW)
-    # (item23) Room size's tiles a bedroom takes a floor's new hall out: 80 - 39 over 4 rooms
-    assert a["bedroom_room_tiles"] == 20.0 and b["bedroom_room_tiles"] == 10.2, (a, b)
+    # (item23) Room size's tiles a bedroom takes a floor's new hall out; (R30c item24) and
+    # counts the room's own 3x3 only: min(80, 36) / 4, and on the floor min(80 - 39, 36) / 4
+    assert a["bedroom_room_tiles"] == 9.0 and b["bedroom_room_tiles"] == 9.0, (a, b)
     old.discard("bedroom_room_tiles")
     # and Spacing's tiles a bedroom beyond its 3x3: (80 - 36) / 4; on the floor (80 - 39 - 36) / 4
     assert a["bedroom_spare_tiles"] == 11.0 and b["bedroom_spare_tiles"] == 1.2, (a, b)
@@ -382,8 +383,11 @@ def fort_state(count, arm, rooms, hall, fallbacks=0, why=None):
 @test("report: the Deep mine wins the floor lines, the War-hold the lead; the gap is flat; Room size is shown, not judged without its presets")
 def _():
     def j(gap, lead, units_tiles):
-        return [level(1, "bedrooms", tiles=units_tiles * 4 + 30, summary={"rooms": 4},
-                      floor=answer_floor(gap=gap, lead=lead, hall_new=30, units=4))]
+        e = level(1, "bedrooms", tiles=units_tiles * 4 + 30, summary={"rooms": 4},
+                  floor=answer_floor(gap=gap, lead=lead, hall_new=30, units=4))
+        # (R30c item24) Room size reads the room's own room_size x room_size: the side asked for
+        e["action"]["room_size"] = round(units_tiles ** 0.5)
+        return [e]
     md, rows = report([("A", "War-hold", fort_state(2, 30, 16, 180), j(1, 0, 9)),
                        ("D", "Deep mine", fort_state(5, 14, 20, 210), j(1, 2, 9)),
                        ("G", "Garden fort", fort_state(1, 44, 18, 132), j(1, 2, 16))])

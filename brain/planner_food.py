@@ -235,6 +235,17 @@ def _food_store_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
                 r for r in shops if fullest in near(r, good))
             if shop["id"] in feeding:
                 shop = None                                 # (fix41) its feeder pile comes first
+            elif shop.get("room") is False:
+                # (R30c item24) no free roofed floor round it (the report's `room`):
+                # another kitchen or still these piles serve that has some, else a note
+                # (A 9, B 5, E 5 refused "no free roofed floor within 20 tiles" in 3 h)
+                other = next((r for r in shops if r.get("room") is not False and r["id"] not in feeding
+                              and any(p["id"] in near_all for p in near(r, good))), None)
+                if other is None:
+                    notes.append(f"the food stockpiles near the {shop.get('kind')} are full ({used} of {tiles} "
+                                 f"tiles used) and {loose} food items lie outside a pile, but there is no free "
+                                 f"roofed floor within {reach} tiles of it for another")
+                shop = other
         else:
             shop = None
         if shop is not None:

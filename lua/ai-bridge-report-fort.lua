@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-fort is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-fort'] = '0.105.122'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-fort'] = '0.105.123'   -- bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 local inc = REPORT_PART_LOCALS.inc
@@ -581,10 +581,30 @@ function hospital_survey()
                     table.insert(e.zones, ze)
                 end
             end
+            -- (R30c item24) a post holder's labours given back here, before they are
+            -- read: DIAGNOSE, SURGERY and BONE_SETTING are in no work detail (only
+            -- Orderlies, everybody, holds SUTURING and DRESSING_WOUNDS: probed in A, B
+            -- and F, 25 Nov), so a recompute of the dwarf's details takes them off
+            -- again; the staff rule asked for them every minute (A 63 staff_labors in
+            -- 3 h, all "given", and 2-7 a fort refused "every post holder has the
+            -- labours", on again by the time it ran). A member of the recreation
+            -- burrow keeps them off (its labours are off on purpose): marked.
+            local okso, SOC = pcall(reqscript, 'ai-society')
+            local okrm, rec = pcall(function() return reqscript('ai-labor').rec_member_ids() end)
+            if not okrm or type(rec) ~= 'table' then rec = {} end
             for _, o in ipairs(loc.occupations) do
                 local u = o.unit_id ~= -1 and df.unit.find(o.unit_id)
                 if u then
-                    local st = {post = df.occupation_type[o.type], labors = {}, unit_id = u.id}
+                    local post = df.occupation_type[o.type]
+                    if rec[u.id] then
+                        e.recreation = (e.recreation or 0) + 1
+                    elseif okso and type(SOC) == 'table' and SOC.give_post_labors then
+                        local okg, added = pcall(SOC.give_post_labors, u, post)
+                        if okg and type(added) == 'table' and #added > 0 then
+                            e.relabored = (e.relabored or 0) + #added
+                        end
+                    end
+                    local st = {post = post, labors = {}, unit_id = u.id, recreation = rec[u.id] or nil}
                     for _, l in ipairs(MED_LABORS) do
                         pcall(function() if u.status.labors[df.unit_labor[l]] then table.insert(st.labors, l) end end)
                     end

@@ -9,7 +9,7 @@
 -- helpers are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-civic is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-civic'] = '0.105.122'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-civic'] = '0.105.123'   -- bumped with BRIDGE_VERSION
 
 -- (0.91) Meetings (read only, a probe): diplomats and the outpost liaison
 -- meet the fort's leader (plotinfo.activities: the actor, the noble met, the
@@ -270,14 +270,31 @@ function get_locations()
                 -- (0.104.4) chests standing in its zones: a tavern keeps its goblets
                 -- (and a temple its instruments) in a chest of its own
                 pcall(function()
-                    local n, off, ch = 0, 0, {}
+                    local n, off, ch, lone = 0, 0, {}, {}
                     e.zone_chairs = ch      -- (item39) zone id -> its chairs (pair_chairs)
+                    -- (R30c item24) zone id -> its chairs with no chair beside them
+                    -- (pair_chairs' own test, the four sides): A asked 5 times in 3 h
+                    -- and C twice, refused "every chair in zone N has one beside it"
+                    e.zone_lone_chairs = lone
                     for _, bid in ipairs(c.building_ids) do
                         local z = df.building.find(bid)
+                        local at = {}
                         for _, ib in ipairs(z and z.contained_buildings or {}) do
                             local t = df.building_type[ib:getType()]
                             if t == 'Box' then n = n + 1
-                            elseif t == 'Chair' then ch[tostring(bid)] = (ch[tostring(bid)] or 0) + 1 end
+                            elseif t == 'Chair' then ch[tostring(bid)] = (ch[tostring(bid)] or 0) + 1
+                                at[#at + 1] = {ib.x1, ib.y1}
+                            end
+                        end
+                        if #at > 0 then
+                            local set, k = {}, 0
+                            for _, p in ipairs(at) do set[p[1] .. ',' .. p[2]] = true end
+                            for _, p in ipairs(at) do
+                                local x, y = p[1], p[2]
+                                if not (set[(x + 1) .. ',' .. y] or set[(x - 1) .. ',' .. y]
+                                        or set[x .. ',' .. (y + 1)] or set[x .. ',' .. (y - 1)]) then k = k + 1 end
+                            end
+                            lone[tostring(bid)] = k
                         end
                         pcall(function() if z.spec_sub_flag.active == false then off = off + 1 end end)
                     end

@@ -730,7 +730,7 @@ PART_LOCALS = {clamp = clamp, new_layout = new_layout, dig_rect = dig_rect, dig_
 PARTS = {'kinds'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-layouts'] = '0.105.122'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-layouts'] = '0.105.123'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

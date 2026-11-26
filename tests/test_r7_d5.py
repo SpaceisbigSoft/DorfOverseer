@@ -164,7 +164,9 @@ ALL = {
 # (0.105.113 item11) _ranged_squad_rule: quivers from the places, wooden bolts first
 # (0.105.115 item20) _gate_parts_rule: free_gate_jobs paced (planner_gate_jobs)
 # (0.105.119 item32) _military_rules: weres in beast form a target at once; _hazard_rules: every free squad
-BASE_NODES = (123, "726f740329974a5c6a84ddbd3bb6c090")   # (R29 item6) _sortie_on: the sortie's targets and squads kept for its result
+# (R29 item6) _sortie_on: the sortie's targets and squads kept for its result
+# (R30c item24) _military_rules: no fill when everyone draftable is in avoid
+BASE_NODES = (123, "406053b8956af23c34b1527ba0310fb8")   # (0.105.123 merge) item24 and item23 (_hazard_rules: sealed weres get no squads) together
 
 
 def _defined(name: str) -> list[str]:

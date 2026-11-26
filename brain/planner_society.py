@@ -968,6 +968,12 @@ def lavish_due(s: dict, cfg: dict) -> bool:
     good_pd = (sup.get("good_meals") or 0) / pop
     egm_badly = int(_d(_d(nd.get("needs")).get("EatGoodMeal")).get("badly") or 0)
     cap_off = good_pd < cfg["good_meals_pd"] and egm_badly >= cfg.get("meals_cap_skip_share", 0.25) * pop
+    # (0.105.123 item22) or while only skilled cooks may cook: the welfare target
+    # (good meals a dwarf) is apart from the store's size, and a skilled kitchen's
+    # lavish meals are the good ones (F: 4,100 meals for 75, 55 a dwarf, 0 good)
+    kmin = _d(sup.get("cooks")).get("kitchen_min")
+    if isinstance(kmin, int) and not isinstance(kmin, bool) and kmin >= cfg["good_cook_min"]:
+        cap_off = cap_off or good_pd < cfg["good_meals_pd"]
     return bool(unmet(s, "EatGoodMeal") >= cfg["needs_build_at"] and _has_shop(_d(s.get("buildings")), "Kitchen")
                 and good_pd < cfg["good_meals_pd"] and (meals_pd < cfg["meals_hard_max_pd"] or cap_off)
                 and not queued(s, {"prepare_lavish_meal"}))
@@ -1129,7 +1135,8 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
         # the kitchen (the labour on, off hauling, neither long at other
         # work): then the bar goes by the best cook alone
         able = [int(x) for x in _l(ck.get("able_skills")) if isinstance(x, (int, float))]
-        if want and "able_skills" in ck and not guard:
+        solo = solo_cook_bar(s, ck, cfg, at, pop, meals_pd)
+        if want and "able_skills" in ck and not guard and not solo:
             second = able[1] if len(able) >= 2 else 0
             want = min(want, second) if second >= cfg["good_cook_min"] else 0
             if ck["kitchen_min"] > 0 and (len(able) < 2 or able[1] < ck["kitchen_min"]) and ck["kitchen_min"] <= ck["best"]:
@@ -1152,8 +1159,9 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
                 and (sup.get("good_meals") or 0) / pop < cfg["good_meals_pd"] and meals_pd >= cfg["good_cook_store_pd"]):
             proposals.append(Proposal("good_cooks", {"type": "kitchen_skill", "min_level": want},
                                       f"{unmet(s, 'EatGoodMeal')} dwarves want a good meal, {round(meals_pd)} meals a "
-                                      f"dwarf are stored and none is worth over 20: only cooks of skill {want}+ "
-                                      f"(the best is {ck['best']}) cook, so the meals are worth more", 4))
+                                      f"dwarf are stored and {sup.get('good_meals') or 0} are worth over 20: only cooks "
+                                      f"of skill {want}+ (the best is {ck['best']}) cook, so the meals are worth more"
+                                      + (" (one cook is enough while the store is this full)" if solo else ""), 4))
         elif ck["kitchen_min"] > 0 and meals_pd < cfg["good_cook_release_pd"]:
             proposals.append(Proposal("good_cooks", {"type": "kitchen_skill", "min_level": 0},
                                       f"only {round(meals_pd, 1)} meals a dwarf stored: any cook may cook again", 3))
@@ -1167,6 +1175,35 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
 
 # (item33) a kept cook this many days at other work: the kitchen bar goes by two cooks again
 COOK_AWAY_DAYS = 2
+# (0.105.123 item22) the best cook alone sets the bar while the store is full
+# unless at other work this many days or more
+COOK_SOLO_AWAY_DAYS = 7
+
+
+def solo_cook_bar(s: dict, ck: dict, cfg: dict, at: int, pop: int, meals_pd: float) -> bool:
+    """(0.105.123 item22) The kitchen bar may go by the best free cook alone
+    (no second cook as skilled needed): the dwarves want good meals
+    (good_meals_short, held while the bar is up), the store holds
+    good_cook_store_pd meals a dwarf (kept to good_cook_release_pd once the
+    bar is up), and the best free cook has the cooking labour and has not
+    been at other work COOK_SOLO_AWAY_DAYS days. B, E and F (25 Nov 19:21-
+    22:24): 2,100-4,100 meals in store, 0 good ones, the lavish meals cooked
+    by anyone (the kitchens open to all: B's and E's second cook skill 1, F's
+    3), the newest 80 meals by 30+ dwarves of skill 0-2, quality 0-1, worth
+    2-7 a serving; a good meal needs quality 4+ (A's skill-16 cook). A stuck
+    lavish order costs nothing while the store is this full."""
+    if not isinstance(ck.get("kitchen_min"), int) or not isinstance(ck.get("best"), int):
+        return False
+    from planner_farms import good_meals_short
+    up = ck["kitchen_min"] >= cfg["good_cook_min"]
+    if not good_meals_short(s, {**cfg, "needs_build_at": at}, pop, held=up):
+        return False
+    if meals_pd < (cfg["good_cook_release_pd"] if up else cfg["good_cook_store_pd"]):
+        return False
+    if "free" not in ck:
+        return False                 # an older bridge: whether the best cook can cook is unknown
+    top = free_cooks_top(ck, cfg)
+    return bool(top) and top[0].get("cook") is True and int(top[0].get("away_days") or 0) < COOK_SOLO_AWAY_DAYS
 
 
 def free_cooks_top(ck: dict, cfg: dict) -> list:
@@ -1197,8 +1234,12 @@ def _cook_staff_rule(s: dict, ck: dict, cfg: dict, at: int, pop: int, proposals:
         return False
     top = free_cooks_top(ck, cfg)
     staffed = sorted(int(i) for i in _l(ck.get("staffed")) if isinstance(i, (int, float)))
-    sup = _d(s.get("supplies"))
-    wanted = (unmet(s, "EatGoodMeal") >= at and (sup.get("good_meals") or 0) / max(1, pop) < cfg["good_meals_pd"]
+    # (0.105.123 item22) with hysteresis: once cooks are kept, they stay until
+    # the good meals reach GOOD_MEAL_LIFT times good_meals_pd a dwarf or nobody
+    # wants one (A and D: ~45 relieve_haulers each in 3 h, on and off as the
+    # good meals crossed 2 a dwarf)
+    from planner_farms import good_meals_short
+    wanted = (good_meals_short(s, {**cfg, "needs_build_at": at}, pop, held=bool(staffed))
               and _has_shop(_d(s.get("buildings")), "Kitchen"))
     ids = sorted(x["id"] for x in top)
     if wanted and top and (ids != staffed or any(x.get("cook") is not True or x.get("hauls") for x in top)):

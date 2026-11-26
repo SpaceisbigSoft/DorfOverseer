@@ -622,6 +622,8 @@ end
 -- (R1 g6) a want of one fibre, CLOTH:SILK / THREAD:YARN..., takes only
 -- goods of that fibre (a cand's `sub`, 'silk' / 'yarn' / 'plant'): a silk
 -- mood was otherwise "met" by the merchants' cheapest (plant) cloth
+ON_SALE_KEYS = 4               -- (item22) the deal says how many of its first wants' goods are on sale
+
 function want_matches(key, c)
     if c.cat == key then return true end
     -- (0.105.113 item10) BOULDER: any stone, whatever its use
@@ -807,6 +809,16 @@ function deal(wants, margin, dry_run, txt, extra, max_weight)
     end
     if have == 0 then return {ok = false, rejected = true, error = 'none of the fort\'s crafts are at the depot to pay with'} end
     local buys, spent = pick_buys(cands, wants or {}, math.floor(have / margin))
+    -- (0.105.123 item22) what the merchants carry of the first wants (units on
+    -- sale per key): 25 Nov, the deals asked silk first and bought food, and
+    -- nothing said whether any silk was on sale
+    local on_sale = {}
+    for i, w in ipairs(wants or {}) do
+        if i > ON_SALE_KEYS then break end
+        local n = 0
+        for _, c in ipairs(cands) do if want_matches(w.key, c) then n = n + (c.n or 1) end end
+        on_sale[w.key] = n
+    end
     local fallback
     if #buys == 0 and type(extra) == 'table' and #extra > 0 then
         -- (r2 h5) none of what the fort needs is on sale: what any fort can use
@@ -815,7 +827,7 @@ function deal(wants, margin, dry_run, txt, extra, max_weight)
     end
     if #buys == 0 then
         return {ok = false, rejected = true, error = 'the merchants have nothing the fort wants that its goods can pay for',
-                offer_value = have, merchant_goods = #cands}
+                offer_value = have, merchant_goods = #cands, on_sale = on_sale}
     end
     local buy_w = 0
     for _, b in ipairs(buys) do buy_w = buy_w + (b.weight or 0) end
@@ -830,7 +842,7 @@ function deal(wants, margin, dry_run, txt, extra, max_weight)
         for _, b in ipairs(buys) do trade.goodflag[MERCHANT][b.idx].selected = true end
         for _, o in ipairs(pays) do trade.goodflag[FORT][o.idx].selected = true end
     end
-    return {ok = true, dry_run = dry_run or nil, buy_value = spent, give_value = paid, bought = bought, margin = margin,
+    return {ok = true, dry_run = dry_run or nil, on_sale = on_sale, buy_value = spent, give_value = paid, bought = bought, margin = margin,
             fallback = fallback, max_weight = max_weight,
             give_weight = math.floor(give_w * 10 + 0.5) / 10, buy_weight = math.floor(buy_w * 10 + 0.5) / 10,
             given = #given, given_sample = {table.unpack(given, 1, math.min(8, #given))},
@@ -858,7 +870,7 @@ PART_LOCALS = {U = U, translate = translate, report_units = report_units, depot 
 PARTS = {'unload', 'screen', 'depot'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-trade'] = '0.105.122'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-trade'] = '0.105.123'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

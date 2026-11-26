@@ -196,8 +196,12 @@ def _():
     # kitchens at 15+ and both still kept: no drop back to the second's 9
     s["supplies"]["cooks"]["kitchen_min"] = 15
     assert not by_rule(plan(s, Memory())[0], "good_cooks")
-    # the best cook long at other work: 0.105.8's guard: down to what two cooks clear
+    # (0.105.123 item22) the best cook 5 days at other work, the store full: the bar
+    # stays by the best cook alone (solo_cook_bar)
     s["supplies"]["cooks"]["free"][0]["away_days"] = 5
+    assert not by_rule(plan(s, Memory())[0], "good_cooks")
+    # the best cook long at other work: 0.105.8's guard: down to what two cooks clear
+    s["supplies"]["cooks"]["free"][0]["away_days"] = 8
     g = by_rule(plan(s, Memory())[0], "good_cooks")
     assert g and g[0].action == {"type": "kitchen_skill", "min_level": 9}, [p.action for p in g]
 

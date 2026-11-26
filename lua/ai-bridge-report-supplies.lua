@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.122'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.123'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
 
@@ -137,6 +137,7 @@ end
 
 GOOD_MEAL_VALUE = 20
 THREAD_WHOLE = 15000            -- (0.105.47, J1) a whole spun thread's dimension
+CLOTH_WHOLE = 10000             -- (0.105.123 item22) a whole cloth's (ai-moods CLOTH_DIM)
 
 -- Supplies that stall a fort without anyone noticing: empty containers
 -- (brewing and cooking stop without them) and what a hospital and wells use.
@@ -674,10 +675,20 @@ function get_supplies()
             end
         end
     end
+    -- (0.105.123 item22) and the part-used cloths among them (dimension under a
+    -- whole cloth's 10000, a mood's min_dimension): a mood takes none, so a
+    -- reserve doesn't count them (E, 25 Nov: 5 yarn and 3 silk "partial")
+    out.cloth_part = {plant = 0, silk = 0, yarn = 0}
     each('CLOTH', function(it)
         if in_hospital(it) then out.hospital.cloth = out.hospital.cloth + it:getStackSize(); hosp_kind('cloth_kinds', it) return end
         local k = kind_of(it)
-        if k then out.cloth_kinds[k] = out.cloth_kinds[k] + it:getStackSize() end
+        if k then
+            out.cloth_kinds[k] = out.cloth_kinds[k] + it:getStackSize()
+            local okd, d = pcall(function() return it:getTotalDimension() end)
+            if okd and type(d) == 'number' and d > 0 and d < CLOTH_WHOLE * it:getStackSize() then
+                out.cloth_part[k] = out.cloth_part[k] + it:getStackSize()
+            end
+        end
     end)
     -- (0.104.140) thread by kind, as cloth: a stuck plant-cloth weave can turn
     -- to silk or yarn thread at hand (webs collected, wool spun)

@@ -672,6 +672,13 @@ function report(txt)
         local n = reqscript('ai-society').shelter_stale()
         if type(n) == 'number' and n > 0 then out.shelter_stale = n end
     end)
+    -- (R30c item24) who squad_fill could draft (ai-military-draft draft_pool_ids):
+    -- the count, and the ids while there are at most DRAFT_IDS_MAX
+    pcall(function()
+        local ids = draft_pool_ids()
+        out.draft_pool = #ids
+        if #ids <= DRAFT_IDS_MAX then out.draft_ids = ids end
+    end)
     -- (0.104.159) soldiers with a baby (drafted before it came): {id, name, leader}
     pcall(function()
         local mothers = nursing_mothers()
@@ -703,7 +710,7 @@ MILITARY_PART_LOCALS = {U = U, report_citizens = report_citizens, COMBAT_SKILLS 
 PARTS = {'draft', 'uniforms', 'duty'}
 -- each part marks the version it came with (started afresh at each load, so a
 -- part that failed to load shows as unmarked)
-PART_VERSIONS = {['ai-military'] = '0.105.122'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-military'] = '0.105.123'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

@@ -263,13 +263,33 @@ MEAL_CHEAP_VALUE = 3      # (0.105.119 item37) ingredient kinds worth under this
 MEAL_CHEAP_KEEP_PD = 0.5  # ... while this many units a citizen (20 at least) of the worthier ones are left
 
 
-def _good_meals_wanted(s: dict, cfg: dict, citizens: int) -> bool:
-    """lavish_due's measure of want: EatGoodMeal distracted needs_build_at+
-    and good meals (worth over 20) under good_meals_pd a dwarf; an older
-    report without them: False."""
+# (0.105.123 item22) a want of good meals, once acted on, holds until the good
+# meals reach this many times good_meals_pd a dwarf (or nobody is distracted
+# for want of one): A and D turned cook_staff on and off ~45 times each in 3 h
+# (25 Nov 19:21-22:24) and D's meal_cheap ban came and went within a minute,
+# each time the good meals crossed 2 a dwarf (D: 108 for 55)
+GOOD_MEAL_LIFT = 1.5
+
+
+def good_meals_short(s: dict, cfg: dict, citizens: int, held: bool = False) -> bool:
+    """(item22) Whether the fort wants good meals: EatGoodMeal distracted
+    needs_build_at+ and good meals (worth over 20) under good_meals_pd a
+    dwarf; `held` (the AI already acts on the want): until the good meals
+    reach GOOD_MEAL_LIFT times that, or nobody is distracted by the need. An
+    older report without good_meals: False."""
     good = _d(s.get("supplies")).get("good_meals")
-    return (isinstance(good, int) and not isinstance(good, bool)
-            and good / citizens < cfg["good_meals_pd"] and unmet(s, "EatGoodMeal") >= cfg["needs_build_at"])
+    if not isinstance(good, int) or isinstance(good, bool):
+        return False
+    pd, need = good / max(1, citizens), unmet(s, "EatGoodMeal")
+    if held:
+        return pd < cfg["good_meals_pd"] * GOOD_MEAL_LIFT and need > 0
+    return pd < cfg["good_meals_pd"] and need >= cfg["needs_build_at"]
+
+
+def _good_meals_wanted(s: dict, cfg: dict, citizens: int, held: bool = False) -> bool:
+    """lavish_due's measure of want (good_meals_short; `held`: with its
+    hysteresis); an older report without them: False."""
+    return good_meals_short(s, cfg, citizens, held)
 
 
 def _meal_cheap_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
@@ -297,14 +317,16 @@ def _meal_cheap_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     target = citizens * cfg["meals_per_dwarf"]
     banned = getattr(memory, "cheap_cook_ban", False)
     keep = max(20, int(citizens * MEAL_CHEAP_KEEP_PD))
-    if meals >= target and _good_meals_wanted(s, cfg, citizens):
+    # (item22) a ban kept is lifted only once the good meals are well over the
+    # line (good_meals_short held): D lifted and set it again 4 times in 30 min
+    if meals >= target and _good_meals_wanted(s, cfg, citizens, held=banned):
         good = _d(s.get("supplies")).get("good_meals")
         proposals.append(Proposal("meal_cheap", {"type": "kitchen_cheap", "ban": True,
                                                  "min_value": MEAL_CHEAP_VALUE, "keep": keep},
                                   f"{good} of {meals} meals are worth over 20 and the store is at its target "
                                   f"({target}): the cooks leave the ingredients worth under {MEAL_CHEAP_VALUE} "
                                   "(plants, eggs, fish) alone and cook good meals of meat, cheese and flour", 8))
-    elif banned and (meals < target * MEAL_DRINK_LIFT or not _good_meals_wanted(s, cfg, citizens)):
+    elif banned and (meals < target * MEAL_DRINK_LIFT or not _good_meals_wanted(s, cfg, citizens, held=True)):
         proposals.append(Proposal("meal_cheap", {"type": "kitchen_cheap", "ban": False},
                                   (f"only {meals} meals for {citizens}" if meals < target * MEAL_DRINK_LIFT
                                    else "good meals are enough or few want one")

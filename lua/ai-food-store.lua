@@ -437,10 +437,12 @@ function report()
         local p, d = nearest_pile(piles, box_of(b))
         local row = {id = b.id, kind = s.kind, x = b.centerx, y = b.centery, z = b.z, elevation = b.z + off,
                      x1 = b.x1, y1 = b.y1, x2 = b.x2, y2 = b.y2, pile = p and p.id or nil, dist = d}
-        if not d or d > REACH then
-            local okr, r = pcall(inside_rect, box_of(b), SIDE_MIN, SIDE_MIN, REACH)
-            row.room = (okr and r ~= nil) and true or false
-        end
+        -- (R30c item24) looked at for every kitchen and still, a pile near or not:
+        -- the near piles full, food_pile's `more` was asked of a still with no
+        -- floor left round it (A 9, B 5, E 5 in 3 h: "no free roofed floor within
+        -- 20 tiles of the Still")
+        local okr, r = pcall(inside_rect, box_of(b), SIDE_MIN, SIDE_MIN, REACH)
+        row.room = (okr and r ~= nil) and true or false
         table.insert(srows, row)
     end
     return {piles = rows, shops = srows, items = item_counts(), reach = REACH, piles_total = #piles}

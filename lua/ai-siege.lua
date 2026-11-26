@@ -23,12 +23,11 @@
 --                         near a caravan's merchants, and hostile wild
 --                         animals (large predators, agitated ones) near the
 --                         dwarves at work outside
---   invite_siege(dry)     (R29 W2) the Rules' "Invite a siege (test)": DFHack's
---                         `force` queues DF's own army event, its entity set
---                         to a civ at war with the fort (TotalWar, then
---                         Skirmishing; most sites first); once per fort: the
---                         record is kept in the site data (INVITE_KEY, in
---                         field_watch's `invited`) and the switch turned off
+--   invite_siege(dry)     (R29 W2; 0.105.123 in ai-siege-invite.lua) the Rules'
+--                         "Invite a siege (test)": DFHack's `force` queues DF's
+--                         own army event for the nearest civ at war, watched 7
+--                         days for an army, then the next civ (3 at most); the
+--                         record in the site data (field_watch's `invited`)
 --
 -- Nothing here touches the player's own: a siege engine counts as the AI's
 -- only when it carries the AI's name, the post burrow is the AI's by name,
@@ -1046,122 +1045,58 @@ function field_watch(txt)
 end
 
 
--- --- (R29 W2) "Invite a siege (test)" ------------------------------------------------
---
--- DF 53 has no CivAttack timed event: its siege is EvaluateAttackAndSendImmediateArmy
--- (a probe of A, 25 Nov 21:36). DFHack's force takes any df.timed_event_type by name
--- but sets the event's entity only for Caravan and Diplomat, so the army event it
--- queues has none: the AI sets it to the civ it picked. Without a hostile civ, force's
--- own event stays as it is; without force, the same event is queued here.
-INVITE_KEY = 'ai-overseer/siege-invite'
-INVITE_EVENTS = {'EvaluateAttackAndSendImmediateArmy', 'CivAttack', 'Siege'}
-INVITE_RELATIONS = {TotalWar = 2, Skirmishing = 1}
+---------------------------------------------------------------------------
+-- (0.105.123) The Rules' "Invite a siege (test)" (invite_siege, invited,
+-- rank_civs and their helpers) lives in a part beside this file
+-- (ai-siege-invite.lua), loaded here into this module's own environment, so
+-- its names stay reqscript('ai-siege').name for the bridge (invite_siege)
+-- and for field_watch above (invited). DFHack reloads a module when its own
+-- file changes: a change to the part alone is picked up once ai-siege.lua is
+-- touched too, or the game restarts. A part missing is said, not fatal: the
+-- siege works, the posts and the field watch go on without it.
+---------------------------------------------------------------------------
 
-function invited()
-    local ok, r = pcall(dfhack.persistent.getSiteData, INVITE_KEY, nil)
-    return (ok and type(r) == 'table' and r.tick ~= nil) and r or nil
-end
+-- this file's locals the part uses: set once here
+PART_LOCALS = {U = U, is = is, entrances_of = entrances_of}
 
--- Pure: the civ to invite from {id, kind, relation, sites, name, race} rows, or nil:
--- a Civilization at war (TotalWar before Skirmishing), the most sites first.
-function pick_civ(rows)
-    local best, bk
-    for _, r in ipairs(rows or {}) do
-        local w = INVITE_RELATIONS[r.relation]
-        if w and r.kind == 'Civilization' then
-            local k = w * 1000 + math.min(999, tonumber(r.sites) or 0)
-            if not bk or k > bk or (k == bk and r.id < best.id) then best, bk = r, k end
-        end
+PARTS = {'invite'}
+-- each part marks the version it came with; started afresh at each load, so
+-- a part that failed to load shows as unmarked
+PART_VERSIONS = {['ai-siege'] = '0.105.123'}   -- (0.105.26) bumped with BRIDGE_VERSION
+
+local function part_path(name)
+    local info = debug and debug.getinfo and debug.getinfo(1, 'S')
+    local dir = info and info.source and info.source:match('^@(.*[/\\])')
+    if dir then
+        local f = io.open(dir .. name .. '.lua', 'r')
+        if f then f:close() return dir .. name .. '.lua' end
     end
-    return best
+    local okf, p = pcall(function() return dfhack.findScript and dfhack.findScript(name) or nil end)
+    return okf and p or nil
 end
 
-local function invite_event_type()
-    for _, n in ipairs(INVITE_EVENTS) do
-        local ok, v = pcall(function() return df.timed_event_type[n] end)
-        if ok and v ~= nil then return n, v end
-    end
-    return nil
-end
-
-local function hostile_rows()
-    local rows = {}
-    pcall(function()
-        local civ = df.historical_entity.find(df.global.plotinfo.civ_id)
-        for _, st in ipairs(civ.relations.diplomacy.state) do
-            local ent = df.historical_entity.find(st.group_id)
-            if ent then
-                local cr = df.creature_raw.find(ent.race)
-                local oks, n = pcall(function() return #ent.site_links end)
-                table.insert(rows, {id = ent.id, kind = df.historical_entity_type[ent.type],
-                                    relation = df.diplomacy_state_type[st.relation] or tostring(st.relation),
-                                    sites = oks and n or 0, race = cr and cr.creature_id or '?',
-                                    name = (function() local okn, t = pcall(dfhack.translation.translateName, ent.name, true)
-                                                return okn and t or nil end)()})
-            end
-        end
-    end)
-    return rows
-end
-
-local function queued_of(v)
-    local n, last = 0, nil
-    for _, ev in ipairs(df.global.timed_events) do
-        if ev.type == v then n, last = n + 1, ev end
-    end
-    return n, last
-end
-
-local function switch_off()
-    pcall(function()
-        local S = reqscript('ai-overseer-settings')
-        local s = S.load_settings()
-        if s.invite_siege then s.invite_siege = false; S.save_settings(s) end
-    end)
-end
-
-function invite_siege(dry)
-    local done = invited()
-    if done then
-        if not dry then switch_off() end
-        return {ok = false, rejected = true, done = done,
-                error = 'a siege was invited at this fort once already (year ' .. tostring(done.year)
-                        .. '): never again; the switch is off'}
-    end
-    local name, v = invite_event_type()
-    if not name then return {ok = false, error = 'this DF has no army event (timed_event_type) to queue'} end
-    local civ = pick_civ(hostile_rows())
-    local ent = civ and df.historical_entity.find(civ.id)
-    local out = {civ_id = civ and civ.id, civ_name = civ and civ.name, race = civ and civ.race,
-                 relation = civ and civ.relation, event = name}
-    if dry then out.ok, out.dry_run = true, true; return out end
-    local before = queued_of(v)
-    local okf, script = pcall(dfhack.findScript, 'force')
-    if okf and script then
-        local text, rv = dfhack.run_command_silent('force', name)
-        local after, last = queued_of(v)
-        if after > before and last then
-            out.how = 'force'
-            if ent and last.entity == nil then last.entity = ent end
+-- a test that loads this file from its text (not from a file) hands the
+-- parts' texts in PART_SOURCES (tests/lua_modules_util.py); nil in the game
+PART_MISSING = nil
+for _, part in ipairs(PARTS) do
+    local name = 'ai-siege-' .. part
+    local src = type(PART_SOURCES) == 'table' and PART_SOURCES[name] or nil
+    if src then
+        assert(load(src, name, 't', _ENV))()
+    else
+        local path = part_path(name)
+        if path then
+            assert(loadfile(path, 't', _ENV))()
         else
-            out.force_said = tostring(text):sub(1, 120)
+            PART_MISSING = name
+            pcall(function() dfhack.printerr('ai-siege: ' .. name .. '.lua is missing (it goes beside ai-siege.lua)') end)
         end
     end
-    if not out.how then
-        local ok, err = pcall(function()
-            df.global.timed_events:insert('#', {new = true, type = v, season = df.global.cur_season,
-                                                season_ticks = df.global.cur_season_tick, entity = ent, feature_ind = -1})
-        end)
-        if not ok then return {ok = false, error = 'the army event could not be queued: ' .. tostring(err):sub(1, 120),
-                               force_said = out.force_said} end
-        out.how = 'timed_event'
+end
+-- field_watch's `invited` and the bridge's action, without the part
+if PART_MISSING then
+    if invited == nil then function invited() return nil end end
+    if invite_siege == nil then
+        function invite_siege() return {ok = false, error = 'ai-siege: ' .. PART_MISSING .. '.lua is missing'} end
     end
-    out.queued = queued_of(v)
-    out.tick, out.year = U.abs_tick(), df.global.cur_year
-    pcall(dfhack.persistent.saveSiteData, INVITE_KEY,
-          {tick = out.tick, year = out.year, civ_id = out.civ_id, civ_name = out.civ_name, race = out.race,
-           relation = out.relation, how = out.how, event = name})
-    switch_off()
-    out.ok = true
-    return out
 end

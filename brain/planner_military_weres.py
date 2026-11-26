@@ -32,7 +32,8 @@ import re
 from digest import _d, _l
 from planner_core import Proposal, can_fight
 
-__all__ = ["were_name", "were_threat_rows", "were_beasts", "were_ids", "were_alert", "were_spare_rules"]
+__all__ = ["were_name", "were_threat_rows", "were_beasts", "were_ids", "were_alert", "were_spare_rules",
+           "sealed_were_ids", "loose_berserk"]
 
 # DF's readable name of a were in beast form: "<name>, Wereskink",
 # "<name>, Werellama Child", "<name>, Werepanther Bowman"
@@ -43,14 +44,36 @@ def were_name(name) -> bool:
     return isinstance(name, str) and WERE_NAME.search(name) is not None
 
 
+def sealed_were_ids(s: dict) -> set:
+    """(R30b) The fort's weres held by stone and a raised bridge now: the
+    threats report's were rows with `sealed` (lua ai-threats-actions
+    cell_sealed: a were cell locked, its bridge raised and still, its shell
+    sealed, DF's walk map parting it from the corridor, the dwarf inside).
+    A, 25 Nov 19:21-22:24: 105 squad orders at Zuglar in beast form, six
+    squads every moon, while he stood locked in such a cell. No squad goes
+    at one of these and no alarm sounds for them; one loose or escaped (not
+    `sealed`) is a target as before."""
+    w = _d(_d(s.get("threats")).get("were"))
+    return {x["id"] for x in _l(w.get("list"))
+            if isinstance(x, dict) and x.get("sealed") is True and x.get("locked") and isinstance(x.get("id"), int)}
+
+
+def loose_berserk(s: dict) -> list:
+    """(R30b) The hazards' berserk rows but the weres sealed in their cells."""
+    sealed = sealed_were_ids(s)
+    return [b for b in _l(_d(s.get("hazards")).get("berserk"))
+            if isinstance(b, dict) and not (b.get("id") in sealed)]
+
+
 def were_threat_rows(s: dict) -> list:
     """The threats (others_on_map: visitors, migrants, wanderers) that are a
     werebeast in beast form now: the bridge's `transformed` (their race not
     their own) or, from an older bridge, a night creature named "..., Were<x>".
     Caged or chained ones are no threat."""
     out = []
+    sealed = sealed_were_ids(s)
     for t in _l(_d(s.get("others_on_map")).get("threats")):
-        if not isinstance(t, dict) or t.get("id") is None or t.get("caged"):
+        if not isinstance(t, dict) or t.get("id") is None or t.get("caged") or t.get("id") in sealed:
             continue
         tr = t.get("transformed")
         if tr is True or (tr is None and "NightCreature" in _l(t.get("kinds")) and were_name(t.get("name"))):
@@ -62,7 +85,7 @@ def were_beasts(s: dict) -> list:
     """Every were in beast form on the map: [{id, name, own}] (own: one of the
     fort's own, the bridge's hazards.berserk rows with `changed`)."""
     out, seen = [], set()
-    for b in _l(_d(s.get("hazards")).get("berserk")):
+    for b in loose_berserk(s):
         if isinstance(b, dict) and b.get("changed") and b.get("id") is not None and b["id"] not in seen:
             seen.add(b["id"])
             out.append({"id": b["id"], "name": b.get("name"), "own": True})
@@ -100,6 +123,8 @@ def were_spare_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         if not isinstance(q, dict) or q.get("id") is None or not q.get("ai_orders"):
             continue
         spared = {x for x in _l(q.get("kill_spared")) if isinstance(x, int)}
+        # (R30b) a were sealed in their cell is no target either (A: Zuglar, locked, 105 orders)
+        spared |= {x for x in _l(q.get("kill_ids")) if isinstance(x, int)} & sealed_were_ids(s)
         # (0.105.120) the dead or gone are no target either: E asked 228 times in 40 min
         # "none of those units is on the map and alive" for an order of dead weres
         dead = {x for x in _l(q.get("kill_dead")) if isinstance(x, int)}

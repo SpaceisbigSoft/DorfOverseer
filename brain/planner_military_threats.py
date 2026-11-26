@@ -429,7 +429,8 @@ def hazard_alert(s: dict, cfg: dict, raising: bool = False) -> str:
         return f"fire {h['fire_near']} tiles from the dwarves"
     if h.get("cloud_near") is not None and h["cloud_near"] <= (lean["cloud_near"] if raising else lean["cloud_hold"]):
         return f"a cloud (gas or vapour) {h['cloud_near']} tiles from the dwarves"
-    b0 = next((b for b in _l(h.get("berserk")) if isinstance(b, dict)), None)    # (0.105.33) a dict row only
+    from planner_military_weres import loose_berserk      # (R30b) a were sealed in their cell: no alarm
+    b0 = next((b for b in loose_berserk(s) if isinstance(b, dict)), None)    # (0.105.33) a dict row only
     if b0 is not None:
         return f"{b0.get('name') or 'a dwarf'} " + ("has changed into a beast" if b0.get("changed") else "has gone berserk")
     # (0.105.119 item32) a visiting were in beast form: sounded and held like
@@ -456,7 +457,8 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
                                       f"{why}: sound the alarm (the civilians go to the shelter)", 0))
         else:
             no_shelter(s, memory, why, proposals, notes)        # (0.105.35) the AI makes one
-    berserk = [b for b in _l(h.get("berserk")) if isinstance(b, dict) and b.get("id") is not None]
+    from planner_military_weres import loose_berserk      # (R30b) a were sealed in their cell: no squad
+    berserk = [b for b in loose_berserk(s) if isinstance(b, dict) and b.get("id") is not None]
     mil = _d(s.get("military"))
     if berserk:
         squads = [q for q in _l(mil.get("squads")) if isinstance(q, dict)]

@@ -93,6 +93,10 @@ def _():
     assert p and p[0].action == {"type": "kitchen_cheap", "ban": False}, p
     s["stocks"]["prepared_meals"] = target * 3
     s["supplies"]["good_meals"] = CFG["good_meals_pd"] * pop
+    # (0.105.123 item22) hysteresis: at the line the ban is kept (asked again), lifted at GOOD_MEAL_LIFT times it
+    p = rule(s, m)
+    assert not p or p[0].action.get("ban") is True, p
+    s["supplies"]["good_meals"] = int(CFG["good_meals_pd"] * pop * planner_farms.GOOD_MEAL_LIFT) + 1
     p = rule(s, m)
     assert p and p[0].action == {"type": "kitchen_cheap", "ban": False}, p
     assert not rule(s, Memory())                      # not banned: nothing to lift

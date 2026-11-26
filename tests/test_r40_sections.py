@@ -670,6 +670,13 @@ def run_military(version: str, inside: bool):
 def _():
     _, base_o, ro, _ = run_military("new", False)
     o = to_py(ro)
+    # (R30c item24) squad_fill's pool (draft_pool_ids): its own test (test_item24_lua); kept out
+    # of the merge39 snapshot, checked here for its shape
+    def pool(r):
+        dp, di = r.pop("draft_pool", None), r.pop("draft_ids", None)
+        assert isinstance(dp, int) and (di is None or len(di) == dp), (dp, di)
+        return dp
+    pool(o)
     snapshot("r40_sections_military", o)                                   # merge39's, then 0.105.47's
     g = o["gear"]
     assert "error" not in g, g
@@ -680,6 +687,7 @@ def _():
     for inside in (False, True):
         _, base_n, rn, G = run_military("new", inside)
         n = to_py(rn)
+        pool(n)
         assert o == n, (inside, first_diff(o, n))
         assert G.CLAIM_MEMO is None
         decodes = base_n.C.decode

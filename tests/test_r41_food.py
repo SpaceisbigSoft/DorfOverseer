@@ -189,7 +189,7 @@ def _():
     assert rows[theirs.id]["ai"] is False and rows[theirs.id]["outside"] == 1
     assert r["piles"][0]["id"] == mine.id                 # nearest the kitchen first
     s = r["shops"][0]
-    assert s["kind"] == "Kitchen" and s["pile"] == mine.id and s["dist"] == 3 and "room" not in s
+    assert s["kind"] == "Kitchen" and s["pile"] == mine.id and s["dist"] == 3 and isinstance(s["room"], bool)   # (R30c item24) every shop says it
 
 
 @test("report: a kitchen with no food pile near says whether a roofed pile would fit (room)")
