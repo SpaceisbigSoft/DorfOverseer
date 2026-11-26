@@ -52,6 +52,11 @@ PART = {
     "ranged_from_squads": 2,           # a crossbow squad once the fort has this many squads
     "bolts_per_soldier": 50,
     "bolt_bars_keep": 20,              # metal bolts only while this many bars are left for armour
+    # (item2) bolts: one open order at a time, sized to the gap (lots of 25) up
+    # to this; one standing still this many days gets another material beside it
+    "bolts_order_max": 10,
+    "bolts_stall_days": 7,
+    "bolts_reserve_per_soldier": 25,   # at war: a combat-only share of each crossbow squad's bolts (0: none)
     "max_quiver_order": 5,         # (0.100) leather quivers for crossbow soldiers, per order
     # (0.100) bars a job takes (DF wiki); boots and gloves are ordered by the
     # pair and one bar makes a pair, so 1 each

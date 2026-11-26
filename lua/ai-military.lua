@@ -746,6 +746,7 @@ for _, name in ipairs({'stray_report', 'free_stray_gear', 'weapon_gaps', 'fix_we
                        'weapon_is_ranged', 'weapon_fits', 'assign_weapons', 'gear_report', 'gaps_why',
                        'quiver_report', 'assign_quivers', 'squad_ammo', 'squad_bolts', 'unforbid_spares',
                        'fix_gear_gaps', 'kit_report', 'assign_kit', 'army_gear', 'flask_report',
-                       'free_bolts', 'bolts_free_count', 'assign_bolts'}) do   -- (r2h4) the bolts handed out
+                       'free_bolts', 'bolts_free_count', 'assign_bolts',   -- (r2h4) the bolts handed out
+                       'split_bolts'}) do   -- (item2) a combat-only reserve
     _ENV[name] = function(...) return gear()[name](...) end
 end

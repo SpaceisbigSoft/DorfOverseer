@@ -59,6 +59,7 @@ ACTIONS = {
     -- (0.105.0, round 2) an army that can fight
     fix_gear_gaps = act_fix_gear_gaps, assign_quivers = act_assign_quivers, squad_bolts = act_squad_bolts,
     assign_bolts = act_assign_bolts,   -- (r2h4)
+    split_bolts = act_split_bolts,     -- (item2) a combat-only reserve
     shelter_squads = act_shelter_squads, cut_entrance = act_cut_entrance,
     gate_dogs = act_gate_dogs,               -- (0.104.83)
     make_pasture = act_make_pasture,
@@ -814,7 +815,7 @@ for _, name in ipairs({
     'order_instrument', 'order_slots', 'pair_chairs', 'place_gate_lever', 'prisoner_room', 'prune_remains',
     'quick_location', 'recreation', 'remove_crossing', 'remove_webs', 'repair_rooms', 'rest_infected', 'bed_rest',
     'restrict_water', 'scrub_dead_units', 'seal_cavern', 'seal_well_stairs', 'send_mission', 'shelter_squads',
-    'slaughter_one', 'squad_bolts', 'assign_bolts', 'squad_release', 'squad_swap', 'squad_trim', 'sync_offices',
+    'slaughter_one', 'squad_bolts', 'assign_bolts', 'split_bolts', 'squad_release', 'squad_swap', 'squad_trim', 'sync_offices',
     'traction_rest', 'train_war', 'trim_instrument_orders', 'trim_labor', 'unforbid_dead',
     'unsuspend_orders', 'well_shaft',
     'refresh_shelter',   -- (0.105.26)

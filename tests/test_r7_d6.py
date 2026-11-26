@@ -74,9 +74,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # order_remake_days (B's coffin order in unreachable bauxite, Dodok unburied): 25 Nov
 # (0.105.122 W5) re-pinned after three deliberate keys: library_scholar_min_citizens, library_scholar_per,
 # library_scholars_max (a library's scholars writing the fort's own books): 25 Nov
-DUMP_6298B4A = "2b064735ab3108b8f55f58f262895ede0a90a69409695d7b2bfd93a1fa9f3d4d"
-KEYS_6298B4A = "b9f3c112a961ec00722bc7d9b56311955504c10ce8a8d5291133c41ca170a31e"
-COUNT_6298B4A = 1336
+# (item2 war bolts) re-pinned after three deliberate keys: bolts_order_max, bolts_stall_days,
+# bolts_reserve_per_soldier (A's bolts orders piled up and stalled, the range shot the war stock away): 25 Nov
+DUMP_6298B4A = "3fbc101e27e647acea3d0f516f36b8ac52f576b6ab8ef5d080d13868defc75c1"
+KEYS_6298B4A = "29d58f780299292531204df7c78348f032621228b2f9f12e5925c39b41a930d2"
+COUNT_6298B4A = 1339
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 
