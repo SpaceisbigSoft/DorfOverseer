@@ -105,6 +105,16 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     crowd = {x.get("id") for x in thief_rows(s) if crowded_thief(x, cfg)}
     if crowd & set(targets):
         targets = [i for i in targets if i not in crowd]
+    # (0.105.119 item32) a were in beast form (a visitor, a migrant: the
+    # fort's own changed ones are the hazard rules' berserk rows) is a target
+    # at once, whatever the policy, the odds or a crowd round it, unless it
+    # breathes fire (crossbows only); a were the walk groups don't place out
+    # of reach counts (it breaks doors)
+    from planner_military_weres import were_threat_rows
+    weres = [t["id"] for t in were_threat_rows(s)
+             if t["id"] in threats and t["id"] not in fire and t.get("can_reach_dwarves") is not False]
+    if weres:
+        targets = list(dict.fromkeys(weres + [i for i in targets if i not in weres]))
     recalled = set()
     held_back = [i for i in reach if i not in targets and i not in fire and i not in no_sortie and i not in crowd
                  and i not in cloud]
@@ -159,7 +169,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     if not lone and not targets and reach:
         from planner_leisure import inside_few
         lone = inside_few(s, cfg, reach, threats)
-    if lone:
+    if lone and not weres:
         # (0.105.3) a lone intruder inside: one armed squad, whatever the policy
         _lone_squad(s, memory, cfg, squads, lone, threats, proposals, notes)
     elif targets:
@@ -221,7 +231,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
                                   "(entombed dead are kept)", 5))
     # (0.100.1, review) a dwarf gone berserk isn't a threat that "can reach",
     # but the squad sent at them stays on them until they're stopped
-    berserk_now = bool(_l(_d(s.get("hazards")).get("berserk")))
+    berserk_now = bool(_l(_d(s.get("hazards")).get("berserk"))) or bool(weres)
     from planner_tantrums import guard_ids          # (0.105.47) the hospital guards
     hospital_guards = guard_ids(s)
     if not any_reach and not berserk_now:

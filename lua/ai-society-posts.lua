@@ -6,7 +6,7 @@
 -- and the names defined there and in the parts before it are in reach.
 
 if not SOCIETY_PART_LOCALS then qerror('ai-society-posts is a part of ai-society; run ai-society') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-posts'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-posts'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units = SOCIETY_PART_LOCALS.U, SOCIETY_PART_LOCALS.report_citizens, SOCIETY_PART_LOCALS.report_units   -- (r8) the hub's locals
 
@@ -278,7 +278,11 @@ function give_post_labors(u, post)
     for _, l in ipairs(POST_LABORS[post] or {}) do
         local id = df.unit_labor[l]
         if id ~= nil and not u.status.labors[id] then
-            u.status.labors[id] = true
+            -- (0.105.119 item39) through the game's work detail for the labour: a flag
+            -- set alone is undone when DF recomputes the labours from the details, and
+            -- A asked again 145 times in 3.5 hours (26 of them refused, on again by then)
+            pcall(function() reqscript('ai-labor').give_labor(u, l) end)
+            if not u.status.labors[id] then u.status.labors[id] = true end
             if u.status.labors[id] then table.insert(added, l) end
         end
     end

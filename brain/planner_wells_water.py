@@ -83,6 +83,12 @@ def _well_lid_rule(s: dict, proposals: list, notes: list) -> None:
     for x in sorted(gates, key=lambda x: 0 if x.get("gate") == "unlinked" else 1):
         g = x.get("gate")
         if g in ("none", "stray", "no_lever"):
+            if x.get("gate_no_lever_spot"):
+                # (0.105.119 item39) no free floor near the well for its lever: the
+                # bridge can't begin the gate ("nothing to do: open", C 10 in 3.5 h)
+                notes.append(f"the cavern well's shaft at {where(x)} has no free floor near the well for its "
+                             "lever (the gate waits until one is cleared)")
+                continue
             ok_gates.append(x)
         elif g == "unlinked":
             if (x.get("gate_link_lost") or 0) >= SHAFT_LINK_LOST_MAX:

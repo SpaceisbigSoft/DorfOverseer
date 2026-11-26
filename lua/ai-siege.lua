@@ -586,13 +586,17 @@ SHOP_SLICE_MS = 40          -- milliseconds of one call at most
 SHOP_NONE_CALLS = 30        -- a search that found nothing is not made again for this many calls
 SHOP_FREE_KINDS = {workshops = true}   -- AI levels a siege workshop may stand in
 
-local RING = {}
-do
-    for dx = -3, 3 do table.insert(RING, {dx, -3}) end
-    for dy = -2, 3 do table.insert(RING, {3, dy}) end
-    for dx = 2, -3, -1 do table.insert(RING, {dx, 3}) end
-    for dy = 2, -2, -1 do table.insert(RING, {-3, dy}) end
+-- the ring round a (2*half+1) square, in order round it (half 2: a 5x5 siege
+-- workshop; (0.105.119 item41) half 1: a mood's 3x3 workshop or furnace)
+local function make_ring(r)
+    local ring = {}
+    for dx = -r, r do table.insert(ring, {dx, -r}) end
+    for dy = -r + 1, r do table.insert(ring, {r, dy}) end
+    for dx = r - 1, -r, -1 do table.insert(ring, {dx, r}) end
+    for dy = r - 1, -r + 1, -1 do table.insert(ring, {-r, dy}) end
+    return ring
 end
+local RINGS = {[1] = make_ring(2), [2] = make_ring(3)}
 
 local function in_box(b, x, y, z)
     return b.z == z and x >= b.x1 and x <= b.x2 and y >= b.y1 and y <= b.y2
@@ -641,7 +645,9 @@ function shop_purpose_test(ctx)
     end
 end
 
-local function shop_fits(e, inside, T, purpose)
+local function shop_fits(e, inside, T, purpose, half)
+    half = half == 1 and 1 or 2
+    local RING, R = RINGS[half], half + 1
     local opening = {}
     for _, k in ipairs(e.inside_list or {}) do opening[k] = true end
     local function core(x, y, z)
@@ -651,8 +657,8 @@ local function shop_fits(e, inside, T, purpose)
             and not purpose(x, y, z) or false
     end
     return function(cx, cy, z)
-        for dy = -2, 2 do
-            for dx = -2, 2 do
+        for dy = -half, half do
+            for dx = -half, half do
                 if not core(cx + dx, cy + dy, z) then return false end
             end
         end
@@ -666,7 +672,7 @@ local function shop_fits(e, inside, T, purpose)
                 if t.occupied or t.liquid or opening[gkey(x, y, z)] then return false end
                 open[i] = true
                 n_open = n_open + 1
-                if math.abs(d[1]) ~= 3 or math.abs(d[2]) ~= 3 then edge = true end
+                if math.abs(d[1]) ~= R or math.abs(d[2]) ~= R then edge = true end
             end
         end
         if not edge then return false end
@@ -696,15 +702,16 @@ end
 
 -- Returns the spot, or nil (and SHOP_LAST says why: 'searching', taken up
 -- again next call; 'none', nothing in the fort).
-function shop_spot_anywhere(e, inside, T, ctx)
+function shop_spot_anywhere(e, inside, T, ctx, half)
+    half = half == 1 and 1 or 2
     SHOP_LAST = nil
     if ctx == nil then
         local okc, c = pcall(shop_context)
         ctx = okc and type(c) == 'table' and c or {}
     end
     local purpose = shop_purpose_test(ctx)
-    local fits = shop_fits(e, inside, T, purpose)
-    local sk = tostring(e.id)
+    local fits = shop_fits(e, inside, T, purpose, half)
+    local sk = tostring(e.id) .. (half == 1 and ':3x3' or '')    -- a 3x3 search kept apart from the 5x5 one
     local st = SHOP_SEARCH[sk]
     if st and st.inside ~= inside then st = nil end
     if st and st.none then
@@ -737,8 +744,8 @@ function shop_spot_anywhere(e, inside, T, ctx)
     if not st.rooms_done then
         local best, best_d
         for _, r in ipairs(type(ctx.rooms) == 'table' and ctx.rooms or {}) do
-            for y = r.y1 + 2, r.y2 - 2 do
-                for x = r.x1 + 2, r.x2 - 2 do
+            for y = r.y1 + half, r.y2 - half do
+                for x = r.x1 + half, r.x2 - half do
                     slice, st.looked = slice + 1, st.looked + 1
                     if inside[gkey(x, y, r.z)] == true and fits(x, y, r.z) then
                         local d = math.abs(x - e.x) + math.abs(y - e.y) + 3 * math.abs(r.z - e.z)
@@ -786,22 +793,26 @@ end
 -- (0.105.116 item27) one workshop of `key` (quickfort's) on a free 5x5 of
 -- roofed floor: by entrance `e` (SHOP_RADIUS) when `near_ok`, else the AI's
 -- workshop levels' empty rooms first, then anywhere inside. Returns the
--- answer of place_shop / place_mood_shop.
-local function place_one(e, G, key, what, near_ok, dry_run)
+-- answer of place_shop / place_mood_shop. (0.105.119 item41) half 1: a 3x3
+-- footprint (a mood's workshop or furnace: A, 25 Nov, "no free 5x5 of roofed
+-- floor" while a mood waited); the siege workshop keeps its 5x5.
+local function place_one(e, G, key, what, near_ok, dry_run, half)
+    half = half == 1 and 1 or 2
+    local size = half == 1 and '3x3' or '5x5'
     local T = reader()
     local okc, ctx = pcall(shop_context)       -- (Y1) the rooms with a purpose, the AI's workshop levels
     ctx = okc and type(ctx) == 'table' and ctx or {}
     local sp, near = near_ok and shop_spot(e, G.GATES.inside, T, ctx) or nil, near_ok
     if not sp then
-        local ok, s2 = pcall(shop_spot_anywhere, e, G.GATES.inside, T, ctx)     -- (r2h7)
+        local ok, s2 = pcall(shop_spot_anywhere, e, G.GATES.inside, T, ctx, half)     -- (r2h7)
         sp, near = ok and s2 or nil, false
         if not sp and ok and SHOP_LAST == 'searching' then
             return {ok = false, rejected = true, searching = true,
-                    error = ('still looking for a free 5x5 room for a %s (the search goes on next time)'):format(what)}
+                    error = ('still looking for a free %s room for a %s (the search goes on next time)'):format(size, what)}
         end
     end
     if not sp then
-        return {ok = false, rejected = true, error = ('no free 5x5 of roofed floor in the fort for a %s '):format(what)
+        return {ok = false, rejected = true, error = ('no free %s of roofed floor in the fort for a %s '):format(size, what)
             .. '(none by the gate, no empty room or hall elsewhere)'}
     end
     local ok, fail = qf('build', {{x = sp.x, y = sp.y, text = key}}, sp.z, dry_run)
@@ -855,7 +866,7 @@ function place_mood_shop(kind, dry_run)
     end
     if not e then return {ok = false, rejected = true, error = 'no entrance mapped yet (scan first)'} end
     if not (G.GATES or {}).inside then return {ok = false, rejected = true, error = 'the fort is not mapped yet'} end
-    local out = place_one(e, G, key, kind, false, dry_run)
+    local out = place_one(e, G, key, kind, false, dry_run, 1)    -- (item41) every mood shop is 3x3
     if out.ok and not dry_run and out.at then
         pcall(function()
             local b = dfhack.buildings.findAtTile(xyz2pos(out.at.x, out.at.y, out.at.z))

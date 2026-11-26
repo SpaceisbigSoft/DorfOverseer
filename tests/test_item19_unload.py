@@ -20,14 +20,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, need_lua  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 try:
     from lupa.lua53 import LuaRuntime
 except ImportError:
     LuaRuntime = None
 
-SRC = (ROOT / "lua" / "ai-trade.lua").read_text(encoding="utf-8")
+SRC = split_src("ai-trade.lua")   # (0.105.119) unload in the part ai-trade-unload
 
 
 @test("static: unload no longer uses moveToGround; it reuses out_of_depot and checks each one; refuses an open screen")

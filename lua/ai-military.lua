@@ -586,7 +586,7 @@ function report(txt)
                     if pos.occupant ~= -1 then members = members + 1 end
                 end
                 local ai_orders, guarding = 0, false
-                local kill_ids, sheltering = nil, nil
+                local kill_ids, sheltering, kill_spared = nil, nil, nil
                 local stationed = nil                -- (0.105.45) {x, y, z} of the AI's station order
                 for _, o in ipairs(sq.orders) do
                     if is_ai_order(o, sid) then
@@ -596,7 +596,20 @@ function report(txt)
                         pcall(function()
                             if df.squad_order_kill_listst:is_instance(o) then
                                 kill_ids = kill_ids or {}
-                                for _, id in ipairs(o.units) do table.insert(kill_ids, id) end
+                                for _, id in ipairs(o.units) do
+                                    table.insert(kill_ids, id)
+                                    -- (0.105.119 item32) one of the fort's own the order
+                                    -- names who is no target now (a were changed back, a
+                                    -- berserk dwarf calmed): the brain takes them off it
+                                    pcall(function()
+                                        local u = df.unit.find(id)
+                                        if u and not dfhack.units.isDead(u) and not kill_target_ok(u)
+                                                and (dfhack.units.isCitizen(u, true) or u.civ_id == df.global.plotinfo.civ_id) then
+                                            kill_spared = kill_spared or {}
+                                            table.insert(kill_spared, id)
+                                        end
+                                    end)
+                                end
                             end
                         end)
                         -- (0.104.83) holding the gate rather than out to kill
@@ -620,6 +633,7 @@ function report(txt)
                     leader = #sq.positions > 0 and sq.positions[0].occupant ~= -1,
                     routine = ok and routines[idx + 1] or nil,
                     orders = #sq.orders, ai_orders = ai_orders, guarding = guarding or nil, kill_ids = kill_ids,
+                    kill_spared = kill_spared,       -- (0.105.119 item32)
                     sheltering = sheltering,         -- (0.105.0)
                     stationed = stationed,           -- (0.105.45)
                     -- (0.105.0) a crossbow squad's bolts: entries, wanted, assigned
@@ -684,7 +698,7 @@ MILITARY_PART_LOCALS = {U = U, report_citizens = report_citizens, COMBAT_SKILLS 
 PARTS = {'draft', 'uniforms', 'duty'}
 -- each part marks the version it came with (started afresh at each load, so a
 -- part that failed to load shows as unmarked)
-PART_VERSIONS = {['ai-military'] = '0.105.118'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-military'] = '0.105.119'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

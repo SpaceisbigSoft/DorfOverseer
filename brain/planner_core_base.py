@@ -50,7 +50,9 @@ COOLDOWN_KEYS = {"prisoners": "prisoner_room_cooldown_ticks",
                  # (r2 h9) one called wave a season; a stuck caravan's merchants told once a month
                  "migrant_drought": "h9_drought_cooldown_ticks", "stuck_caravan": "h9_caravan_cooldown_ticks",
                  # (0.105.113 item10) the drink ban asked again a week apart (new drink kinds kept too)
-                 "meal_drink": "fat_ban_cooldown_ticks"}
+                 "meal_drink": "fat_ban_cooldown_ticks",
+                 # (0.105.119 item37) the cheap-ingredient ban asked every 3 days (new kinds, the worthier ones left)
+                 "meal_cheap": "needs_meal_cooldown_ticks"}
 # Rules that may act more than once a cycle (select()).
 MULTI_PER_CYCLE = {"stuck_order", "order_remake", "uniform", "noble_rooms", "tools", "strategist", "squad_attack", "squad_recall", "train",
                    "labor", "well_parts",
@@ -110,7 +112,9 @@ def steer_of(memory, rule: str, now: int) -> dict | None:
 # select()); (0.104.2) a well's parts: water for the injured; (0.105.26) a
 # strange mood's materials (a life on it: a cloth order a mood needed was held
 # 28 days; never swapped for a fallback recipe either)
-STUCK_HOLD_EXEMPT = {"drink", "drink_fruit", "food", "well_parts", "mood"}
+# (0.105.119 item30) the lever links' mechanisms: ordered only up to the ordinary
+# stone there is (the stuck cancels' cause in D), so an old cancel holds none
+STUCK_HOLD_EXEMPT = {"drink", "drink_fruit", "food", "well_parts", "mood", "mechanism_stock"}
 # (0.105.26) work orders never held by the stalled-order check or the daily
 # work-order limit (select()): a strange mood's own materials
 ORDER_HOLD_EXEMPT = {"mood"}

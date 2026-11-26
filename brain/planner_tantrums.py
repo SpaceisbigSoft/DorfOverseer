@@ -195,7 +195,8 @@ def _break_fights_report_rule(s: dict, memory, cfg: dict, proposals: list) -> No
 # ticks inside the game; it lives while the game runs, so a reload or a fresh
 # start loses it: armed again on every cycle the `fights` section says it is off.
 FIGHT_COUNTS = ("capped", "separated", "reengaged", "died", "tantrums_ended",   # (item3) the last
-                "beatings_spared", "beatings_stopped")                          # (item21)
+                "beatings_spared", "beatings_stopped",                          # (item21)
+                "cursed_chokes")                                                # (0.105.119 item34)
 
 
 def _fight_watch_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
@@ -247,7 +248,7 @@ def fight_journal(s: dict, memory) -> list[dict]:
     book["fights"] = cur
     memory.tantrum_book = book
     if (grew["capped"] <= 0 and grew["separated"] <= 0 and grew["tantrums_ended"] <= 0
-            and grew["beatings_spared"] <= 0 and grew["beatings_stopped"] <= 0):
+            and grew["beatings_spared"] <= 0 and grew["beatings_stopped"] <= 0 and grew["cursed_chokes"] <= 0):
         return []
     log = [e for e in _l(sec.get("log")) if isinstance(e, dict)][-3:]
     text = (f"fight watcher: {grew['capped']} level(s) capped at a brawl, {grew['separated']} citizen(s) taken "
@@ -258,7 +259,9 @@ def fight_journal(s: dict, memory) -> list[dict]:
             + (f", {grew['beatings_spared']} DF beating(s) of a convict spared (prison time kept)"
                if grew["beatings_spared"] > 0 else "")
             + (f", {grew['beatings_stopped']} beating(s) stopped with the convict in danger"
-               if grew["beatings_stopped"] > 0 else ""))
+               if grew["beatings_stopped"] > 0 else "")
+            + (f", {grew['cursed_chokes']} strangling hold(s) with a were-bitten dwarf in it broken"
+               if grew["cursed_chokes"] > 0 else ""))
     return [{**grew, "totals": cur, "text": text,
              "last": [{k: e.get(k) for k in ("tick", "kind", "activity_id", "max", "units", "levels",
                                              "levels_after", "separated", "timers", "age")} for e in log]}]
@@ -418,8 +421,10 @@ def chronic_need_actions(s: dict, cfg: dict, r: dict) -> list:
             if need == "AcquireObject":
                 out.append((need, {"type": "give_trinkets", "max": 5}, "give out trinkets", False))
         elif need in ("BeWithFriends", "Socialize", "MakeMerriment"):
+            from planner_locations import zone_has_chairs     # (item39) local: no import cycle
             zones = [z for e in _l(_d(s.get("locations")).get("list")) if isinstance(e, dict)
-                     and e.get("type") == "INN_TAVERN" for z in _l(e.get("zones")) if isinstance(z, int)]
+                     and e.get("type") == "INN_TAVERN" for z in _l(e.get("zones"))
+                     if isinstance(z, int) and zone_has_chairs(e, z)]      # (item39)
             if zones:
                 out.append((need, {"type": "pair_chairs", "zones": zones[:6], "max": 5},
                             "a chair beside each lone chair in the tavern (dwarves talk with those beside them)", False))

@@ -255,9 +255,60 @@ def _kitchen_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
                                   f"drink has recovered ({drink} for {citizens}): the kitchen may cook "
                                   "brewable plants again", 5))
     _meal_drink_rule(s, memory, cfg, proposals)      # (0.105.113 item10)
+    _meal_cheap_rule(s, memory, cfg, proposals)      # (0.105.119 item37)
 
 
 MEAL_DRINK_LIFT = 0.5     # (0.105.113 item10) meals under this share of their target: drink may be cooked again
+MEAL_CHEAP_VALUE = 3      # (0.105.119 item37) ingredient kinds worth under this a unit are kept from the cooks
+MEAL_CHEAP_KEEP_PD = 0.5  # ... while this many units a citizen (20 at least) of the worthier ones are left
+
+
+def _good_meals_wanted(s: dict, cfg: dict, citizens: int) -> bool:
+    """lavish_due's measure of want: EatGoodMeal distracted needs_build_at+
+    and good meals (worth over 20) under good_meals_pd a dwarf; an older
+    report without them: False."""
+    good = _d(s.get("supplies")).get("good_meals")
+    return (isinstance(good, int) and not isinstance(good, bool)
+            and good / citizens < cfg["good_meals_pd"] and unmet(s, "EatGoodMeal") >= cfg["needs_build_at"])
+
+
+def _meal_cheap_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
+    """(0.105.119 item37) A meal's worth a serving is about its ingredients'
+    worth times the meal's quality, and the cooks take whatever lies
+    nearest. C, 25 Nov 18:35 (probe i37meals): 2,189 servings, 47 worth over
+    20, 1,049 worth 5 or less; the stores held plant growths, eggs and fish
+    at 2 a unit, plants at 3, meat at 3.8, cheese and flour at ~10; a
+    quality-4 meal averaged 20.6 (cheap ingredients put it just under the
+    bar, A's quality-4 meals 21.7). With the meals at their target (no
+    hunger to fear) and the dwarves wanting good meals with few kept, the
+    kitchen keeps the cheap kinds (worth under MEAL_CHEAP_VALUE a unit:
+    plants, growths, eggs, fish, seeds, milk, fat; meat, cheese and flour
+    are never banned) from the cooks, so the lavish meals are made of meat,
+    cheese and flour. The bridge (kitchen_cheap) bans only while
+    MEAL_CHEAP_KEEP_PD units a citizen of the worthier ones are left, and
+    lets go of its ban when they run out (short). Lifted here when the
+    meals fall under MEAL_DRINK_LIFT of the target or good meals are enough."""
+    if memory is None or not _has_shop(_d(s.get("buildings")), "Kitchen"):
+        return
+    meals = _d(s.get("stocks")).get("prepared_meals")
+    if not isinstance(meals, int) or isinstance(meals, bool):
+        return
+    citizens = max(1, int(_d(s.get("dwarves")).get("total") or 1))
+    target = citizens * cfg["meals_per_dwarf"]
+    banned = getattr(memory, "cheap_cook_ban", False)
+    keep = max(20, int(citizens * MEAL_CHEAP_KEEP_PD))
+    if meals >= target and _good_meals_wanted(s, cfg, citizens):
+        good = _d(s.get("supplies")).get("good_meals")
+        proposals.append(Proposal("meal_cheap", {"type": "kitchen_cheap", "ban": True,
+                                                 "min_value": MEAL_CHEAP_VALUE, "keep": keep},
+                                  f"{good} of {meals} meals are worth over 20 and the store is at its target "
+                                  f"({target}): the cooks leave the ingredients worth under {MEAL_CHEAP_VALUE} "
+                                  "(plants, eggs, fish) alone and cook good meals of meat, cheese and flour", 8))
+    elif banned and (meals < target * MEAL_DRINK_LIFT or not _good_meals_wanted(s, cfg, citizens)):
+        proposals.append(Proposal("meal_cheap", {"type": "kitchen_cheap", "ban": False},
+                                  (f"only {meals} meals for {citizens}" if meals < target * MEAL_DRINK_LIFT
+                                   else "good meals are enough or few want one")
+                                  + ": the cooks may use the cheap ingredients again", 3))
 
 
 def _meal_drink_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
@@ -441,6 +492,14 @@ def _eggs_rule(s: dict, cfg: dict, proposals: list) -> None:
                                   f"{hens} hens and {built} nest boxes: make stone nest boxes (hens lay only in one)",
                                   5, True))
     loose = hens - int(sup.get("egg_layers_penned") or 0)
+    # (0.105.119 item39) the herd section says where the hens are: a pet goes
+    # with its owner (the bridge pens none) and a pen whose hens each have a
+    # box needs none ("every hen in pasture # has a nest box", A 15, C 13)
+    herd = _d(s.get("herd"))
+    if isinstance(herd.get("egg_layers_loose"), int) and isinstance(herd.get("hens_without_box"), int):
+        loose = herd["egg_layers_loose"]
+        if loose <= 0 and (free <= 0 or herd["hens_without_box"] <= 0):
+            return
     if free > 0 or loose > 0:
         proposals.append(Proposal("eggs", {"type": "nest_boxes", "max": 3},
                                   f"{hens} hens, {built} nest boxes built, {free} free"

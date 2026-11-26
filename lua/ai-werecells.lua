@@ -29,6 +29,10 @@ LEVER_NAME = 'AI were cell lever'
 BRIDGE_NAME = 'AI were cell'
 REPORT_ROWS = 12
 
+-- (0.105.48 r2) constructBuilding is in library/lua/dfhack/buildings.lua, added to
+-- dfhack.buildings only by this require (without it, only after buildingplan loaded it)
+pcall(function() require('dfhack.buildings') end)
+
 local function gates() return reqscript('ai-gates') end
 
 -- the AI's levels (read only)
@@ -207,6 +211,13 @@ function link(dry_run, max)
                     pcall(G.name_at, c.bridge, BRIDGE_NAME)
                 end
             else
+                -- (0.105.119 item30) how many free mechanisms the link found, and the held ones apart
+                if ok and type(r) == 'table' and r.free_mechanisms then
+                    out.free_mechanisms = r.free_mechanisms
+                    out.held_mechanisms = r.held_mechanisms
+                    out.out_of_reach = r.out_of_reach
+                    out.mechanisms_needed = (out.mechanisms_needed or 0) + (r.mechanisms_needed or 2)
+                end
                 out.errors = out.errors or {}
                 table.insert(out.errors, c.key .. ': ' .. tostring(ok and type(r) == 'table' and r.error or r):sub(1, 120))
             end
@@ -263,4 +274,130 @@ function piece_ids()
         if lv then out[lv.id] = true end
     end
     return out
+end
+
+-- (0.105.119 item31) Side cells: a 1-tile room dug off a corridor, with a
+-- door on its doorway, for a cursed dwarf when the fort has no jail, free
+-- bedroom, office or tomb to lock (A, 25 Nov 16:27-16:44: 39 moon_cell
+-- calls found no cell while the were cells' levers waited for mechanisms).
+-- The corridor floor F, the doorway D = F + d and the room R = F + 2d; every
+-- neighbour of R but D (diagonals too: DF walks diagonally) and D's sides
+-- are natural rock, so the door is the only way out. Dug through
+-- ai-builder's quickfort_apply (the dig guard sees it); once both tiles
+-- are dug a door is placed (any door the haulers bring); built, the cell
+-- is a room like any other (side_zone: its box, the door on its edge).
+--   side_site(pos, taken)  the nearest such place within SIDE_RADIUS on pos's level, or nil
+--   side_dig(site, dry_run)  its two tiles designated: how many
+--   side_step(rec, dry_run)  'digging', 'door' (placed or building), 'ready'
+-- Tests replace shape_at, walk_at, door_at, dig and place_door.
+SIDE_RADIUS = 12
+SIDE_MAX = 8
+local DIRS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+
+function shape_at(x, y, z)
+    local s, natural
+    pcall(function()
+        local tt = dfhack.maps.getTileType(x, y, z)
+        local a = tt and df.tiletype.attrs[tt]
+        if not a then return end
+        s = df.tiletype_shape[a.shape]
+        local m = df.tiletype_material[a.material]
+        natural = m == 'STONE' or m == 'SOIL' or m == 'MINERAL' or m == 'LAVA_STONE'
+    end)
+    return s, natural
+end
+
+function walk_at(x, y, z)
+    local ok, g = pcall(function() return dfhack.maps.getWalkableGroup(xyz2pos(x, y, z)) end)
+    return ok and (tonumber(g) or 0) ~= 0
+end
+
+local function rock(x, y, z)
+    local s, n = shape_at(x, y, z)
+    return s == 'WALL' and n and true or false
+end
+
+function side_key(r) return ('dig:%d,%d,%d'):format(r.x, r.y, r.z) end
+
+function side_site(pos, taken)
+    taken = taken or {}
+    local best, bd
+    local z = pos.z
+    for dy = -SIDE_RADIUS, SIDE_RADIUS do
+        for dx = -SIDE_RADIUS, SIDE_RADIUS do
+            local fx, fy = pos.x + dx, pos.y + dy
+            local dd = math.abs(dx) + math.abs(dy)
+            if (not bd or dd < bd) and shape_at(fx, fy, z) == 'FLOOR' and walk_at(fx, fy, z) then
+                for _, d in ipairs(DIRS) do
+                    local px, py = d[2], d[1]
+                    local Dx, Dy, Rx, Ry = fx + d[1], fy + d[2], fx + 2 * d[1], fy + 2 * d[2]
+                    local ok = rock(Dx, Dy, z) and rock(Dx + px, Dy + py, z) and rock(Dx - px, Dy - py, z)
+                    for oy = -1, 1 do
+                        for ox = -1, 1 do
+                            local x, y = Rx + ox, Ry + oy
+                            if ok and not (x == Dx and y == Dy) then ok = rock(x, y, z) end
+                        end
+                    end
+                    local r = {x = Rx, y = Ry, z = z}
+                    if ok and not taken[side_key(r)] and (not bd or dd < bd) then
+                        r.door = {x = Dx, y = Dy, z = z}
+                        best, bd = r, dd
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+function dig(cells, z)
+    local ok, stats = pcall(function() return reqscript('ai-builder').quickfort_apply('dig', cells, z, 0, 0) end)
+    if not ok or type(stats) ~= 'table' then return 0 end
+    local okv, n = pcall(function()
+        local v = stats.dig_designated
+        return type(v) == 'table' and v.value or v
+    end)
+    return okv and tonumber(n) or 0
+end
+
+function side_dig(site, dry_run)
+    if dry_run then return 2 end
+    return dig({{x = site.door.x, y = site.door.y, text = 'd'}, {x = site.x, y = site.y, text = 'd'}}, site.z)
+end
+
+function door_at(pos)
+    local out
+    pcall(function()
+        local b = dfhack.buildings.findAtTile(xyz2pos(pos.x, pos.y, pos.z))
+        if b and b:getType() == df.building_type.Door then out = b end
+    end)
+    return out
+end
+
+function place_door(pos)
+    local ok, b = pcall(dfhack.buildings.constructBuilding,
+                        {type = df.building_type.Door, pos = xyz2pos(pos.x, pos.y, pos.z)})
+    return ok and b ~= nil
+end
+
+function side_step(rec, dry_run, now)
+    local D = rec.door
+    if shape_at(D.x, D.y, D.z) ~= 'FLOOR' or shape_at(rec.x, rec.y, rec.z) ~= 'FLOOR' then
+        -- still rock: designated again a day on (a dig cancelled, or the guard's refusal lifted)
+        if not dry_run and now and now - (tonumber(rec.dug) or 0) >= 1200 then
+            rec.dug = now
+            side_dig(rec, false)
+        end
+        return 'digging'
+    end
+    local b = door_at(D)
+    if not b then
+        if not dry_run then place_door(D) end
+        return 'door'
+    end
+    return built(b) and 'ready' or 'door'
+end
+
+function side_zone(key, rec)
+    return {id = key, x1 = rec.x, y1 = rec.y, x2 = rec.x, y2 = rec.y, z = rec.z, side = true}
 end

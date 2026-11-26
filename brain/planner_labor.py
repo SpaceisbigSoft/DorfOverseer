@@ -118,15 +118,23 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
         proposals.append(Proposal("labor", {"type": "assign_labor", "job": "mining", "count": min(10, need)},
                                   f"{dig} tile(s) to dig, {lb.get('miners') or 0} dwarf(s) mining and "
                                   f"{lb.get('picks') or 0} pick(s): let {need} more dwarf(s) mine", 2))
-    if dig and (lb.get("miners") or 0) == 0 and (lb.get("picks") or 0) == 0:
+    # (0.105.119 item33) no pick a miner can use, whoever holds the labour: D
+    # (25 Nov, years 253-254) had 2 dwarves on the Miners detail, 0 picks (its
+    # three iron picks were blades in weapon traps), 1217 tiles designated and
+    # 41-51% of its civilians idle; the rule asked for picks only while nobody
+    # mined, so none were forged and the stone, the furniture and every level
+    # waited on digging nobody could do
+    if dig and (lb.get("picks") or 0) == 0:
         why = (f"{lb['soldier_picks']} pick(s) are in soldiers' hands (a uniform with \"any weapon\" takes them)"
-               if lb.get("soldier_picks") else "the fort has no pick")
+               if lb.get("soldier_picks") else
+               f"the fort's {lb['built_picks']} pick(s) are built into traps (weapon-trap blades)"
+               if lb.get("built_picks") else "the fort has no pick")
         # (0.105.35) nothing waits for the player: the AI forges a pick itself
         # when it has a forge and the bars; else a note of what it does meanwhile
         bars = _d(_d(_d(s.get("military")).get("gear")).get("bars"))
         metal = next((m for m in PICK_METALS if (bars.get(m) or 0) >= 2), None)
         forge = _has_shop(_d(s.get("buildings")), "MetalsmithsForge")
-        if queued(s, {"metal_pick"}):
+        if queued(s, {"metal_pick"}) or any(p.rule == "picks" for p in proposals):
             notes.append(f"{dig} tile(s) wait to be dug and nobody can dig: {why}; a pick is being forged")
         elif forge and metal:
             proposals.append(Proposal("picks", {"type": "work_order", "recipe": "metal_pick", "amount": 2,
@@ -214,8 +222,44 @@ def _labor_rules(s: dict, citizens: int, cfg: dict, proposals: list, notes: list
              + (f"; the wood is {short} short of what the fort keeps" if short > 0 else ""), 4)
     dd = _d(s.get("dead"))
     haunted = int(dd.get("ghosts") or 0) > 0 or int(dd.get("unburied") or 0) > 0     # (0.105.22)
+    # (0.105.119 item33) the labours with a rule of their own that wants nobody
+    # now: no skilled dwarf is put on them either (A, 25 Nov 18:25: fishing
+    # trimmed to 0 for want of water, 4 skilled fishers put back 17 s later)
+    gathering_wanted = (lb.get("gather_marked") or 0) > 0 or ((hungry or thirsty) and (lb.get("shrubs") or 0) > 0)
+    unwanted = {lab for lab, on in (("FISH", fishers > 0), ("HERBALIST", gathering_wanted), ("PLANT", farms))
+                if not on}
     _labor_waiting_rule(lb, citizens, cfg, proposals, drink_below_target(s, citizens, cfg, memory),   # (0.104.169)
-                        haunted)
+                        haunted, unwanted)
+    dedupe_labor(proposals)
+
+
+# job names of the labour rules -> their labour (lua/ai-labor.lua JOBS)
+JOB_LABOR = {"mining": "MINE", "woodcutting": "CUTWOOD", "gathering": "HERBALIST", "fishing": "FISH",
+             "farming": "PLANT"}
+
+
+def labor_of(action: dict) -> str:
+    """(item33) The labour an assign_labor action asks for ('farming' and 'PLANT' are one)."""
+    job = str(_d(action).get("job") or "")
+    return JOB_LABOR.get(job, job.upper())
+
+
+def dedupe_labor(proposals: list) -> None:
+    """(0.105.119 item33) One assign_labor a labour a cycle (the most urgent):
+    A, 25 Nov, 18:12: PLANT asked by two rules at once, both refused.
+    count 0 (the details put in order) is no ask for a labour."""
+    best: dict = {}
+    for i, p in enumerate(proposals):
+        a = _d(p.action)
+        if p.rule != "labor" or a.get("type") != "assign_labor" or not a.get("count"):
+            continue
+        k = labor_of(a)
+        if k not in best or p.priority < proposals[best[k]].priority:
+            best[k] = i
+    keep = set(best.values())
+    proposals[:] = [p for i, p in enumerate(proposals)
+                    if not (p.rule == "labor" and _d(p.action).get("type") == "assign_labor"
+                            and _d(p.action).get("count") and i not in keep)]
 
 
 # Labours with rules of their own (miners by the digging and picks, woodcutters
@@ -247,7 +291,7 @@ DEAD_LABORS = ("STONE_CARVER", "ENGRAVER")
 
 
 def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thirsty: bool = False,
-                        haunted: bool = False) -> None:
+                        haunted: bool = False, unwanted: set | frozenset = frozenset()) -> None:
     """Work that waits for a worker (lua/ai-labor.lua's waiting_work): a
     labour with jobs nobody has taken while none of its dwarves is free gets
     more dwarves, through the detail that carries it (a few at a time, up to a
@@ -287,6 +331,8 @@ def _labor_waiting_rule(lb: dict, citizens: int, cfg: dict, proposals: list, thi
             continue
         lab, n = str(k.get("labor")), int(k.get("skilled") or 0)
         if lab in ("MINE", "CUTWOOD", "HUNT") or n <= 0:   # (those go by the picks and axes; hunters by planner_provisions)
+            continue
+        if lab in unwanted:                                 # (item33) its own rule wants nobody now
             continue
         proposals.append(Proposal("labor", {"type": "assign_labor", "job": lab, "count": min(3, n),
                                             "min_skill": 3},

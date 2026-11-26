@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-gates').name
 -- and the helpers defined there (tile, building_at, key, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-works'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-works'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, key, unkey, T, interior, moves, inside_or_courtyard, DOOR_GROUND, citizen_starts, place, entrance = U, key, unkey, T, interior, moves, inside_or_courtyard, DOOR_GROUND, citizen_starts, place, entrance   -- (13e) the hub's and earlier parts' locals
 
@@ -476,8 +476,12 @@ function link_lever(lever_id, target_id, dry_run)
         if okc then for why, n in pairs(c.why) do table.insert(held, n .. ' ' .. why) end end
         if (unreachable or 0) > 0 then table.insert(held, unreachable .. ' out of reach of the lever') end
         table.sort(held)
+        -- (0.105.119 item30) the free ones counted apart from the held ones
+        -- (encased, an artifact, where no dwarf can walk, out of the lever's reach)
         return {ok = false, error = ('a link needs 2 free mechanisms (%d free%s)'):format(#mechs,
-                    #held > 0 and ('; ' .. table.concat(held, ', ')) or ''), mechanisms = #mechs}
+                    #held > 0 and ('; ' .. table.concat(held, ', ')) or ''), mechanisms = #mechs,
+                free_mechanisms = #mechs, held_mechanisms = okc and c.why or nil,
+                out_of_reach = (unreachable or 0) > 0 and unreachable or nil, mechanisms_needed = 2}
     end
     if dry_run then return {ok = true, dry_run = true, target = tname, mechanisms = #mechs} end
     local job = df.job:new()
@@ -859,6 +863,11 @@ function trap_tiles(e, n, starts)
     return picks
 end
 
+-- (0.105.119 item40) a weapon trap's slot takes trap components only, never a pick (ai-killzone blades_only)
+local function blades_only_at(tk, pos)
+    if tk == 'Tw' then pcall(function() reqscript('ai-killzone').trap_blades_only(pos) end) end
+end
+
 function place_traps(id, kind, n, starts)
     local e = entrance(id)
     if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
@@ -877,6 +886,7 @@ function place_traps(id, kind, n, starts)
     for _, tk in ipairs(tiles) do
         local x, y, z = unkey(tk)
         local ok, why = place(k, {x = x, y = y, z = z})
+        if ok then blades_only_at(k, {x = x, y = y, z = z}) end
         if ok then
             placed = placed + 1
             first = first or {x = x, y = y, z = z}
@@ -961,6 +971,7 @@ function build_gatehouse(id, kind, n, dry_run, starts)
     for i = 1, n do
         local x, y, z = unkey(plan.corridor[i])
         local ok, w = place(tk, {x = x, y = y, z = z})
+        if ok then blades_only_at(tk, {x = x, y = y, z = z}) end
         if ok then
             out.traps = out.traps + 1
             table.insert(out.pieces, ('%d,%d,%d'):format(x, y, z))

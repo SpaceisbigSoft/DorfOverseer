@@ -252,6 +252,7 @@ def _reset():
     W.size = LUA.table_from(list(SIZE0))
     TB._reset(False)
     FM.reset()
+    B.FLOOR_OLD_OPEN = True
 
 
 test = make_test(before=_reset)
@@ -518,7 +519,7 @@ def _():
 
 # ---------------------------------------------------------------- 4. env.blocked
 
-@test("env.blocked: other projects' tiles on this z in any phase (area less its border, areas whole); not this floor's; old_areas unless the floor's own")
+@test("env.blocked: other live projects' tiles on this z (area less its border, areas whole); not this floor's; old_areas unless the floor's own")
 def _():
     z = 64
 
@@ -528,7 +529,16 @@ def _():
         p.update(kw)
         return p
 
-    for phase in ("dig", "furnish", "decorate", "done", "cancelled"):
+    # (0.105.119 item38) a finished or cancelled level's box blocks only with FLOOR_OLD_OPEN off (as before)
+    B.FLOOR_OLD_OPEN = False
+    try:
+        for phase in ("done", "cancelled"):
+            assert env_at(z, data={"next_id": 9, "list": [proj(4, phase)]}).blocked(11, -9, 19, -3) is True, phase
+    finally:
+        B.FLOOR_OLD_OPEN = True
+    for phase in ("done", "cancelled"):
+        assert env_at(z, data={"next_id": 9, "list": [proj(4, phase)]}).blocked(-58, -58, 57, 57) is False, phase
+    for phase in ("dig", "furnish", "decorate"):
         env = env_at(z, data={"next_id": 9, "list": [proj(4, phase)]})
         # the area's tiles are x 71..79, y 51..57 (map), 11..19, -9..-3 (stair-relative)
         assert env.blocked(11, -9, 19, -3) is True, phase
@@ -538,31 +548,30 @@ def _():
         assert env.blocked(tbl({"x1": 11, "y1": -9, "x2": 19, "y2": -3})) is True, "a box as one table"
         assert env.blocked(19, -3, 11, -9) is True, "corners either way round"
     # `areas` (a second box: a new hall's, an extension's) are kept whole
-    env = env_at(z, data={"next_id": 9, "list": [proj(4, "done", areas=[{"x1": 40, "y1": 40, "x2": 45, "y2": 42, "z": z}])]})
+    env = env_at(z, data={"next_id": 9, "list": [proj(4, "furnish", areas=[{"x1": 40, "y1": 40, "x2": 45, "y2": 42, "z": z}])]})
     assert env.blocked(-20, -20, -20, -20) is True and env.blocked(-15, -18, -15, -18) is True
     assert env.blocked(-14, -18, -14, -18) is False
     # a way in's column: a box on this level counts though the project's own z is another
-    env = env_at(z, data={"next_id": 9, "list": [proj(4, "done", z=70, area={"x1": 1, "y1": 1, "x2": 9, "y2": 9, "z": 70},
+    env = env_at(z, data={"next_id": 9, "list": [proj(4, "furnish", z=70, area={"x1": 1, "y1": 1, "x2": 9, "y2": 9, "z": 70},
                                                       areas=[{"x1": 40, "y1": 40, "x2": 45, "y2": 42, "z": z}])]})
     assert env.blocked(-20, -20, -20, -20) is True and env.blocked(-58, -58, -52, -52) is False
     # nothing on another z
-    env = env_at(z + 1, data={"next_id": 9, "list": [proj(4, "done")]})
+    env = env_at(z + 1, data={"next_id": 9, "list": [proj(4, "furnish")]})
     assert env.blocked(-58, -58, 57, 57) is False
     # a project of this floor does not block it; another floor's, or the id on another stair, does
-    mine = proj(4, "done", floor={"id": 1, "slots": 1, "hall": 9}, areas=[{"x1": 61, "y1": 58, "x2": 72, "y2": 62, "z": z}])
+    mine = proj(4, "furnish", floor={"id": 1, "slots": 1, "hall": 9}, areas=[{"x1": 61, "y1": 58, "x2": 72, "y2": 62, "z": z}])
     assert env_at(z, data={"next_id": 9, "list": [mine]}).blocked(-58, -58, 57, 57) is False
     assert env_at(z, data={"next_id": 9, "list": [dict(mine, floor={"id": 2})]}).blocked(11, -9, 19, -3) is True
     assert env_at(z, data={"next_id": 9, "list": [dict(mine, stair={"x": 30, "y": 60})]}).blocked(11, -9, 19, -3) is True
     # a 1-tile project (a well's box has no border to take off)
-    env = env_at(z, data={"next_id": 9, "list": [proj(5, "done", area={"x1": 90, "y1": 90, "x2": 90, "y2": 90, "z": z})]})
+    env = env_at(z, data={"next_id": 9, "list": [proj(5, "furnish", area={"x1": 90, "y1": 90, "x2": 90, "y2": 90, "z": z})]})
     assert env.blocked(30, 30, 30, 30) is True and env.blocked(31, 30, 31, 30) is False
     # a broken record blocks nothing and breaks nothing
-    env = env_at(z, data={"next_id": 9, "list": [proj(6, "done", area="x"), proj(7, "done", area={"x1": 5})]})
+    env = env_at(z, data={"next_id": 9, "list": [proj(6, "furnish", area="x"), proj(7, "furnish", area={"x1": 5})]})
     assert env.blocked(-58, -58, 57, 57) is False
 
 
-@test("env.blocked: a dropped level's outline blocks, unless it is the floor's own (its edges on the floor's claims)")
-def _():
+def old_outline_blocks():
     z = 64
     old = {"x1": 70, "y1": 50, "x2": 80, "y2": 58, "z": z}
     data = {"next_id": 1, "list": [], "old_areas": [old, dict(old, z=z + 3)]}
@@ -587,6 +596,60 @@ def _():
     # one that touches no claim at all, inside the floor's reach, is another's
     data = {"next_id": 1, "list": [], "old_areas": [{"x1": 73, "y1": 66, "x2": 77, "y2": 70, "z": z}]}
     assert env_at(z, data=data, claims=claims).blocked(14, 7, 16, 9) is True
+
+
+
+@test("env.blocked (FLOOR_OLD_OPEN off): a dropped level's outline blocks, unless it is the floor's own (its edges on the floor's claims)")
+def _():
+    B.FLOOR_OLD_OPEN = False
+    try:
+        old_outline_blocks()
+    finally:
+        B.FLOOR_OLD_OPEN = True
+
+
+@test("(0.105.119 item38) a finished, cancelled or dropped level's box no longer keeps a floor out: its tiles do; "
+      "live levels, wells, werebeast cells and a workshops level with free rooms still block")
+def _():
+    z = 64
+    old = {"x1": 70, "y1": 50, "x2": 80, "y2": 58, "z": z}
+    env = env_at(z, data={"next_id": 1, "list": [], "old_areas": [old]})
+    assert env.blocked(10, -10, 20, -2) is False
+    assert env_at(z, data={"next_id": 1, "list": [], "old_areas": [dict(old, well=True)]}).blocked(10, -10, 20, -2) is True
+
+    def proj(kind, phase, **kw):
+        p = {"id": 4, "kind": kind, "phase": phase, "z": z, "stair": {"x": 60, "y": 60}, "area": dict(old)}
+        p.update(kw)
+        return p
+
+    for p, want in ((proj("dining", "done"), False), (proj("bedrooms", "cancelled"), False),
+                    (proj("dining", "dig"), True), (proj("well", "done"), True), (proj("were_cells", "done"), True),
+                    (proj("workshops", "done", free_left=2), True), (proj("workshops", "done", free_left=0), False)):
+        got = env_at(z, data={"next_id": 9, "list": [p]}).blocked(11, -9, 19, -3)
+        assert got is want, (p["kind"], p["phase"], p.get("free_left"), got)
+    assert B.floor_box_live(None) is True
+    # the stair inside a finished level's box (C's, D's, F's, A's main stair): the survey finds the rock
+    # round it free, where before every way was 0 ("no hall: north 0, east 0, south 0, west 0")
+    TB._reset(False)
+    st = stair()
+    around = {"x1": 50, "y1": 50, "x2": 70, "y2": 70, "z": z}
+    floor = tbl({"id": 1, "z": z, "stair": {"x": 60, "y": 60}, "runs": [], "slots": []})
+    data = {"next_id": 9, "list": [proj("bedrooms", "done", area=around)], "old_areas": [dict(around)]}
+    free = dict(FM.honest_survey(floor, None, B.floor_env(floor, tbl(st), z, tbl(data), tbl([]), None, None)))
+    assert min(free.values()) > 0, free
+    B.FLOOR_OLD_OPEN = False
+    try:
+        free0 = dict(FM.honest_survey(floor, None, B.floor_env(floor, tbl(st), z, tbl(data), tbl([]), None, None)))
+    finally:
+        B.FLOOR_OLD_OPEN = True
+    assert max(free0.values()) == 0, free0
+    # its rooms are still 'bad' to a hall (a room's zone, a door), its corridors the fort's open floor
+    W.set(66, 60, z, tbl({"shape": "FLOOR", "taken": True}))
+    env = B.floor_env(floor, tbl(st), z, tbl(data), tbl([]), None, None)
+    assert env.open(6, 0) == "bad" and env.open(5, 0) == "rock"
+    assert dict(FM.honest_survey(floor, None, env))["east"] < free["east"]
+
+
 
 
 # ---------------------------------------------------------------- 5. the six forts
@@ -640,6 +703,7 @@ def fort_boxes(d, z, old_half):
 
 @test("the six forts: env.blocked agrees with every standing level's box, as projects and as dropped outlines; the free runs are the survey's")
 def _():
+    B.FLOOR_OLD_OPEN = False      # (item38) the standing levels here are boxes only (their tiles rock)
     assert len(FORTS) == 6, FORTS
     rng = random.Random(5)
     for path in FORTS:
@@ -675,6 +739,7 @@ def _():
 
 @test("the six forts: a level whose hub lies in a standing level with no direction free is marked '*' and the next level is tried")
 def _():
+    B.FLOOR_OLD_OPEN = False      # (item38) the standing levels here are boxes only (their tiles rock)
     found = 0
     for path in FORTS:
         d = json.loads(path.read_text(encoding="utf-8"))

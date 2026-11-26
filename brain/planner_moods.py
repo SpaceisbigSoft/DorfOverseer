@@ -79,6 +79,7 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         days = (now - memory.moods_seen.get(str(m.get("unit_id")), now)) // TICKS_PER_DAY
         need = MOOD_WORKSHOPS.get(str(m.get("skill")))
         if m.get("workshop"):
+            _no_sand_note(s, memory, m, notes)       # (0.105.119 item41)
             have, want = m.get("items_have"), m.get("items_needed")
             missing = [x for x in _l(m.get("missing")) if isinstance(x, dict)]
             # (0.105.24) a bridge that counts what the fort holds: act at once
@@ -104,7 +105,14 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
         coming = _shop_coming(s, need)
         if need and not _has_shop(b, need):
             placed = shop_placed(s, memory, need)
-            if coming or placed:
+            if coming and not placed and need in BUILDABLE_SHOPS and placing_now(s, memory, need):
+                # (0.105.119 item36) a level is coming, but too slowly for a mood: one placed too
+                proposals.append(Proposal(
+                    "mood", {"type": "place_mood_shop", "kind": need},
+                    f"{name} is in a {mood.lower()} mood and needs a {need} workshop: a workshops level "
+                    "with one is being dug, too slow for a mood (about 40 days), so one is placed on free "
+                    "floor in the fort meanwhile, its building done first", 0))
+            elif coming or placed:
                 notes.append(f"{name} is in a {mood.lower()} mood and needs a {need}; "
                              + (f"one is placed and waits to be built (its job first)" if placed and not coming
                                 else f"a workshops level with a {need} is already being built"))
@@ -155,6 +163,34 @@ def _mood_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
                 notes.append(f"{what}{' (' + need + ')' if need else ''}: DF lets the dwarf choose it, and the "
                              "AI has no more to build for it" + (f" ({shop_count(b, need)} stand, the AI's cap)"
                                                                  if need in BUILDABLE_SHOPS else ""))
+
+
+def no_sand(s: dict) -> bool:
+    """(0.105.119 item41) The map has no sand for glass: the bridge read the
+    geology (supplies.sand_layers, the fort's biome's SOIL_SAND layers) and
+    found none, and no sand zone or bag of sand. An older bridge: False."""
+    su = _d(s.get("supplies"))
+    return ("sand_layers" in su and not _l(su.get("sand_layers")) and not int(su.get("sand_bags") or 0)
+            and not int(su.get("sand_zones") or 0))
+
+
+def _no_sand_note(s: dict, memory, m: dict, notes: list) -> None:
+    """(0.105.119 item41) A mood wants raw glass on a map without sand (region4-1430,
+    25 Nov: no sand in any of the six forts; C's glassmaker waited): said once a
+    mood, the raw glass asked of caravans (MOOD_TRADE_KEYS, mood_trade_wants)."""
+    if not no_sand(s) or not any(isinstance(x, dict) and mood_kind(x) == "glass_rough" and mood_on_hand(x) is not True
+                                 for x in _l(m.get("missing"))):
+        return
+    mh = getattr(memory, "mood_help", None)
+    said = mh.setdefault("no_sand", []) if isinstance(mh, dict) else []
+    if not isinstance(said, list):
+        said = mh["no_sand"] = []
+    if str(m.get("unit_id")) in said:
+        return
+    said.append(str(m.get("unit_id")))
+    del said[:-20]
+    notes.append(f"{m.get('name') or 'a dwarf'}'s {str(m.get('mood') or '').lower()} mood wants raw glass: no sand "
+                 "on the map: raw glass can't be made; asked of caravans")
 
 
 def mood_item_text(x: dict) -> str:
@@ -248,7 +284,7 @@ def mood_blocked(s: dict) -> tuple[dict, dict]:
 
 # what a caravan is asked for, for a mood the fort can't supply (lua/ai-trade.lua's categories)
 MOOD_TRADE_KEYS = {"cloth": "CLOTH", "leather": "SKIN_TANNED", "log": "WOOD", "rough": "ROUGH",
-                   "cut_gem": "SMALLGEM"}
+                   "cut_gem": "SMALLGEM", "glass_rough": "ROUGH:GLASS"}   # (item41) raw glass: lua/ai-trade.lua category
 
 
 def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None = None) -> tuple[list, str | None]:
@@ -416,12 +452,9 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
             # metalcrafter, craftsdwarfs) waited on bars with 84 ore stones, a smelter and a
             # wood furnace, fuel 0 and 19 logs no dwarf could walk to: "no fuel" was said and
             # nothing done; all eight went mad
-            coal = sorted(((int(_d(v).get("n") or 0), k) for k, v in
-                           _d(_d(s.get("stone_use")).get("economic")).items()
-                           if k in MOOD_COAL and int(_d(v).get("n") or 0) > 0), reverse=True)
-            if coal and order(MOOD_COAL[coal[0][1]], 1, f"make coke from {coal[0][1].lower().replace('_', ' ')} "
-                                                    "(fuel to smelt the bar)"):
-                return acts, None
+            # (0.105.119 item41) no coke here: the coke reaction burns one fuel itself ([FUEL]
+            # in the raws; D, 25 Nov: "Needs refined coal", cancelled twice). Charcoal first;
+            # the fuel rule cokes the coal once there is one fuel
             # (0.105.113 item13) the logs a dwarf can walk to (D: 19 logs, all on the surface out of
             # every dwarf's walk: the charcoal order stood): none, the fort's own reachable trees
             wood, logs = reach_wood(s), int(st.get("wood") or 0)
@@ -448,6 +481,8 @@ def _mood_make(s: dict, x: dict, kind: str, memory, cfg: dict, mood: dict | None
             return acts, None
         return acts, f"no {metal.lower() + ' ' if metal else ''}bar can be smelted" + dead_words()
     if kind == "glass_rough":
+        if no_sand(s):                 # (0.105.119 item41) no furnace, zone or bag step: the caravan's
+            return acts, "no sand on this map to make raw glass (the caravans are asked)"
         furnaces = _d(b.get("furnaces"))
         if not (_has_shop(b, "GlassFurnace") or furnaces.get("MagmaGlassFurnace")):
             sand = bool(_l(su.get("sand_layers")) or int(su.get("sand_bags") or 0) > 0)
@@ -541,9 +576,17 @@ def _mood_shop(s: dict, needs, acts: list, mood: dict | None, what: str, memory=
         return False
     coming = [n for n in missing if _shop_coming(s, n) or shop_placed(s, memory, n)]
     want = [n for n in missing if n not in coming and n in BUILDABLE_SHOPS]
+    if any(a.get("type") in ("start_project", "place_mood_shop") for a, _ in acts):
+        return bool(want or coming)
+    # (0.105.119 item36) a level coming is too slow for a mood: placed on free floor meanwhile
+    hurry = [n for n in coming if n in BUILDABLE_SHOPS and placing_now(s, memory, n)]
+    for k in hurry:
+        acts.append(({"type": "place_mood_shop", "kind": k},
+                     f"no {k} yet: a workshops level with one is being dug, too slow for a mood, so one is "
+                     f"placed on free floor in the fort meanwhile ({what}), its building done first"))
     if not want:
         return bool(coming)
-    if any(a.get("type") in ("start_project", "place_mood_shop") for a, _ in acts):
+    if hurry:
         return True
     # (0.105.116 item27) one building on free floor first, no level to dig (no project slot)
     place, level = split_placeable(s, memory, "mood", want)
@@ -579,16 +622,58 @@ def split_placeable(s: dict, memory, rule: str, shops) -> tuple[list, list]:
     level, no project slot) and those left for a workshops level: a kind the
     bridge can't place, or whose placement was refused lately (no free 5x5 of
     floor: the refusal's own back-off)."""
-    from planner_core_refusals import _refused_wait
+    from planner_core_refusals import _refused_wait, refusal_key
     place, level = [], []
     for k in shops:
         act = {"type": "place_mood_shop", "kind": k}
         p = Proposal("mood", act, "", 0) if rule == "mood" else Proposal("mood_reserve", act, "", 0)
-        if k in PLACE_MOOD_SHOPS and (memory is None or _refused_wait(memory, p, abs_tick(s)) is None):
+        wait = None if memory is None else _refused_wait(memory, p, abs_tick(s))
+        if wait is not None and rule == "mood" and search_going_on(memory, refusal_key(p)):
+            # (0.105.119 item36) the bridge's search was cut short, not "there is none": a life
+            # at stake, it goes on next cycle (A, 25 Nov: Deler's forge "still looking" twice, the
+            # back-off sent it to a level that was never dug in the mood's 40 days)
+            wait = None
+        if k in PLACE_MOOD_SHOPS and wait is None:
             place.append(k)
         else:
             level.append(k)
     return place, level
+
+
+def search_going_on(memory, key: str) -> bool:
+    """(0.105.119 item36) The last refusal under this key was the bridge's
+    place_mood_shop search cut short ("still looking ... the search goes on
+    next time"): no back-off for a mood."""
+    r = _d(_d(getattr(memory, "refusals", None)).get(key))
+    return "search goes on" in str(r.get("why") or "")
+
+
+def placing_now(s: dict, memory, kind: str) -> bool:
+    """(0.105.119 item36) A level with this shop is coming but no placed one:
+    the mood's shop is still placed on free floor when it can be (a level is
+    dug and built in more than the mood's 40 days in these forts: A, 25 Nov,
+    Deler's forge level and Momuz's jeweller's level, both dead first)."""
+    return (kind in PLACE_MOOD_SHOPS and not shop_placed(s, memory, kind)
+            and bool(split_placeable(s, memory, "mood", [kind])[0]))
+
+
+def herd_sig(s: dict) -> list:
+    """(0.105.119 item36) The herd by kind, as the reserve's slaughter saw it."""
+    out = []
+    for k in _l(_d(s.get("herd")).get("kinds")):
+        if isinstance(k, dict):
+            out.append([str(k.get("name")), k.get("f"), k.get("m"), k.get("kids"), k.get("protected"),
+                        k.get("caged"), k.get("n")])
+    return sorted(out, key=str)
+
+
+def reserve_no_spare(s: dict, memory) -> bool:
+    """(0.105.119 item36) The bridge answered the reserve's slaughter "no spare
+    tame animal" for this very herd (planner_mood_help.note_mood_help): not
+    asked again till the herd changes (C 16, E 12 refusals in 3.5 h: the
+    herd's counts can't see the bridge's reach to a butcher or the AI's kept cats)."""
+    seen = _d(getattr(memory, "mood_help", None)).get("reserve_no_spare") if memory is not None else None
+    return isinstance(seen, list) and seen == herd_sig(s)
 
 
 def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict | None = None) -> bool:
@@ -624,6 +709,8 @@ def _mood_slaughter(s: dict, memory, cfg: dict, acts: list, why: str, mood: dict
         # (A, B, D, E, 25 Nov: "no spare tame animal (three or more of a kind...)" 10-13 times
         # each in 2.5 hours, the reserve asking again every few minutes)
         return False
+    if not mood and reserve_no_spare(s, memory):
+        return False                      # (0.105.119 item36) refused for this very herd
     if any(a.get("type") == "slaughter_one" for a, _ in acts):
         return True
     if mood and marked_waiting(s) > 0:
@@ -671,7 +758,9 @@ def spare_tame_kinds(s: dict) -> int | None:
         if not isinstance(k, dict):
             continue
         num = lambda f: int(k.get(f) or 0) if isinstance(k.get(f), (int, float)) else 0   # noqa: E731
-        if num("f") + num("m") - max(0, num("protected") - num("kids")) >= 3:
+        # (0.105.119 item36) every protected one counted an adult (pets, war animals and the
+        # AI's breeders are mostly grown): C's 5 cats, 3 of them pets, read 4 spare, not 2
+        if num("f") + num("m") - num("protected") >= 3:
             n += 1
     return n
 

@@ -7,7 +7,7 @@
 -- (r8) Cut from ai-builder-wells.lua, which had grown to 133 KB; loaded right
 -- after it and its parts before this one, in the old file's order.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-watch'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-watch'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 local STAIR_DOWN_SHAPE, shaft_bottom, hatch_at, job_of =
@@ -383,6 +383,12 @@ function well_lids(probe, data)
                         local okg, lg = pcall(walk_group, sg.lever.x, sg.lever.y, sg.lever.z or p.z)
                         if okg then r.gate_lever_group = lg end
                     end
+                end
+                -- (0.105.119 item39) no free floor for the lever: well_shaft can't begin the gate
+                -- (C: "nothing to do: open" 10 times, its other wells' gates open)
+                if g.state == 'none' or g.state == 'stray' or g.state == 'no_lever' then
+                    local okl, lv = pcall(shaft_lever_spot_for, p)
+                    if okl and not lv then r.gate_no_lever_spot = true end
                 end
                 if sg.link_lost then r.gate_link_lost = sg.link_lost end
                 if sg.layer_guard then r.layer_guard = true end        -- (item2) kept shut by the brain for its layer's beast

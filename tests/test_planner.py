@@ -2743,7 +2743,11 @@ def _():
     p, notes = plan(s, Memory())
     assert by_rule(p, "mood"), notes
     s["projects"]["open"].append({"id": 10, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Jewelers"]}})
+    # (0.105.119 item36) a level coming is too slow for a mood: one is still placed on free floor
     p, notes = plan(s, Memory())
+    assert [x.action for x in by_rule(p, "mood")] == [{"type": "place_mood_shop", "kind": "Jewelers"}], notes
+    # its placement refused (no free floor): the level's note only
+    p, notes = plan(s, mem)
     assert not by_rule(p, "mood") and any("already being built" in n for n in notes), notes
 
 
@@ -6854,6 +6858,7 @@ def _():
         # (0.105.24) nobody has it at all: one waiting job is enough
         {"labor": "BOOKBINDING", "jobs": 1, "holders": 0, "idle": 0},
         {"labor": "MASON", "jobs": 8, "holders": 3, "idle": 0, "mode": "EverybodyDoesThis"}]
+    s["labor"]["fish_water"] = 3                # (item33) skilled fishers only where there's water to fish
     s["labor"]["skilled_off"] = [{"labor": "FISH", "skilled": 2, "detail": "Fisherdwarves"},
                                  {"labor": "MINE", "skilled": 1, "detail": "Miners"}]
     props = [p for p in plan(s, Memory())[0] if p.rule == "labor" and p.action.get("job") in ("BREWER", "COOK",

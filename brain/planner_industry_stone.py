@@ -272,6 +272,13 @@ def _picks_order(s: dict, cfg: dict, proposals: list) -> None:
     n = want - have
     bars = _d(_d(_d(s.get("military")).get("gear")).get("bars"))
     metal = next((m for m in ("COPPER", "BRONZE", "IRON", "STEEL") if (bars.get(m) or 0) >= n), None)
+    if not metal:
+        # (0.105.119 item33) fewer bars than picks wanted: half the bars of the
+        # first metal that has 2 or more (D, 25 Nov: 20 picks wanted, 16 iron
+        # bars, so none ordered while 1217 tiles waited and no pick was left)
+        metal = next((m for m in ("COPPER", "BRONZE", "IRON", "STEEL") if (bars.get(m) or 0) >= 2), None)
+        if metal:
+            n = min(n, int(bars[metal]) // 2)
     if metal:
         proposals.append(Proposal("picks", {"type": "work_order", "recipe": "metal_pick", "amount": n,
                                             "material": f"INORGANIC:{metal}"},

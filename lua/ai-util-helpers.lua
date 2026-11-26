@@ -7,7 +7,7 @@
 -- the helpers defined there and in the parts before it are in reach.
 
 if not PARTS then qerror('ai-util-helpers is a part of ai-util; run ai-util') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-helpers'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-util-helpers'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- ===========================================================================
 -- (r6 c1, code health) The five helpers each module had its own copy of:

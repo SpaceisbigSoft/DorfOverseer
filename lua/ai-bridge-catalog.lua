@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -180,6 +180,7 @@ ACTIONS = {
     order_slots = act_order_slots,
     kitchen_fat = act_kitchen_fat,
     kitchen_drinks = act_kitchen_drinks,   -- (0.105.113 item10)
+    kitchen_cheap = act_kitchen_cheap,     -- (0.105.119 item37) cheap ingredients kept from the cooks
     seed_reserve = act_seed_reserve,   -- (r2h6) low seeds kept from the cooks
     convict = act_convict,
     repair_rooms = function(a) return reqscript('ai-builder').repair_rooms(a.dry_run == true) end,
@@ -807,7 +808,7 @@ for _, name in ipairs({
     'build_crossing', 'build_gatehouse', 'calm_burrow', 'clear_orphan_jobs', 'clear_webs', 'close_meeting',
     'cut_entrance', 'dig_stairwell', 'fire_guard', 'fix_gear_gaps', 'free_slabs', 'free_stray_gear',
     'gate_dogs', 'guard_gate', 'hospital_burrow', 'house_dwarves', 'furnish_liked', 'join_levels', 'keep_mousers',
-    'kitchen_fat', 'kitchen_drinks', 'seed_reserve', 'ledger_set', 'location_access', 'mark_run', 'mood_free_items', 'moon_cell', 'nest_boxes',
+    'kitchen_fat', 'kitchen_drinks', 'kitchen_cheap', 'seed_reserve', 'ledger_set', 'location_access', 'mark_run', 'mood_free_items', 'moon_cell', 'nest_boxes',
     'order_instrument', 'order_slots', 'pair_chairs', 'place_gate_lever', 'prisoner_room', 'prune_remains',
     'quick_location', 'recreation', 'remove_crossing', 'remove_webs', 'repair_rooms', 'rest_infected', 'bed_rest',
     'restrict_water', 'scrub_dead_units', 'seal_cavern', 'seal_well_stairs', 'send_mission', 'shelter_squads',

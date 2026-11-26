@@ -7,7 +7,7 @@
 -- reqscript('ai-mission-send').name and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-mission-send-steps is a part of ai-mission-send; run ai-mission-send') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local id_of, click, press = PART_LOCALS.id_of, PART_LOCALS.click, PART_LOCALS.press   -- (r9) the hub's and earlier parts' locals
 

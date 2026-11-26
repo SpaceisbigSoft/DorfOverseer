@@ -169,7 +169,7 @@ def _():
     body = body[:body.index("\nend\n")]
     assert "int_in(a.taverns or 1, 1, 6), int_in(a.temples or 1, 1, 6)" in body
     assert "social_consolidate(nt, ne, a.dry_run == true)" in body
-    rep = (ROOT / "lua" / "ai-bridge-report.lua").read_text(encoding="utf-8")
+    rep = split_src("ai-bridge-report.lua")   # (0.105.119) get_locations in ai-bridge-report-civic
     assert "if off > 0 and off == #c.building_ids then e.inactive = true end" in rep
     burrows = split_src("ai-society-burrows.lua")
     st = burrows[burrows.index("function recreation_status("):]

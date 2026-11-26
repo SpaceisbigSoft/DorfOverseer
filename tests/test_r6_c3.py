@@ -24,8 +24,9 @@ from lua_modules_util import bridge_later_parts, bridge_part_src  # noqa: E402
 
 LUA_DIR = ROOT / "lua"
 FAMILIES = {
-    "ai-bridge-report": ["ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort", "ai-bridge-report-world"],   # (0.105.113) -dead split off -supplies
-    "ai-bridge-actions": ["ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-civic"],
+    "ai-bridge-report": ["ai-bridge-report-civic", "ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort", "ai-bridge-report-world"],   # (0.105.113) -dead split off -supplies; (0.105.119) -civic off the first
+    "ai-bridge-actions": ["ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-trade", "ai-bridge-actions-civic"],   # (0.105.119) -trade split off -works
+    "ai-bridge-orders": ["ai-bridge-orders-jobs"],   # (0.105.119)
 }
 HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 
@@ -45,9 +46,9 @@ def _():
 @test("hub: BRIDGE_PARTS loads each file's later parts right after it, in the old order around them")
 def _():
     parts = hub_parts()
-    assert parts == ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort",
-                     "ai-bridge-report-world", "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-actions-fort",
-                     "ai-bridge-actions-works", "ai-bridge-actions-civic", "ai-bridge-probes",
+    assert parts == ["ai-bridge-report", "ai-bridge-report-civic", "ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort",
+                     "ai-bridge-report-world", "ai-bridge-orders", "ai-bridge-orders-jobs", "ai-bridge-actions", "ai-bridge-actions-fort",
+                     "ai-bridge-actions-works", "ai-bridge-actions-trade", "ai-bridge-actions-civic", "ai-bridge-probes",
                      "ai-bridge-design"], parts
     for stem, later in FAMILIES.items():
         assert bridge_later_parts(stem) == later, stem
@@ -203,9 +204,14 @@ def _():
                     "get_hazards", "get_deep", "get_order_desk", "push_event", "start_watching",
                     "report_citizens", "report_units", "citizen_anchor"]
                    if stem == "ai-bridge-report" else
+                   ["get_orders", "act_work_order", "orphan_jobs", "act_tool"]   # (0.105.119) -orders-jobs
+                   if stem == "ai-bridge-orders" else
                    ["parse_plan", "parse_floor", "act_import_orders", "act_seed_reserve", "slaughter_pick_mood",
                     "act_display_artifact", "kitchen_hold", "send_mission_rules"]):
             assert f"{fn}:function" in g, (stem, fn)
+        if stem == "ai-bridge-orders":
+            assert env.REPORT_PART_LOCALS is None and env.ACTIONS_PART_LOCALS is None   # none shared
+            continue
         shared = env.REPORT_PART_LOCALS if stem == "ai-bridge-report" else env.ACTIONS_PART_LOCALS
         want = ({"inc", "usable", "TICKS_PER_DAY", "layer_at", "citizen_positions", "nearest"}
                 if stem == "ai-bridge-report" else {"string_list"})

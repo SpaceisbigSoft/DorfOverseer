@@ -683,7 +683,18 @@ local function cavern_report()
     local list = standing(CAVERN_KEY, function(r) return plot_at(r.x, r.y, r.z) end)
     local tiles = 0
     for _, r in ipairs(list) do tiles = tiles + (r.w or 0) * (r.h or 0) end
-    return {plots = #list, tiles = tiles}
+    local out = {plots = #list, tiles = tiles}
+    -- (0.105.119 item39) the spot cavern_farm last refused ("x# y# z# is not in a
+    -- cavern (... not where the citizens can walk)", A 10 in 3.5 h), tested again
+    -- each report: while it still fails the brain doesn't ask for it
+    local r = CAVERN_REFUSED
+    if r then
+        local B = builder()
+        local ok, sx, why = pcall(cavern_snap, B, r.x, r.y, r.z, nil, cavern_dangers(B))
+        if ok and sx then CAVERN_REFUSED = nil
+        elseif ok then out.refused_at = {x = r.x, y = r.y, z = r.z, why = why or r.why} end
+    end
+    return out
 end
 
 -- A tile a cavern plot may take: soil (or cave moss) floor in a cavern, seen,
@@ -789,7 +800,7 @@ function cavern_snap(B, x, y, z, groups, dangers)
 end
 
 -- (Y1) the dangers by a cavern plot: the fort's danger spots and the hostile wild animals loose
-local function cavern_dangers(B)
+function cavern_dangers(B)      -- (item39) global: the report (above) uses it too
     local okd, spots_d = pcall(U.danger_spots)
     local dangers = okd and type(spots_d) == 'table' and spots_d or {}
     pcall(function()
@@ -827,6 +838,7 @@ function cavern_farm(o, dry_run)
             local more = why == 'unreached' and ' (the cavern tiles near it are not where the citizens can walk)'
                 or why == 'danger' and (' (the cavern tiles near it have a danger within %d tiles)'):format(CAVERN_DANGER)
                 or ''
+            CAVERN_REFUSED = {x = ax, y = ay, z = az, why = why}     -- (item39) the report re-tests it
             return {ok = false, rejected = true, error = ('x%d y%d z%d is not in a cavern'):format(ax, ay, az) .. more}
         end
         ax, ay, az = sx, sy, sz

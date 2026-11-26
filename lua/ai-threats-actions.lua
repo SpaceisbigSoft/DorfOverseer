@@ -1,12 +1,12 @@
--- ai-threats-actions: what the fort does: fire_guard, the prisoners' room, the moon cell,
--- seal_cavern, the creatures that breathe fire.
+-- ai-threats-actions: what the fort does: fire_guard, the prisoners' room, the moon cell
+-- (0.105.119: seal_cavern and the creatures that breathe fire in ai-threats-seal).
 --
 -- (r8) A part of ai-threats, not a script of its own: ai-threats.lua loads it
 -- into its own environment, so every name here is reqscript('ai-threats').name
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-actions is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, now_tick, name_of, save_state, unkey, is, citizens, fire_points, each_job, changed, okey, watcher_held, lure_open_ids = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.unkey, PART_LOCALS.is, PART_LOCALS.citizens, PART_LOCALS.fire_points, PART_LOCALS.each_job, PART_LOCALS.changed, PART_LOCALS.okey, PART_LOCALS.watcher_held, PART_LOCALS.lure_open_ids   -- (r8) the hub's and earlier parts' locals
 
@@ -184,6 +184,11 @@ local function were_zone(key)
 end
 
 local function zone_by_id(id)
+    -- (0.105.119 item31) a side cell dug for a cursed dwarf: its key
+    if type(id) == 'string' and id:sub(1, 4) == 'dig:' then
+        local rec = load_state().digs[id]
+        return type(rec) == 'table' and rec.ready and W().side_zone(id, rec) or nil
+    end
     if type(id) == 'string' then return were_zone(id) end   -- (item24) a were cell's key
     for _, b in ipairs(df.global.world.buildings.all) do
         if b.id == id then return b end
@@ -192,7 +197,11 @@ end
 
 local function in_zone(z, x, y, zz)
     if zz ~= z.z or x < z.x1 or x > z.x2 or y < z.y1 or y > z.y2 then return false end
-    if z.were then return true end       -- (item24) a were cell: its box
+    -- (item24) a were cell's or (item31) a side cell's box: a plain table. (0.105.119
+    -- item31) A DF zone is userdata and `z.were` on it threw ("Cannot read field
+    -- building_civzonest.were"), so since 0.105.115 cell_room saw no jail or bedroom
+    -- at all: A, 25 Nov 16:33-16:44, 39 calls "no jail zone or free bedroom" with 2 jails
+    if type(z) == 'table' then return true end
     local ok, yes = pcall(dfhack.buildings.containsTile, z, x, y)
     return not ok or yes
 end
@@ -241,32 +250,83 @@ end
 -- (0.105.76, verifier) only a room with a door to lock (a doorless room was
 -- "locked" with no door: the beast held by its burrow alone); the werebeast's
 -- own bedroom too (a fort without a jail or a free bedroom had no cell)
-local function cell_room(pos, taken, uid)
-    local best, bd
-    local function try(z, were)
-        if taken[z.id] then return end
-        if not were and next(zone_doors(z)) == nil then return end
-        local dd = math.abs(z.x1 - pos.x) + math.abs(z.y1 - pos.y) + 3 * math.abs(z.z - pos.z)
-        if not bd or dd < bd then best, bd = z, dd end
+-- a floor tile of the cell a dwarf can stand on (no building but the zone
+-- and its bed, chest or cabinet), the zone's own walk group: nil if none
+local CELL_FURNITURE = {Bed = true, Box = true, Cabinet = true, Chair = true, Table = true}
+local function cell_spot(z)
+    local best
+    for y = z.y1, z.y2 do
+        for x = z.x1, z.x2 do
+            if not best and in_zone(z, x, y, z.z) then pcall(function()
+                local tt = dfhack.maps.getTileType(x, y, z.z)
+                local a = tt and df.tiletype.attrs[tt]
+                if not a or df.tiletype_shape[a.shape] ~= 'FLOOR' then return end
+                local p = xyz2pos(x, y, z.z)
+                if dfhack.maps.getWalkableGroup(p) == 0 then return end
+                local b = dfhack.buildings.findAtTile(p)
+                if b and b:getType() ~= df.building_type.Civzone
+                        and not CELL_FURNITURE[df.building_type[b:getType()]] then return end
+                best = p
+            end) end
+        end
     end
+    return best
+end
+
+local SPARE_KINDS = {Office = true, Tomb = true, Bedroom = true}
+SPARE_MAX_TILES = 36
+local function cell_room(pos, taken, uid, d)
+    local best, bd, bkind
+    local function try(z, were, kind, alone)
+        pcall(function()
+            if taken[z.id] then return end
+            local dd = math.abs(z.x1 - pos.x) + math.abs(z.y1 - pos.y) + 3 * math.abs(z.z - pos.z)
+            if bd and dd >= bd then return end
+            if not were and next(zone_doors(z)) == nil then return end
+            if alone and other_in_zone(z, uid) then return end
+            best, bd, bkind = z, dd, kind
+        end)
+    end
+    local function each(list, fn) pcall(function() for _, z in ipairs(list) do fn(z) end end) end
+    local other = df.global.world.buildings.other
     -- (0.105.115 item24) a were cell first: built, its lever linked, its bridge
     -- down, nobody inside (a changed werebeast breaks doors; a raised bridge holds)
     pcall(function()
         local links = W().lever_links()
         for _, c in ipairs(W().cells()) do
             local z = W().zone_of(c)
-            if not taken[z.id] and W().ready(c, links) and not other_in_zone(z, uid) then try(z, true) end
+            if not taken[z.id] and W().ready(c, links) then try(z, true, 'were', true) end
         end
     end)
-    if best then return best, 'were' end
-    pcall(function() for _, z in ipairs(df.global.world.buildings.other.ZONE_DUNGEON) do try(z) end end)
-    if best then return best, 'jail' end
+    if best then return best, bkind end
+    each(other.ZONE_DUNGEON, function(z) try(z, false, 'jail') end)
+    if best then return best, bkind end
+    each(other.ZONE_BEDROOM, function(z)
+        if z.assigned_unit_id == -1 or (uid and z.assigned_unit_id == uid) then try(z, false, 'bedroom') end
+    end)
+    if best then return best, bkind end
+    -- (0.105.119 item31) any other room with a door to lock: an office, a tomb,
+    -- another's bedroom (nobody inside: never locked in with them), or a side
+    -- cell dug for this before; small rooms only (no hall)
+    each(other.ANY_ZONE, function(z)
+        local okk, k = pcall(function() return df.civzone_type[z.type] end)
+        if okk and SPARE_KINDS[k] and (z.x2 - z.x1 + 1) * (z.y2 - z.y1 + 1) <= SPARE_MAX_TILES then
+            try(z, false, 'room', true)
+        end
+    end)
+    for key, rec in pairs(d and d.digs or {}) do
+        if type(rec) == 'table' and rec.ready then try(W().side_zone(key, rec), false, 'side', true) end
+    end
+    if best then return best, bkind end
+    -- (item31) a were cell dug but not lockable yet (its lever unlinked, its
+    -- bridge not built): its burrow holds them, and it is locked once linked
     pcall(function()
-        for _, z in ipairs(df.global.world.buildings.other.ZONE_BEDROOM) do
-            if z.assigned_unit_id == -1 or (uid and z.assigned_unit_id == uid) then try(z) end
+        for _, c in ipairs(W().cells()) do
+            local z = W().zone_of(c)
+            if not taken[z.id] and cell_spot(z) then try(z, true, 'were_open', true) end
         end
     end)
-    return best, best and 'bedroom' or nil
+    return best, bkind
 end
 
 -- (0.105.40b fix) The doors ai-insane holds locked for the insane: {id = true}.
@@ -426,29 +486,6 @@ local function unconfine(u, c)
     end
 end
 
--- a floor tile of the cell a dwarf can stand on (no building but the zone
--- and its bed, chest or cabinet), the zone's own walk group: nil if none
-local CELL_FURNITURE = {Bed = true, Box = true, Cabinet = true, Chair = true, Table = true}
-local function cell_spot(z)
-    local best
-    for y = z.y1, z.y2 do
-        for x = z.x1, z.x2 do
-            if not best and in_zone(z, x, y, z.z) then pcall(function()
-                local tt = dfhack.maps.getTileType(x, y, z.z)
-                local a = tt and df.tiletype.attrs[tt]
-                if not a or df.tiletype_shape[a.shape] ~= 'FLOOR' then return end
-                local p = xyz2pos(x, y, z.z)
-                if dfhack.maps.getWalkableGroup(p) == 0 then return end
-                local b = dfhack.buildings.findAtTile(p)
-                if b and b:getType() ~= df.building_type.Civzone
-                        and not CELL_FURNITURE[df.building_type[b:getType()]] then return end
-                best = p
-            end) end
-        end
-    end
-    return best
-end
-
 -- (0.105.115 item18) Moved into the cell at once (DFHack's units.teleport: a
 -- direct move, not a walk; the same call the caravans' 'edge' step uses):
 -- a cursed dwarf placed CELL_MOVE_TICKS ago and still outside, or any once
@@ -469,6 +506,18 @@ local function move_in(u, z, uid)
     local ok, done = pcall(dfhack.units.teleport, u, p)
     if not ok or done == false then return nil, 'the move was refused: ' .. tostring(done):sub(1, 60) end
     return true
+end
+
+-- (0.105.119 item34/31) is the cell's dwarf inside it? true, false, or nil (can't tell)
+function cell_has(c, u)
+    if type(c) ~= 'table' or not c.zone or not u then return nil end
+    local ok, yes = pcall(function()
+        local z = zone_by_id(c.zone)
+        if not z then return nil end
+        return in_zone(z, u.pos.x, u.pos.y, u.pos.z)
+    end)
+    if ok then return yes end
+    return nil
 end
 
 -- Werebeasts in cells for the full moon: each id given gets a burrow on its
@@ -590,6 +639,16 @@ function moon_cell(ids, release, dry_run, txt, opts)
     if not release then
         local taken = {}
         for _, c in pairs(d.cells) do if type(c) == 'table' and c.zone then taken[c.zone] = true end end
+        -- (0.105.119 item31) the side cells being dug: their door placed once dug, ready once built
+        for key, rec in pairs(d.digs) do
+            if type(rec) == 'table' and rec.door and not rec.ready then
+                local okst, st = pcall(W().side_step, rec, dry_run, t)
+                if okst and st == 'ready' and not dry_run then rec.ready = true end
+                out.side = out.side or {}
+                table.insert(out.side, key .. ': ' .. tostring(okst and st or 'unreadable'))
+            end
+            if type(rec) == 'table' and not rec.ready then taken[key] = true end
+        end
         for uid in pairs(want) do
             local u = df.unit.find(tonumber(uid))
             -- (0.105.96) a soldier out of the squad first: on duty (training,
@@ -598,7 +657,7 @@ function moon_cell(ids, release, dry_run, txt, opts)
             -- waited for their cells 4 cycles each, changed outside them and
             -- killed (a bone doctor) before the militia shot them
             local oksq, in_squad = pcall(function() return u.military.squad_id ~= -1 end)
-            if u and not dfhack.units.isDead(u) and not changed(u) and oksq and in_squad then
+            if u and not opts.reserve and not dfhack.units.isDead(u) and not changed(u) and oksq and in_squad then
                 local name = name_of(u, txt)
                 if dry_run then
                     out.unsquad = out.unsquad or {}
@@ -620,13 +679,71 @@ function moon_cell(ids, release, dry_run, txt, opts)
                     table.insert(out.relock, name_of(u, txt))
                     if not dry_run then c.locked = nil end
                 end
+                -- (0.105.119 item34/31) locked in, yet not inside (F, 25 Nov: Besmar locked
+                -- 17:21:40 behind a raised bridge, turned 17:27:32 nine levels down and
+                -- killed Tosid): not locked, moved in again now
+                if c and c.locked and not c.reserved and cell_has(c, u) == false then
+                    out.escaped = out.escaped or {}
+                    table.insert(out.escaped, ('%s (at %d,%d,%d)'):format(name_of(u, txt), u.pos.x, u.pos.y, u.pos.z))
+                    if not dry_run then c.locked = nil end
+                    opts.move_in = true
+                end
+                -- (item31) a were cell taken while its lever was unlinked: a were cell once linked
+                if c and c.kind == 'were_open' then
+                    pcall(function()
+                        local wc = W().find(c.zone)
+                        local st = wc and W().cell_state(wc)
+                        if st and st.built and st.linked and not dry_run then c.kind = 'were' end
+                    end)
+                end
                 local z = c and c.zone and zone_by_id(c.zone)
-                if not z then
-                    local kind
-                    z, kind = cell_room(u.pos, taken, u.id)
+                -- (item31) a cell made ready before the moon (reserved): still free for them?
+                if c and c.reserved and not opts.reserve then
+                    local okz, other = pcall(function()
+                        return c.kind ~= 'were' and c.kind ~= 'were_open' and z and z.assigned_unit_id ~= -1
+                            and z.assigned_unit_id ~= u.id and c.kind == 'bedroom'
+                    end)
+                    if not z or (okz and other) or other_in_zone(z, u.id) and not in_zone(z, u.pos.x, u.pos.y, u.pos.z) then
+                        if not dry_run then d.cells[uid] = nil end
+                        taken[c.zone] = nil
+                        c, z = nil, nil
+                    end
+                end
+                if opts.reserve and c then
+                    -- (item31) a reserve call touches no cell already made
+                elseif not z or (c and c.reserved and not opts.reserve) then
+                    local kind = c and c.kind
+                    if not z then z, kind = cell_room(u.pos, taken, u.id, d) end
                     if not z then
-                        out.ok = #out.placed + #out.locked > 0
-                        out.error = 'no jail zone or free bedroom for a cell'
+                        -- (0.105.119 item31) no room at all: a side cell dug off the nearest
+                        -- corridor (A, 25 Nov: 39 calls refused, 25 dead), never a refusal
+                        local okw, site = pcall(function() return W().side_site(u.pos, taken) end)
+                        site = okw and site or nil
+                        out.digging = out.digging or {}
+                        if site then
+                            local key = W().side_key(site)
+                            local okd, n = pcall(function() return W().side_dig(site, dry_run) end)
+                            n = okd and tonumber(n) or 0
+                            if not dry_run then
+                                site.tick, site.dug, site.for_uid = t, t, tonumber(uid)
+                                d.digs[key] = site
+                            end
+                            taken[key] = true
+                            table.insert(out.digging, ('%s: a side cell at %d,%d,%d (%d tiles designated)'):format(
+                                name_of(u, txt), site.x, site.y, site.z, n))
+                        else
+                            out.error = 'no jail, bedroom, office, tomb or were cell for a cell, and no rock beside a corridor near '
+                                .. name_of(u, txt) .. ' to dig one in'
+                            out.ok = #out.placed + #out.locked > 0
+                        end
+                    elseif opts.reserve then
+                        if not dry_run then
+                            d.cells[uid] = {zone = z.id, kind = kind, tick = t, doors = {}, reserved = true}
+                        end
+                        taken[z.id] = true
+                        out.reserved = out.reserved or {}
+                        table.insert(out.reserved, name_of(u, txt) .. ' (' .. tostring(kind) .. ')')
+                        z = nil
                     elseif not dry_run then
                         -- (0.105.0 review) the burrow made inside pcall: a failure is said,
                         -- and the cells already done this call are still saved below
@@ -684,6 +801,12 @@ function moon_cell(ids, release, dry_run, txt, opts)
                             out.not_raised = out.not_raised or {}
                             table.insert(out.not_raised, name_of(u, txt) .. ': ' .. tostring(okr and why or up):sub(1, 100))
                         end
+                    elseif in_zone(z, u.pos.x, u.pos.y, u.pos.z) and c.kind == 'were_open' then
+                        -- (item31) inside a were cell whose lever isn't linked yet: held by the burrow
+                        -- alone, the bridge raised once the lever is linked
+                        table.insert(out.waiting, name_of(u, txt))
+                        out.open_cell = out.open_cell or {}
+                        table.insert(out.open_cell, name_of(u, txt))
                     elseif in_zone(z, u.pos.x, u.pos.y, u.pos.z) then
                         local insane = insane_held()
                         c.doors = type(c.doors) == 'table' and c.doors or {}
@@ -721,317 +844,13 @@ function moon_cell(ids, release, dry_run, txt, opts)
         save_state(d)
         hold_cell_doors(d)       -- (0.105.115 item18) the locked cells' doors: no other rule unlocks them
     end
-    if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) + #(out.relock or {}) + (out.dead or 0) + #(out.moved or {}) == 0 and not out.error and not out.errors then   -- (0.105.96, verifier) a squad left counts
+    if #out.placed + #out.locked + #out.released + #out.waiting + #(out.unsquad or {}) + #(out.relock or {}) + (out.dead or 0) + #(out.moved or {})
+            + #(out.reserved or {}) + #(out.digging or {}) + #(out.escaped or {}) + #(out.side or {}) == 0 and not out.error and not out.errors then   -- (item31)   -- (0.105.96, verifier) a squad left counts
         return {ok = false, rejected = true, nothing_to_do = true, error = 'every cell is as it should be'}
     end
     return out
 end
 
--- (0.105.0 review) a citizen down in the cavern (on a cavern tile between
--- its levels, z1..z2): the seal would shut them out on the far side
-local function citizen_in_cavern(z1, z2)
-    if not z1 or not z2 then return nil end
-    local lo, hi = math.min(z1, z2), math.max(z1, z2)
-    local gids = cavern_gids()          -- (0.105.51) a cavern layer's tile, not the surface river's
-    local ok, who = pcall(function()
-        for _, u in ipairs(report_citizens(true)) do
-            local p = u.pos
-            if p.z >= lo and p.z <= hi then
-                if on_cavern_tile(p.x, p.y, p.z, gids) then return u end
-            end
-        end
-    end)
-    return ok and who or nil
-end
-
--- The caverns sealed: the doors and hatches on the given tiles (the way
--- down to the cavern: where the fort's ground meets it, the stair column)
--- locked; open: unlocked (only those the AI locked). (0.105.0 review) only
--- on those very tiles (no longer every door within a tile of them), and
--- refused while a citizen is down in the cavern (z1..z2: its levels).
--- (0.105.26) openings: every opening on record too (state.openings), but
--- never a cavern well's shaft hatch (its lever and the shaft watcher work
--- it, and the bucket needs it open whenever no great beast is about); a
--- door or hatch on a lever is shut by that lever (a lock does nothing to
--- it) when the lever works nothing else, and opened by it again after. The
--- doors and hatches found are put on record as openings. Said in the game.
-local function announce(text, color)
-    pcall(function() dfhack.gui.showAnnouncement('AI Overseer: ' .. text, color or COLOR_YELLOW, true) end)
-end
-
--- a lever that works this building and nothing else, or nil
-local function own_lever(bid)
-    local ok, lid = pcall(function()
-        local G = reqscript('ai-gates')
-        local links = G.lever_links()
-        for _, l in ipairs(links[bid] or {}) do
-            local targets = G.lever_targets(links, l)
-            if #targets == 1 and targets[1] == bid then return l end
-        end
-    end)
-    return ok and lid or nil
-end
-
-function seal_cavern(layer, tiles, open, dry_run, z1, z2, openings)
-    local d = load_state()
-    local t = now_tick()
-    local rec = type(d.sealed[layer]) == 'table' and d.sealed[layer] or nil
-    if open then
-        if not rec then return {ok = false, rejected = true, nothing_to_do = true, error = 'the AI sealed nothing there'} end
-        -- (0.105.26 seal fix) an entrance the gate watcher holds shut (an
-        -- ordinary danger at it) is left shut: the watcher opens it later
-        local watched = watcher_held()
-        local n, kept = 0, 0
-        for _, bid in ipairs(rec.ids or {}) do
-            pcall(function()
-                local b = df.building.find(bid)
-                if b and watched[b.id] then
-                    kept = kept + 1
-                elseif b then
-                    if not dry_run then U.lock_door(b, false, 'seal') end -- (0.105.47) ai-util: the walk map redone
-                    n = n + 1
-                end
-            end)
-        end
-        for sid, lever in pairs(type(rec.pulled) == 'table' and rec.pulled or {}) do
-            pcall(function()
-                local b = df.building.find(tonumber(sid))
-                if b and watched[b.id] then
-                    kept = kept + 1
-                elseif b and b.door_flags.closed then
-                    if not dry_run then reqscript('ai-gates').pull_instant(lever) end
-                    n = n + 1
-                end
-            end)
-        end
-        if not dry_run then
-            d.sealed[layer] = nil
-            save_state(d)
-            announce(('the ways into the caverns opened again (%s): no great beast left'):format(tostring(layer)),
-                     COLOR_GREEN)
-        end
-        return {ok = true, unlocked = n, layer = layer, watcher_kept = kept > 0 and kept or nil, dry_run = dry_run or nil}
-    end
-    local inside = citizen_in_cavern(z1, z2)
-    if inside then
-        return {ok = false, rejected = true, waiting = true,
-                error = name_of(inside) .. ' is down in ' .. tostring(layer) .. ': not sealed while a dwarf is on the far side'}
-    end
-    local skip, list, given = {}, {}, {}
-    for _, o in pairs(d.openings) do
-        if type(o) == 'table' and o.kind == 'well' and o.x then skip[okey(o.x, o.y, o.z)] = true end
-    end
-    for _, p in ipairs(tiles or {}) do
-        local x, y, z = tonumber(p.x), tonumber(p.y), tonumber(p.z)
-        if x and y and z then
-            table.insert(list, {x = x, y = y, z = z})
-            given[okey(x, y, z)] = true
-        end
-    end
-    local well_kept, well_why, well_dwarf = 0, nil, 0
-    if openings then
-        for _, o in pairs(d.openings) do
-            if type(o) == 'table' and o.x and o.kind ~= 'well' then
-                -- (0.105.47, K48-K4) a cavern well's door with a dwarf beyond it, or
-                -- whose shaft gate keeps the cavern out: left open. (r2h7) by
-                -- seal_lockable, the test the openings report gives the brain
-                local okl, can, why, blocked, code = pcall(seal_lockable, o)
-                if okl and not can and (code == 'blocked' or code == 'skip') then
-                    well_kept = well_kept + 1
-                    if blocked then
-                        well_dwarf = well_dwarf + 1
-                        well_why = tostring(why)
-                    else
-                        well_why = well_why or tostring(why)
-                    end
-                elseif not okl or can then
-                    table.insert(list, {x = o.x, y = o.y, z = o.z})
-                end
-                -- (not lockable for want of a door: nothing to add; the walk below finds nothing there either)
-            end
-        end
-    end
-    local found, at = {}, {}
-    for _, p in ipairs(list) do
-        if not skip[okey(p.x, p.y, p.z)] then
-            pcall(function()
-                local b = dfhack.buildings.findAtTile(xyz2pos(p.x, p.y, p.z))
-                if b and (b:getType() == df.building_type.Door or b:getType() == df.building_type.Hatch) then
-                    found[b.id] = b
-                    at[b.id] = p
-                end
-            end)
-        end
-    end
-    rec = rec or {ids = {}, tick = t}
-    rec.pulled = type(rec.pulled) == 'table' and rec.pulled or {}
-    local have, n, already, adopted, pull_failed = {}, 0, 0, 0, 0
-    for _, id in ipairs(rec.ids) do have[id] = true end
-    -- (0.105.26 seal fix) one the gate watcher already holds shut goes on
-    -- the record too, so the watcher doesn't open it while the beast is about
-    local watched = watcher_held()
-    local insane = insane_held()      -- (0.105.40b fix) ai-insane's locks: the seal's now
-    local lure = lure_open_ids()      -- (0.105.45) a lure's open door is left to the lure
-    for id in pairs(lure) do found[id] = nil end
-    for id, b in pairs(found) do
-        local lever = own_lever(id)
-        if lever then
-            local okc, c = pcall(function() return b.door_flags.closed end)
-            if okc and not c then
-                -- (0.105.33 review) counted only when the pull worked (a failed
-                -- pull said "locked" and the opening still read unsealed)
-                if not dry_run then
-                    local okp, pulled = pcall(function() return reqscript('ai-gates').pull_instant(lever) end)
-                    if okp and pulled then
-                        rec.pulled[tostring(id)] = lever
-                        n = n + 1
-                    else
-                        pull_failed = pull_failed + 1
-                    end
-                else
-                    n = n + 1
-                end
-            elseif okc then
-                already = already + 1
-                if watched[id] and rec.pulled[tostring(id)] == nil then
-                    if not dry_run then rec.pulled[tostring(id)] = lever end
-                    adopted = adopted + 1
-                end
-            end
-        else
-            local okf, f = pcall(function() return b.door_flags.forbidden end)
-            if okf and not f then
-                if not dry_run then
-                    U.lock_door(b, true, 'seal') -- (0.105.47) ai-util: the walk map redone
-                    if not have[id] then table.insert(rec.ids, id); have[id] = true end
-                end
-                n = n + 1
-            elseif okf then
-                already = already + 1
-                if (watched[id] or insane[id]) and not have[id] then
-                    if not dry_run then table.insert(rec.ids, id); have[id] = true end
-                    adopted = adopted + 1
-                end
-            end
-        end
-        local p = at[id]
-        if p and given[okey(p.x, p.y, p.z)] and not dry_run then
-            note_opening(d, p.x, p.y, p.z, 'way_down', tostring(layer), t)
-        end
-    end
-    if n == 0 and adopted > 0 then
-        -- everything locked already, some by the gate watcher: on the seal's record now
-        if not dry_run then
-            d.sealed[layer] = rec
-            save_state(d)
-        end
-        return {ok = true, locked = 0, adopted = adopted, layer = layer, dry_run = dry_run or nil}
-    end
-    if n == 0 and well_kept > 0 and already == 0 and pull_failed == 0 then
-        -- (0.105.51) the only ways down on record are cavern wells' doors, left
-        -- open (their shaft gate keeps the cavern out, or a dwarf is beyond):
-        -- said as such, not "no door or hatch" (the planner leaves them out too)
-        if not dry_run then save_state(d) end
-        return {ok = false, rejected = true, well_kept = well_kept, nothing_lockable = true,   -- (r2h7)
-                nothing_to_do = well_dwarf == 0 or nil, waiting = well_dwarf > 0 or nil,
-                error = 'only cavern well doors on the way down, left open: ' .. tostring(well_why):sub(1, 100)}
-    end
-    if n == 0 then
-        if not dry_run then save_state(d) end          -- (the openings found are kept)
-        return {ok = false, rejected = true, nothing_to_do = already > 0 and pull_failed == 0,
-                pull_failed = pull_failed > 0 and pull_failed or nil,
-                nothing_lockable = (already == 0 and pull_failed == 0) or nil,   -- (r2h7) the brain stops asking
-                error = pull_failed > 0 and (pull_failed .. ' lever(s) on the way down would not pull: the doors stay open')
-                    or already > 0 and 'every door and hatch on the way down is locked already'
-                    or 'no door or hatch on the way down to lock'}
-    end
-    if not dry_run then
-        d.sealed[layer] = rec
-        save_state(d)
-        announce(('%d way(s) into the caverns locked against a great beast (%s)'):format(n, tostring(layer)))
-    end
-    return {ok = true, locked = n, adopted = adopted > 0 and adopted or nil, layer = layer, dry_run = dry_run or nil,
-            pull_failed = pull_failed > 0 and pull_failed or nil,
-            well_kept = well_kept > 0 and well_kept or nil}   -- (0.105.47) a well's door left: a dwarf beyond it
-end
-
--- (0.105.40b) A creature that breathes, spits or hurls fire (a dragon, a fire
--- imp, a generated beast with a fire breath), or burns to the touch: no melee
--- squad goes at it (the fire takes a squad in its armour before it lands a
--- blow; brain/planner_firebreath.py). Read from its caste's raws: each natural
--- ability (caste.body_info.interactions, CAN_DO_INTERACTION) whose CDI:FLOW is
--- DRAGONFIRE, FIREJET or FIREBALL (interaction.material_breath), or whose
--- interaction's material target emits one of those (a generated beast's);
--- the caste flag IMMOLATE. One answer per race and caste, kept for the
--- session (raws don't change while a world is loaded).
--- Returns 'breath' / 'jet' / 'fireball' / 'burns', or false.
-FIRE_BREATH_CACHE = FIRE_BREATH_CACHE or {}
-local FIRE_FLOW_HOW = {DRAGONFIRE = 'breath', FIREJET = 'jet', FIREBALL = 'fireball'}
-
--- (fix41) the cache belongs to one world: another save loaded in the same
--- DFHack session has other races under the same numbers (generated beasts)
-function fire_breath_of(race, caste)
-    -- (r1g9) the world by its name, not the save folder an autosave renames
-    local okw, world = pcall(function() return U.world_name() end)
-    if not okw or type(world) ~= 'string' then
-        okw, world = pcall(function() return df.global.world.cur_savegame.save_dir end)
-    end
-    world = tostring(okw and world or '?')
-    if FIRE_BREATH_WORLD ~= world then
-        FIRE_BREATH_CACHE, FIRE_BREATH_WORLD = {}, world
-    end
-    local key = tostring(race) .. ':' .. tostring(caste)
-    local v = FIRE_BREATH_CACHE[key]
-    if v ~= nil then return v end
-    v = false
-    local fire = {}
-    pcall(function()
-        for name, how in pairs(FIRE_FLOW_HOW) do
-            local e = df.breath_attack_type[name]
-            if e ~= nil then fire[e] = how end
-        end
-    end)
-    local okc, c = pcall(function() return df.creature_raw.find(race).caste[caste] end)
-    if okc and c then
-        pcall(function()
-            for _, a in ipairs(c.body_info.interactions) do
-                local info = a.interaction
-                local how = fire[info.material_breath]
-                if not how then
-                    pcall(function()
-                        local it = df.interaction.find(info.type_id)
-                        for _, t in ipairs(it and it.targets or {}) do
-                            local okb, b = pcall(function() return t.breath_attack_type end)
-                            if okb and b ~= nil and fire[b] then how = fire[b]; break end
-                        end
-                    end)
-                end
-                if how then v = how; return end
-            end
-        end)
-        if not v then
-            local oki, imm = pcall(function() return c.flags.IMMOLATE end)
-            if oki and imm then v = 'burns' end
-        end
-    end
-    FIRE_BREATH_CACHE[key] = v
-    return v
-end
-
--- (0.105.40b) The others_on_map report's threats marked: fire_breather = true
--- and fire_how for each one that breathes fire (nothing added to the others,
--- so a report without one is as before). Returns how many were marked.
-function mark_fire_breathers(o)
-    local n = 0
-    for _, t in ipairs(type(o) == 'table' and type(o.threats) == 'table' and o.threats or {}) do
-        local u = type(t) == 'table' and t.id ~= nil and df.unit.find(t.id) or nil
-        if u then
-            local okf, how = pcall(fire_breath_of, u.race, u.caste)
-            if okf and how then
-                t.fire_breather, t.fire_how = true, how
-                n = n + 1
-            end
-        end
-    end
-    return n
-end
+-- (0.105.119) seal_cavern and the fire breathers: in ai-threats-seal.lua (loaded
+-- next), which takes this part's insane_held back
+PART_LOCALS.insane_held = insane_held

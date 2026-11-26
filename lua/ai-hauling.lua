@@ -68,7 +68,7 @@ STRANGE_MOODS = {Fey = true, Secretive = true, Possessed = true, Macabre = true,
 -- him at it already, and the specialist mark would outlast it; he is only
 -- never made a hauler.
 KEY_ORDER = {['chief medical dwarf'] = 2, doctor = 3, diagnostician = 3, surgeon = 3, ['bone doctor'] = 3,
-             manager = 4, bookkeeper = 4, broker = 4, ['tavern keeper'] = 5, scribe = 5, legendary = 6}
+             manager = 4, bookkeeper = 4, broker = 4, ['tavern keeper'] = 5, scribe = 5, cook = 5, legendary = 6}
 
 -- Pure: the hauling labour an item kind goes by (as DFHack's labormanager
 -- maps them); cage_unit: a cage or trap with a creature in it.
@@ -263,8 +263,11 @@ end
 
 -- Why a dwarf is kept at his own work (nil: he isn't a key specialist).
 -- (0.105.40b fix) a strange mood is no reason: see KEY_ORDER.
-function key_reason(u)
+-- (0.105.119 item33) `st` (optional, the hauling state): a cook the AI keeps
+-- at the kitchen (st.cooks, by relieve_cooks) is key too.
+function key_reason(u, st)
     local why
+    if type(st) == 'table' and type(st.cooks) == 'table' and st.cooks[tostring(u.id)] then why = 'cook' end
     pcall(function()
         for _, o in ipairs(u.occupations) do
             local t = df.occupation_type[o.type]
@@ -485,7 +488,7 @@ local function haulers(st, game, mine)
             local free = idle(u)
             if free then out.idle = out.idle + 1 end
             local n = hauls(u)
-            local why = key_reason(u)
+            local why = key_reason(u, st)
             local k = tostring(u.id)
             if relieved[k] then
                 out.relieved = out.relieved + 1
@@ -703,7 +706,7 @@ function relieve_haulers(count, back, dry_run, txt, shrink)
         local list = {}
         for k in pairs(st.relieved) do
             local u = df.unit.find(tonumber(k))
-            if u then table.insert(list, {id = u.id, unit = u, key = key_reason(u) and 1 or 0}) end
+            if u then table.insert(list, {id = u.id, unit = u, key = key_reason(u, st) and 1 or 0}) end
         end
         table.sort(list, function(a, b)
             if a.key ~= b.key then return a.key < b.key end
@@ -748,6 +751,77 @@ function relieve_haulers(count, back, dry_run, txt, shrink)
                 .. '(your own details and specialists are left as they are)'}
     end
     return {ok = true, dry_run = dry_run or nil, relieved = names}
+end
+
+-- (0.105.119 item33) The best free cooks kept at the kitchen while dwarves
+-- want good meals: C (25 Nov) had its skill-17 cook hauling while a 9 cooked,
+-- A a skill-11 cook with the cooking labour off. `ids`: the cooks (the
+-- brain's pick, the best two); each gets the cooking labour (ai-labor
+-- give_labor) and is taken off hauling: off the AI's haulers detail, or
+-- marked a specialist ("only do assigned work details": the game's
+-- "everybody" details, hauling among them, stop giving him labours; a
+-- labour no detail carries, as cooking, stays). Remembered (st.cooks, and
+-- st.relieved as any key worker the AI relieved), so they are key workers
+-- (key_reason 'cook') and the hauling rules leave them so. A cook kept
+-- before but not in `ids` now, or every one with back = true, is given
+-- hauling back and forgotten.
+function relieve_cooks(ids, back, dry_run, txt)
+    local st = state()
+    local game, mine = find_details(st)
+    settle(st, mine)
+    st.cooks = type(st.cooks) == 'table' and st.cooks or {}
+    local want = {}
+    if not back then
+        for _, id in ipairs(ids or {}) do
+            local n = tonumber(id)
+            if n then want[tostring(math.tointeger(n) or n)] = true end
+        end
+    end
+    local okt, now = pcall(U.abs_tick)
+    local L
+    pcall(function() L = reqscript('ai-labor') end)
+    local kept, back_names, cook_on = {}, {}, {}
+    for k in pairs(st.cooks) do
+        if not want[k] then
+            local u = df.unit.find(tonumber(k))
+            if u then table.insert(back_names, name_of(u, txt)) end
+            if not dry_run then
+                if u and st.relieved[k] then
+                    set_specialist(u, false)
+                    sync_hauling(u)
+                end
+                st.relieved[k] = nil
+                st.cooks[k] = nil
+            end
+        end
+    end
+    for k in pairs(want) do
+        local u = df.unit.find(tonumber(k))
+        if u and grown(u) and not in_squad(u) and not dfhack.units.isDead(u) then
+            table.insert(kept, name_of(u, txt))
+            if not dry_run then
+                st.cooks[k] = true
+                if L and L.give_labor and L.give_labor(u, 'COOK') then table.insert(cook_on, name_of(u, txt)) end
+                if mine and is_member(mine, u.id) then
+                    remove_member(mine, u.id)
+                    st.added[k] = nil
+                    sync_hauling(u)
+                end
+                -- (one you set back yourself, st.yours, is left as you set it)
+                if hauls(u) > 0 and not specialist(u) and not st.yours[k] then
+                    set_specialist(u, true)
+                    st.relieved[k] = okt and now or 0
+                    sync_hauling(u)
+                end
+            end
+        end
+    end
+    if not dry_run then save(st) end
+    if #kept == 0 and #back_names == 0 then
+        return {ok = false, rejected = true, error = back and 'the AI keeps no cook at the kitchen'
+                or 'none of those cooks is a free adult citizen'}
+    end
+    return {ok = true, dry_run = dry_run or nil, cooks = kept, cooking_on = cook_on, back = back_names}
 end
 
 -- (0.105.40b fix) The waiting items' first-seen ticks belong to the fort

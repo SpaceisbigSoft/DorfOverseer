@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, skip  # noqa: E402
-from lua_modules_util import module_src  # noqa: E402
+from lua_modules_util import module_src, split_src  # noqa: E402
 
 import planner  # noqa: E402,F401
 import planner_threats as pt  # noqa: E402
@@ -95,7 +95,7 @@ def _():
 
 @test("seal_cavern's own call of seal_lockable is unchanged (reads afresh, as before)")
 def _():
-    acts = (LUA / "ai-threats-actions.lua").read_text(encoding="utf-8")
+    acts = split_src("ai-threats.lua")   # (0.105.119) seal_cavern in ai-threats-seal
     assert "pcall(seal_lockable, o)" in acts
 
 

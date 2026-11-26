@@ -2,12 +2,9 @@
 -- at a brawl and broken up inside the game, every FIGHT_WATCH_TICKS, not once
 -- a game day.
 --
--- Why (B, 24 Nov): seven citizens strangled (SUFFOCATE) by citizens in three
--- hours, a tantrum-thrower and the bystanders drawn in. The brain's
--- break_fights (DFHack fix/loyaltycascade) ran once a cycle, about a game day:
--- at tick 163785 it took 11 units out of their conflicts, and ~600 ticks later
--- two died in the same fight. A fight kills in tens to hundreds of ticks, and
--- a tantrum-thrower re-engages at once; this watcher looks every 10.
+-- Why (B, 24 Nov): seven citizens strangled by citizens in three hours; the
+-- brain's break_fights (fix/loyaltycascade) ran once a cycle, about a game
+-- day, and a fight kills in tens to hundreds of ticks. This looks every 10.
 --
 -- Each pass (DF's world.activities.all; nothing to do when no Conflict
 -- activity exists):
@@ -40,8 +37,7 @@
 -- whenever the `fights` section says it is off.
 --
 -- (item3, the player 24 Nov 16:50) A tantrum that attacks a citizen is ended
--- at once: B's and E's tantrum-throwers strangled citizens with no Conflict
--- activity DF opened for the watcher to see. Each pass also looks at the
+-- at once (B's and E's strangled citizens with no Conflict). Each pass also looks at the
 -- living citizens in a Tantrum or Enraged soldier mood; one whose Attack
 -- action targets a living citizen (or whose opponent is one, or who is in a
 -- Conflict with one) has its soldier_mood_countdown set to 1 (DF ends the
@@ -52,10 +48,8 @@
 -- is only logged (kind 'attack', once a pair a ATTACK_LOG_TICKS), sparring
 -- left out.
 --
--- (item3, B 24 Nov) Sparring: B logged 199 'attack's in ~2 h, nearly all
--- mutual pairs of wrestlers (each attacking the other in the same ticks, no
--- deaths, no tantrum): DF's sparring/combat training opens no Horseplay or
--- Training conflict. A calm citizen's attack on a citizen is sparring when
+-- (item3, B 24 Nov) Sparring (199 mutual wrestlers' 'attack's in ~2 h): DF's
+-- training opens no conflict. A calm citizen's attack on a citizen is sparring when
 -- the guards hold (the target in no tantrum or berserk, neither of the two in
 -- a conflict above Training, neither badly hurt: suffocating, unconscious or
 -- under 3/4 of its blood) and one of:
@@ -86,11 +80,8 @@
 -- is separated at once: the entry's `choke` {by, victim, how, grapple,
 -- suffocation}, counts.chokes (once a conflict).
 --
--- (0.105.115 item21, B and D 25 Nov) DF's beatings: four of the night's six
--- citizens killed by citizens were convicts beaten to death (SUFFOCATE) by
--- the captain of the guard or the sheriff (job BeatCriminal; a sentence's
--- hammer strikes with no hammerer, or a beating). No Conflict, so nothing
--- was capped or separated; each was logged once as a calm 'attack'. Each
+-- (0.105.115 item21, B and D 25 Nov) DF's beatings: four convicts beaten to
+-- death by the law (job BeatCriminal), no Conflict to cap. Each
 -- pass now sets every plotinfo.punishments entry's beating and hammer_strikes
 -- to 0 (the prison time kept): logged 'beating_spared', counts
 -- beatings_spared. A beating already under way (BeatCriminal on a living
@@ -138,7 +129,7 @@ local function fresh_state()
             spare_beatings = true,
             counts = {seen = 0, capped = 0, separated = 0, reengaged = 0, passes = 0, errors = 0, died = 0,
                       tantrums_ended = 0, tantrum_attacks = 0, attacks = 0, spars = 0, chokes = 0, others_separated = 0,
-                      beatings_spared = 0, beatings_stopped = 0},
+                      beatings_spared = 0, beatings_stopped = 0, cursed_chokes = 0},
             seen = {}, recent = {}, log = {}, file_lines = nil, tantrum_logged = {}, attack_logged = {},
             attack_seen = {}, spar_logged = {}, spars_recent = {}}
 end
@@ -496,7 +487,7 @@ local function unit_rows(j)
         table.insert(out, {id = r.id, name = unit_name(r.u), dead = r.kind == 'dead' or nil,
                            kind = (r.kind == 'pet' or r.kind == 'guest') and r.kind or nil,
                            tantrum = (r.kind == 'citizen' and in_tantrum(r.u)) or nil,
-                           berserk = (r.kind == 'citizen' and berserk(r.u)) or nil})
+                           berserk = (r.kind ~= 'pet' and berserk(r.u)) or nil})   -- (item34) dead too
     end
     return out
 end
@@ -770,232 +761,47 @@ local function attack_row(at)
             timer1 = field(at, 'timer1'), timer2 = field(at, 'timer2')}
 end
 
--- --- (item21) DF's beatings ----------------------------------------------------
+-- (0.105.119) this file's locals the part uses (it takes back the ones it
+-- uses as locals of its own): all functions, set once here
+PART_LOCALS = {attack_row = attack_row, attacks_of = attacks_of, bump = bump, conflict_citizen = conflict_citizen, conflicts_by_unit = conflicts_by_unit, field = field, find_unit = find_unit, hurt = hurt, in_tantrum = in_tantrum, is = is, job_of = job_of, living_citizen = living_citizen, log = log, makeown = makeown, unit_name = unit_name}
 
--- every punishment waiting or under way: its beating and hammer strikes set
--- to 0 (the prison time kept). Returns the entries spared.
-function spare_beatings(S, now, dry)
-    if S.spare_beatings == false then return 0 end
-    local list = nil
-    pcall(function() list = df.global.plotinfo.punishments end)
-    if list == nil then return 0 end
-    S.beat_logged = S.beat_logged or {}
-    local n = 0
-    for _, p in ipairs(list) do
-        local b, hs = field(p, 'beating'), field(p, 'hammer_strikes')
-        if (type(b) == 'number' and b > 0) or (type(hs) == 'number' and hs > 0) then
-            local done = false
-            if not dry then
-                done = pcall(function()
-                    if type(b) == 'number' and b > 0 then p.beating = 0 end
-                    if type(hs) == 'number' and hs > 0 then p.hammer_strikes = 0 end
-                end)
-            end
-            local cid = field(p, 'criminal')
-            local last = S.beat_logged[cid]
-            if done or not (last and now - last >= 0 and now - last < ATTACK_LOG_TICKS) then
-                S.beat_logged[cid] = now
-                local cu, ou = find_unit(cid), find_unit(field(p, 'officer'))
-                if done then n = n + 1; bump(S, 'beatings_spared') end
-                log(S, {kind = 'beating_spared', tick = now, criminal = cid, criminal_name = cu and unit_name(cu) or nil,
-                        officer = field(p, 'officer'), officer_name = ou and unit_name(ou) or nil, beating = b,
-                        hammer_strikes = hs, prison = field(p, 'prison_counter'), spared = done,
-                        dry = dry or nil})
-            end
-        end
+---------------------------------------------------------------------------
+-- (0.105.119) DF's beatings spared, a cursed unit's choke, the units' scan
+-- of each pass and a strangling hold read live in a part beside this file
+-- (ai-fights-scan.lua), loaded here, where they stood. It runs in this
+-- module's own environment, so its names stay reqscript('ai-fights').name
+-- for the bridge and the other modules, and a test's swap (F.scan_units =
+-- ...) reaches it. The watcher's state, timer and loop stay in this file.
+-- DFHack reloads a module when its own file changes: a change to the part
+-- alone is picked up once ai-fights.lua is touched too, or the game restarts.
+---------------------------------------------------------------------------
+
+PARTS = {'scan'}
+-- each part marks the version it came with; started afresh at each load, so
+-- a part that failed to load shows as unmarked
+PART_VERSIONS = {['ai-fights'] = '0.105.119'}   -- (0.105.26) bumped with BRIDGE_VERSION
+
+local function part_path(name)
+    local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')
+    if dir then
+        local f = io.open(dir .. name .. '.lua', 'r')
+        if f then f:close() return dir .. name .. '.lua' end
     end
-    for k, t in pairs(S.beat_logged) do if now - t >= ATTACK_LOG_TICKS or now < t then S.beat_logged[k] = nil end end
-    return n
+    return dfhack.findScript and dfhack.findScript(name) or nil
 end
 
--- a law officer's beating (job BeatCriminal) of a living citizen: stopped (the
--- officer's job removed) once the convict is suffocating, unconscious,
--- bleeding or held in a strangling grip. True when stopped (or would be, dry).
-function beating_on(S, now, dry, u, target, h)
-    if S.spare_beatings == false then return false end
-    local g = grapple_of(h.attack)
-    local danger = hurt(target) or ((g and CHOKE_MOVES[g]) and 'choke hold') or nil
-    if not danger then return false end
-    local done = false
-    if not dry then
-        done = pcall(function()
-            local j = u.job.current_job
-            if j == nil then error('no job') end
-            dfhack.job.removeJob(j)
-        end)
-        if done then
-            bump(S, 'beatings_stopped')
-            if danger == 'suffocating' or danger == 'choke hold' then bump(S, 'chokes') end
-        end
+-- a test that loads this file from its text (not from a file) hands the
+-- parts' texts in PART_SOURCES (tests/lua_modules_util.py); nil in the game
+for _, part in ipairs(PARTS) do
+    local name = 'ai-fights-' .. part
+    local src = type(PART_SOURCES) == 'table' and PART_SOURCES[name] or nil
+    if src then
+        assert(load(src, name, 't', _ENV))()
+    else
+        local path = part_path(name)
+        if not path then error('ai-fights: ' .. name .. '.lua is missing (it goes beside ai-fights.lua)') end
+        assert(loadfile(path, 't', _ENV))()
     end
-    local key = tostring(u.id) .. '>' .. tostring(target.id)
-    local last = S.attack_logged[key]
-    S.attack_logged[key] = now
-    if not done and last and now - last >= 0 and now - last < TANTRUM_LOG_TICKS then return true end
-    log(S, {kind = 'beating_stopped', tick = now, id = u.id, name = unit_name(u), target = target.id,
-            target_name = unit_name(target), danger = danger, grapple = g, stopped = done, dry = dry or nil,
-            suffocation = field(field(target, 'counters'), 'suffocation'), attack = attack_row(h.attack)})
-    return true
-end
-
--- one look at the living citizens: a tantrum that attacks a citizen ended,
--- a calm citizen's attack on a citizen logged, or counted as sparring
--- (item3: spar_reason). Returns the tantrums ended.
-function scan_units(S, now, dry, list)
-    local units = {}
-    local ok = pcall(function() units = df.global.world.units.active end)
-    if not ok or units == nil then return 0 end
-    S.tantrum_logged = S.tantrum_logged or {}
-    S.attack_logged = S.attack_logged or {}
-    S.attack_seen = S.attack_seen or {}              -- (item3) a state from an older load of this file
-    S.spar_logged = S.spar_logged or {}
-    S.spars_recent = S.spars_recent or {}
-    S.counts.spars = S.counts.spars or 0
-    local calm = {}
-    local on = S.end_tantrums ~= false
-    local by = nil
-    local ended = 0
-    for _, u in ipairs(units) do
-        local tantrum = in_tantrum(u)
-        local hits = attacks_of(u)
-        if (tantrum or #hits > 0) and unit_kind(u) == 'citizen' then
-            by = by or conflicts_by_unit(list)
-            if tantrum then
-                local target, how, at, act_id = nil, nil, nil, nil
-                for _, h in ipairs(hits) do
-                    target = living_citizen(h.target)
-                    if target then how, at = 'attack', h.attack; break end
-                end
-                if not target then
-                    target = living_citizen(field(field(u, 'opponent'), 'unit_id'))
-                    if target then how = 'opponent' end
-                end
-                if not target then
-                    target, act_id = conflict_citizen(by, u.id)
-                    if target then how = 'conflict' end
-                end
-                if target then
-                    local before = field(u.counters, 'soldier_mood_countdown')
-                    local done = false
-                    if on and not dry and type(before) == 'number' and before > 1 then
-                        done = pcall(function() u.counters.soldier_mood_countdown = 1 end)
-                        if done then
-                            ended = ended + 1
-                            bump(S, 'tantrums_ended')
-                        end
-                    end
-                    local last = S.tantrum_logged[u.id]
-                    if not (last and now - last >= 0 and now - last < TANTRUM_LOG_TICKS) then
-                        S.tantrum_logged[u.id] = now
-                        bump(S, 'tantrum_attacks')
-                        local mood = nil
-                        pcall(function() mood = df.soldier_mood_type[u.counters.soldier_mood] end)
-                        log(S, {kind = 'tantrum_ended', tick = now, id = u.id, name = unit_name(u),
-                                mood = mood, target = target.id, target_name = unit_name(target), how = how,
-                                countdown = before, ended = done, off = (not on) or nil, dry = dry or nil,
-                                suffocation = field(field(target, 'counters'), 'suffocation'),
-                                activity_id = act_id, opponent_timer = field(field(u, 'opponent'), 'timer'),
-                                attack = attack_row(at)})
-                    end
-                end
-            else
-                -- (item3) a calm citizen's attacks: all of this pass's seen first (a
-                -- mutual pair is both ways in the same ticks), judged below
-                for _, h in ipairs(hits) do
-                    local target = living_citizen(h.target)
-                    if target then
-                        S.attack_seen[tostring(u.id) .. '>' .. tostring(target.id)] = now
-                        table.insert(calm, {u = u, target = target, h = h})
-                    end
-                end
-            end
-        end
-    end
-    local tidx = nil
-    for _, c in ipairs(calm) do
-        local u, target, h = c.u, c.target, c.h
-        local job = job_of(u)
-        local beat = job == BEAT_JOB and beating_on(S, now, dry, u, target, h)
-        tidx = tidx or training_index()
-        local why, what = nil, nil
-        if job ~= BEAT_JOB then why, what = spar_reason(S, by, u, target, now, tidx) end
-        if beat then
-            -- (item21) a beating stopped: its own log entry
-        elseif why then
-            -- (item3) sparring: counted once a pair a ATTACK_LOG_TICKS, kept out of the log
-            local lo, hi = math.min(u.id, target.id), math.max(u.id, target.id)
-            local key = tostring(lo) .. '~' .. tostring(hi)
-            local last = S.spar_logged[key]
-            if not (last and now - last >= 0 and now - last < ATTACK_LOG_TICKS) then
-                S.spar_logged[key] = now
-                bump(S, 'spars')
-                table.insert(S.spars_recent, {tick = now, id = u.id, name = unit_name(u), target = target.id,
-                                              target_name = unit_name(target), why = why, what = what})
-                while #S.spars_recent > SPAR_RECENT_KEEP do table.remove(S.spars_recent, 1) end
-            end
-        else
-            local key = tostring(u.id) .. '>' .. tostring(target.id)
-            local last = S.attack_logged[key]
-            if not (last and now - last >= 0 and now - last < ATTACK_LOG_TICKS) then
-                S.attack_logged[key] = now
-                bump(S, 'attacks')
-                log(S, {kind = 'attack', tick = now, id = u.id, name = unit_name(u), target = target.id,
-                        target_name = unit_name(target), job = job,
-                        suffocation = field(field(target, 'counters'), 'suffocation'),
-                        attack = attack_row(h.attack)})
-            end
-        end
-    end
-    for id, t in pairs(S.tantrum_logged) do if now - t >= TANTRUM_LOG_TICKS or now < t then S.tantrum_logged[id] = nil end end
-    for k, t in pairs(S.attack_logged) do if now - t >= ATTACK_LOG_TICKS or now < t then S.attack_logged[k] = nil end end
-    for k, t in pairs(S.attack_seen) do if now - t > MUTUAL_TICKS or now < t then S.attack_seen[k] = nil end end
-    for k, t in pairs(S.spar_logged) do if now - t >= ATTACK_LOG_TICKS or now < t then S.spar_logged[k] = nil end end
-    return ended
-end
-
--- --- (0.105.112) a strangling hold: separated at once ------------------------
-
--- the grapple move of an attack's wrestle_info (df.wrestle_attack_type's name:
--- 1 Choke, 13 FollowStrangle, as DF 53.x lists them), or nil
-function grapple_of(at)
-    local g = field(field(at, 'wrestle_info'), 'grapple_attack')
-    if type(g) ~= 'number' or g < 0 then return nil end
-    local ok, nm = pcall(function() return df.wrestle_attack_type[g] end)
-    if ok and type(nm) == 'string' then return nm end
-    return CHOKE_CODES[g] or tostring(g)
-end
-
--- a unit of the conflict choking a living citizen of it: {by, victim, how =
--- 'hold' (a Choke/FollowStrangle grapple; only when `fighting`, a brawl or
--- worse: wrestlers choke in sparring) or 'suffocation' (its target's
--- counters.suffocation > 0, at any level), grapple, suffocation}, or nil
-function choke_of(j, fighting)
-    local cit = {}
-    for _, r in ipairs(j.units) do if r.kind == 'citizen' then cit[r.id] = r end end
-    local found = nil
-    for _, r in ipairs(j.units) do
-        if r.kind ~= 'dead' then
-            for _, h in ipairs(attacks_of(r.u)) do
-                local v = cit[h.target]
-                if v and h.target ~= r.id then
-                    local g = grapple_of(h.attack)
-                    local suff = field(field(v.u, 'counters'), 'suffocation')
-                    if type(suff) ~= 'number' then suff = nil end
-                    local c = {by = r.id, by_name = unit_name(r.u), victim = v.id, victim_name = unit_name(v.u),
-                               grapple = g, suffocation = suff}
-                    if fighting and g and CHOKE_MOVES[g] then
-                        c.how = 'hold'
-                        return c
-                    end
-                    if suff and suff > 0 and not found then
-                        c.how = 'suffocation'
-                        found = c
-                    end
-                end
-            end
-        end
-    end
-    return found
 end
 
 -- --- one pass ---------------------------------------------------------------

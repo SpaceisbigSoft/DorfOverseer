@@ -37,7 +37,7 @@ SPLIT_VERSION = "0.105.64"
 
 # each module: its parts, and the sha256 + size of the one file at 0.105.64 (8183548)
 MODULES = {
-    "ai-trade": {"parts": ["screen", "depot"],
+    "ai-trade": {"parts": ["unload", "screen", "depot"],   # (0.105.119) unload split off the hub, first
                  "sha": "e898085680fcaf0a924f4582bddd24334f41eec7eec004c504eaad8e3091f47c", "size": 76894,
                  "was": 76894},
     "ai-homes": {"parts": ["furnish"],
@@ -61,7 +61,7 @@ def scaffold_re(hub: str) -> re.Pattern:
         r"--.*",
         rf"if not PART_LOCALS then qerror\('{h}-\w+ is a part of {h}; run {h}'\) end",
         rf"PART_VERSIONS = PART_VERSIONS or \{{\}}; PART_VERSIONS\['{h}-\w+'\] = '[^']+'   -- .*",
-        r"local [\w, ]+ = PART_LOCALS\.\w+(, PART_LOCALS\.\w+)*   -- \(r9\) .*",
+        r"local [\w, ]+ = PART_LOCALS\.\w+(, PART_LOCALS\.\w+)*   -- \((?:r9|0\.105\.119)\) .*",
         r"PART_LOCALS = \{[\w =,]+\}",
         r"PART_LOCALS\.\w+(, PART_LOCALS\.\w+)* = [\w, ]+",
     ]
@@ -286,7 +286,7 @@ def make_tests(hub: str, names_expected: list[str]) -> None:
         assert not ok and f"{parts[0]} is a part of {hub}; run {hub}" in err, err
 
 
-make_tests("ai-trade", ["survey", "deal", "press", "open_screen", "call_trader", "probe_screen"])
+make_tests("ai-trade", ["survey", "unload", "clear_caravan_goods", "deal", "press", "open_screen", "call_trader", "probe_screen"])
 make_tests("ai-homes", ["census", "house", "taste_of", "furnish_plan", "furnish_liked", "citizens_taste"])
 
 

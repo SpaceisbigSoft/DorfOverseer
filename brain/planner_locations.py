@@ -13,6 +13,22 @@ from planner_core import *  # noqa: F401,F403
 __all__ = ["_location_supply_rules", "_wish_words", "_wish_met", "petition_lean", "wish_key", "_location_petition_rules", "_meeting_notes", "_grandeur_rule", "_location_value_rule", "_quick_location_rule"]
 
 
+
+def zone_has_chairs(loc: dict, zone_id: int) -> bool:
+    """(0.105.119 item39) A tavern zone with a chair in it (the report's
+    `zone_chairs`, zone id -> chairs; an older bridge: every zone). A zone with
+    none was asked to pair chairs and refused "no chairs in zone #" (B 10 in
+    3.5 h): its chairs come with the tavern's furniture, not from pairing."""
+    zc = loc.get("zone_chairs")
+    if isinstance(zc, list) and not zc:
+        return False
+    if not isinstance(zc, dict):
+        return True
+    try:
+        return int(zc.get(str(zone_id)) or 0) > 0
+    except (TypeError, ValueError):
+        return True
+
 def _location_supply_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     """(0.84) What the tavern, temple and library keep: mugs for the tavern
     (stone, at a Craftsdwarf's workshop); a note for instruments and paper,
@@ -48,7 +64,7 @@ def _location_supply_rules(s: dict, cfg: dict, proposals: list, notes: list) -> 
         # (0.104.78) every tavern zone, and the dining halls the stop-gaps lie
         # over, tried in turn by the bridge
         zones = [z for e in taverns if e.get("type") == "INN_TAVERN" and not e.get("inactive")   # (item9)
-                 for z in _l(e.get("zones")) if isinstance(z, int)]
+                 for z in _l(e.get("zones")) if isinstance(z, int) and zone_has_chairs(e, z)]
         if zones:
             proposals.append(Proposal("pair_chairs", {"type": "pair_chairs", "zones": zones[:6],
                                                       "max": min(20, max(5, int(friends_badly // 4)))},   # (0.104.137)

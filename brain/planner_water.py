@@ -305,6 +305,7 @@ for _s in (EMERGENCY, NO_COOLDOWN, LIMIT_EXEMPT, LOOP_EXEMPT, STEER_PROTECTED):
 
 # (0.105.36) the bridge's RETIRE_MAX (lua/ai-waterworks.lua): retired this often, never begun again
 WATERWORKS_RETIRE_MAX = 2
+WATERWORKS_REFUSED_MAX_TICKS = 336 * 1200   # (item39) the same refusal again and again: waited at most a year
 
 # (v35 fix) holds that watch for water still coming in: never retired
 LEAK_WATCH_HOLDS = ("water is still getting in", "the floodgate is gone")
@@ -415,6 +416,12 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
     for part, key in (("floodgate", "floodgates_free"), ("mechanisms", "mechanisms_free")):
         if row.get(key) == 0 and stage == "building":
             notes.append(f"{words} waits for {part} (none free)")
+    # (0.105.119 item39) the dig or the building the step waits on (the report
+    # counts it as the step does): not asked until it is done (D: "# tile(s)
+    # left to dig" 43 times in 3.5 h; B/C: "being built: the floodgate")
+    if (stage == "digging" and isinstance(row.get("dig_left"), int) and row["dig_left"] > 0) or \
+            (stage == "building" and isinstance(row.get("build_left"), int) and row["build_left"] > 0):
+        return True
     proposals.append(Proposal(f"waterworks_{kind}", step, f"{words}: {STAGE_WORDS.get(stage, stage)}: the next step", 5))
     return True
 
@@ -469,6 +476,12 @@ def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -
             # (0.105.38 review) a refused magma workshop: once a season, not
             # every cycle (the deep magma stays deep)
             wait = max(wait, cfg.get("waterworks_magma_retry_ticks", 84 * 1200))
+        # (0.105.119 item39) the same answer again and again (the bridge counts
+        # it): twice the wait each time, at most a year (E/F: "no still, fresh
+        # water beside solid rock ..." once a game month, 10-11 times in 3.5 h)
+        times = r.get("times") if isinstance(r, dict) else None
+        if isinstance(times, int) and times > 1 and not r.get("later"):
+            wait = min(WATERWORKS_REFUSED_MAX_TICKS, wait * 2 ** min(times - 1, 6))
         return not r or not isinstance(r.get("tick"), int) or now - r["tick"] >= wait
 
     def started(id_: str) -> bool:

@@ -391,6 +391,55 @@ def _():
     assert "gatehouse" in py(env.build_killzone(1, 2, "cage", False, False))["error"]
 
 
+@test("build (0.105.119 item40): a weapon trap's weapon slot takes trap components only, never a pick")
+def _():
+    need_lua()
+    lua, env, w = world()
+    fort(lua, w)
+    entrance(lua, w)
+    # DF's enums and a planned weapon trap at each tile (DFHack's filters: a mechanism, any weapon)
+    W_ = lua.execute("""
+        local env, W = ...
+        env.df.building_type = {Trap = 23}
+        env.df.trap_type = {WeaponTrap = 3, CageTrap = 1}
+        env.df.job_item_vector_id = {ANY_WEAPON = 7, TRAPPARTS = 9}
+        env.df.item_type = {TRAPCOMP = 61, TRAPPARTS = 60, WEAPON = 24}
+        W.traps = {}
+        env.dfhack.buildings = {findAtTile = function(p)
+            local k = p.x .. ',' .. p.y .. ',' .. p.z
+            if not W.traps[k] then
+                local tt = 3
+                for _, q in ipairs(W.placed) do
+                    if q.x == p.x and q.y == p.y and q.z == p.z and q.text ~= 'Tw' then tt = 1 end
+                end
+                W.traps[k] = {trap_type = tt, getType = function() return 23 end,
+                    jobs = {{job_items = {elements = {
+                        {vector_id = 9, item_type = 60, item_subtype = -1},
+                        {vector_id = 7, item_type = -1, item_subtype = -1}}}}}}
+            end
+            return W.traps[k]
+        end}
+        return W
+    """, env, w)
+    r = py(env.build_killzone(1, 3, "weapon", False, False))
+    assert r["ok"] and r["traps"] == 3 and r.get("blades_only") == 3, r
+    traps = py(W_.traps)
+    assert len(traps) == 3, traps
+    for b in traps.values():
+        mech, weapon = b["jobs"][0]["job_items"]["elements"]
+        assert weapon["item_type"] == 61 and weapon["item_subtype"] == -1, weapon   # trap components only
+        assert mech["item_type"] == 60, mech                                       # the mechanism's slot as it was
+    # a cage trap is left alone; no building reader (an old DFHack): the trap still placed, said why
+    cage = lua.eval("function(env) return env.blades_only({trap_type = 1, getType = function() return 23 end, jobs = {}}) end")
+    assert cage(env) == 0
+    env.dfhack.buildings = None
+    lua2, env2, w2 = world()
+    fort(lua2, w2)
+    entrance(lua2, w2)
+    r = py(env2.build_killzone(1, 2, "weapon", False, False))
+    assert r["ok"] and r["traps"] == 2 and r.get("blades_why") and not r.get("blades_only"), r
+
+
 # --- 4. the report, cages, TRAPAVOID ---------------------------------------------------------
 
 @test("report: a possible zone (its stretch, the drawbridge's drop), and the AI's zone with built and full cages")

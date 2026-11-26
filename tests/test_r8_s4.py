@@ -231,7 +231,8 @@ def _():
     # ((r9) 44: shaft_threat_near, kept for callers of the old name, had none and went)
     # ((0.105.98) 45: well_shaft_hatches, the hatches alone for the threats survey's openings)
     # ((0.105.116 item28) 48: filled_well_exit, filled_well_occupant, filled_well_stair_near: the cistern's way out)
-    assert len(funcs) == 48, len(funcs)
+    # ((0.105.119 item39) 49: shaft_lever_spot_for, the lever's spot for the watch part's report)
+    assert len(funcs) == 49, len(funcs)
     for fn in ("water_below", "find_well_spot", "find_shore_well_spot", "find_cavern_well_spot",
                "find_gallery_well_spot", "designate", "shaft_gate_state", "well_shaft_step", "hostile_wild",
                "shaft_judge", "shaft_threats", "shaft_watch_start", "well_lids", "seal_well_stairs",

@@ -26,7 +26,7 @@ from lua_modules_util import SPLIT, split_parts, split_src, module_src  # noqa: 
 
 LUA_DIR = ROOT / "lua"
 HUB_NAME = "ai-threats"
-PARTS = ["ai-threats-survey", "ai-threats-actions"]
+PARTS = ["ai-threats-survey", "ai-threats-actions", "ai-threats-seal"]   # (0.105.119) -seal split off -actions
 BRIDGE = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
 VERSION = re.search(r"^BRIDGE_VERSION = '([^']+)'", BRIDGE, re.M).group(1)
 
@@ -35,17 +35,17 @@ def text(n: str) -> str:
     return (LUA_DIR / f"{n}.lua").read_text(encoding="utf-8")
 
 
-@test("sizes: the three files are each under 60 KB (the one was 105 KB)")
+@test("sizes: the four files are each under 60 KB (the one was 105 KB)")
 def _():
     for n in [HUB_NAME] + PARTS:
         size = (LUA_DIR / f"{n}.lua").stat().st_size
         assert size < 60 * 1024, (n, size)
 
 
-@test("hub: PARTS lists survey then actions; the tests' helper reads the family (SPLIT, split_parts, split_src)")
+@test("hub: PARTS lists survey, actions, seal; the tests' helper reads the family (SPLIT, split_parts, split_src)")
 def _():
     hub = text(HUB_NAME)
-    assert re.search(r"^PARTS = \{'survey', 'actions'\}$", hub, re.M)
+    assert re.search(r"^PARTS = \{'survey', 'actions', 'seal'\}$", hub, re.M)
     assert "ai-threats.lua" in SPLIT and split_parts("ai-threats.lua") == PARTS
     whole = split_src("ai-threats.lua")
     assert whole == "\n".join(text(n) for n in [HUB_NAME] + PARTS)
@@ -72,13 +72,13 @@ SCAFFOLD = [
     r"--.*",
     r"if not PART_LOCALS then qerror\('ai-threats-\w+ is a part of ai-threats; run ai-threats'\) end",
     r"PART_VERSIONS = PART_VERSIONS or \{\}; PART_VERSIONS\['ai-threats-\w+'\] = '[^']+'   -- .*",
-    r"local [\w, ]+ = PART_LOCALS\.\w+(, PART_LOCALS\.\w+)*   -- \(r8\) .*",
+    r"local [\w, ]+ = PART_LOCALS\.\w+(, PART_LOCALS\.\w+)*   -- \((?:r8|0\.105\.119)\) .*",
     r"PART_LOCALS = \{[\w =,]+\}",
     r"PART_LOCALS\.\w+(, PART_LOCALS\.\w+)* = [\w, ]+",
 ]
 SCAFFOLD_RE = re.compile("^(?:" + "|".join(SCAFFOLD) + ")$")
 # the hub's end: the hand-over, the part list and the loader (lua/ai-gates.lua's, with this module's name)
-LOADER = """PARTS = {'survey', 'actions'}
+LOADER = """PARTS = {'survey', 'actions', 'seal'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
 PART_VERSIONS = {['ai-threats'] = 'V'}   -- (0.105.26) bumped with BRIDGE_VERSION
@@ -129,7 +129,7 @@ def _bodies() -> tuple[list[str], list[str]]:
         assert lines[i] == "", n
         removed += lines[:i + 1]
         lines = lines[i + 1:]
-        t = max((j for j, l in enumerate(lines) if l.startswith("-- (r8)")), default=None)
+        t = max((j for j, l in enumerate(lines) if l.startswith(("-- (r8)", "-- (0.105.119)"))), default=None)
         if t is not None and all(SCAFFOLD_RE.match(l) for l in lines[t:]):
             removed += lines[t:]
             lines = lines[:t]
@@ -259,7 +259,7 @@ def _():
     assert extra == "PARTS PART_LOCALS PART_SOURCES PART_VERSIONS", extra
     assert dict(env.PART_VERSIONS) == {n: VERSION for n in [HUB_NAME] + PARTS}, dict(env.PART_VERSIONS)
     given = re.search(r"^PART_LOCALS = \{([\w =,]+)\}$", text(HUB_NAME), re.M).group(1)
-    names = [p.split(" = ")[0] for p in given.split(", ")] + ["okey", "watcher_held", "lure_open_ids"]
+    names = [p.split(" = ")[0] for p in given.split(", ")] + ["okey", "watcher_held", "lure_open_ids", "insane_held"]
     for n in names:
         assert env.PART_LOCALS[n] is not None, n
     assert len(list(env.PART_LOCALS.keys())) == len(names)

@@ -335,6 +335,14 @@ def note_mood_help(p, r: dict, state: dict, memory, now) -> None:
               if isinstance(v, int) and isinstance(now, int) and 0 <= now - v < 40 * 1200}
         sp[a["kind"]] = now if isinstance(now, int) else 0
         mh["shop_placed"] = sp
+    # (0.105.119 item36) the reserve's slaughter refused for want of a spare animal: the herd
+    # remembered, not asked again till it changes (planner_moods.reserve_no_spare)
+    if getattr(p, "rule", "") == "mood_reserve" and a.get("type") == "slaughter_one":
+        if _d(r).get("ok") is False and "no spare tame animal" in str(_d(r).get("error") or ""):
+            from planner_moods import herd_sig
+            mh["reserve_no_spare"] = herd_sig(state)
+        elif _d(r).get("ok") is True:
+            mh.pop("reserve_no_spare", None)
     # (0.105.51) an animal sent to the butcher for the leather reserve: one a fortnight
     if getattr(p, "rule", "") == "mood_reserve" and a.get("type") == "slaughter_one" and _d(r).get("ok") is True:
         mh["reserve_slaughter"] = now if isinstance(now, int) else 0

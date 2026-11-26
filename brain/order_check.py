@@ -55,11 +55,13 @@ WOOD_RECIPES = {"wheelbarrow", "wood_crafts", "ballista_parts", "catapult_parts"
 CLOTH_KIND = {"cloth_bag": "plant", "cloth_rope": "plant", "cloth_shoes": "plant", "cloth_socks": "plant",
               "yarn_bag": "yarn", "yarn_rope": "yarn", "silk_bag": "silk", "silk_rope": "silk"}
 THREAD_KIND = {"weave_plant_cloth": "plant", "weave_yarn_cloth": "yarn", "weave_silk_cloth": "silk"}
-# made with fuel unless at the magma workshop of its kind (coke and charcoal
-# are the fuel; sand is only collected)
+# made with fuel unless at the magma workshop of its kind (charcoal needs none;
+# sand is only collected). (0.105.119 item41) coke DOES burn one fuel a job: the
+# vanilla raws' BITUMINOUS_COAL_TO_COKE / LIGNITE_TO_COKE carry [FUEL] (D, 25 Nov:
+# two mood coke orders at fuel 0 cancelled by DF "Needs refined coal")
 FUEL_SHOPS = {"MetalsmithsForge": "MagmaForge", "Smelter": "MagmaSmelter", "GlassFurnace": "MagmaGlassFurnace",
               "Kiln": "MagmaKiln"}
-NO_FUEL = {"make_charcoal", "collect_sand", "coke_bituminous", "coke_lignite"}
+NO_FUEL = {"make_charcoal", "collect_sand"}
 # the labour each workshop's work calls for (df.unit_labor tokens)
 # (0.105.48, A2-10) 53.17: the mason's work is the stone carver's, its
 # blocks the stonecutter's; MASON builds walls)

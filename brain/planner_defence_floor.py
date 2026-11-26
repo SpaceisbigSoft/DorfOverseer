@@ -102,7 +102,10 @@ def hidden_from(s: dict, memory, cfg: dict) -> str:
             if isinstance(t, dict) and not wildlife_threat(t, cfg)]
     if any(t.get("invader") for t in rows):
         return ""
-    great = [t for t in rows if _great(t)]
+    # (0.105.119 item32) a were in beast form is never hidden from: the squads go
+    from planner_military_weres import were_ids
+    weres = were_ids(s)
+    great = [t for t in rows if _great(t) and t.get("id") not in weres]
     if not great:
         return ""
     name = str(great[0].get("name") or "a great danger").split(",")[0][:40]

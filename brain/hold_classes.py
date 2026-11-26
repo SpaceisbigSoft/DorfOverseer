@@ -75,7 +75,7 @@ _EXPANSION_RULES = {
 
 _DEFENCE_RULES = {
     "threat_alert", "alerts", "gate", "gates", "gate_guard", "gate_doors", "gate_lever", "gate_parts", "gate_jobs",
-    "gate_stuck", "gate_dogs", "entrances", "cavern_openings", "cavern_scan", "seal_cavern", "destroyer_gate",
+    "gate_stuck", "gate_dogs", "mechanism_stock", "entrances", "cavern_openings", "cavern_scan", "seal_cavern", "destroyer_gate",
     "intruder_guard", "thief_watch", "traps", "cages", "near_gates", "near_gates_refresh", "fire_guard", "moon_cell",
     "were_cells",   # (0.105.115 item24) werebeast cells behind drawbridges: the level and its links
     "squad_make", "squad_fill", "squad_trim", "squad_attack", "squad_recall", "soldier_swap", "train",
@@ -95,8 +95,8 @@ _SURVIVAL_RULES = {
     "waterworks_power_run", "magma_guard", "magma_reclaim", "magma_shut", "lure_shut",
     # drink and food
     "drink", "drink_fruit", "booze_variety", "food", "food_barrels", "food_standing", "food_store",
-    "food_store_level", "farms", "farm_crops", "surface_farm", "crops", "kitchen", "seed_reserve", "seed_brew", "fat_ban", "meal_drink", "meal_variety",
-    "good_cooks", "train_cook", "needs_meal", "dairy", "milking", "eggs", "nest_box_order", "fishery",
+    "food_store_level", "farms", "farm_crops", "surface_farm", "crops", "kitchen", "seed_reserve", "seed_brew", "fat_ban", "meal_drink", "meal_cheap", "meal_variety",
+    "good_cooks", "cook_staff", "train_cook", "needs_meal", "dairy", "milking", "eggs", "nest_box_order", "fishery",
     "butchery_labor", "butchery_shop", "slaughter", "hunting", "hunting_stop", "fruit_pickers", "fruit_zone",
     "fruit_pause", "fruit_resume",   # (item6)
     "gather", "gather_trim", "tree_quota", "vermin", "herd", "herd_cull", "herd_targets", "pasture",
@@ -118,7 +118,7 @@ _SURVIVAL_RULES = {
     "necro_corpses",
     # the mind: needs, stress, tantrums, justice, moods
     "stress_care", "needs_craft", "needs_shops", "needs_trinkets", "trinket_orders", "needs_finery",
-    "recreation", "social_places", "calm_burrow", "free_time", "tavern", "tavern_chest", "tavern_urgent", "temple_chest",
+    "recreation", "social_places", "war_leisure", "calm_burrow", "free_time", "tavern", "tavern_chest", "tavern_urgent", "temple_chest",
     "quick_temple", "quick_tavern", "break_fights", "fight_watch", "convict", "chronic_care", "chronic_convict", "chronic_posts",
     "jail_urgent", "jail_size", "jail_more", "prisoners_water", "pit_prisoners", "mothers", "mood",
     "mood_reserve", "mood_shelter", "mood_hospital", "hospital_stock", "instrument_orders", "join_levels",
@@ -192,7 +192,7 @@ _SURVIVAL_ACTIONS = {
     # ways in and out for the stranded
     "open_entrance", "dig_way_in", "way_out_open", "way_out_leave", "close_world", "redig_projects", "location_access",
     # food, drink, farms, the herd
-    "farm_plots", "farm_thresholds", "set_farm_crops", "kitchen_brewables", "kitchen_fat", "kitchen_drinks", "seed_reserve", "kitchen_skill",
+    "farm_plots", "farm_thresholds", "set_farm_crops", "kitchen_brewables", "kitchen_fat", "kitchen_drinks", "kitchen_cheap", "seed_reserve", "kitchen_skill",
     "train_cook", "gather_plants", "trim_gathering", "hunters", "food_standing", "fruit_zone", "food_pile",
     "food_barrels", "keep_mousers", "pasture", "make_pasture", "nest_boxes", "slaughter_one", "place_mood_shop", "herd_targets",
     "tool",

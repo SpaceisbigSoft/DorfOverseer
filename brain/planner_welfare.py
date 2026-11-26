@@ -180,6 +180,53 @@ def burial_fallback_due(s: dict, cfg: dict, memory=None) -> tuple[int, str]:
     return 0, ""
 
 
+def _coffins_other_shop(s: dict, cfg: dict, proposals: list, memory, waiting: int, free: int) -> None:
+    """(0.105.119 item35) Coffins placed for the dead wait on an order that
+    doesn't move: the other shop makes them too.
+
+    A "War-hold", 25 Nov, y253 winter to y254 summer (states/*.json): 4-8 of
+    the fort's dead lay unburied in reach, 0 free tombs, 7-8 coffins placed
+    by burial_corner waiting, 0 coffins in store, a stone_coffin order of 5
+    at 5 left a season (one Masons' workshop, the masons busy): the bodies
+    lay three seasons. The stress census: SawDeadBody 59-76 citizens,
+    Miasma 48-67, ghosts haunting (13-40 citizens, 12 killed by them), the
+    fort 30-50% unhappy. burial_coffins asked nothing more while that order
+    stood. Now when coffins have waited with none free for
+    `burial_coffins_other_days` (3, by Welfare as the burial waits) and the
+    order in one material is queued, the other is ordered too: wood at the
+    carpenters' for a stuck stone order, stone at the masons' for a stuck
+    wooden one. Booked in memory.welfare["coffins_wait_since"]."""
+    book = _book(memory)
+    now = abs_tick(s)
+    if waiting <= free:
+        book.pop("coffins_wait_since", None)
+        return
+    since = book.get("coffins_wait_since")
+    if not isinstance(since, int) or since > now:
+        book["coffins_wait_since"] = now
+        return
+    days = int(cfg.get("burial_coffins_other_days", 3))
+    if cfg.get("r3_welfare_burial", PLANNER_CONFIG.get("r3_welfare_burial", True)):
+        days = int(max(1, min(2 * days, round(days * 2 ** (-_welfare(s) / 100.0)))))
+    if now - since < days * TICKS_PER_DAY:
+        return
+    stone_q, wood_q = queued(s, {"stone_coffin"}), queued(s, {"wooden_coffin"})
+    if not (stone_q or wood_q) or (stone_q and wood_q) or _ordering(proposals, {"stone_coffin", "wooden_coffin"}):
+        return
+    b = _d(s.get("buildings"))
+    if stone_q and int(_d(s.get("stocks")).get("wood") or 0) > 0 and _has_shop(b, "Carpenters"):
+        recipe, what, other = "wooden_coffin", "wooden ones at the carpenters'", "stone"
+    elif wood_q and not stone_short(s, waiting - free) and _has_shop(b, "Masons"):
+        recipe, what, other = "stone_coffin", "stone ones at the masons'", "wooden"
+    else:
+        return
+    n = waiting - free
+    proposals.append(Proposal("burial_coffins", {"type": "work_order", "recipe": recipe, "amount": n},
+                              f"{waiting} coffin(s) placed for the dead have waited {(now - since) // TICKS_PER_DAY} "
+                              f"days with {free} free and the {other} coffin order hasn't filled them: {n} "
+                              f"{what} too (the unburied are seen by all, and may rise as ghosts)", 3, True))
+
+
 def _ordering(proposals: list, recipes: set) -> bool:
     """A work order for one of these recipes already proposed this cycle."""
     return any(_d(p.action).get("type") == "work_order" and _d(p.action).get("recipe") in recipes
@@ -215,6 +262,7 @@ def _burial_rules(s: dict, cfg: dict, proposals: list, notes: list, memory, rule
                                                               "amount": waiting - free},
                                           f"{waiting} coffin(s) placed for the dead outside a tomb level wait and "
                                           f"{free} are free in store: make {waiting - free}", 3, True))
+        _coffins_other_shop(s, cfg, proposals, memory, waiting, free)
     # memorial slabs ahead for the dead nobody can reach
     wanted = int(d.get("memorials_wanted") or 0)
     if wanted > 0 and (rules_ or {}).get("engrave_slabs", True):

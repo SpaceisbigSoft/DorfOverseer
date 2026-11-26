@@ -145,7 +145,11 @@ def _homes_rules(s: dict, cfg: dict, traits: dict, proposals: list, notes: list)
     # the stressed to rooms they like (their likes raise a room's worth to them)
     st = _d(_d(s.get("dwarves")).get("stress"))
     stressed = sum(_int(st.get(k)) for k in ("miserable", "very_unhappy", "unhappy"))
-    if stressed >= cfg["homes_liked_min_stressed"] and free - give > 0:
+    # (0.105.119 item39) the census's dry run of the move: none much better for
+    # anyone stressed, nothing to ask (A 14, B 11 refusals in 3.5 h)
+    up = h.get("upgrades_placed" if taste_on(s) else "upgrades_plain")
+    better = not isinstance(up, int) or up > 0
+    if stressed >= cfg["homes_liked_min_stressed"] and free - give > 0 and better:
         n = min(cfg["homes_liked_max"], free - give)
         act = {"type": "house_dwarves", "house": 0, "upgrade": n}
         why = (f"{stressed} citizens are unhappy or worse and {free} bedrooms are free: up to {n} "

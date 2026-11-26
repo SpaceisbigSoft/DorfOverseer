@@ -432,6 +432,12 @@ def hazard_alert(s: dict, cfg: dict, raising: bool = False) -> str:
     b0 = next((b for b in _l(h.get("berserk")) if isinstance(b, dict)), None)    # (0.105.33) a dict row only
     if b0 is not None:
         return f"{b0.get('name') or 'a dwarf'} " + ("has changed into a beast" if b0.get("changed") else "has gone berserk")
+    # (0.105.119 item32) a visiting were in beast form: sounded and held like
+    # a berserk citizen (F's Wereskink: the alarm came down while it killed)
+    from planner_military_weres import were_alert
+    were = were_alert(s)
+    if were:
+        return were
     from planner_hazards import magma_alarm     # (0.105.41, item 7) spilt magma spreading near the dwarves
     return magma_alarm(s, cfg)
 
@@ -480,7 +486,26 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
 
         changed = any(b.get("changed") for b in berserk)
         weak = None if able or busy else weak_squad(squads)
-        if able and just_sent(able[0]):
+        # (0.105.119 item32) a were in beast form: every free armed squad at
+        # once, not one a cycle (A, y253: seven werepanthers, one squad sent
+        # a cycle while 54 soldiers stood by); the player's own orders kept
+        # and the squads waiting in the shelter go out too
+        were_go = []
+        if changed:
+            were_go = [q for q in squads if can_fight(q, cfg) and not _players(q) and not q.get("guarding")
+                       and (not q.get("ai_orders") or q.get("sheltering")) and not just_sent(q)]
+        for q in were_go:
+            proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": ids},
+                                      f"{names}: a werebeast in beast form attacking others, a top threat: "
+                                      f"send {q.get('name') or 'the squad'} (every free squad goes)", 0, guard=True))
+        if were_go:
+            if busy and not set(ids) <= set(busy[0]["kill_ids"]) and not just_sent(busy[0]):
+                q = busy[0]
+                kill = list(dict.fromkeys(ids + [x for x in q["kill_ids"] if isinstance(x, int)]))[:50]
+                proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": kill},
+                                          f"{names}: a werebeast in beast form: {q.get('name') or 'the squad'} "
+                                          "takes them on too", 0, guard=True))
+        elif able and just_sent(able[0]):
             notes.append(f"{names} gone berserk: {able[0].get('name') or 'a squad'} was sent after them "
                          f"{(now - sent_at[str(able[0]['id'])]) // 50} hour(s) ago")
         elif able:
@@ -514,6 +539,10 @@ def _hazard_rules(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
         else:
             notes.append(f"{names} gone berserk and no squad has anyone armed: the alarm keeps the others in "
                          "the shelter meanwhile, and the squads are armed first")
+    # (0.105.119 item32) an AI kill order naming one of the fort's own back in
+    # their own form (a were changed back, a berserk dwarf calmed): off it
+    from planner_military_weres import were_spare_rules
+    were_spare_rules(s, cfg, proposals, notes)
     wet, burning = _l(h.get("wet")), _l(h.get("burning"))
     if burning:
         # (0.105.35) a plain note: nobody, the AI or the player, can reach them in time

@@ -559,8 +559,13 @@ def _were_outsiders(s, cfg, w, proposals, notes):
         notes.append(f"{names}: a werebeast visitor in the fort (the curse found on them) and no squad free: "
                      "sent at once a squad is free")
         return
+    # (0.105.119 item31) a wild werebeast come to the fort ("has come!", hostile), changed
+    # back after its moon: F, 25 Nov, the wereskink Atthem killed at 15:09, walked off
+    # in human form and came back at the next moon (15:59) to kill again
+    wild = [x for x in rows if x.get("hostile") and not x.get("visitor")]
+    what = "a wild werebeast (hostile, it came to kill)" if wild else "a werebeast visitor"
     proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": ids[:10]},
-                              f"{names}: a werebeast visitor (the curse found on them), in their own form now: "
+                              f"{names}: {what} (the curse found on them), in their own form now: "
                               f"send {q.get('name') or 'the squad'} before the full moon changes them", 0))
 
 
@@ -599,6 +604,39 @@ def were_cells_rule(s, cfg, w, rows, rules, proposals, notes):
                                f"doors): dig {want} cells, each behind a drawbridge on a lever, now") if n == 0 else
                               (f"{len(rows)} werebeast citizens and {n} cells behind drawbridges: dig {want} more"),
                               2))
+
+
+def _were_reserve(rows, proposals) -> bool:
+    """(0.105.119 item31) A cell for each cursed citizen as soon as the curse
+    is known, not at the moon. A, 25 Nov: bitten at 16:27:43 by a wild
+    werepanther, changed at 16:33 (the next full moon, ~5 real minutes on)
+    while 39 moon_cell calls found no cell; 25 dead. The reserve call picks a
+    room (a were cell, a jail, a bedroom, an office, a tomb, else digs a side
+    cell) and holds it for them; nobody is moved or locked until the moon."""
+    need = [x for x in rows if not x.get("changed") and not x.get("cell")]
+    if not need:
+        return False
+    ids = [x["id"] for x in rows if not x.get("changed") or x.get("cell")]
+    proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": ids, "reserve": True},
+                              f"{', '.join(str(x.get('name')) for x in need[:3])}: werebeast-cursed and no cell yet: "
+                              "one made ready now, before the full moon (any room with a door, else one dug)", 2))
+    return False        # the release of the others' cells may still be due
+
+
+def _were_cell_notes(cfg, rows, notes) -> None:
+    """(0.105.119 item31/34) A cursed citizen known a moon or more without a
+    cell they can be locked in (a note, not a Needs you: the AI takes any room
+    with a door or digs one itself), and one locked in yet found outside."""
+    moon = int(_c(cfg, "moon_days"))
+    long = [x for x in rows if not x.get("changed") and _num(x.get("days_cursed")) and x["days_cursed"] >= moon
+            and (not x.get("cell") or x.get("cell_kind") == "were_open")]
+    if long:
+        notes.append(f"{', '.join(str(x.get('name')) for x in long[:3])}: werebeast-cursed {long[0]['days_cursed']}+ "
+                     "days and no cell that locks: the AI takes any room with a door, or digs a side cell, now")
+    out = [x for x in rows if x.get("outside")]
+    if out:
+        notes.append(f"{', '.join(str(x.get('name')) for x in out[:3])}: locked in a werebeast cell and found "
+                     "outside it: moved in again now")
 
 
 def _were(s, cfg, t, rules, proposals, notes):
@@ -641,7 +679,8 @@ def _were(s, cfg, t, rules, proposals, notes):
                      f"(moon phase {w.get('moon_phase')}); the first change teaches it")
     # (0.105.114) the cells of the living only: a dead werebeast's (the bridge
     # frees it) is no werebeast to let out (E, 25 Nov: "let 33 out", 3 alive)
-    live_cells = [c for c in cells if c.get("unit_id") in living and not c.get("dead")]
+    live_cells = [c for c in cells if c.get("unit_id") in living and not c.get("dead") and not c.get("reserved")]
+    _were_cell_notes(cfg, rows, notes)                         # (0.105.119 item31/34)
     if not rules["moon_cells"]:
         if cells:
             proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": [], "release": True},
@@ -654,19 +693,22 @@ def _were(s, cfg, t, rules, proposals, notes):
             # (0.105.0 review) the changed ones' ids sent too, so their cells are kept
             ids = want + [x["id"] for x in rows if x.get("changed") and x.get("cell")]
             act = {"type": "moon_cell", "ids": ids}
-            # (0.105.115 item18) the change close: anyone not inside yet is moved in now
+            # (0.105.115 item18) the change close: anyone not inside yet is moved in now.
+            # (0.105.119 item34) and well before it: moved in at the first call of the
+            # lead (F, 25 Nov: Besmar moved in the last minutes, was out at the change)
             close = moon_change_close(_l(w.get("changes")), w.get("moon_phase"), wcfg)
-            if close:
-                act["move_in"] = True
+            act["move_in"] = True
             proposals.append(Proposal("moon_cell", act,
                                       f"the full moon is near: {', '.join(str(x.get('name')) for x in rows[:3])} "
-                                      + ("into a cell (behind a drawbridge, raised once inside, else a jail or a free "
-                                         "bedroom, locked" if _num(_d(w.get("were_cells")).get("free"))
+                                      + ("into a cell (behind a drawbridge, raised once inside, else a jail, a bedroom "
+                                         "or another room with a door, locked" if _num(_d(w.get("were_cells")).get("free"))
                                          and w["were_cells"]["free"] > 0 else
-                                         "into a cell (a jail or a free bedroom, locked")
+                                         "into a cell (a jail, a bedroom, an office or a tomb, else one dug, locked")
                                       + " once inside"
                                       + ("; the change is close: moved in now if still outside)" if close else
-                                         "; moved in if still outside after a day)"), 1))
+                                         "; moved in now, well before the change)"), 1))
+    elif _were_reserve(rows, proposals):                        # (0.105.119 item31) the cell made before the moon
+        pass
     elif live_cells or _num(w.get("dead_cells")) and w["dead_cells"] > 0:
         # (0.105.103) let out only when DF's moon phase was read and says the
         # moon is past: an unread phase or the tick count's guess (it slips

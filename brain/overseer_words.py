@@ -458,6 +458,9 @@ def short(a: dict) -> str:
         return "trade with the caravan" + (" (and press Trade)" if a.get("press") else "")
     if t == "bring_goods":
         return f"take {a.get('count')} crafts to the trade depot"
+    if t == "relieve_haulers" and a.get("cooks") is not None:     # (0.105.119 item33)
+        return ("give the kept cooks their hauling back" if a.get("back") else
+                "keep the best cooks at the kitchen (the cooking labour on, hauling off)")
     if t == "kitchen_skill":
         return (f"let only cooks of skill {a.get('min_level')}+ work the kitchens" if a.get("min_level") else
                 "let any cook work the kitchens again")
@@ -599,6 +602,9 @@ def short(a: dict) -> str:
                 if a.get("ban") else "let the cooks use the plants whose seed has come back")
     if t == "kitchen_drinks":   # (0.105.113 item10)
         return "keep drink from the cooks" if a.get("ban") else "let the cooks use drink again"
+    if t == "kitchen_cheap":   # (0.105.119 item37)
+        return ("keep the cheap ingredients from the cooks (good meals of meat and cheese)" if a.get("ban")
+                else "let the cooks use the cheap ingredients again")
     if t == "kitchen_fat":
         return "keep fat and tallow from the cooks" if a.get("ban") else "let the cooks use fat and tallow again"
     if t == "order_slots":

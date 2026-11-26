@@ -57,7 +57,9 @@ def _():
     # (0.105.115 item18) phase 26 is a phase before the change: moved in if still outside (move_in)
     assert props and props[0].action == {"type": "moon_cell", "ids": [18102], "move_in": True}, props
     s = fort({"list": rows, "changes": E_CHANGES, "moon_phase": 18, "cells": []})   # (0.105.96) the lead is 8 phases
-    assert not [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
+    # (0.105.119 item31) only the cell made ready (reserve), nobody moved in
+    got = [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
+    assert [p.action.get("reserve") for p in got] == [True], got
 
 
 @test("(verifier) the first moon: a citizen cursed by the syndrome and no change seen yet: DF's full moon "
@@ -66,10 +68,10 @@ def _():
     rows = [{"id": 7, "name": "Bitten", "by_syndrome": True}]
     for ph, want in ((24, True), (27, True), (0, True), (5, False)):
         s = fort({"list": rows, "changes": [], "moon_phase": ph, "cells": []})
-        got = [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
+        got = [p for p in plan(s, Memory())[0] if p.rule == "moon_cell" and not p.action.get("reserve")]
         assert bool(got) == want, (ph, got)
     s = fort({"list": [{"id": 8, "name": "Wolfy"}], "changes": [], "moon_phase": 27, "cells": []})
-    assert not [p for p in plan(s, Memory())[0] if p.rule == "moon_cell"]
+    assert not [p for p in plan(s, Memory())[0] if p.rule == "moon_cell" and not p.action.get("reserve")]
 
 
 def _cursed_fn():
@@ -113,7 +115,7 @@ def _():
     acts = (ROOT / "lua" / "ai-threats-actions.lua").read_text(encoding="utf-8")
     cell = acts[acts.index("local function cell_room("):acts.index("-- (0.105.40b fix) The doors ai-insane")]
     assert "next(zone_doors(z)) == nil" in cell and "z.assigned_unit_id == uid" in cell
-    assert "cell_room(u.pos, taken, u.id)" in acts
+    assert "cell_room(u.pos, taken, u.id, d)" in acts
 
 
 if __name__ == "__main__":

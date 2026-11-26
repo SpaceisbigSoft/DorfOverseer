@@ -50,6 +50,7 @@ from planner_guided import guided_pass  # noqa: E402  (0.105.47, D1) Guided live
 from planner_care import _doctor_post_rule, _infection_rule, _offices_refill_rule, _traction_rest_rule  # noqa: E402  (0.104.168)
 from planner_water import _waterworks_rule  # noqa: E402  (0.105.0) moat, pumps, irrigation, magma workshops
 from planner_homes import *  # noqa: E402,F401,F403  (0.104.168: homes and households)
+from planner_mechanisms import _mechanism_stock_rule  # noqa: E402  (0.105.119 item30)
 from planner_threats import _threat_rules, unseen_intrusion, alarm_held, lone_sneaker  # noqa: E402  (0.105.0 round 3; 0.105.36)
 from planner_world import note_contact_sent  # noqa: E402  (0.105.48, K9)
 from planner_world import (_contact_rule, _export_rule, _hostile_trade_filter, _meeting_answer_rule,  # noqa: E402
@@ -79,7 +80,7 @@ from planner_mood_help import mood_shelter_rule, note_mood_help  # noqa: E402  (
 from planner_hunt import _hunt_rule, note_hunt_cycle  # noqa: E402  (0.105.45) hunting threats the squads can beat
 from planner_shelter import _shelter_pick_rule  # noqa: E402  (0.105.45) the shelter away from the threat
 from planner_stuck import _stuck_rule, note_stuck  # noqa: E402  (0.105.45) the sweep for things stuck "in progress"
-from planner_slots import needs_pass, slots_rules  # noqa: E402  (R2 h3) building slots
+from planner_slots import cap_full_pass, needs_pass, slots_rules  # noqa: E402  (R2 h3) building slots
 from planner_thirst import _thirst_rule, note_thirst, thirst_journal  # noqa: E402,F401  (0.105.46, I2) the thirst watch
 from planner_near_gates import _near_gates_rule  # noqa: E402  (0.105.47, I7d) surface work near the gates under a titan
 from planner_ice import _ice_rule  # noqa: E402  (0.105.47, I7d) surface water zones, shore wells, traffic before the ice
@@ -977,6 +978,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_noble_value_rule, s, cfg, proposals, notes, memory)   # (0.105.41)
         _guard(_hauling_rule, s, cfg, citizens, proposals)
         _guard(_spare_mechanisms_rule, s, cfg, traits, proposals)
+        # (0.105.119 item30) after every rule that orders mechanisms: enough free for the links waiting
+        _guard(_mechanism_stock_rule, s, cfg, proposals, notes, memory)
 
     # 6e-2. Gates at entrances that turned out not to be real
     if can_use("entrances"):
@@ -1082,7 +1085,10 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
                      / (2 if memory is not None and has_rule(memory.culture, "engrave_history") else 1))
             if idle >= share and not (memory is not None and memory.polished_upto is not None
                                                          and memory.polished_upto == finished_n) \
-                    and not polish_paused(memory, abs_tick(s), cfg):
+                    and not polish_paused(memory, abs_tick(s), cfg) \
+                    and _d(s.get("projects")).get("polish") not in ("wait", "none"):
+                # (0.105.119 item39) the projects report's own pick: a level still
+                # being smoothed (E 37, B 10 refusals in 3.5 h) or none left (D 7)
                 proposals.append(Proposal("polish", {"type": "polish"},
                                           f"{round(100 * idle)}% of the dwarves are idle: smooth or engrave a "
                                           "finished level (nicer rooms, more wealth)", 7))
@@ -1299,6 +1305,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     # (R2 h3) the small needs (paper shop, mood workshops, wells, a still or kitchen
     # while drink or meals are short) marked for the bridge's pool of their own
     _guard(needs_pass, s, cfg, proposals, memory)
+    _guard(cap_full_pass, s, proposals, notes)   # (item39) no new level the full cap would refuse
     # (r5 p3) a refusal streak's wait, said once when it begins (select() clears it)
     said = _guard(refusal_streak.notes, memory, cfg)
     notes.extend(n for n in (said or []) if n not in notes)

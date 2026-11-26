@@ -48,6 +48,7 @@ SPLIT += ("gui/ai-overseer.lua",)   # (r9 t5) the in-game window: a hub in lua/g
 SPLIT += ("ai-blueprints.lua", "ai-layouts.lua")   # (r9 t8)
 SPLIT += ("ai-util.lua",)   # (r9 t9) the shared helpers: UTIL_SRC carries its parts
 SPLIT += ("ai-killers.lua",)   # (0.105.113) ai-killers-cell: the cell row's pile, keep_apart, cell, report
+SPLIT += ("ai-fights.lua",)   # (0.105.119) ai-fights-scan: beatings, cursed chokes, scan_units, the holds
 
 
 def split_parts(name: str) -> list[str]:
@@ -83,7 +84,7 @@ def bridge_later_parts(stem: str) -> list[str]:
     return [n for n in listed if n.startswith(stem + "-") and n != stem]
 
 
-BRIDGE_SPLIT = ("ai-bridge-report", "ai-bridge-actions")
+BRIDGE_SPLIT = ("ai-bridge-report", "ai-bridge-actions", "ai-bridge-orders")   # (0.105.119) -orders-jobs
 
 
 def bridge_part_src(name: str) -> str:

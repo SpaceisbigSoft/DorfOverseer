@@ -75,6 +75,7 @@ SECTION_NEEDS = {
     "good_cooks": ("stocks",),        # meals a dwarf
     "recreation": ("others_on_map",),     # sent out to play in a siege
     "soldier_swap": ("others_on_map",),   # a soldier out of his squad in a siege
+    "war_leisure": ("others_on_map", "military"),   # (0.105.119 item35) a squad's month off in a siege
     "ore": ("military",),             # "0 bars of weapon-grade metal"
     "smelt": ("military",),
 }

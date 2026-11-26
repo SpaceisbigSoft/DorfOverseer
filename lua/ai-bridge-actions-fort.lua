@@ -10,7 +10,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-fort is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.118'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.119'   -- bumped with BRIDGE_VERSION
 
 -- DFHack's own work-order libraries (conditioned orders, e.g. smelting
 -- whenever bars run low). Only these ones.
@@ -978,6 +978,83 @@ function act_kitchen_drinks(a)
         if #keys == 0 then return reject('no drink in the fort') end
     end
     return kitchen_ban('drinks', keys, a.ban, a.dry_run)
+end
+
+-- (0.105.119 item37) Cheap ingredients kept from the cooks while the meals
+-- are many and the good ones few: a meal's worth a serving is about its
+-- ingredients' worth times its quality (C, 25 Nov: growths, eggs and fish
+-- at 2 a unit, meat 3.8, cheese and flour ~10; 47 of 2,189 servings worth
+-- over 20). {ban, min_value, keep}: each cookable kind of plant, growth,
+-- seed, egg, fish, milk or fat in stock worth under min_value a unit (its
+-- stock's average) is excluded (Cook, reason 'cheap'); meat, cheese and
+-- flour never. Only while `keep` units of the worthier ones are left: else
+-- the ban is let go (short = true) so the cooks are not left with nothing.
+local CHEAP_TYPES = {'PLANT', 'PLANT_GROWTH', 'SEEDS', 'EGG', 'FISH', 'LIQUID_MISC', 'GLOB'}
+local GOOD_TYPES = {'MEAT', 'CHEESE', 'POWDER_MISC'}
+
+local function cookable(it, check_mat)
+    if it.flags.forbidden or it.flags.rotten or it.flags.garbage_collect then return false end
+    if not check_mat then return true end
+    local mi = dfhack.matinfo.decode(it)
+    return mi ~= nil and mi.material ~= nil and mi.material.flags.EDIBLE_COOKED == true
+end
+
+function cheap_cook_kinds(min_value)
+    local kinds, kept = {}, 0
+    for _, tn in ipairs(CHEAP_TYPES) do
+        local t = df.item_type[tn]
+        for _, it in ipairs(df.global.world.items.other[tn]) do
+            if cookable(it, tn ~= 'EGG' and tn ~= 'FISH') then
+                local n = it:getStackSize()
+                local okv, v = pcall(dfhack.items.getValue, it)
+                local k = t .. ':' .. it:getSubtype() .. ':' .. it.mat_type .. ':' .. it.mat_index
+                local e = kinds[k]
+                if not e then
+                    e = {t = t, s = it:getSubtype(), mt = it.mat_type, mi = it.mat_index, n = 0, v = 0}
+                    kinds[k] = e
+                end
+                e.n, e.v = e.n + n, e.v + (okv and v or 0)
+            end
+        end
+    end
+    local keys = {}
+    for _, e in pairs(kinds) do
+        if e.n > 0 and e.v / e.n < min_value then
+            table.insert(keys, {t = e.t, s = e.s, mt = e.mt, mi = e.mi})
+        else
+            kept = kept + e.n
+        end
+    end
+    for _, tn in ipairs(GOOD_TYPES) do
+        for _, it in ipairs(df.global.world.items.other[tn]) do
+            if cookable(it, tn == 'POWDER_MISC') then kept = kept + it:getStackSize() end
+        end
+    end
+    table.sort(keys, function(x, y)
+        if x.t ~= y.t then return x.t < y.t end
+        if x.mt ~= y.mt then return x.mt < y.mt end
+        if x.mi ~= y.mi then return x.mi < y.mi end
+        return x.s < y.s
+    end)
+    return keys, kept
+end
+
+function act_kitchen_cheap(a)
+    if type(a.ban) ~= 'boolean' then return reject('kitchen_cheap needs ban = true or false') end
+    if not a.ban then return kitchen_ban('cheap', {}, false, a.dry_run) end
+    local minv = tonumber(a.min_value) or 3
+    local keep = tonumber(a.keep) or 20
+    local ok, keys, kept = pcall(cheap_cook_kinds, minv)
+    if not ok then return {ok = false, error = 'kitchen_cheap: ' .. tostring(keys):sub(1, 120)} end
+    if kept < keep then
+        local r = kitchen_ban('cheap', {}, false, a.dry_run)
+        r.short, r.kept, r.keep = true, kept, keep
+        return r
+    end
+    if #keys == 0 then return reject('no cheap ingredient in the fort') end
+    local r = kitchen_ban('cheap', keys, true, a.dry_run)
+    r.kept = kept
+    return r
 end
 
 -- (r2h6) The seed reserve: a farmable crop whose seeds run low keeps its

@@ -6,7 +6,7 @@
 -- (T, building, designate, load_state, ...) are in reach.
 
 if not WATERWORKS_PART_LOCALS then qerror('ai-waterworks-steps is a part of ai-waterworks; run ai-waterworks') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-waterworks-steps'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-waterworks-steps'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- (r8) the hub's and earlier parts' locals used here
 local seg_cells, dug, designate_all, undug, left_to_dig, leak, depth_at = WATERWORKS_PART_LOCALS.seg_cells, WATERWORKS_PART_LOCALS.dug, WATERWORKS_PART_LOCALS.designate_all, WATERWORKS_PART_LOCALS.undug, WATERWORKS_PART_LOCALS.left_to_dig, WATERWORKS_PART_LOCALS.leak, WATERWORKS_PART_LOCALS.depth_at
@@ -182,7 +182,14 @@ function step(kind, opts)
         elseif kind == 'magma' then plan, why = plan_magma(opts.shop, {open_caverns = opts.open_caverns == true})
         else plan, why, later = PLANNERS[kind]() end
         if not plan then
-            if not dry then st.refused[id] = {tick = now(), why = why, later = later or nil}; save_state(st) end
+            if not dry then
+                -- (0.105.119 item39) the same answer again: counted (the brain waits longer
+                -- each time; E/F: "no still, fresh water ..." once a game month, 10-11 times)
+                local old = type(st.refused[id]) == 'table' and st.refused[id] or {}
+                local times = (not later and old.why == why) and (tonumber(old.times) or 1) + 1 or 1
+                st.refused[id] = {tick = now(), why = why, later = later or nil, times = times}
+                save_state(st)
+            end
             return {ok = false, rejected = true, error = why, later = later or nil}
         end
         local path = path_check(plan)
@@ -620,6 +627,30 @@ function report()
             row.still = wk.still_from and true or nil
             row.paused = wk.stage == 'running' and wk.paused or nil      -- (0.105.37 fix) a still wheel: why
         end
+        -- (0.105.119 item39) what a digging or building step still waits on, as the
+        -- step counts it: the brain doesn't ask while it waits (D: "# tile(s) left
+        -- to dig" 43 times in 3.5 h; B/C: "being built: the floodgate")
+        pcall(function()
+            if wk.kind == 'power' or not p.dig then return end
+            if wk.stage == 'digging' then
+                local seg = p.stages and (wk.seg or 1) < #p.stages
+                local n = left_to_dig(seg and seg_cells(p, wk.seg or 1) or p.dig)
+                if n == 0 and not seg and p.dig2 and wk.dig2 then n = left_to_dig(p.dig2) end
+                row.dig_left = n
+            elseif wk.stage == 'building' and p.gate and p.lever then
+                local n = 0
+                local g = building(p.gate.x, p.gate.y, p.gate.z, 'Floodgate')
+                local l = building(p.lever.x, p.lever.y, p.lever.z, 'Trap')
+                if not g or not l then return end            -- (gone: the step says so)
+                if not g.built then n = n + 1 end
+                if not l.built then n = n + 1 end
+                for _, b in ipairs(p.builds or {}) do
+                    local bb = building(b.x, b.y, b.z, b.kind)
+                    if not bb or not bb.built then n = n + 1 end
+                end
+                row.build_left = n
+            end
+        end)
         pcall(function()
             if wk.stage == 'linking' or wk.stage == 'building' then
                 if not parts then

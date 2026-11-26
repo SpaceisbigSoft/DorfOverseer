@@ -197,6 +197,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.fat_ban = a.get("ban") is True
         if a["type"] == "kitchen_drinks" and ok is True:       # (0.105.113 item10)
             memory.drink_cook_ban = a.get("ban") is True
+        if a["type"] == "kitchen_cheap" and ok is True:        # (0.105.119 item37) short: the bridge let go
+            memory.cheap_cook_ban = a.get("ban") is True and not _d(r).get("short")
         if a["type"] == "slaughter_one" and ok is True and a.get("mood_unit") is not None:
             memory.mood_slaughter[str(a["mood_unit"])] = now     # (0.105.30) one animal a mood
         if a["type"] == "start_project" and a.get("kind") == "memorial":
@@ -403,6 +405,8 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         _hook("note_order_loop", note_order_loop, p, r, state, memory, now, cfg)    # (0.105.46, I3) a stuck cancel's missing thing; approvals
         _hook("note_mood_help", note_mood_help, p, r, state, memory, now)           # (0.105.47, J1) free-items "nothing", a shop past the cap
         _hook("note_syndromes", note_syndromes, p, r, memory, now)                  # (0.105.41, item 11) the contaminant clean's trial done
+        from planner_husbandry import note_pasture as _note_pasture     # (item39) local: no new global
+        _hook("note_pasture", _note_pasture, p, r, state, memory, now)               # (item39) no grass for a pasture, in a row
         _hook("note_food_level", note_food_level, p, r, memory)                     # (fix41) one food storage level a kitchen or still
         _hook("note_training", note_training, p, r, memory, now)                    # (0.105.47) stress care's release: never drafted again
         _hook("note_stuck", note_stuck, p, r, memory, now)                          # (0.105.45) the stuck sweep's step done

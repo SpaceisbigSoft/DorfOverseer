@@ -39,7 +39,8 @@ def _():
     got = {}
     for ph in range(28):
         s = fort({"list": rows, "changes": B_CHANGES, "moon_phase": ph, "cells": []})
-        got[ph] = bool([p for p in plan(s, Memory())[0] if p.rule == "moon_cell" and not p.action.get("release")])
+        got[ph] = bool([p for p in plan(s, Memory())[0] if p.rule == "moon_cell" and not p.action.get("release")
+                         and not p.action.get("reserve")])
     assert [p for p, v in got.items() if v] == [0, 1] + list(range(19, 28)), got
     assert PT.WERE_LEAD_PHASES == 8
 
@@ -57,7 +58,7 @@ def _():
     act = (ROOT / "lua" / "ai-threats-actions.lua").read_text(encoding="utf-8")
     body = act[act.index("function moon_cell("):]
     i = body.index("dfhack.military.removeFromSquad(u.id)")
-    assert i < body.index("cell_room(u.pos, taken, u.id)") and "out.unsquad" in body[:i + 400]
+    assert i < body.index("cell_room(u.pos, taken, u.id, d)") and "out.unsquad" in body[:i + 400]
     draft = (ROOT / "lua" / "ai-military-draft.lua").read_text(encoding="utf-8")
     d = draft[draft.index("function draftable("):]
     assert d.index("were_cursed(u)") < d.index("local ok, yes = pcall")

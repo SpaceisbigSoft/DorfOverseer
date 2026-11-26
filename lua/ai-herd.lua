@@ -438,13 +438,14 @@ function report()
     out.in_training = ok_list and n_assigned or nil
     local bset = kept_ids('breeders')          -- (0.105.51) the AI's breeders: a list, no nickname
     local tame_races = {}
+    local hens_loose, hens_in = 0, {}
     for _, u in ipairs(report_units()) do
         if fort_animal(u) then
             local c = caste_of(u)
             local r = race_name(u)
             local k = kinds[r]
             if not k then
-                k = {name = r, n = 0, f = 0, m = 0, kids = 0, breeders_f = 0, breeders_m = 0, protected = 0,
+                k = {name = r, n = 0, f = 0, m = 0, free_f = 0, free_m = 0, kids = 0, breeders_f = 0, breeders_m = 0, protected = 0,
                      marked = 0, caged = 0, grazer = yes(dfhack.units.isGrazer, u) or nil,
                      layer = flag(c, 'LAYS_EGGS') or nil, milk = milkable(c) or nil, wool = shearable(c) or nil}
                 kinds[r] = k
@@ -478,12 +479,26 @@ function report()
             if adult and not in_cage then
                 if female then k.f = k.f + 1 elseif male then k.m = k.m + 1 end
             end
+            -- (0.105.119 item39) the adults keep_breeders may keep (its own test): f/m
+            -- count pets, war animals and the named too, and herd_breeders was refused
+            -- "no kind ... has an adult male and female" (F 10 in 3.5 h)
+            if adult and (breeder or (nick == '' and not in_cage and not pet and not tr and not marked
+                    and not yes(function() return u.name.has_name end))) then
+                if female then k.free_f = k.free_f + 1 elseif male then k.free_m = k.free_m + 1 end
+            end
             if not in_cage then
                 if wool_now(u, c) then out.wool_now = out.wool_now + 1 end
                 if shearable(c) then out.shearable = out.shearable + 1 end
                 if milk_now(u, c) then out.milk_now = out.milk_now + 1 end
                 if milkable(c) and adult and female then out.milkable = out.milkable + 1 end
                 if flag(c, 'LAYS_EGGS') and adult and female then out.egg_layers = out.egg_layers + 1 end
+                -- (0.105.119 item39) where the hens are: nest_boxes pens the loose ones
+                -- (no pet: it goes with its owner) and boxes a pen with more hens than boxes
+                if flag(c, 'LAYS_EGGS') and adult and female and not pet then
+                    local z = pasture_of(u)
+                    if z == false then hens_loose = hens_loose + 1
+                    elseif z then hens_in[z] = (hens_in[z] or 0) + 1 end
+                end
                 if yes(dfhack.units.isGrazer, u) then
                     out.grazers = out.grazers + 1
                     -- the grass the AI must find: its own pastures' animals and the loose
@@ -525,6 +540,17 @@ function report()
         if #out.kinds < MAX_KINDS then table.insert(out.kinds, k) end
     end
     out.kinds_n = #order
+    out.egg_layers_loose, out.hens_without_box = hens_loose, 0
+    for z, n in pairs(hens_in) do
+        local boxes = 0
+        pcall(function()
+            for _, b in ipairs(df.global.world.buildings.all) do
+                if b:getType() == df.building_type.NestBox and b.z == z.z and b.x1 >= z.x1 and b.x1 <= z.x2
+                        and b.y1 >= z.y1 and b.y1 <= z.y2 then boxes = boxes + 1 end
+            end
+        end)
+        out.hens_without_box = out.hens_without_box + math.max(0, n - boxes)
+    end
     local tl = {}
     for r, n in pairs(tame_races) do table.insert(tl, {name = r, n = n}) end
     table.sort(tl, function(a, b) return a.n > b.n or (a.n == b.n and a.name < b.name) end)

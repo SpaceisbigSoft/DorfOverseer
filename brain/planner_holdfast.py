@@ -303,8 +303,15 @@ def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: li
         busy.update(_l(a.get("squads")))
     inside = _inside_ids(s)
     retreat = retreating_ids(memory, cfg)
+    # (0.105.119 item32) a were in beast form: every squad sent goes, whatever
+    # the odds (F's Wereskink: three squads' orders dropped at 0.4x while it
+    # killed inside; sent only once it had changed back)
+    from planner_military_weres import were_ids
+    weres = were_ids(s)
     drop, add = set(), []
     for key, ps in groups.items():
+        if key & weres:
+            continue
         rows = _target_rows(s, key)
         if not rows or any(t.get("great_danger") for t in rows):
             continue                     # a great danger: fight_or_hide's judgement, not this one

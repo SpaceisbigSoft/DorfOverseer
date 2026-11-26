@@ -9,9 +9,58 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-supplies is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.118'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-supplies'] = '0.105.119'   -- bumped with BRIDGE_VERSION
 
 local inc, usable = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.usable
+
+-- (0.105.119 item33) The best free cooks (adults, sane, in no squad), with
+-- the cooking labour or not: C's skill-17 cook hauled while a 9 cooked, A's
+-- 11 had the labour off. Each {id, skill, cook = the labour on, hauls = any
+-- hauling labour on, away_days = days on other work (not the kitchen, not
+-- eating, drinking or sleeping) since first seen so}; and the ids the AI
+-- keeps at the kitchen (ai-hauling's state, `cooks`).
+COOK_AWAY = COOK_AWAY or {}      -- id -> tick first seen at other work (kept across reloads)
+local COOK_OK_JOBS = {PrepareMeal = true, Eat = true, DrinkItem = true, Sleep = true, Rest = true,
+                      GoShopping = true, GoShopping2 = true, FillWaterskin = true, FillWaterskin2 = true}
+local HAULS = {'HAUL_STONE', 'HAUL_WOOD', 'HAUL_BODY', 'HAUL_FOOD', 'HAUL_REFUSE', 'HAUL_ITEM',
+               'HAUL_FURNITURE', 'HAUL_ANIMALS', 'HAUL_TRADE', 'HAUL_WATER'}
+function free_cooks()
+    local list = {}
+    local now = df.global.cur_year * 403200 + df.global.cur_year_tick
+    for _, u in ipairs(report_citizens(true)) do
+        local ok, row = pcall(function()
+            if not (dfhack.units.isAdult(u) and dfhack.units.isSane(u)) or (u.military.squad_id or -1) >= 0 then return nil end
+            local r = dfhack.units.getNominalSkill(u, df.job_skill.COOK, true) or 0
+            if r <= 0 then return nil end
+            local hauls = false
+            for _, l in ipairs(HAULS) do if u.status.labors[df.unit_labor[l]] then hauls = true end end
+            local j = u.job.current_job
+            local jt = j and df.job_type[j.job_type] or nil
+            local away = 0
+            if jt and not COOK_OK_JOBS[jt] then
+                COOK_AWAY[u.id] = COOK_AWAY[u.id] or now
+                if now >= COOK_AWAY[u.id] then away = (now - COOK_AWAY[u.id]) // 1200 end
+            else
+                COOK_AWAY[u.id] = nil
+            end
+            return {id = u.id, skill = r, cook = u.status.labors[df.unit_labor.COOK] == true, hauls = hauls,
+                    job = jt, away_days = away}
+        end)
+        if ok and row then table.insert(list, row) end
+    end
+    table.sort(list, function(a, b) if a.skill ~= b.skill then return a.skill > b.skill end return a.id < b.id end)
+    local top = {}
+    for i = 1, math.min(3, #list) do top[i] = list[i] end
+    local staffed = {}
+    pcall(function()
+        local st = dfhack.persistent.getSiteData('ai-overseer/hauling', {})
+        for k in pairs(type(st) == 'table' and type(st.cooks) == 'table' and st.cooks or {}) do
+            table.insert(staffed, tonumber(k))
+        end
+    end)
+    table.sort(staffed)
+    return top, staffed
+end
 
 -- (13c) Where the first citizen with a place on the map stands: what the
 -- report and the actions judge "can the dwarves walk there" from (the dead,
@@ -429,6 +478,7 @@ function get_supplies()
         end
         out.cooks = {best = best, skilled = skilled, kitchen_min = kmin, best_any = best_any,
                      able = #able, able_skills = top}
+        pcall(function() out.cooks.free, out.cooks.staffed = free_cooks() end)   -- (0.105.119 item33)
     end)
     -- (0.105.113 item13) the logs a citizen can walk to (D: 19 logs, all on the surface out of every
     -- dwarf's walk: the charcoal a bar mood's smelting needed never burnt); nil when no walk group is read

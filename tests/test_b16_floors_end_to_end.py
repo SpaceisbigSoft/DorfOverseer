@@ -113,6 +113,7 @@ def _reset(mode="hallway"):
     B.walk_group = E.real_walk
     B.MAX_OPEN_PROJECTS = 100        # (the cap is not what these tests are about)
     B.FLOOR_SECONDS = 30             # (2-core machines: the deadline is test 12's only)
+    B.FLOOR_OLD_OPEN = True
 
 
 test = make_test(before=_reset)
@@ -804,7 +805,8 @@ def _():
         d.next_id = 1000
         B.save_projects(d)
         tiles = {(x, y, ROCK_Z) for x in range(box["x1"] + 1, box["x2"]) for y in range(box["y1"] + 1, box["y2"])}
-        set_tiles(tiles, shape="FLOOR")
+        # (item38) a finished level keeps a floor out by its tiles: its stockpile's
+        set_tiles(tiles, shape="FLOOR", taken=True)
         return tiles
     obstacle_run(other_box, "another project's box")
 
@@ -890,6 +892,7 @@ LIVE_SNAPSHOTS = {
 def _():
     for name in FORTS:
         _reset()
+        B.FLOOR_OLD_OPEN = False     # (item38) the fixture's free runs are by the boxes (its levels' tiles plain floor)
         fx, sx, sy, zs, boxes = load_fort(name)
         answers = []
         for i, (kind, kw) in enumerate(LIVE_KINDS):
@@ -950,6 +953,10 @@ def built_up(z, sx, sy, r=9):
     old.append({"x1": sx - r, "y1": sy - r, "x2": sx + r, "y2": sy + r, "z": z})
     d.old_areas = tbl(old)
     B.save_projects(d)
+    # (0.105.119 item38) a dropped outline keeps a floor out only by its tiles: the level's own,
+    # dug and taken (its rooms' zones and furniture), all round the stair
+    set_tiles({(x, y, z) for x in range(sx - r, sx + r + 1) for y in range(sy - r, sy + r + 1) if (x, y) != (sx, sy)},
+              shape="FLOOR", taken=True)
 
 
 @test("6b. two stairwells: the first stair's level built up, the level's floor hangs on the second stair; the "

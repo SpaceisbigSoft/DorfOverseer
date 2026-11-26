@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "brain"))
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish  # noqa: E402
+from lua_modules_util import split_src  # noqa: E402
 
 from planner import Memory, PLANNER_CONFIG, record  # noqa: E402
 from planner_core import (Proposal, TICKS_PER_DAY, _refused_wait, no_effect_wait, note_no_effect,  # noqa: E402
@@ -118,7 +119,7 @@ def _():
 
 @test("bridge: the trade report's at_depot_busy and at_depot_stuck, the record kept per item; unload says the stuck")
 def _():
-    src = (LUA / "ai-trade.lua").read_text(encoding="utf-8")
+    src = split_src("ai-trade.lua")   # (0.105.119) unload in the part ai-trade-unload
     assert "out.at_depot_busy = busy" in src and "out.at_depot_stuck = stuck" in src
     assert "DEPOT_BUSY_KEY = 'ai-overseer/depot-busy'" in src and "function busy_record(seen, ids, now, stuck_ticks)" in src
     i = src.index("function unload(limit, dry_run, txt)")

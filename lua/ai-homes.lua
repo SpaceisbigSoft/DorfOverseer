@@ -437,6 +437,19 @@ function census(units, txt)
             if #zs > 0 then table.sort(zs); c.free_cut_z = zs end
         end
     end
+    -- (0.105.119 item39) the stressed a free room is much better for (the
+    -- action's own dry run, both ways of scoring): homes_liked was refused
+    -- "no free room is much better for the stressed" 14 times in 3.5 h (A)
+    if c.free_bedrooms > 0 then
+        pcall(function()
+            local r = house(0, 3, true, txt, units, true)
+            c.upgrades_placed = r and tonumber(r.upgraded) or nil
+            r = house(0, 3, true, txt, units, false)
+            c.upgrades_plain = r and tonumber(r.upgraded) or nil
+        end)
+    else
+        c.upgrades_placed, c.upgrades_plain = 0, 0
+    end
     return c
 end
 
@@ -1031,7 +1044,7 @@ PART_LOCALS = {U = U, location_zone_ids = location_zone_ids, load_liked_statues 
 PARTS = {'furnish'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-homes'] = '0.105.118'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-homes'] = '0.105.119'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

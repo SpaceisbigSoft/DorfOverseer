@@ -17,7 +17,7 @@
 -- No reqscript while this part loads (the modules are fetched inside floor_site, behind pcall);
 -- the sibling parts' functions (load_floors, floor_pile_units) are asked for by type() first.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floors'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floors'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 FLOOR_SECONDS = 1.5          -- the floor search's share of a start_project (the classic search keeps its own 4 s)
 FLOORS_TRY = 3               -- floors `place` is really tried on, for one level
@@ -60,6 +60,23 @@ FLOOR_HUB_MARK = true        -- "refused: the stair's hub" marks the level '*' (
                              -- whose levels were all cancelled and whose hub the fort then used (D's
                              -- floor 3, refused x39) is skipped, reported no_hall/dead, and looked at
                              -- again only after full_retry_days
+-- (0.105.119 item38) a finished or cancelled level's box (and a dropped level's outline) no longer
+-- keeps a floor out whole: its tiles say it (env.open: its rooms, doors and zones are 'bad', its
+-- corridors the fort's open floor, its rock rock; check_site keeps a new hall or room off its rooms'
+-- walls). Live levels, wells, werebeast cells and a workshops level with free rooms still do. C's,
+-- D's, F's and A's main stair had every level of the floors' band under such boxes ("no hall:
+-- north 0, east 0, south 0, west 0"). False: as before.
+FLOOR_OLD_OPEN = true
+
+-- A project whose box keeps a floor's hall and rooms out (FLOOR_OLD_OPEN): one still being
+-- made, or one that is run (or grown) from its box after it is done.
+function floor_box_live(p)
+    if FLOOR_OLD_OPEN == false or type(p) ~= 'table' then return true end
+    if p.kind == 'well' or p.kind == 'were_cells' then return true end
+    if p.phase == 'cancelled' then return false end
+    if p.phase ~= 'done' then return true end
+    return p.kind == 'workshops' and (math.tointeger(p.free_left) or 0) > 0
+end
 
 local has, add = has, add
 
@@ -175,7 +192,7 @@ function floor_env(floor, stair, z, data, reserved, claims, deadline)
         if type(p) == 'table' then
             if floor_project(p, floor, sx, sy, z) then
                 for _, a in ipairs(project_areas(p)) do own_area[a] = true; own_area[area_key(a)] = true end
-            else
+            elseif floor_box_live(p) then
                 local pz = math.tointeger(p.z)
                 local a = whole_box(p.area)
                 if a and (a.z or pz) == z then table.insert(boxes, shrunk(a)) end
@@ -202,7 +219,7 @@ function floor_env(floor, stair, z, data, reserved, claims, deadline)
     end
     for _, a in ipairs(type(data.old_areas) == 'table' and data.old_areas or {}) do
         local b = whole_box(a)
-        if b and b.z == z and not own_old(b) then table.insert(boxes, b) end
+        if b and b.z == z and (FLOOR_OLD_OPEN == false or a.well) and not own_old(b) then table.insert(boxes, b) end
     end
     local others = {}
     for _, r in ipairs(type(reserved) == 'table' and reserved or {}) do

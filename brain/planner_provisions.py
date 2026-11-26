@@ -356,6 +356,11 @@ def _cavern_farm_rule(s, pv, cfg, citizens, proposals, notes, memory, rules_) ->
     tgt = cavern_target(s, cfg)
     if tgt is None:
         return
+    # (0.105.119 item39) the spot the bridge last refused, tested again by the
+    # report: its cavern tiles still not where the citizens walk (A 10 in 3.5 h)
+    ra = _d(cv.get("refused_at"))
+    if ra and all(ra.get(k) == tgt["at"].get(k) for k in "xyz"):
+        return
     n = min(cfg["cavern_farm_tiles"], seeds, cfg["cavern_farm_max_tiles"] - have)
     if n < 4:
         return

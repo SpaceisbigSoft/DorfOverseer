@@ -24,8 +24,8 @@ except ImportError:
 LUA_DIR = ROOT / "lua"
 sys.path.insert(0, str(ROOT / "tests"))
 from lua_modules_util import bridge_hub_src  # noqa: E402  (r8) the hub's text with its catalog and sections
-PARTS = ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort", "ai-bridge-report-world",
-    "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-civic",
+PARTS = ["ai-bridge-report", "ai-bridge-report-civic", "ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort", "ai-bridge-report-world",
+    "ai-bridge-orders", "ai-bridge-orders-jobs", "ai-bridge-actions", "ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-trade", "ai-bridge-actions-civic",
     "ai-bridge-probes", "ai-bridge-design"]   # (D0); (r6) report and actions split by theme
 # (r8) the hub's own two files (ACTIONS, DRY_OK...; SECTIONS and the cache), run by it where their lines stood
 HUB_PARTS = ["ai-bridge-catalog", "ai-bridge-sections"]

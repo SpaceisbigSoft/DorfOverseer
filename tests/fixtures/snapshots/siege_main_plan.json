@@ -23,7 +23,7 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "notes": "sha256:a76be1d185e69e105d3b5eb9",
-   "props": "sha256:96baeaeb1392c5e6bccb8427",
+   "props": "sha256:a1e2fbf845028da3cffb862b",
    "rules": [
     "build",
     "hospital",
@@ -50,6 +50,7 @@
     "squad_trim",
     "pair_chairs",
     "meal_drink",
+    "meal_cheap",
     "alerts",
     "join_levels",
     "second_way"
@@ -58,7 +59,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:4b4604253d59b494def3104b",
-   "props": "sha256:9142bdab0b6bc8e2e0453bf9",
+   "props": "sha256:ed7755a0712bcda8eec37f0a",
    "rules": [
     "build",
     "hospital",
@@ -85,6 +86,7 @@
     "squad_trim",
     "pair_chairs",
     "meal_drink",
+    "meal_cheap",
     "alerts",
     "second_way"
    ]
@@ -136,39 +138,31 @@
  "region2-0.48-y52-spring.json": [
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:13fe630998d30f2e7fa1973a",
+   "notes": "sha256:a3740856dd64378e6e9c3a13",
+   "props": "sha256:f4816aee66f8451252351c97",
    "rules": [
     "build",
     "appoint",
     "crossbow_shop",
     "furniture",
     "furniture",
-    "bags",
     "smelting",
-    "cloth",
-    "bottleneck",
     "polish",
-    "gems",
     "join_levels"
    ]
   },
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "notes": "sha256:4f8353b498ec20dc54f6cd08",
-   "props": "sha256:fa92090ab7f7750c6c84cc2c",
+   "notes": "sha256:a3740856dd64378e6e9c3a13",
+   "props": "sha256:9c91595f6d49c19f2b0c32fb",
    "rules": [
     "build",
     "appoint",
     "crossbow_shop",
     "furniture",
     "furniture",
-    "bags",
     "smelting",
-    "cloth",
-    "bottleneck",
-    "polish",
-    "gems"
+    "polish"
    ]
   }
  ],
@@ -211,7 +205,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:7e518e6429577949821bf500",
+   "props": "sha256:52b2e896d6eb2a2103e304fd",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -238,6 +232,7 @@
     "build",
     "polish",
     "meal_drink",
+    "meal_cheap",
     "join_levels",
     "second_way"
    ]
@@ -245,7 +240,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:af78ee2f2bc656acb65a8283",
+   "props": "sha256:3fb3687a451b99b414d0e0d6",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -272,6 +267,7 @@
     "build",
     "polish",
     "meal_drink",
+    "meal_cheap",
     "second_way"
    ]
   }

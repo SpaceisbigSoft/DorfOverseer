@@ -829,6 +829,8 @@ def _():
                     "M.JOB_LEVER.jobs[1] = nil", M)
         r = M.link_lever(50, 500, False)
         assert not r.ok and not r.rejected and "2 free mechanisms (1 free; 1 forbidden)" in r.error, dict(r)
+        # (0.105.119 item30) the free ones counted apart from the held ones
+        assert r.free_mechanisms == 1 and r.mechanisms_needed == 2 and r.held_mechanisms["forbidden"] == 1, dict(r)
         # (0.95.1) region2: the mechanisms sat in the Mechanic's workshop where they
         # were made: usable from there; one kept in a cabinet isn't
         LUA.execute("local M = ...; M.JOB_MECHS[1].flags.in_job = false; M.JOB_MECHS[3].flags.forbid = false; "

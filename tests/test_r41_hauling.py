@@ -464,6 +464,35 @@ def _():
     assert members(yours) == [2] and "HAUL_STONE" in labors(env, u2)
 
 
+@test("(item33) lua relieve_cooks: the kept cooks off hauling (key 'cook', remembered); a cook dropped, or back, "
+      "hauls again")
+def _():
+    need_lua()
+    lua, env, w = world()
+    game, yours = fort(lua, w, mode="EverybodyDoesThis")
+    w.recompute_all()
+    u1 = env.df.unit.find(1)
+    assert labors(env, u1) == sorted(HAULS)
+    r = py(env.relieve_cooks(T(lua, [1, 4]), False, True))
+    assert r["ok"] and r["dry_run"] and u1.flags4.only_do_assigned_jobs is False, r
+    r = py(env.relieve_cooks(T(lua, [1, 4]), False, False))
+    assert r["ok"] and len(r["cooks"]) == 2, r
+    assert u1.flags4.only_do_assigned_jobs is True and labors(env, u1) == []
+    st = w.site["ai-overseer/hauling"]
+    assert st.cooks["1"] and st.cooks["4"] and st.relieved["1"] is not None
+    assert env.key_reason(u1, st) == "cook" and env.key_reason(u1) is None
+    h = py(env.report())["haulers"]
+    assert h["relieved_stale"] == 0, h                  # key workers: not given back by the stale rule
+    # 4 dropped from the pick: hauls again; 1 kept
+    r = py(env.relieve_cooks(T(lua, [1]), False, False))
+    assert r["ok"] and r["back"] == ["Urist 4"], r
+    # good meals no longer wanted: back
+    r = py(env.relieve_cooks(T(lua, []), True, False))
+    assert r["ok"] and r["back"] == ["Urist 1"], r
+    assert u1.flags4.only_do_assigned_jobs is False and labors(env, u1) == sorted(HAULS)
+    assert not py(env.relieve_cooks(T(lua, []), True, False))["ok"]
+
+
 # --- 4. the bridge's wiring --------------------------------------------------------------------
 
 @test("bridge: the hauling section (safe), the two actions on ACTIONS and DRY_OK, the module listed, the "

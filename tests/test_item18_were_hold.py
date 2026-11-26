@@ -56,13 +56,14 @@ def _():
     assert PT.moon_change_close([], 25, PLANNER_CONFIG) and not PT.moon_change_close([], 15, PLANNER_CONFIG)
 
 
-@test("the change close: moon_cell carries move_in; far off (in the lead): it doesn't")
+@test("the change close: moon_cell carries move_in; far off (in the lead): it does too (item34)")
 def _():
     rows = [{"id": 1, "name": "Dodok", "by_syndrome": True, "cell": True}]
     c = moon(plan(fort({"list": rows, "changes": CH, "moon_phase": 25, "cells": [{"unit_id": 1}]}), Memory())[0])
     assert c and c[0].action.get("move_in") is True and "moved in now" in c[0].reason, c
     c = moon(plan(fort({"list": rows, "changes": CH, "moon_phase": 20, "cells": [{"unit_id": 1}]}), Memory())[0])
-    assert c and "move_in" not in c[0].action and "after a day" in c[0].reason, c
+    # (0.105.119 item34) moved in at once in the lead too, well before the change
+    assert c and c[0].action.get("move_in") is True and "well before the change" in c[0].reason, c
 
 
 @test("an unlock refused at a locked cell's door is said in the notes, by who asked")
@@ -79,7 +80,7 @@ def _():
     src = (ROOT / "lua" / "ai-homes.lua").read_text(encoding="utf-8")
     assert "reqscript('ai-threats').load_state().cells" in src and "reqscript('ai-killers').state().cells" in src
     w = (ROOT / "lua" / "ai-bridge-actions-works.lua").read_text(encoding="utf-8")
-    assert "moon_cell: move_in is true or false" in w and "{move_in = a.move_in == true}" in w
+    assert "moon_cell: move_in is true or false" in w and "{move_in = a.move_in == true, reserve = a.reserve == true}" in w
     d = (ROOT / "lua" / "ai-util-doors.lua").read_text(encoding="utf-8")
     assert "why ~= 'cell' and b and cell_door_held(b)" in d
 

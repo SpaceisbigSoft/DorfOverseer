@@ -12,7 +12,7 @@ from __future__ import annotations
 from digest import _d
 
 __all__ = ["LEISURE_NEEDS", "COMPANY_NEEDS", "soldiers_short_of_leisure", "friends_counted", "squad_shortage",
-           "company_short", "squad_mostly_short", "inside_few"]
+           "company_short", "squad_mostly_short", "inside_few", "war_leisure_rule"]
 
 # (BeWithFriends left out: it wants friends, not time off; 54 of 59 soldiers in happy A miss it)
 # (0.105.97) ...unless the fort is unhappy (friends_counted): B, 23 Nov, 76 of
@@ -140,3 +140,111 @@ def inside_few(s: dict, cfg: dict, reach: list, threats: dict) -> list:
                 or t.get("fire_breather")):
             return []
     return ids
+
+
+def war_leisure_rule(s: dict, cfg: dict, proposals: list | None, memory=None) -> None:
+    """(0.105.119 item35) A militant fort's soldiers get their months off too.
+
+    A "War-hold" (Militarism +150), 25 Nov, y253 winter to y254 winter: 59
+    of 86 citizens in 7 squads, every one on constant or staggered training
+    all year; the rotation and 0.105.97's leisure turns never ran (both only
+    under `train_rotate_below_militarism`, 50), and the recreation burrow
+    takes soldiers only from a squad resting off duty: none, all year. 28-50%
+    of the fort unhappy, "unmet needs" 63-69 citizens in the stress census;
+    badly missing (soldiers of all): friends 43 of 52, prayer 29 of 33, art
+    35 of 35, crafting 30 of 30. The other forts, rotating, 0-9%.
+
+    So, in a militant fort while company_short (a fifth of the soldiers
+    badly miss friends in an unhappy fort, drink or prayer), no threat can
+    reach the dwarves and the soldiers aren't longing to train: one of the
+    AI's squads in every `war_leisure_one_in` (3) rests a month off duty,
+    the shortest first (most of its members short), each at most once in
+    `war_leisure_again_days` (56). The reason says "another squad trains", so
+    the month off is the rotation's own (planner_record books rested_at,
+    planner_military leaves it off duty a month, then trains it again, and
+    sends it back at once if enemies can reach the dwarves); while it rests,
+    the recreation rule gives its soldiers places among the taverns and
+    temples. At least two squads and 3 soldiers (the guard) keep training.
+    Config keys read with defaults (PLANNER_CONFIG is pinned by r7 d6)."""
+    if proposals is None or memory is None:
+        return
+    from planner_core import _traits, abs_tick, player_rules, reachable_threats, TICKS_PER_DAY, Proposal
+    traits = _traits(s)
+    mil_ = int(traits.get("militarism", 0) or 0)
+    if mil_ < int(cfg.get("train_rotate_below_militarism", 50)):
+        return                                        # the rotation's own turns run there
+    if not player_rules(s).get("train_squads", True) or s.get("civ_alert"):
+        return
+    try:
+        if reachable_threats(s, traits, cfg):
+            return
+    except Exception:  # noqa: BLE001  (a malformed threats section: no rests)
+        return
+    if int(_d(s.get("dwarves")).get("total") or 0) < int(cfg.get("train_min_citizens", 15)):
+        return
+    short = company_short(s, cfg)
+    if not short:
+        return
+    # the soldiers longing to train keep training (planner_military's train_all)
+    mtd = _d(_d(_d(s.get("needs")).get("needs")).get("MartialTraining"))
+    mts = mtd.get("badly_soldiers")
+    mt = _int(mts) if isinstance(mts, int) else _int(mtd.get("badly"))
+    cit = max(1, int(_d(s.get("dwarves")).get("total") or 0))
+    if mt >= max(5, cit * float(cfg.get("train_all_share", 0.15))):
+        return
+    mil = _d(s.get("military"))
+    off = next((r for r in mil.get("routines") or [] if isinstance(r, str) and "off duty" in r.lower()), None)
+    if not off:
+        return
+    squads = [q for q in mil.get("squads") or [] if isinstance(q, dict) and q.get("id") is not None]
+    ai = (set(getattr(memory, "squads_trained", None) or []) | set(getattr(memory, "squads_made", None) or [])
+          | {q.get("id") for q in squads if q.get("ai_uniform")})
+    mine = [q for q in squads if q["id"] in ai and _int(q.get("members")) and not q.get("ai_orders")
+            and not _int(q.get("orders")) and not q.get("sheltering")]
+    if len(mine) < int(cfg.get("war_leisure_min_squads", 3)):
+        return
+    resting = [q for q in mine if "off duty" in str(q.get("routine") or "").lower()]
+    training = [q for q in mine if q not in resting]
+    now = abs_tick(s)
+    book = getattr(memory, "war_leisure", None)
+    if not isinstance(book, dict):
+        book = {}
+        try:
+            memory.war_leisure = book
+        except Exception:  # noqa: BLE001
+            pass
+    again = int(cfg.get("war_leisure_again_days", 56)) * TICKS_PER_DAY
+    month = int(cfg.get("train_rotate_days", 28)) * TICKS_PER_DAY
+    rested = set(getattr(memory, "squads_rested", None) or [])
+    for q in resting:                                 # the month off begins when it is seen off duty
+        t = book.get(str(q["id"]))
+        if q["id"] in rested and not (isinstance(t, int) and 0 <= now - t < month):
+            book[str(q["id"])] = now
+    max_off = max(1, len(mine) // max(1, int(cfg.get("war_leisure_one_in", 3))))
+    if len(resting) >= max_off or len(training) < 3:
+        return
+    friends = friends_counted(s, cfg)
+    sq = squad_shortage(s)
+
+    def share(q):
+        r = sq.get(q["id"]) or {}
+        return (r.get("short") if friends else r.get("short_np")) or 0
+
+    def recent(q):
+        t = book.get(str(q["id"]))
+        return isinstance(t, int) and 0 <= now - t < again
+
+    cands = sorted((q for q in training if squad_mostly_short(s, cfg, q["id"]) and not recent(q)),
+                   key=lambda q: (-share(q) / max(1, _int(q.get("members"))), book.get(str(q["id"])) or 0, q["id"]))
+    still = sum(_int(q.get("members")) for q in training)
+    for q in cands:
+        if still - _int(q.get("members")) < 3:
+            continue
+        n_tr = len(training) - 1
+        proposals.append(Proposal(
+            "war_leisure", {"type": "squad_routine", "squad_id": q["id"], "routine": off},
+            f"{q.get('name') or 'a squad'} rests a month off duty while another squad trains ({n_tr} of "
+            f"{len(mine)} squads train; Militarism {mil_} trains them all, but {short} soldiers badly miss "
+            f"friends, drink or prayer, {share(q)} of its {_int(q.get('members'))}): its soldiers to the "
+            "taverns and temples, back to training in a month (at once if enemies come)", 4))
+        return

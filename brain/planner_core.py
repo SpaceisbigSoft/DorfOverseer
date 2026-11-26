@@ -104,6 +104,7 @@ class Memory:
     farm_steer: str = ""                                 # (0.99.6) "drink" while autofarm's thresholds favour brewable crops; (0.105.5) "crops": the AI sets the plots' crops (autofarm off)
     kitchen_ban: bool = False                            # (0.100) the AI banned cooking brewables while drink is short
     drink_cook_ban: bool = False                         # (0.105.113 item10) the AI keeps drink from the cooks
+    cheap_cook_ban: bool = False                         # (0.105.119 item37) the AI keeps cheap ingredients from the cooks
     fat_ban: bool = False                                # (0.104.30) the AI kept fat and tallow from the cooks
     storage_started: int | None = None                   # (0.104.38) when the AI last began a storage level for full piles
     tantrums: list = field(default_factory=list)         # (0.104.31) [tick, who] of recent tantrums, a day each
@@ -118,6 +119,7 @@ class Memory:
     syndromes_seen: dict = field(default_factory=dict)   # (0.105.41, item 11) {dry, cleaned, last}: the contaminant clean's trial and counts
     hunt_seen: dict = field(default_factory=dict)        # (0.105.45) {off {target id: {tick, why}}, learned [keys]}: planner_hunt
     polished_upto: int | None = None                     # finished-level count when every level was found polished
+    pasture_refused: dict = field(default_factory=dict)  # (item39) {n, tick, sig}: new_pasture found no patch of grass, in a row
     polish_seen: dict = field(default_factory=dict)      # (item7) {n, tick}: "every level polished" refusals in a row, the last one
     quarry_seen: dict = field(default_factory=dict)      # (item7) the last quarry: {tick, tiles, before, settled, strikes, until, why}
     place_full: dict = field(default_factory=dict)       # (item7) "rule:zone" -> {n, until}: a zone with no free floor for a statue
@@ -228,6 +230,7 @@ class Memory:
     train_mode: dict = field(default_factory=dict)  # (0.104.168) the rotation's {all: bool, tick: when it changed}
     rested_at: dict = field(default_factory=dict)     # (0.105.99) squad id -> when the AI last sent it off duty (the rotation's rest month)
     leisure_hold: dict = field(default_factory=dict)  # (0.105.97) squad id -> when the rotation first held it off duty for its soldiers' leisure
+    war_leisure: dict = field(default_factory=dict)   # (0.105.119 item35) squad id -> when a militant fort's squad was last seen on its leisure month
     keen_lift: dict = field(default_factory=dict)   # (0.104.168) {n, tick}: soldiers wanted raised for the keen in a crisis
     unstick_seen: dict = field(default_factory=dict)   # (0.104.138) the spare gear at the last untangling, times
     steer: dict = field(default_factory=dict)    # (0.104.89) the strategist's raised and held rules: rule -> {mode, until, why}

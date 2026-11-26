@@ -142,6 +142,7 @@
   "list": {
    "1": {
     "changed": true,
+    "days_cursed": 0,
     "id": 7,
     "name": "Unit 7"
    }

@@ -28,8 +28,8 @@ sys.path.insert(0, str(ROOT / "brain"))
 
 LUA_DIR = ROOT / "lua"
 HUB = (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8")
-BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort", "ai-bridge-report-world",
-    "ai-bridge-orders", "ai-bridge-actions", "ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-civic",
+BRIDGE_PARTS = ["ai-bridge-report", "ai-bridge-report-civic", "ai-bridge-report-supplies", "ai-bridge-report-dead", "ai-bridge-report-fort", "ai-bridge-report-world",
+    "ai-bridge-orders", "ai-bridge-orders-jobs", "ai-bridge-actions", "ai-bridge-actions-fort", "ai-bridge-actions-works", "ai-bridge-actions-trade", "ai-bridge-actions-civic",
     "ai-bridge-probes", "ai-bridge-design"]   # (D0); (r6) report and actions split by theme
 # (r8) the hub's own two files (ACTIONS...; SECTIONS and the cache), run where their lines stood in it
 HUB_PARTS = re.findall(r"'([\w-]+)'", re.search(r"^HUB_PARTS = \{(.*?)\}", HUB, re.M).group(1))

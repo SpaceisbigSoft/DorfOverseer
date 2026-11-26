@@ -167,7 +167,7 @@ end
 -- pulled?}}, (0.105.26) openings = {"x,y,z" = {x, y, z, kind, source, tick}}
 function load_state()
     local d = U.site_get(STATE_KEY, {})
-    for _, k in ipairs({'fire', 'thieves', 'moon', 'cells', 'sealed', 'openings'}) do
+    for _, k in ipairs({'fire', 'thieves', 'moon', 'cells', 'sealed', 'openings', 'digs'}) do   -- (item31) digs: the side cells
         d[k] = type(d[k]) == 'table' and d[k] or {}
     end
     d.fire.tiles = type(d.fire.tiles) == 'table' and d.fire.tiles or {}
@@ -943,6 +943,7 @@ local function were_report(d, t, txt)
     local out = {list = {}, cells = {}}
     pcall(function() out.moon_phase = df.global.world.world_data.moon_phase end)
     local any_changed = false
+    local known, seen = type(d.moon.cursed) == 'table' and d.moon.cursed or {}, {}
     for _, u in ipairs(report_units()) do
         if dfhack.units.isActive(u) and not dfhack.units.isDead(u) then
             local own = is(dfhack.units.isCitizen, u)
@@ -953,13 +954,23 @@ local function were_report(d, t, txt)
                         or (is(dfhack.units.isNightCreature, u) and not is(dfhack.units.isBloodsucker, u))) then
                 local row = {id = u.id, name = name_of(u, txt), changed = now_changed or nil,
                              by_syndrome = cursed or nil, fighting = in_combat(u) or nil}
-                local c = d.cells[tostring(u.id)]
+                -- (0.105.119 item31) since when the curse is known: days_cursed
+                local k = tostring(u.id)
+                seen[k] = tonumber(known[k]) or t
+                row.days_cursed = (t - seen[k]) // DAY
+                local c = d.cells[k]
                 if type(c) == 'table' then
                     row.cell, row.locked = true, c.locked or nil
+                    row.cell_kind, row.reserved = c.kind, c.reserved or nil     -- (item31) made ready before the moon
                     -- (0.105.103) its doors not held in the game: not locked (moon_cell locks it again)
                     if c.locked and type(cell_doors_held) == 'function' then
                         local okh, h = pcall(cell_doors_held, c)
                         if okh and not h then row.locked, row.unlocked = nil, true end
+                    end
+                    -- (0.105.119 item34) locked in and yet outside (F, 25 Nov: Besmar): moved in again
+                    if row.locked and type(cell_has) == 'function' then
+                        local okc, inside = pcall(cell_has, c, u)
+                        if okc and inside == false then row.locked, row.outside = nil, true end
                     end
                 end
                 if #out.list < WERE_LIST_MAX then table.insert(out.list, row) end
@@ -978,10 +989,13 @@ local function were_report(d, t, txt)
                 pcall(function() row.visitor = is(dfhack.units.isVisitor, u) or nil end)
                 pcall(function() row.hfid = u.hist_figure_id end)
                 pcall(function() row.pos = {x = u.pos.x, y = u.pos.y, z = u.pos.z} end)
+                -- (item31) a wild werebeast come in its own form (the 'has come!' of A, E, F, 25 Nov), not a guest
+                pcall(function() row.hostile = is(dfhack.units.isDanger, u) or nil end)
                 if #out.outsiders < 10 then table.insert(out.outsiders, row) end
             end
         end
     end
+    d.moon.cursed = seen          -- (item31) the cursed still here (the rest dropped)
     local ch = d.moon.changes
     local last = ch[#ch]
     if any_changed and (not last or t - (tonumber(last.tick) or 0) > 3 * DAY) then
@@ -1009,7 +1023,8 @@ local function were_report(d, t, txt)
             -- (0.105.103) locked only while its doors are held in the game
             local row = {unit_id = tonumber(uid), locked = (c.locked and held) or nil, doors = #(c.doors or {}),
                          days = c.tick and (t - c.tick) // DAY or nil, unlocked = (c.locked and not held) or nil,
-                         were = (c.kind == 'were') or nil}     -- (item24) behind a drawbridge
+                         were = (c.kind == 'were') or nil,     -- (item24) behind a drawbridge
+                         kind = c.kind, reserved = c.reserved or nil}   -- (item31) made ready, nobody in yet
             -- (0.105.103) anyone else inside a locked cell (ai-threats-actions cell_others)
             if c.locked and type(cell_others) == 'function' then
                 pcall(function() row.others = cell_others(c, uid, txt) end)
@@ -1077,20 +1092,20 @@ PART_LOCALS = {U = U, report_citizens = report_citizens, report_units = report_u
 ---------------------------------------------------------------------------
 -- (r8) The rest of the threats lives in parts beside this file
 -- (ai-threats-<part>.lua): survey (the cavern openings and their seal's
--- state, who keeps the dwarves from drink and food, survey() itself) and
--- actions (fire_guard, the prisoners' room, the moon cell, seal_cavern, the
--- fire breathers). Each runs in this module's own environment, so its names
--- stay reqscript('ai-threats').name for the bridge and the other modules, and
--- a test's swap (T.survey = ...) reaches every part. They load in this
+-- state, who keeps the dwarves from drink and food, survey() itself),
+-- actions (fire_guard, the prisoners' room, the moon cell) and seal
+-- (0.105.119: seal_cavern, the fire breathers). Each runs in this module's
+-- own environment, so its names stay reqscript('ai-threats').name for the
+-- bridge and the other modules, and a test's swap (T.survey = ...) reaches every part. They load in this
 -- order. DFHack reloads a module when its own file changes: a change to a
 -- part alone is picked up once ai-threats.lua is touched too, or the game
 -- restarts.
 ---------------------------------------------------------------------------
 
-PARTS = {'survey', 'actions'}
+PARTS = {'survey', 'actions', 'seal'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-threats'] = '0.105.118'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-threats'] = '0.105.119'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

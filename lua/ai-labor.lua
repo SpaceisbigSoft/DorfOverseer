@@ -99,6 +99,26 @@ end
 
 local function in_squad(u) return u.military.squad_id >= 0 end
 
+-- (0.105.119 item33) the AI's recreation burrow's members (ai-society-burrows
+-- RECREATION_KEY): their labours are off on purpose while they are in
+-- (rec_labors_off, at every report), so no labour rule may pick them. A, 25
+-- Nov: the doctor Kel, in the burrow, was put back on Planters 30 times in an
+-- hour, the burrow took it off again each report, and the labour rule's
+-- "skilled in plant aren't on the Planters detail" asks between were refused
+-- "nobody outside the squads left for this job" 48 times in 3.5 h.
+REC_KEY = 'ai-overseer/recreation'
+function rec_member_ids()
+    local set = {}
+    pcall(function()
+        local d = U.site_get(REC_KEY, {members = {}})
+        for k, _ in pairs(type(d) == 'table' and type(d.members) == 'table' and d.members or {}) do
+            local id = tonumber(k)
+            if id then set[id] = true end
+        end
+    end)
+    return set
+end
+
 local function skill(u, id)
     local soul = u.status.current_soul
     if not soul or not id then return 0 end
@@ -124,19 +144,24 @@ local function usable(item) return U.item_free(item, TOOL_OK) end
 
 -- Tools of a weapon skill (picks, axes): usable ones, and those in a
 -- soldier's hands (a squad with "any weapon" takes them: those can't work).
+-- (0.105.119 item33) and those built into a building (a weapon trap's
+-- blade: D, 25 Nov, had its three iron picks in weapon traps, 1217 tiles
+-- designated and nobody able to dig for two years)
 local function count_tools(weapon_skill)
-    local free, soldiers = 0, 0
+    local free, soldiers, built = 0, 0, 0
     local want = enum(df.job_skill, weapon_skill)
-    if not want then return 0, 0 end
+    if not want then return 0, 0, 0 end
     for _, item in ipairs(df.global.world.items.other.WEAPON) do
         local ok, s = pcall(function() return item.subtype.skill_melee end)
         if ok and s == want and usable(item) then
             local holder = dfhack.items.getHolderUnit(item)
             if holder and in_squad(holder) then soldiers = soldiers + 1
             else free = free + 1 end
+        elseif ok and s == want and item.flags.in_building and not item.flags.removed then
+            built = built + 1
         end
     end
-    return free, soldiers
+    return free, soldiers, built
 end
 
 local function shape_of(block, x, y)
@@ -337,11 +362,12 @@ local function citizens(job, memo)
     memo = memo or {}
     memo.units = memo.units or report_citizens(true)
     memo.noble = memo.noble or {}
+    memo.rec = memo.rec or rec_member_ids()     -- (item33) never a recreation member
     for _, u in ipairs(memo.units) do
         if grown(u) then
             if labor and has_labor(u, labor) then
                 if in_squad(u) then soldiers = soldiers + 1 else table.insert(doing, u) end
-            elseif not in_squad(u) then
+            elseif not in_squad(u) and not memo.rec[u.id] then
                 table.insert(cands, cand_of(u, job, sk, memo))
             end
         end
@@ -417,7 +443,7 @@ local function job_row(job, memo)
     local row = {doing = #doing, candidates = #cands, soldiers = soldiers,
                  detail = wd and tostring(wd.name) or nil, mode = mode,
                  unsorted = wd and not is_sorted(ids_of(wd)) or nil}
-    if J.tool then row.tools, row.soldier_tools = count_tools(J.tool) end
+    if J.tool then row.tools, row.soldier_tools, row.built_tools = count_tools(J.tool) end
     return row, cands, wd
 end
 
@@ -460,6 +486,7 @@ function survey()
     out.miners, out.picks, out.soldier_picks, out.candidates = m.doing, m.tools or 0, m.soldier_tools or 0, m.candidates
     out.want = miners_wanted(dig, out.picks, out.adults)
     out.need = math.max(0, out.want - out.miners)
+    out.built_picks = m.built_tools or 0       -- (item33) picks built into traps: no miner's
     out.detail, out.detail_mode = m.detail, m.mode
     local okw, w = pcall(waiting_work, 12)
     out.waiting = okw and w or {error = tostring(w):sub(1, 160)}
@@ -589,10 +616,15 @@ end
 
 -- Labours carried by a detail the AI may add to (not everybody/nobody), with
 -- the dwarves skilled in it who aren't on it.
+-- (0.105.119 item33) counted as assign() would pick them: never a
+-- recreation member (its labours are off on purpose), and never a dwarf who
+-- is on the detail already (the labour is held off by something else: a
+-- post, a burrow; putting him on again changes nothing lasting)
 function skilled_off(limit)
     local list = details() or {}
     local out = {}
     local seen = {}
+    local rec = rec_member_ids()
     for _, d in ipairs(list) do
         local okm, m = pcall(function() return df.work_detail_mode[d.flags.mode] end)
         if okm and m ~= 'EverybodyDoesThis' and m ~= 'NobodyDoesThis' then
@@ -605,7 +637,8 @@ function skilled_off(limit)
                     local n = 0
                     if sk then
                         for _, u in ipairs(report_citizens(true)) do
-                            if grown(u) and not in_squad(u) and not u.status.labors[l] and skill(u, sk) >= SKILLED then
+                            if grown(u) and not in_squad(u) and not u.status.labors[l] and skill(u, sk) >= SKILLED
+                                    and not rec[u.id] and not is_member(d, u.id) then
                                 n = n + 1
                             end
                         end

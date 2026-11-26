@@ -721,6 +721,32 @@ local function advance(G, e, rec, rk, recs, dry_run, starts)
 end
 
 -- build_killzone: traps in the 1-wide stretch inside entrance `id` (n, of
+-- (0.105.119 item40) A planned weapon trap's weapon slot (DFHack's filter:
+-- any weapon, vector ANY_WEAPON, item type unset) narrowed to trap components
+-- (giant axe blades and the like; buildingplan matches by the job item's
+-- type): D's three iron picks went into weapon traps as blades and no dwarf
+-- could dig. A pick, or a soldier's weapon, is never a blade; the brain
+-- orders the blades (killzone_parts). Returns the slots narrowed.
+function blades_only(b)
+    if not b or b:getType() ~= df.building_type.Trap or b.trap_type ~= df.trap_type.WeaponTrap then return 0 end
+    local n = 0
+    for _, j in ipairs(b.jobs) do
+        local okl, list = pcall(function() return j.job_items.elements end)
+        if not okl or list == nil then list = j.job_items end
+        for _, ji in ipairs(list) do
+            if ji.vector_id == df.job_item_vector_id.ANY_WEAPON and ji.item_type ~= df.item_type.TRAPCOMP then
+                ji.item_type, ji.item_subtype = df.item_type.TRAPCOMP, -1
+                n = n + 1
+            end
+        end
+    end
+    return n
+end
+
+function trap_blades_only(pos)
+    return blades_only(dfhack.buildings.findAtTile(xyz2pos(pos.x, pos.y, pos.z)))
+end
+
 -- kind cage|weapon|stonefall|mixed; 0: the drawbridge alone, for enemies
 -- the traps leave alone), and a drawbridge (flat, or over a channel where
 -- the rules allow one). Called again, a channelled bridge goes one step on.
@@ -789,6 +815,11 @@ function build_killzone(id, n, kind, drawbridge, dry_run, starts)
     local failed, rec_traps = {}, {}
     for i, t in ipairs(tiles) do
         local ok, w = G.place(TRAP_KEYS[kinds[i]], {x = t.x, y = t.y, z = t.z})
+        if ok and kinds[i] == 'weapon' then
+            local okb, nb = pcall(trap_blades_only, t)
+            if okb then out.blades_only = (out.blades_only or 0) + (nb or 0)
+            else out.blades_why = tostring(nb):sub(1, 120) end
+        end
         if ok then
             out.traps = out.traps + 1
             table.insert(rec_traps, {x = t.x, y = t.y, z = t.z, kind = kinds[i]})

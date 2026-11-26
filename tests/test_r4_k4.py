@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from harness import test, finish, have_lua  # noqa: E402
+from lua_modules_util import bridge_part_src  # noqa: E402
 from py_parts import py_family_src  # noqa: E402  (r7) overseer.py and its parts
 
 sys.path.insert(0, str(ROOT / "brain"))
@@ -113,7 +114,7 @@ def _():
 
 def _lua_env():
     from lupa.lua53 import LuaRuntime
-    src = (LUA_DIR / "ai-bridge-orders.lua").read_text(encoding="utf-8")
+    src = bridge_part_src("ai-bridge-orders")   # (0.105.119) act_cancel_work_order in ai-bridge-orders-jobs
     bodies = []
     for name in ("ai_orders", "save_ai_orders", "record_ai_order", "get_orders", "act_cancel_work_order"):
         start = src.index(f"\nfunction {name}(")

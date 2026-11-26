@@ -246,12 +246,15 @@ def _():
         ([(p.rule, p.action) for p in props], [n for n in notes if "mood" in n])
 
 
-@test("X1 mood: a level already building its Carpenters: a note, no second level")
+@test("X1 mood: a level already building its Carpenters: no second level (one placed on free floor meanwhile)")
 def _():
     s = _mood_fort([{"id": 501, "kind": "workshops", "phase": "dig", "summary": {"workshops": ["Carpenters"]}}])
     props, notes = plan(s, Memory())
-    assert not [p for p in props if p.rule == "mood" and p.action.get("type") in ("start_project", "place_mood_shop")]
-    assert any("Kib" in n and "with a Carpenters is already being built" in n for n in notes), notes
+    assert not [p for p in props if p.rule == "mood" and p.action.get("type") == "start_project"]
+    # (0.105.119 item36) the level is too slow for a mood: the shop is placed on free floor too
+    m = [p for p in props if p.rule == "mood" and p.action.get("type") == "place_mood_shop"]
+    assert m and m[0].action["kind"] == "Carpenters" and m[0].priority == 0, [(p.rule, p.action) for p in props]
+    assert "is being dug, too slow for a mood" in m[0].reason, m[0].reason
     # one stuck furnishing past STALE_PROJECT_DAYS doesn't count
     s = _mood_fort([{"id": 501, "kind": "workshops", "phase": "furnish", "furnish": {"days": 40},
                      "summary": {"workshops": ["Carpenters"]}}])

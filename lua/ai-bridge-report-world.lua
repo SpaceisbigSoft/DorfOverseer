@@ -9,7 +9,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-world is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.118'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-world'] = '0.105.119'   -- bumped with BRIDGE_VERSION
 
 local utils = require('utils')
 local inc, TICKS_PER_DAY = REPORT_PART_LOCALS.inc, REPORT_PART_LOCALS.TICKS_PER_DAY
@@ -545,6 +545,13 @@ function get_others_on_map()
                     great_danger = dfhack.units.isGreatDanger(u),
                     invader = dfhack.units.isInvader(u),
                     turned = turned or nil,     -- (r1 g7) a visitor turned killer
+                    -- (0.105.119 item32) a were in beast form now (its race not its own)
+                    transformed = (function()
+                        local okw, v = pcall(function()
+                            return u.enemy.normal_race ~= -1 and u.enemy.normal_race ~= u.race
+                                and (u.enemy.were_race == nil or u.enemy.were_race == -1 or u.race == u.enemy.were_race)
+                        end)
+                        return (okw and v) and true or nil end)(),
                     visitor = (function() local okv, v = pcall(dfhack.units.isVisitor, u)
                                    return (okv and v) and true or nil end)(),
                     -- (0.105.48, K1) an animal (DF agitates wild ones: a falcon, a

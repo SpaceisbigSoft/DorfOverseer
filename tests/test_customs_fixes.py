@@ -180,7 +180,9 @@ def _():
         calls.append((action.get("kind"), kw.get("urgent", False)))
         return real_apply(action, *a, **kw)
     s = real("region2-0.48-y52-spring.json", DEEP)
-    with Patched(pb, pb, apply_customs=spy):
+    # (0.105.119 item39) cap_full_pass, after the customs, drops the new levels this
+    # fixture's full cap would refuse: left out here, every level is counted
+    with Patched(pb, pb, apply_customs=spy), Patched(pl, pl, cap_full_pass=lambda *a: None):
         props = levels(plan(copy.deepcopy(s), memory(DEEP))[0])
     assert len(calls) == len(props) and "workshops" in {k for k, _u in calls}, (calls, len(props))
     assert sum(1 for _k, u in calls if u) >= len(props) - 1, calls     # all but the ladder's level

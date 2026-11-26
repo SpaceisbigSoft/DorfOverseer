@@ -616,6 +616,8 @@ def _needs_notes(s: dict, cfg: dict, notes: list, proposals: list | None = None,
     _stress_care(s, cfg, listed, proposals, memory)
     _soldier_swap(s, cfg, proposals, memory)
     _recreation_rule(s, cfg, listed, proposals, memory)
+    from planner_leisure import war_leisure_rule   # (0.105.119 item35) a militant fort's squads rest by turns too
+    war_leisure_rule(s, cfg, proposals, memory)
     from planner_social_places import _social_places_rule   # (0.105.113 item9) the taverns and temples drawn together
     _social_places_rule(s, cfg, proposals)
     # (0.104.133) the full counts (the list keeps the worst 8: "8 miserable" was
@@ -1113,14 +1115,21 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
     # (Enxah: 0 of 1892 servings good, lavish ones cooked by anyone); any
     # cook again once the store runs down
     ck = _d(sup.get("cooks"))
+    # (0.105.119 item33) the best two free cooks kept at the kitchen while
+    # dwarves want good meals (C, 25 Nov: the skill-17 cook hauled while a 9
+    # cooked, the kitchens at 9+; A: a skill-11 cook with the labour off)
+    guard = _cook_staff_rule(s, ck, cfg, at, pop, proposals)
     if isinstance(ck.get("kitchen_min"), int) and isinstance(ck.get("best"), int):
         want = min(20, max(cfg["good_cook_min"], ck["best"] - 2)) if ck["best"] >= cfg["good_cook_min"] else 0
         # (0.105.8) at least two free cooks must clear the bar (the bridge's
         # able_skills: adults in no squad with the labour, best first): one
         # cook alone is pulled to other work and the lavish meals stood at the
         # kitchen for weeks (the six forts: 17-37 stuck-order notes each)
+        # (0.105.119 item33) unless the best two free cooks are both kept at
+        # the kitchen (the labour on, off hauling, neither long at other
+        # work): then the bar goes by the best cook alone
         able = [int(x) for x in _l(ck.get("able_skills")) if isinstance(x, (int, float))]
-        if want and "able_skills" in ck:
+        if want and "able_skills" in ck and not guard:
             second = able[1] if len(able) >= 2 else 0
             want = min(want, second) if second >= cfg["good_cook_min"] else 0
             if ck["kitchen_min"] > 0 and (len(able) < 2 or able[1] < ck["kitchen_min"]) and ck["kitchen_min"] <= ck["best"]:
@@ -1154,6 +1163,56 @@ def _needs_rules(s: dict, cfg: dict, proposals: list, rules_: dict | None = None
         proposals.append(Proposal("needs_meal", {"type": "work_order", "recipe": "prepare_fine_meal", "amount": 5},
                                   f"{unmet(s, 'EatGoodMeal')} dwarves are distracted for want of a good meal: "
                                   "cook fine meals", 5, True))
+
+
+# (item33) a kept cook this many days at other work: the kitchen bar goes by two cooks again
+COOK_AWAY_DAYS = 2
+
+
+def free_cooks_top(ck: dict, cfg: dict) -> list:
+    """(item33) The best two free cooks the bridge names (cooks.free: adults
+    in no squad, the labour on or not), skilled at least good_cook_min."""
+    rows = [x for x in _l(ck.get("free")) if isinstance(x, dict) and isinstance(x.get("id"), int)
+            and isinstance(x.get("skill"), (int, float))]
+    rows.sort(key=lambda x: (-x["skill"], x["id"]))
+    return [x for x in rows if x["skill"] >= cfg["good_cook_min"]][:2]
+
+
+def cooks_kept(top: list, cfg: dict) -> bool:
+    """(item33, 0.105.8's guard) Both best free cooks are at the kitchen's
+    call: the cooking labour on, no hauling, neither at other work for
+    COOK_AWAY_DAYS or more."""
+    return len(top) == 2 and all(x.get("cook") is True and not x.get("hauls")
+                                 and int(x.get("away_days") or 0) < COOK_AWAY_DAYS for x in top)
+
+
+def _cook_staff_rule(s: dict, ck: dict, cfg: dict, at: int, pop: int, proposals: list) -> bool:
+    """(0.105.119 item33) While dwarves want good meals (EatGoodMeal unmet by
+    `at` or more, good meals under good_meals_pd a dwarf, a kitchen): the
+    best two free cooks get the cooking labour and come off hauling
+    (relieve_haulers with cooks); once good meals are no longer wanted, the
+    kept cooks get their hauling back. Returns whether both are kept now
+    (the kitchen bar may then go by the best cook)."""
+    if "free" not in ck:
+        return False
+    top = free_cooks_top(ck, cfg)
+    staffed = sorted(int(i) for i in _l(ck.get("staffed")) if isinstance(i, (int, float)))
+    sup = _d(s.get("supplies"))
+    wanted = (unmet(s, "EatGoodMeal") >= at and (sup.get("good_meals") or 0) / max(1, pop) < cfg["good_meals_pd"]
+              and _has_shop(_d(s.get("buildings")), "Kitchen"))
+    ids = sorted(x["id"] for x in top)
+    if wanted and top and (ids != staffed or any(x.get("cook") is not True or x.get("hauls") for x in top)):
+        proposals.append(Proposal("cook_staff", {"type": "relieve_haulers", "count": len(ids), "cooks": ids},
+                                  f"{unmet(s, 'EatGoodMeal')} dwarves want a good meal: the best free cooks "
+                                  f"(skill {', '.join(str(x['skill']) for x in top)}) get the cooking labour and "
+                                  "come off hauling", 3))
+        return False
+    if not wanted and staffed:
+        proposals.append(Proposal("cook_staff", {"type": "relieve_haulers", "count": min(5, len(staffed)),
+                                                 "cooks": [], "back": True},
+                                  "good meals are no longer wanted: the cooks kept at the kitchen haul again", 6))
+        return False
+    return wanted and cooks_kept(top, cfg)
 
 
 def ghost_work_blocked(s: dict, memory=None, slabs: bool = True) -> list[str]:

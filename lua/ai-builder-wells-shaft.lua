@@ -7,7 +7,7 @@
 -- (r8) Cut from ai-builder-wells.lua, which had grown to 133 KB; loaded right
 -- after it and its parts before this one, in the old file's order.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-shaft'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-wells-shaft'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 
@@ -504,6 +504,14 @@ function well_shaft_step(want_closed, dry_run, dry, keep)
     end
     return {ok = false, rejected = true, wells = wells,
             error = why or ('nothing to do: ' .. tostring(wells[1].stage or wells[1].was))}
+end
+
+-- (0.105.119 item39) the lever's spot as well_shaft finds it (nil: none), for the
+-- watch part's report (a builder global: the hand-over below stays as it is)
+function shaft_lever_spot_for(p)
+    local sg = p.shaft_gate
+    if sg and sg.lever and free_floor(sg.lever.x, sg.lever.y, sg.lever.z or p.z) then return sg.lever end
+    return shaft_lever_spot(p)
 end
 
 -- (r8) the file-scope helpers ai-builder-wells-watch uses too, handed on (the same

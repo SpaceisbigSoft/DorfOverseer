@@ -126,12 +126,13 @@ def _():
 def _():
     s = fort({"were": {"list": [{"id": 4, "name": "Wolfy"}], "changes": [], "moon_phase": 7}})
     props, notes = plan(s, Memory())
-    assert not acts(props, "moon_cell") and any("full moon isn't known" in n for n in notes), notes
+    # (0.105.119 item31) only the cell made ready before the moon (reserve)
+    assert all(p.action.get("reserve") for p in acts(props, "moon_cell")) and any("full moon isn't known" in n for n in notes), notes
     now = abs_tick(planner.normalize(s))
     period = 28 * TICKS_PER_DAY
     s["threats"]["were"]["changes"] = [{"tick": now - period + 1 * TICKS_PER_DAY}]     # due in a day
     c = acts(plan(s, Memory())[0], "moon_cell")
-    assert c and c[0].action == {"type": "moon_cell", "ids": [4]}, c
+    assert c and c[0].action == {"type": "moon_cell", "ids": [4], "move_in": True}, c     # (item34) moved in at once
     s["threats"]["were"]["changes"] = [{"tick": now - 10 * TICKS_PER_DAY}]
     s["threats"]["were"]["cells"] = [{"unit_id": 4, "locked": True}]
     # (0.105.103) the tick count alone (no phase seen) never lets them out
@@ -140,7 +141,7 @@ def _():
     assert any("kept in until DF's moon phase" in n for n in notes), notes
     # by DF's phase: the change seen at 27, the moon at 7 (8 phases past): let out
     s["threats"]["were"]["changes"] = [{"tick": now - 10 * TICKS_PER_DAY, "phase": 27}]
-    c = acts(plan(s, Memory())[0], "moon_cell")
+    c = [p for p in acts(plan(s, Memory())[0], "moon_cell") if not p.action.get("reserve")]
     assert c and c[0].action.get("release") is True, c
     # a later change seen at phase 1 too: phase 2 is near that one, so they stay in
     s["threats"]["were"]["changes"] = [{"tick": now - 40 * TICKS_PER_DAY, "phase": 27},

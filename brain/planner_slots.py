@@ -37,7 +37,7 @@ from digest import _d, _l
 from planner_core import TICKS_PER_DAY, Proposal, abs_tick
 
 __all__ = ["furnish_sig", "STAGED_DIG_KINDS", "staged_dig", "cut_off", "miners_elsewhere", "HANDLED_KINDS", "KEEP_KINDS", "UNOBTAINABLE_KINDS", "need_of", "needs_pass", "_park_rule", "_dig_check_rule",
-           "need_slots_free", "slots_rules"]
+           "need_slots_free", "slots_rules", "cap_full_pass"]
 
 # Pieces some rule of the AI orders or makes for a waiting level (planner_building's
 # FURNITURE_RECIPES, the restraints' chains, the statues' decor_only finish, the
@@ -288,3 +288,44 @@ def slots_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> Non
     """The slot rules (planner._project_rules' neighbours), each guarded by the caller."""
     _park_rule(s, memory, cfg, proposals, notes)
     _dig_check_rule(s, memory, cfg, proposals, notes)
+
+
+# (0.105.119 item39) lua/ai-builder.lua's: the small needs' kinds, and the
+# slots an urgent level may take past the cap
+BRIDGE_NEED_KINDS = frozenset({"paper", "mood", "well", "drink", "meals"})
+BRIDGE_URGENT_EXTRA = 2
+FREEING_TYPES = ("finish_project", "cancel_project", "park_project")
+
+
+def cap_full_pass(s: dict, proposals: list, notes: list) -> None:
+    """(0.105.119 item39) A new level the bridge's cap would refuse ("already N
+    unfinished building projects": D's reserve_storage 18 and bottleneck 11 in
+    3.5 h, A's and D's homes_dig, cups_home, food_store, cloth) is not asked:
+    the report's own count (the open dig and furnish levels) against its own
+    cap (max_open, slot_cap's), as the bridge tests it (an urgent level 2 past
+    it, a farm level 1, a small need in its own pool while that has room). Not
+    while a level is finished, cancelled or parked this cycle (a slot frees),
+    nor a crossbows Bowyer's level (its own rule), nor from an older report."""
+    pr = _d(s.get("projects"))
+    cap = pr.get("max_open")
+    if not isinstance(cap, int) or isinstance(cap, bool) or "error" in pr or "projects" in _d(s.get("_errors")):
+        return
+    if any(_d(p.action).get("type") in FREEING_TYPES for p in proposals):
+        return
+    n_open = sum(1 for p in _open(s) if p.get("phase") in ("dig", "furnish"))
+    held = []
+    for p in list(proposals):
+        a = _d(p.action)
+        if a.get("type") != "start_project" or a.get("crossbows") is True:
+            continue
+        kind = a.get("kind")
+        need = a.get("need") in BRIDGE_NEED_KINDS or (a.get("mood") is True and kind == "workshops")
+        if need and need_slots_free(s) > 0:
+            continue
+        extra = BRIDGE_URGENT_EXTRA if a.get("urgent") is True else (1 if kind == "farms" else 0)
+        if n_open >= cap + extra:
+            proposals.remove(p)
+            held.append(f"{p.rule} ({kind})")
+    if held:
+        notes.append(f"{n_open} unfinished building projects fill the {cap} slots: "
+                     + ", ".join(held[:6]) + " wait for one to finish")

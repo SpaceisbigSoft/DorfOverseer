@@ -432,6 +432,40 @@ def _():
     assert r["rejected"] and "waits to be built" in r["error"], r
 
 
+# (0.105.119 item41) A, 25 Nov: "no free 5x5 of roofed floor" while a mood waited. A fort of
+# 3-wide rooms: the siege workshop finds no 5x5, a mood's shop (every one 3x3) takes a room
+ROOMS_3 = ["###########",
+           "#E#########",
+           "#.#########",
+           "#.###...###",
+           "#.......###",
+           "#.###...###",
+           "#.#########",
+           "###########"]
+
+
+@test("item41 siege: a mood's shop searches a 3x3 footprint (a 3-wide room takes it); the siege workshop "
+      "keeps its 5x5 (none here: refused, '5x5' said)")
+def _():
+    need_lua()
+    lua, S = siege_rig()
+    e, inside, T = ascii_fort(lua, ROOMS_3)
+    assert S.shop_spot_anywhere(e, inside, T) is None
+    placed = []
+    e.id = 1
+    mods = {"ai-gates": lua.table_from({"GATES": lua.table_from({"entrances": lua.table_from([e]), "inside": inside})}),
+            "ai-builder": lua.table_from({"qf_try": lambda *a: (placed.append(a) or True)})}
+    S.reqscript = lambda n: mods.get(n)
+    S.tile = T
+    S.shop_count = lambda: 0
+    r = py(S.place_mood_shop("Smelter", True))
+    assert r["ok"] is True and r["at"]["x"] == 6 and r["at"]["y"] == 4, r
+    r = py(S.place_shop(1, True))
+    assert r["rejected"] and "no free 5x5" in r["error"], r
+    src = module_src("ai-siege.lua")
+    assert "place_one(e, G, key, kind, false, dry_run, 1)" in src and "place_one(e, G, 'ws', 'siege workshop', true, dry_run)" in src
+
+
 # --- 3. the stuck sweep's give-up -------------------------------------------------------
 
 @test("3: C's dining level (0 of 16 pieces, tables and chairs) and the temples: the sweep's retire leaves "

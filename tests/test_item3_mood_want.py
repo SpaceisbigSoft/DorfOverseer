@@ -115,7 +115,7 @@ def _():
     assert [p.action.get("kind") for p in props] == ["yarn"], [p.action for p in props]
 
 
-@test("a bar mood with no fuel: coke from coal, else charcoal from wood, else an inside tree felled")
+@test("a bar mood with no fuel: charcoal from wood (never coke: it burns a fuel), else an inside tree felled")
 def _():
     s = fort()
     s["buildings"]["furnaces"] = {"Smelter": 1, "WoodFurnace": 1}
@@ -128,7 +128,9 @@ def _():
     assert why is None and [a.get("recipe") for a, _ in acts] == ["make_charcoal"], (acts, why)
     s["stone_use"] = {"economic": {"LIGNITE": {"n": 4}}}
     acts, why = planner_moods._mood_make(s, x, "bar", memory(s), CFG, mood={"name": "Nil", "unit_id": 5})
-    assert [a.get("recipe") for a, _ in acts] == ["coke_lignite"], acts
+    # (0.105.119 item41) coal at fuel 0 is no help: the coke reaction itself burns one fuel
+    # (D, 25 Nov: "Needs refined coal", twice): charcoal still
+    assert [a.get("recipe") for a, _ in acts] == ["make_charcoal"], acts
     # no coal, no wood: one of the fort's own trees within reach felled
     s["stone_use"] = {"economic": {}}
     s["stocks"]["wood"] = 0

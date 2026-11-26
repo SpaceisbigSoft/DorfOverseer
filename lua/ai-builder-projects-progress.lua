@@ -6,7 +6,7 @@
 -- loads it into its own environment right after the part before it (PARTS), so every
 -- name here is reqscript('ai-builder').name and the hub's helpers are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-progress'] = '0.105.118'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-progress'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 
@@ -569,6 +569,13 @@ function projects_report()
             need_slots_free = (function()
                 local ok, n = pcall(need_slots_used, open_projects(data))
                 return ok and math.max(0, NEED_SLOTS - n) or nil
+            end)(),
+            -- (0.105.119 item39) polish's next step as the action picks it: smooth |
+            -- engrave, wait (a level is being smoothed), none (every finished level polished)
+            polish = (function()
+                local ok, p, what = pcall(polish_pick, data.list, now_tick())
+                if not ok then return nil end
+                return p and what or (what and 'wait' or 'none')
             end)(),
             max_open_base = MAX_OPEN_PROJECTS, well_lids = (okl and #lids > 0) and lids or nil,
             well_lids_error = (not okl) and tostring(lids):sub(1, 120) or nil}

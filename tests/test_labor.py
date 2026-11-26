@@ -100,7 +100,8 @@ end
 
 local items = {}
 for _, t in ipairs(spec.tools) do
-    table.insert(items, {subtype = {skill_melee = SK[t.skill]}, flags = {forbid = t.forbid}, holder = t.holder})
+    table.insert(items, {subtype = {skill_melee = SK[t.skill]}, flags = {forbid = t.forbid, in_building = t.built},
+                         holder = t.holder})
 end
 
 -- a 20x20 surface at z 10: shrubs where spec says, water where spec says
@@ -151,6 +152,7 @@ env.dfhack = {
              getReadableName = function(u) return 'dwarf ' .. u.id end,
              setAutomaticProfessions = (not spec.old_dfhack) and recompute or nil},
     items = {getHolderUnit = function(i) return i.holder and by_id[i.holder] or nil end},
+    persistent = {getSiteData = function(k, d) return spec.site and spec.site[k] or d end},
     job = {getWorker = function(j) return j.worker end},
     maps = {
         getTileType = function(x, y, z) local t = tiles[key(x, y, z)]; return t and t.tt end,
@@ -398,6 +400,27 @@ def _():
     assert members(g, 5) == [8, 9] and g["by_id"][8].status.labors[50] is True
     r = g["env"].assign("NOT_A_LABOR", 1, False, None)
     assert r.ok is False and "unknown job" in r.error
+
+
+@test("(item33) labor: the recreation burrow's members and dwarves already on the detail: not skilled_off, "
+      "not picked; picks built into traps counted apart")
+def _():
+    units = [{"id": 4, "skills": [("PLANT", 6)]},                       # in the recreation burrow
+             {"id": 6, "skills": [("PLANT", 5)]},                       # on Planters, labour held off
+             {"id": 7, "skills": [("PLANT", 4)]}]                       # free: the one
+    details = DETAILS
+    planters = next(i for i, d in enumerate(details) if d.get("labor") == "PLANT")
+    details = [dict(d) for d in details]
+    details[planters]["members"], details[planters]["mode"] = [6], 3
+    g = game(units, [{"skill": "MINING", "built": True}, {"skill": "MINING"}], details,
+             site={"ai-overseer/recreation": {"members": {"4": 100}}})
+    g["by_id"][6].status.labors[g["lab"].PLANT] = False                # (a post, a burrow took it off)
+    s = g["env"].survey()
+    k = [dict(x) for x in s.skilled_off.values()]
+    assert {"labor": "PLANT", "skilled": 1, "detail": details[planters]["name"]} in k, k
+    assert s.picks == 1 and s.built_picks == 1, (s.picks, s.built_picks)
+    r = g["env"].assign("PLANT", 3, True, None, 3)
+    assert r.ok and sorted(r.assigned.values()) == ["dwarf 6", "dwarf 7"], dict(r)     # never dwarf 4
 
 
 @test("(r9, audit A7 #22) take_labors: out of the work detail, so the game's recompute doesn't give it back; give_labor: into it")

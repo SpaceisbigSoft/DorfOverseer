@@ -51,7 +51,6 @@
  "{\"kind\": \"temple\", \"size\": \"shrine\", \"style\": {\"spacing\": -30}, \"type\": \"start_project\", \"urgent\": true}": "sha256:7c044b510d3694e5dfdc7814",
  "{\"kind\": \"temple\", \"size\": \"shrine\", \"style\": {\"spacing\": -60}, \"type\": \"start_project\", \"urgent\": true}": "sha256:7c044b510d3694e5dfdc7814",
  "{\"kind\": \"temple\", \"size\": \"shrine\", \"type\": \"start_project\", \"urgent\": true}": "sha256:7c044b510d3694e5dfdc7814",
- "{\"kind\": \"workshops\", \"shops\": [\"Clothiers\"], \"style\": {\"spacing\": -60}, \"type\": \"start_project\"}": "sha256:e31126d2ee408b70ccd190de",
  "{\"kind\": \"workshops\", \"shops\": [\"Clothiers\"], \"type\": \"start_project\"}": "sha256:e31126d2ee408b70ccd190de",
  "{\"kind\": \"workshops\", \"shops\": [\"Craftsdwarfs\", \"Craftsdwarfs\", \"Craftsdwarfs\", \"Craftsdwarfs\"], \"style\": {\"spacing\": -60}, \"type\": \"start_project\"}": "sha256:42354c14fe1e0a1deab987bf",
  "{\"kind\": \"workshops\", \"shops\": [\"Craftsdwarfs\", \"Craftsdwarfs\", \"Craftsdwarfs\", \"Craftsdwarfs\"], \"type\": \"start_project\"}": "sha256:42354c14fe1e0a1deab987bf",

@@ -105,6 +105,12 @@ def _kinds_short_of_breeders(herd: dict, females: int) -> list:
         f, m = _int(k.get("f")), _int(k.get("m"))
         if f <= 0 or m <= 0:
             continue
+        # (0.105.119 item39) the adults keep_breeders may keep (no pet, war
+        # animal, named or marked one); an older bridge: f and m as before
+        if "free_f" in k or "free_m" in k:
+            f = min(f, _int(k.get("free_f")))
+            if f <= 0 or _int(k.get("free_m")) <= 0:
+                continue
         if _int(k.get("breeders_m")) < 1 or _int(k.get("breeders_f")) < min(females, f):
             out.append(str(k.get("name") or "?").lower())
     return out
@@ -201,7 +207,7 @@ def _husbandry_rules(s: dict, memory, traits: dict, cfg: dict, citizens: int,
         grass = _int(so.get("ai_pasture_tiles"))
         want = math.ceil(need * cfg["herd_pasture_margin"] * factor(traits, "husbandry"))
         short = want - grass
-        if short >= cfg["herd_pasture_min_deficit"]:
+        if short >= cfg["herd_pasture_min_deficit"] and not pasture_wait(memory, s):
             tiles = max(9, min(600, short))
             proposals.append(Proposal(
                 "new_pasture", {"type": "make_pasture", "tiles": tiles},
@@ -243,3 +249,38 @@ def _husbandry_rules(s: dict, memory, traits: dict, cfg: dict, citizens: int,
                      f"{_int(herd.get('breeding_pairs'))} kind(s) with a breeding pair, "
                      f"{_int(herd.get('breeders'))} breeders kept, {_int(herd.get('war'))} war and "
                      f"{hunters} hunting animals, {_int(herd.get('pets'))} pets")
+
+
+# (0.105.119 item39) new_pasture refused for want of grass ("no single patch near
+# the fort with # tiles of grass the dwarves can reach": A 13, F 9 in 3.5 h, once
+# a season): the next ask waits a season, then twice as long each time in a row
+# (at most a year), unless the AI's pastures change; one made ends the run.
+PASTURE_NO_GRASS = ("tiles of grass the dwarves can reach", "no free patch of living grass",
+                    "no living grass the dwarves can walk to")
+PASTURE_WAIT_DAYS, PASTURE_WAIT_MAX_DAYS = 84, 336
+
+
+def _pasture_sig(s: dict) -> list:
+    so = _d(s.get("society"))
+    return [_int(so.get("ai_pastures")), _int(so.get("ai_pasture_tiles"))]
+
+
+def pasture_wait(memory, s: dict) -> bool:
+    rec = _d(getattr(memory, "pasture_refused", None)) if memory is not None else {}
+    n, t = rec.get("n"), rec.get("tick")
+    if not isinstance(n, int) or n < 1 or not isinstance(t, int) or rec.get("sig") != _pasture_sig(s):
+        return False
+    from planner_core import abs_tick, TICKS_PER_DAY
+    days = min(PASTURE_WAIT_MAX_DAYS, PASTURE_WAIT_DAYS * 2 ** (n - 1))
+    return 0 <= abs_tick(s) - t < days * TICKS_PER_DAY
+
+
+def note_pasture(p, r, state: dict, memory, now: int) -> None:
+    """record()'s hook: a make_pasture refused for want of grass counted, one made clears it."""
+    if _d(getattr(p, "action", None)).get("type") != "make_pasture" or not isinstance(r, dict):
+        return
+    if r.get("ok") is True:
+        memory.pasture_refused = {}
+    elif not r.get("timed_out") and any(w in str(r.get("error") or "") for w in PASTURE_NO_GRASS):
+        rec = _d(getattr(memory, "pasture_refused", None))
+        memory.pasture_refused = {"n": int(rec.get("n") or 0) + 1, "tick": now, "sig": _pasture_sig(state)}

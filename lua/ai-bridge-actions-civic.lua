@@ -11,7 +11,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-civic is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.118'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-civic'] = '0.105.119'   -- bumped with BRIDGE_VERSION
 
 local string_list = ACTIONS_PART_LOCALS.string_list
 
@@ -973,6 +973,18 @@ function act_add_haulers(a)
 end
 
 function act_relieve_haulers(a)
+    -- (0.105.119 item33) cooks: the best free cooks (ids) kept at the kitchen,
+    -- off hauling and with the cooking labour; with back, every one given back
+    if a.cooks ~= nil then
+        local ids = {}
+        for _, v in ipairs(type(a.cooks) == 'table' and a.cooks or {}) do
+            local id = whole_number(v)
+            if id then table.insert(ids, id) end
+        end
+        if #ids > 5 then return reject('relieve_haulers: at most 5 cooks') end
+        if #ids == 0 and a.back ~= true then return reject('relieve_haulers: cooks needs unit ids (or back)') end
+        return reqscript('ai-hauling').relieve_cooks(ids, a.back == true, a.dry_run == true, txt)
+    end
     local n = int_in(a.count, 1, 5)
     if not n then return reject('relieve_haulers needs count 1-5') end
     -- (0.105.40b fix) shrink: the AI's own detail's extra haulers taken off it

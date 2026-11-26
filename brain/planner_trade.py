@@ -121,8 +121,11 @@ def _trade_rules(s: dict, cfg: dict, citizens: int, proposals: list, notes: list
                                   "depot) and the depot back to the broker only (if the AI opened it to anyone)", 8))
     screen = _d(tr.get("screen"))
     here = any(str(c.get("state")) == "AtDepot" for c in cs)
+    # (0.105.119 item39) not while the merchants still carry their goods in
+    # (the report's own unloading watch): the bridge only answered "still
+    # unloading" (C 11, E 11 in 3.5 h)
     if (here and trader.get("at_depot") and not screen.get("open") and trader.get("can_open")
-            and trader.get("fresh", True)):
+            and trader.get("fresh", True) and not trader.get("unloading")):
         proposals.append(Proposal("open_trade", {"type": "open_trade"},
                                   f"{'the broker' if not trader.get('anyone') else 'a trader'} is at the depot with "
                                   f"the caravan from {cs[0].get('civ')}: open the trade screen", 2))
