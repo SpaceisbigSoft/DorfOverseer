@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-homes-furnish is a part of ai-homes; run ai-homes') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-homes-furnish'] = '0.105.130'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-homes-furnish'] = '0.105.131'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, location_zone_ids, load_liked_statues, furnish, stress_cat, people, can_walk, enum_name = PART_LOCALS.U, PART_LOCALS.location_zone_ids, PART_LOCALS.load_liked_statues, PART_LOCALS.furnish, PART_LOCALS.stress_cat, PART_LOCALS.people, PART_LOCALS.can_walk, PART_LOCALS.enum_name   -- (r9) the hub's locals
 
