@@ -17,7 +17,7 @@
 -- No reqscript while this part loads (the modules are fetched inside floor_site, behind pcall);
 -- the sibling parts' functions (load_floors, floor_pile_units) are asked for by type() first.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floors'] = '0.105.133'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-floors'] = '0.105.134'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 FLOOR_SECONDS = 1.5          -- the floor search's share of a start_project (the classic search keeps its own 4 s)
 FLOORS_TRY = 3               -- floors `place` is really tried on, for one level
