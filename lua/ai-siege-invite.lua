@@ -37,7 +37,7 @@
 -- started by the switch turned on again.
 
 if not PART_LOCALS then qerror('ai-siege-invite is a part of ai-siege; run ai-siege') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-siege-invite'] = '0.105.126'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-siege-invite'] = '0.105.127'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, is, entrances_of = PART_LOCALS.U, PART_LOCALS.is, PART_LOCALS.entrances_of   -- the hub's locals
 
