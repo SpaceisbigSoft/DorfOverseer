@@ -650,7 +650,10 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             floor_tag = " (defence floor)"
     from quirks import has_rule
     if memory is not None and has_rule(memory.culture, "more_soldiers"):
-        want = min(citizens, round(want * 1.25))   # (Oathbound)
+        # (Oathbound, Goblin-haunted) a quarter more on the slider's number;
+        # (item8) never on the defence floor (E: the floor's 31 made 39)
+        by_slider_q = soldiers_wanted(s, citizens, cfg, many_idle, None, {"soldiers": 0})
+        want = max(want, min(citizens, round(by_slider_q * 1.25)))
     base_want = want
     want = keen_lift(s, memory, cfg, want, have, citizens, bool(any_reach))      # (0.104.168) the keen in a crisis
     cap = civilian_cap(s, cfg)                                                    # (0.105.2) enough left to work
@@ -674,13 +677,21 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # over instead: the wanted number falls as the keen are drafted (the cap
     # for the keen lifts and drops), and a trim then sent 2 of 38 home (16:03)
     # just as the fill drafted more
-    keen = int(_d(s.get("needs")).get("keen_civilians") or 0)
-    if (rules_["fill_squads"] and not any_reach and not berserk_now and keen < cfg["soldier_swap_keen_min"]
-            and over > max(cfg["trim_margin_min"], round(want * cfg["trim_margin_share"]))):
-        count = min(over, cfg["max_trim_per_cycle"])
-        proposals.append(Proposal("squad_trim", {"type": "squad_trim", "count": count},
-                                  f"{have} soldiers, the fort wants {want} (Militarism "
-                                  f"{int(traits.get('militarism', 0) or 0):+d}): {count} go back to work", 5))
+    # (item8, the player, 26 Nov: "Trim to its slider") the keen hold only
+    # while the keen lift is held (a crisis), not for ever: E kept 39 of ~95
+    # adults with 14 keen civilians, the trim never ran. The trim goes on down
+    # to the wanted number once begun, a squad's worth a season at most.
+    if over > 0 and rules_["fill_squads"]:
+        from planner_squad_trim import trim_plan
+        trim = trim_plan(s, memory, cfg, have, want, floor_, any_reach, berserk_now)
+        if trim.get("count"):
+            count = trim["count"]
+            proposals.append(Proposal("squad_trim", {"type": "squad_trim", "count": count},
+                                      f"{have} soldiers, the fort wants {want} (Militarism "
+                                      f"{int(traits.get('militarism', 0) or 0):+d}{floor_tag}): {count} go back to "
+                                      f"work, the unhappiest and least skilled first ({trim['why']})", 5))
+        elif trim.get("note"):
+            notes.append(f"{have} soldiers, the fort wants {want}: {trim['note']}")
     if have < want and not rules_["fill_squads"]:
         notes.append(f"{have} soldiers, the fort wants {want}: raising and filling squads is off on the Rules tab, "
                      "so the AI leaves the squads as they are")

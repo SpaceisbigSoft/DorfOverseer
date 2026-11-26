@@ -82,9 +82,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # the floor under ore_days / factor(Mining)): D's idle miners, E's ore and depth, 26 Nov
 # (item7 insane water) re-pinned after four deliberate keys: insane_water, insane_water_thirst,
 # insane_water_hunger, insane_water_retry_ticks (D's 12 insane dead of thirst overnight): 26 Nov
-DUMP_6298B4A = "ea8141790422b75704fe02addc6f9b84779dd41e2f18cca4a5fa46de8e3e221b"
-KEYS_6298B4A = "0d129a8b7d19bf7ffcab0eff77e4bb6e066d83249064c4ef579b134e06660499"
-COUNT_6298B4A = 1353
+# (item8 trim to the slider) re-pinned after five deliberate keys: floor_quiet_half_life_days,
+# trim_week_max, trim_season_max, trim_season_days, trim_continue_days (E's 39 soldiers at Militarism 0): 26 Nov
+DUMP_6298B4A = "a95fc5d20ab497f22cf8d76263b2fbbc2f3c87422f4970de911d80c2bac687b6"
+KEYS_6298B4A = "2d33240c0971ea0b126a968efb20a4e28ad7c0b13352acd8b5de8bfe81860ebc"
+COUNT_6298B4A = 1358
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

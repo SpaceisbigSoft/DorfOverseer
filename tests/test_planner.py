@@ -5245,9 +5245,15 @@ def _():
     assert not by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap"), "the month's swaps are used"
     s["date"]["tick"] += 29 * 1200
     assert by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap")
-    big = copy.deepcopy(s)                                           # (0.104.66) no trim while the keen wait
+    big = copy.deepcopy(s)
     big["military"]["soldiers"] = 60
-    assert not by_rule(plan(big, Memory())[0], "squad_trim")
+    # (item8, "Trim to its slider") the keen waiting no longer hold the trim for ever (E: 14 keen, 39
+    # soldiers at Militarism 0); only the keen lift (a crisis) does
+    assert by_rule(plan(big, Memory())[0], "squad_trim")
+    mk = Memory()
+    from planner_core import abs_tick
+    mk.keen_lift = {"n": 5, "tick": abs_tick(big)}
+    assert not by_rule(plan(big, mk)[0], "squad_trim")
     big["needs"]["keen_civilians"] = 0
     assert by_rule(plan(big, Memory())[0], "squad_trim")
 

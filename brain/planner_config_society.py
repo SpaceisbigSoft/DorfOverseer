@@ -206,6 +206,7 @@ PART = {
     "floor_keep_days": 672,                      # the kept share (and the history) held two years after the threat...
     "floor_fade_half_life_days": 84,             # ...then halving every season...
     "floor_forget_share": 0.08,                  # ...and forgotten below this share of what was kept
+    "floor_quiet_half_life_days": 42,            # (item8) no threat on the map: the cap's raise over the slider's share halves this often
     "floor_days_per_year": 336,                  # a siege's age by the game year
     "floor_siege_power": 40,                     # a siege on record with no strength kept: this (to x2 for many)
     "floor_beast_power": 30,                     # a great danger seen, no strength kept: this (x what was learned)
@@ -457,6 +458,10 @@ PART = {
     "trim_margin_min": 3,              # (0.102) soldiers over the wanted number kept before trimming...
     "trim_margin_share": 0.25,         # ...or this share of it, whichever is more
     "max_trim_per_cycle": 2,
+    "trim_week_max": 3,                # (item8) soldiers trimmed a week at most...
+    "trim_season_max": 10,             # ...and a squad's worth a season (trim_season_days)
+    "trim_season_days": 84,
+    "trim_continue_days": 28,          # ...once begun (a trim this recent) it goes on down to the wanted number
     "squad_trim_cooldown_ticks": 1200,  # (0.105.97) a day (was 3): a floor that fell lets the extra go a few a day
     "bootstrap_chair_cooldown_ticks": 7 * 1200,   # (0.101.4) one chair job a week at most
     "approve_after_days": 3,           # (0.101.2) the AI approves its own orders the manager hasn't

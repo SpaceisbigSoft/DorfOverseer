@@ -84,6 +84,15 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.released[str(p.action["unit_id"])] = now
             for k in [k for k, t in memory.released.items() if not isinstance(t, int) or now - t > 168 * TICKS_PER_DAY]:
                 del memory.released[k]
+        if p.action.get("type") == "squad_trim" and ok is True:
+            # (item8) who the trim sent home, when: a squad's worth a season, and the fill passes them over
+            if not isinstance(getattr(memory, "trimmed", None), dict):
+                memory.trimmed = {}
+            for x in _l(_d(r).get("removed")):
+                if isinstance(x, dict) and x.get("unit_id") is not None:
+                    memory.trimmed[str(x["unit_id"])] = now
+            for k in [k for k, t in memory.trimmed.items() if not isinstance(t, int) or now - t > 168 * TICKS_PER_DAY]:
+                del memory.trimmed[k]
         if p.rule == "siege_cleanup" and ok is not None:
             memory.pruned_after = int(memory.last_threat_tick or 0)        # (0.104.140) once an attack, done or not
         if (p.action.get("type") == "squad_orders" and isinstance(p.action.get("kill"), list)

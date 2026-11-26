@@ -82,12 +82,16 @@ def _():
     m = b_memory(s)
     f = DF.defence_floor(s, m, CFG, 57)
     assert f["threat"] == 46.1 or abs(f["threat"] - 184.3 * 0.25) < 0.1, f     # the quarter kept (under two years)
-    assert f["wanted"] == 24 and f["cap"] == int(57 * 0.12) == 6 and f["soldiers"] == 6, f
-    assert f["soldiers"] <= 0.12 * 57
-    assert abs(f["cap_share"] - 0.12) < 1e-9
-    # the guard and the slider stand: -60 -> 7% of 57 = 4; the floor's 6 above it
-    assert soldiers_wanted(s, 57, CFG, memory=m) == 6
+    # (item8) 403 quiet days: the cap has eased to the slider's own share (7% at -60): int(57 x .07) = 3
+    assert f["wanted"] == 24 and f["cap"] == 3 and f["soldiers"] == 3, f
+    assert abs(f["cap_share"] - 0.07) < 1e-9 and f["quiet_days"] == 403, f
+    assert soldiers_wanted(s, 57, CFG, memory=m) == 4               # the slider's 4 (7% of 57)
     assert soldiers_wanted(s, 57, CFG, memory=Memory()) == 4
+    # a fortnight after the beast was last on the map: the 12% cap (the easing above it)
+    m.defence_floor["present_tick"] = DF.abs_tick(s) - 14 * DAY
+    f = DF.defence_floor(s, m, CFG, 57)
+    assert f["cap"] == int(57 * 0.12) == 6 and f["soldiers"] == 6, f
+    assert soldiers_wanted(s, 57, CFG, memory=m) == 6
 
 
 @test("the cap by Militarism: a third at 0 and above, a straight line to 12% at -50, 12% below")
@@ -153,7 +157,9 @@ def _():
 @test("plan(): B's 18 soldiers over the floor's 6: a trim, and the note says the cap and the fade")
 def _():
     s = fort(squads=WEAK)
-    p, notes = plan(s, b_memory(s))
+    m = b_memory(s)
+    m.defence_floor["present_tick"] = DF.abs_tick(s) - 14 * DAY      # (item8) a fortnight quiet: the floor binds
+    p, notes = plan(s, m)
     line = [n for n in notes if n.startswith("Defence floor")]
     assert line, notes
     assert "12% of the adults at Militarism -60" in line[0] and "24 to match" in line[0], line
