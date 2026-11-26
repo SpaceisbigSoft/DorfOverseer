@@ -132,6 +132,13 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
              if t["id"] in threats and t["id"] not in fire and t.get("can_reach_dwarves") is not False]
     if weres:
         targets = list(dict.fromkeys(weres + [i for i in targets if i not in weres]))
+    # (r36) a stalker inside the fort (hidden, ambushing, a night creature, a were) is a
+    # target at once as a were is: the crowd and lone-thief rules are for seen guests
+    # (B 26 Nov 18:22: a hidden hero swordsman killed the tavern keeper, no squad sent)
+    from planner_stalker_inside import stalkers_inside, stalker_words
+    stalk = [i for i in stalkers_inside(s, threats) if i not in off]
+    if stalk:
+        targets = list(dict.fromkeys(stalk + [i for i in targets if i not in stalk]))
     recalled = set()
     held_back = [i for i in reach if i not in targets and i not in fire and i not in no_sortie and i not in crowd
                  and i not in cloud and (policy != "never" or bool(threats[i].get("great_danger")))]
@@ -186,7 +193,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     if not lone and not targets and reach:
         from planner_leisure import inside_few
         lone = inside_few(s, cfg, reach, threats)
-    if lone and not weres:
+    if lone and not weres and not stalk:
         # (0.105.3) a lone intruder inside: one armed squad, whatever the policy
         _lone_squad(s, memory, cfg, squads, lone, threats, proposals, notes)
     elif targets:
@@ -197,9 +204,12 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         if never_inside:
             why_in = (" (inside the fort: the Rules tab's never attack means no sorties outside, not leaving "
                       "an enemy loose inside the walls among the dwarves)")
+        elif stalk:
+            why_in = stalker_words(threats, stalk)
         elif set(info.get("inside") or ()) & set(targets) & set(great):
             why_in = (" (the great danger is inside the fort, among the dwarves: holding the choke protects "
                       f"nobody there, so the odds decide: {verdict[:80]})")
+        inside_ |= set(stalk)
         for q in able:
             if q.get("id") in recalled:
                 continue                 # (0.105.26) called back this cycle: sent again next
