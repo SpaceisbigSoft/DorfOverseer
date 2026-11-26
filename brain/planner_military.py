@@ -82,9 +82,23 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # closing in suicidal: crossbows from a safe spot only (_no_melee_beasts)
     cloud = no_melee_great(threats, reach, policy) - fire
     great = [i for i in reach if threats[i].get("great_danger") and i not in fire and i not in cloud]
+    # (R32 c, the player 26 Nov) "never attack" is no sortie outside: an
+    # enemy inside the fort's walls is fought (B's Giantess walked in at a
+    # surface entrance and killed 13 while no squad moved), the great ones
+    # still only when the squads are strong enough (else the choke is held)
+    from planner_great_hold import great_inside, note_great_hold, too_strong_words
+    inside_ids = great_inside(s, [threats[i] for i in reach])
+    if policy == "never":
+        great = [i for i in great if i in inside_ids]
     # (0.104.118, phase 11) a great danger is fought when the squads are
     # strong enough for it (judged), else the dwarves hide behind shut gates
-    fight, verdict = fight_or_hide(s, memory, cfg, [threats[i] for i in great], able) if great else (False, "")
+    # (R32 c) one judgement for the sortie and the recall: `info` holds its
+    # numbers, the verdict is booked (a great danger too strong is held)
+    info: dict = {}
+    fight, verdict = (fight_or_hide(s, memory, cfg, [threats[i] for i in great], able, info=info)
+                      if great else (False, ""))
+    if great:
+        note_great_hold(s, memory, [threats[i] for i in great], fight)
     # (0.105.26) a great danger whose fight was called off: never a target
     # again while it's on the map (since 0.105.48 under attack everything too)
     off = called_off_ids(s, memory)
@@ -98,7 +112,10 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     no_sortie = set(wp["ids"]) if wp["danger"] and not wp["fight"] else set()
     targets = [i for i in reach if (policy == "all" and i not in off)
                or (policy == "ordinary" and i not in off and i not in fire and i not in no_sortie
+                   and i not in cloud and (not threats[i].get("great_danger") or fight))
+               or (policy == "never" and i in inside_ids and i not in off and i not in fire
                    and i not in cloud and (not threats[i].get("great_danger") or fight))]
+    never_inside = policy == "never" and bool(targets)
     # (0.105.51) a thief among a crowd (a tavern of guests) is no defence target:
     # the thieves rule posts a squad to wait for them (E, 15 Nov: three tavern fights)
     from planner_core import thief_rows, crowded_thief
@@ -117,7 +134,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         targets = list(dict.fromkeys(weres + [i for i in targets if i not in weres]))
     recalled = set()
     held_back = [i for i in reach if i not in targets and i not in fire and i not in no_sortie and i not in crowd
-                 and i not in cloud]
+                 and i not in cloud and (policy != "never" or bool(threats[i].get("great_danger")))]
     if no_sortie and policy == "ordinary":
         notes.append(f"{wp['danger']}: the squads stay in")
     # (0.105.48, K16) a squad out on a great danger the squads can no longer
@@ -155,7 +172,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             why = ("the fight with the great danger was called off" if off else
                    f"the squads are too weak now for the great danger(s) they were sent at ({verdict})")
             proposals.extend(fall_back(s, cfg, back, why, proposals))
-    if great and ((fight and policy == "ordinary") or (policy == "all" and set(great) - off)):
+    if great and ((fight and policy in ("ordinary", "never")) or (policy == "all" and set(great) - off)):
         # (0.104.139) recorded even when the squads were already out at others;
         # (0.105.48 K1b) under `all` too, so its losses are counted and the
         # fight is called off (fight_or_hide) as under `ordinary`
@@ -175,6 +192,14 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     elif targets:
         from planner_holdfast import _inside_ids
         inside_ = _inside_ids(s)
+        # (R32 c) why a kill order goes where the hold or the Rules tab would keep it home
+        why_in = ""
+        if never_inside:
+            why_in = (" (inside the fort: the Rules tab's never attack means no sorties outside, not leaving "
+                      "an enemy loose inside the walls among the dwarves)")
+        elif set(info.get("inside") or ()) & set(targets) & set(great):
+            why_in = (" (the great danger is inside the fort, among the dwarves: holding the choke protects "
+                      f"nobody there, so the odds decide: {verdict[:80]})")
         for q in able:
             if q.get("id") in recalled:
                 continue                 # (0.105.26) called back this cycle: sent again next
@@ -185,7 +210,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
             if not q.get("ai_orders") or q.get("sheltering"):
                 proposals.append(Proposal(
                     "squad_attack", {"type": "squad_orders", "squad_id": q["id"], "kill": targets[:50]},
-                    f"{len(targets)} enemies can reach the dwarves ({names}): send {q.get('name') or 'the squad'}", 0))
+                    f"{len(targets)} enemies can reach the dwarves ({names}): send {q.get('name') or 'the squad'}"
+                    + why_in, 0))
             elif not q.get("guarding") and isinstance(q.get("kill_ids"), list):
                 # (0.104.140) a second wave: enemies in reach the squad's kill
                 # order doesn't name (the order was a list made when it went out).
@@ -216,8 +242,19 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     if cloud:
         _no_melee_beasts(s, memory, cfg, threats, cloud, squads, proposals, notes)
     if held_back and policy != "never":
+        from planner_shelter import plan_ready
+        choke = bool(plan_ready(s))
+        ts = too_strong_words(info, choke) if great and not fight and set(held_back) & set(great) else ""
         notes.append(f"{len(held_back)} great danger(s) (beast, titan...) can reach the dwarves: the dwarves hide "
-                     f"behind the gates ({verdict}; Rules tab: attack everything)")
+                     "behind the gates" + (f", {ts}" + (" and fight it there if it comes to them" if choke else "")
+                                           if ts else "")
+                     + f" ({verdict}; Rules tab: attack everything)")
+    elif held_back and great and not fight:
+        from planner_shelter import plan_ready
+        ts = too_strong_words(info, bool(plan_ready(s)))
+        notes.append(f"{len(held_back)} great danger(s) inside the fort: "
+                     + (f"{ts} (the Rules tab's never attack gives way inside the walls, not to a fight the squads "
+                        f"can't win: {verdict})" if ts else f"the squads can't be sent ({verdict})"))
     elif great and fight:
         notes.append(f"{len(great)} great danger(s) can reach the dwarves: the squads go ({verdict})")
     _fight_outcome(s, memory, cfg)

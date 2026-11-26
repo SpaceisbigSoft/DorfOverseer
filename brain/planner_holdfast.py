@@ -272,6 +272,17 @@ def regrouping(s: dict, memory, cfg: dict) -> set:
     return {k for k, t in fb.items() if isinstance(t, int) and 0 <= now - t < span}
 
 
+NEVER_INSIDE_WHY = " (inside the fort: the Rules tab's never attack means no sorties outside"
+
+
+def _kept_why(reason) -> str:
+    """(R32 c) The military rules' word why a kill order goes under "never
+    attack" (the enemy inside the walls), kept when the matchup re-words it."""
+    r = str(reason or "")
+    k = r.find(NEVER_INSIDE_WHY)
+    return r[k:] if k >= 0 else ""
+
+
 def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list:
     """Kill orders on ordinary enemies only with squads strong enough: per
     group of orders on the same enemies, the squads already on them and the
@@ -368,7 +379,8 @@ def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: li
                           "every free squad together, still short of the bar (the enemy is inside the fort)")
             add.append(Proposal(first.rule, dict(first.action, squad_id=q["id"]),
                                 f"{names}: send {q.get('name') or q['id']} ({why}: {r_all:.1f}x, {bar:g}x needed, "
-                                f"{bar_why}; {alone} alone was too weak)", pr, getattr(first, "guard", False)))
+                                f"{bar_why}; {alone} alone was too weak){_kept_why(first.reason)}", pr,
+                                getattr(first, "guard", False)))
             busy.add(q["id"])
     if not drop:
         return proposals
@@ -562,7 +574,8 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
         if target_ids:
             act["kill"] = list(target_ids)[:50]
         add.append(Proposal(first.rule, act, f"{names}: send {q.get('name') or q['id']} ({how}: {r:.1f}x; "
-                                             f"{bar_why})", pr, getattr(first, "guard", False)))
+                                             f"{bar_why}){_kept_why(first.reason)}", pr,
+                            getattr(first, "guard", False)))
         busy.add(q["id"])
 
 

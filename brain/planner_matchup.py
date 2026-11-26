@@ -536,7 +536,7 @@ class _Peek:
         return getattr(object.__getattribute__(self, "_m"), k)
 
 
-def fight_judged(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[bool, str]:
+def fight_judged(s: dict, memory, cfg: dict, great: list, able: list, info: dict | None = None) -> tuple[bool, str]:
     """(r9, audit A6 #13) planner_military.fight_or_hide's verdict with no
     memory written: for the callers that only ask (the cavern beasts in
     planner_holdfast, the lure, planner_army.hiding). fight_or_hide books a
@@ -546,4 +546,4 @@ def fight_judged(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[b
     their power. Only the military rules' own call (the great dangers in
     reach) books now."""
     from planner_military import fight_or_hide
-    return fight_or_hide(s, _Peek(memory) if memory is not None else None, cfg, great, able)
+    return fight_or_hide(s, _Peek(memory) if memory is not None else None, cfg, great, able, info=info)
