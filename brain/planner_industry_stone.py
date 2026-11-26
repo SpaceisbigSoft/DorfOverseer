@@ -317,11 +317,18 @@ def stone_crisis(s: dict, cfg: dict) -> str:
 
 def quarry_size(s: dict, cfg: dict) -> int:
     """(item7) Tiles a quarry asks for: what lifts the masons' stone to twice
-    stone_low (at least quarry_min_tiles), never more than the Mining slider's
-    quarry size (10-30)."""
+    stone_low (at least quarry_min_tiles boulders), never more than the Mining
+    slider's quarry size (10-30).
+    (r34a) DF leaves a boulder for only about one layer-stone tile in four
+    dug, so the boulders wanted are asked as quarry_tiles_per_boulder tiles
+    each, and the slider's size counts double (at most quarry_max_tiles, the
+    bridge's top): E (26 Nov, Mining 150, 9 boulders) asked 12 tiles for 11
+    boulders (and got 1-5 tiles marked, ~1 boulder); now 44."""
     plan_n = mining_plan(_traits(s) if isinstance(s.get("settings"), dict) else {}, cfg)["quarry"]
     usable = int(_d(s.get("stone_use")).get("usable") or 0)
-    return max(1, min(plan_n, max(cfg["quarry_min_tiles"], 2 * cfg["stone_low"] - usable)))
+    want = max(cfg["quarry_min_tiles"], 2 * cfg["stone_low"] - usable)
+    cap = min(int(cfg.get("quarry_max_tiles", 60)), 2 * plan_n)
+    return max(1, min(cap, want * int(cfg.get("quarry_tiles_per_boulder", 4))))
 
 
 def _quarry_stock(su: dict) -> int:

@@ -113,7 +113,7 @@ from planner_artifacts import _artifact_rule  # noqa: E402  (item 12) the fort's
 from planner_alloys import _alloy_rule  # noqa: E402  (0.105.40 M7) bronze for a fort without iron, value alloys
 from planner_paper import _paper_rule  # noqa: E402  (item9) paper from plants, scrolls and codices for the library
 from planner_deep import _deep_hazard_rule  # noqa: E402  (0.105.40b) adamantine and the underworld: never dug
-from planner_prospect import _prospect_rule  # noqa: E402  (item4) idle miners: exploratory ore and gems
+from planner_prospect import _prospect_rule, _explore_rule  # noqa: E402  (item4) idle miners: exploratory ore and gems; (r34a) tunnels
 from planner_construct import (_hall_rule, _construction_blocks_rule,  # noqa: E402  (0.105.30) construction
                                note_construct, note_construct_cycle)
 from planner_forestry import _cavern_logging_rule, _grove_rule  # noqa: E402  (item10) cavern logging, the grove
@@ -993,6 +993,7 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if can_use("buildings", "projects", "industry"):
         _guard(_industry_rules, s, memory, cfg, citizens, proposals, notes)
         _guard(_prospect_rule, s, memory, cfg, proposals, notes)   # (item4)
+        _guard(_explore_rule, s, memory, cfg, proposals, notes)    # (r34a) no vein: exploratory tunnels
     if can_use("buildings", "military", "industry"):
         _guard(_alloy_rule, s, memory, cfg, proposals, notes)     # (0.105.40 M7) alloys at the smelter
     # 6f-1. (0.105.40b) adamantine and the underworld: never proposed, said why

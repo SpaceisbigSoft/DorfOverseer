@@ -222,7 +222,7 @@ BRIDGE_MODULES = {
     'ai-artifacts', 'ai-bans', 'ai-benches', 'ai-blueprints', 'ai-builder', 'ai-camera', 'ai-captives', 'ai-census',
     'ai-cleanup', 'ai-constructions', 'ai-diplomacy', 'ai-disposal', 'ai-food-store', 'ai-forestry', 'ai-gates',
     'ai-hauling', 'ai-hazards', 'ai-health', 'ai-homes', 'ai-hunt', 'ai-leather-gear',
-    'ai-industry', 'ai-insane', 'ai-joins', 'ai-killers', 'ai-killzone', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
+    'ai-industry', 'ai-industry-explore', 'ai-insane', 'ai-joins', 'ai-killers', 'ai-killzone', 'ai-labor', 'ai-layouts', 'ai-military', 'ai-military-gear',
     'ai-mission-send', 'ai-missions', 'ai-moods', 'ai-noble-demands', 'ai-nobles', 'ai-overlay',
     'ai-overseer-settings', 'ai-paper', 'ai-pile-links', 'ai-ping', 'ai-provisions', 'ai-reports', 'ai-siege',
     'ai-shelter-plan', 'ai-society', 'ai-society-burrows', 'ai-status', 'ai-syndromes', 'ai-threats', 'ai-title', 'ai-trade', 'ai-traffic',

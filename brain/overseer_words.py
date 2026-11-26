@@ -473,6 +473,8 @@ def short(a: dict) -> str:
                 "let any cook work the kitchens again")
     if t == "clear_gate":
         return f"take down the gate at x{a.get('x')} y{a.get('y')}"
+    if t == "explore_dig":       # (r34a) idle miners, no vein: tunnels into unseen rock
+        return f"dig {a.get('tunnels') or 1} exploratory tunnel(s), {a.get('count')} tiles, into unseen rock"
     if t == "mine_ore":
         if a.get("metal") == "GEM":       # (item4) exploratory mining: any gem's vein
             return "dig for gems: a gem vein near the fort"

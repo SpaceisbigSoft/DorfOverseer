@@ -34,6 +34,23 @@ Here:
     guard's adamantine. A metal or gems refused waits out the usual
     refusal back-off (the metal is in the refusal key); nothing while a
     threat can reach the dwarves or the fort is young.
+
+(r34a) E, the Deep mine (26 Nov, 0.105.129): 26-27 miners, 0 tiles to dig,
+idle 32-36%: `prospect` refused "no vein within 30 tiles" every time (the
+bridge's drift search was starved: see find_drift in lua/ai-industry.lua)
+and nothing else gave the miners work (the Mining slider asks no levels
+beyond the fort's needs, and E's plan was dug out). Here:
+  * `_explore_rule` (rule `explore`): the same idle miners, when no vein
+    is to be had this cycle (none proposed: exploratory mining refused and
+    waiting out its back-off, or ore and gems enough in store), dig
+    exploratory tunnels (the bridge's explore_dig): straight 1-wide tunnels
+    from the dwarves' ground into unseen rock, away from the levels, one
+    miner each (explore_per_tunnel_miners a tunnel, at most 6; none with
+    fewer idle miners than that), going on
+    from the last tunnels' ends; they uncover veins for the vein rule and
+    prospect, and leave a boulder about every fourth tile for the masons.
+    explore_tiles x factor tiles (10-80), every explore_days / factor (a day
+    at least); the reason says why no vein instead.
 """
 
 from __future__ import annotations
@@ -42,7 +59,7 @@ from digest import _d
 from planner_core import Proposal, TICKS_PER_DAY, _refused_wait, _traits, abs_tick, factor, mining_plan, young_fort
 from planner_deep import is_adamantine
 
-__all__ = ["vein_dig_cap", "ore_paced", "prospect_target", "_prospect_rule"]
+__all__ = ["vein_dig_cap", "ore_paced", "prospect_target", "_prospect_rule", "explore_size", "_explore_rule"]
 
 
 def _mf(s: dict) -> float:
@@ -135,3 +152,70 @@ def _prospect_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> 
         "prospect", {"type": "mine_ore", "metal": metal, "count": n, "prospect": True},
         f"{miners} miners with only {dig} tiles to dig and {why}: exploratory mining, {what} "
         f"({n} tiles) through safe rock near the fort", 6))
+
+
+# --- (r34a) exploratory tunnels: the idle miners' fallback ----------------------------
+
+DIG_TYPES = ("mine_ore", "quarry", "explore_dig")
+
+
+def _idle_miners(s: dict, cfg: dict) -> tuple[int, int, float] | None:
+    """(miners, tiles to dig, Mining factor) when the miners have little to
+    dig (prospect's test), the fort may mine veins and isn't young, and no
+    threat can reach the dwarves; else None."""
+    if not isinstance(s.get("settings"), dict):
+        return None
+    traits = _traits(s)
+    if not mining_plan(traits, cfg)["veins"] or young_fort(s, cfg):
+        return None
+    lb = _d(s.get("labor"))
+    miners, dig = int(lb.get("miners") or 0), int(lb.get("dig") or 0)
+    f = factor(traits, "mining")
+    if miners <= 0 or dig >= max(1, int(miners * cfg.get("prospect_dig_per_miner", 2) * f)):
+        return None
+    if _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"):
+        return None
+    return miners, dig, f
+
+
+def explore_size(miners: int, f: float, cfg: dict) -> tuple[int, int]:
+    """(tiles, tunnels) for one call: explore_tiles x factor (10-80), one
+    tunnel for each explore_per_tunnel_miners miners (1-6: a tunnel is dug
+    one face at a time)."""
+    n = max(10, min(80, int(cfg.get("explore_tiles", 24) * f)))
+    t = max(1, min(6, miners // max(1, int(cfg.get("explore_per_tunnel_miners", 5)))))
+    return n, t
+
+
+def _no_vein_why(s: dict, memory, cfg: dict) -> str:
+    """Why no vein this cycle, in words."""
+    now = abs_tick(s)
+    p = Proposal("prospect", {"type": "mine_ore", "metal": "GEM"}, "", 5)
+    w = _refused_wait(memory, p, now)
+    if w is not None:
+        return f"no vein to follow (exploratory mining found none in reach; tried again in {w} day(s))"
+    if prospect_target(s, memory, cfg) is None:
+        return "ore and gems enough in store for the fort's Mining"
+    return "exploratory mining's last vein already given (the next when its pace allows)"
+
+
+def _explore_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(r34a) Idle miners with no vein to dig: exploratory tunnels, by the Mining slider."""
+    if memory is None:
+        return
+    idle = _idle_miners(s, cfg)
+    if idle is None:
+        return
+    miners, dig, f = idle
+    if miners < int(cfg.get("explore_per_tunnel_miners", 5)):
+        return          # a few miners idle a while: not worth tunnels (a tunnel is one miner's work)
+    if any(isinstance(p.action, dict) and p.action.get("type") in DIG_TYPES for p in proposals):
+        return          # a vein or a quarry this cycle: that's the miners' work
+    if not _paced(memory, "explore", cfg.get("explore_days", 1) / f, abs_tick(s)):
+        return
+    n, t = explore_size(miners, f, cfg)
+    proposals.append(Proposal(
+        "explore", {"type": "explore_dig", "count": n, "tunnels": t},
+        f"{miners} miners with only {dig} tiles to dig and {_no_vein_why(s, memory, cfg)}: "
+        f"{t} exploratory tunnel(s), {n} tiles in all, into unseen safe rock away from the levels "
+        "(they uncover veins; about one tile in four leaves a boulder for the masons)", 6))

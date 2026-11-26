@@ -855,6 +855,16 @@ function act_mine_ore(a)
     return reqscript('ai-industry').mine(a.metal, n, a.dry_run == true, a.prospect == true)
 end
 
+-- (r34a) Exploratory tunnels for idle miners with no vein to dig
+-- (lua/ai-industry.lua explore): count tiles in all, in up to `tunnels` tunnels.
+function act_explore_dig(a)
+    local n = int_in(a.count or 40, 1, 80)
+    if not n then return reject('explore_dig needs count 1-80') end
+    local t = int_in(a.tunnels or 1, 1, 6)
+    if not t then return reject('explore_dig needs tunnels 1-6') end
+    return reqscript('ai-industry').explore(n, t, a.dry_run == true)
+end
+
 -- Take down a gate the AI built at an entrance that wasn't one (lua/ai-gates.lua).
 function act_clear_gate(a)
     local x, y, z = whole_number(a.x), whole_number(a.y), whole_number(a.z)

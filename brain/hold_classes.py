@@ -59,7 +59,7 @@ _EXPANSION_RULES = {
     "instruments", "artifact_display", "artifact_furniture", "artifact_pedestals", "library_chest",
     # industry that can wait
     "export", "paper", "paper_press", "paper_shop", "alloy", "leather_gear", "industry", "bottleneck", "kiln", "idle",
-    "war_animals", "quarry", "ore", "prospect", "reserve_storage", "cavern_logging", "cavern_farm",
+    "war_animals", "quarry", "ore", "prospect", "explore", "reserve_storage", "cavern_logging", "cavern_farm",
     # the fort's reach: new ways, crossings, the deep
     "crossing", "deep_descent", "prisoner_pit",   # (0.105.48 merge) join_levels: survival (cut-off levels, the thirst watch)
     # petitions agreed to, rooms furnished to taste ((r2h6) the answer itself
@@ -166,7 +166,7 @@ _EXPANSION_ACTIONS = {
     "training_squad", "polish", "polish_room", "blueprint_sites", "build_blueprint", "landmark_step",
     "place_hall", "build_wings", "floor_rooms", "place_keep", "place_garden_court", "keep_grove",
     "place_siege_engine", "place_siege_shop", "fortify_post", "build_gatehouse", "cut_entrance",
-    "display_artifact", "place_display", "build_crossing", "cross_cavern", "deep_depot", "mine_ore", "quarry",
+    "display_artifact", "place_display", "build_crossing", "cross_cavern", "deep_depot", "mine_ore", "quarry", "explore_dig",
     "cavern_logging", "cavern_farm", "join_levels", "dig_stairwell", "tame_wild", "train_hunt", "herd_breeders",
     "train_war", "make_pit", "order_instrument", "furnish_liked", "sand_zone", "import_orders", "retarget_hall",
 }

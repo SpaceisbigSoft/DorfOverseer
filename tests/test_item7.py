@@ -76,12 +76,14 @@ def later(s, days):
 
 @test("quarry: sized to lift the masons' stone to twice stone_low, at least quarry_min_tiles, at most the slider's")
 def _():
-    assert PI.quarry_size(stone_fort(usable=8), CFG) == 12
-    assert PI.quarry_size(stone_fort(usable=0), CFG) == 20
-    assert PI.quarry_size(stone_fort(usable=9), CFG) == 11
+    # (r34a, 26 Nov) 4 tiles a boulder wanted (DF leaves a boulder for ~1 tile in 4), at most
+    # twice the slider's size (Mining 0: 20 -> 40): were 12, 20, 11, 20, quarry_min_tiles
+    assert PI.quarry_size(stone_fort(usable=8), CFG) == 40          # 12 boulders: 48 tiles, capped
+    assert PI.quarry_size(stone_fort(usable=0), CFG) == 40
+    assert PI.quarry_size(stone_fort(usable=17), CFG) == 32         # quarry_min_tiles (8) boulders: 32 tiles
     big = dict(CFG, stone_low=40)
-    assert PI.quarry_size(stone_fort(usable=0), big) == 20          # Mining 0: the slider's 20 at most
-    assert PI.quarry_size(stone_fort(usable=19), CFG) == CFG["quarry_min_tiles"]
+    assert PI.quarry_size(stone_fort(usable=0), big) == 40          # Mining 0: twice the slider's 20 at most
+    assert PI.quarry_size(stone_fort(usable=19), CFG) == CFG["quarry_min_tiles"] * CFG["quarry_tiles_per_boulder"]
 
 
 @test("quarry: one at a time: none while the last one's tiles are still to dig (the bridge says), said")
@@ -89,7 +91,7 @@ def _():
     s = stone_fort()
     m = Memory()
     q, _ = stone_props(s, m)
-    assert q and q[0].action == {"type": "quarry", "count": 12}, q
+    assert q and q[0].action == {"type": "quarry", "count": 40}, q       # (r34a) was 12: 4 tiles a boulder
     dug(m, s)
     assert m.quarry_seen["before"] == 8 and m.quarry_seen["tiles"] == 5 and not m.quarry_seen["settled"]
     s2 = later(stone_fort(quarry={"pending": 3, "dug": 2, "dropped": 0, "tiles": 5, "x": 10, "y": 20, "z": 30}), 3)
@@ -123,7 +125,7 @@ def _():
     note_cycle(s2, m)
     assert m.quarry_seen["settled"] and m.quarry_seen["gain"] == 4 and m.quarry_seen["strikes"] == 0
     q, _ = stone_props(s2, m)
-    assert q and q[0].action["count"] == 11, q
+    assert q and q[0].action["count"] == 40, q      # (r34a) was 11: 11 boulders x 4, capped at 40
 
 
 @test("quarry: two quarries in a row that brought no stone the masons may use: a pause, doubled the next time")

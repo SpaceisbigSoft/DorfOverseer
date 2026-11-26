@@ -7268,8 +7268,9 @@ def _():
     st = by_rule(p_later, "stone")
     assert st and st[0].action == {"type": "cancel_work_order", "order_id": 41, "stuck": "stone_chest"}, st
     q = by_rule(p_later, "quarry")
-    # and dig some ordinary stone: (item7) as much as lifts it to twice stone_low (2 usable: 18 tiles)
-    assert q and q[0].action == {"type": "quarry", "count": 18}, q
+    # and dig some ordinary stone: (item7) as much as lifts it to twice stone_low (2 usable: 18 boulders)
+    # (r34a, 26 Nov) 4 tiles a boulder, at most twice the slider's 20: 40 (was 18)
+    assert q and q[0].action == {"type": "quarry", "count": 40}, q
     s["stone_use"]["usable"] = 500
     assert not by_rule(plan(s, Memory())[0], "stone")                          # plenty: nothing to do
     from planner import stone_short

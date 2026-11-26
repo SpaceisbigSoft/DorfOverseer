@@ -87,9 +87,12 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # (0.105.129) re-pinned after one value: trim_season_max 10 -> 4 (the player: trims slower in every fort): 26 Nov
 # (r33c idle hands) re-pinned after two deliberate keys: free_time_widen_idle, free_time_wait_per_holder
 # (A's narrowed gatherers with 16 jobs waiting; farming and gathering narrowed at 25-48% idle): 26 Nov
-DUMP_6298B4A = "1c8b8d37be0f3b771c3cacdd6d8c0d8115fabe6771c881d19bf60f6bcd01c2e2"
-KEYS_6298B4A = "b6769ed2daa023d405ce2f48db47e46d06f33625c89b95a26c2f29a8ff4febaa"
-COUNT_6298B4A = 1360
+# (r34a idle miners) re-pinned after six deliberate keys: quarry_tiles_per_boulder, quarry_max_tiles
+# (E's quarries of 1-5 tiles, a boulder for ~1 tile in 4), explore_cooldown_ticks, explore_days,
+# explore_tiles, explore_per_tunnel_miners (E's 27 miners with nothing to dig): 26 Nov
+DUMP_6298B4A = "35a34445ead83204c9671f94880578265c974957c410e8b063505e80b52716da"
+KEYS_6298B4A = "054f7974faf540a17537288de28861f7846c6574eec9817871870c363da90dee"
+COUNT_6298B4A = 1366
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

@@ -593,8 +593,12 @@ def _():
 @test("audit: ore veins, drifts and quarries ask the guard (safe() and before marking); joins and widenings too")
 def _():
     ind = (LUA_DIR / "ai-industry.lua").read_text(encoding="utf-8")
-    safe = ind[ind.index("local function safe("):ind.index("\nend\n", ind.index("local function safe("))]
+    # (r34a) safe() is unsafe_why() == nil now (the drift's refusal counts the reasons)
+    safe = ind[ind.index("local function unsafe_why("):ind.index("\nend\n", ind.index("local function unsafe_why("))]
     assert "U.dig_forbidden" in safe
+    assert "return unsafe_why(x, y, z) == nil" in ind
+    ex = (LUA_DIR / "ai-industry-explore.lua").read_text(encoding="utf-8")     # (r34a) the exploratory tunnels
+    assert "and safe(x, y, z)" in ex and ex.count("U.dig_check_tiles(marked") == 1
     assert ind.count("U.dig_check_tiles(marked") == 2
     j = (LUA_DIR / "ai-joins.lua").read_text(encoding="utf-8")
     assert j.count("U.dig_check_tiles(") == 2 and "U.dig_forbidden(p.x, p.y, z)" in j

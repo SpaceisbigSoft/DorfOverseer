@@ -318,21 +318,31 @@ local function warm(x, y, z)
     return ok and t ~= nil and t >= 10075          -- DF cancels digging in warm stone
 end
 
-local function safe(x, y, z)
-    if warm(x, y, z) then return false end
+-- (r34a) why a tile isn't safe to dig, or nil: 'hot', 'guard' (adamantine,
+-- the spire, the underworld), 'edge' (off the map), 'water', 'aquifer',
+-- 'cavern' (a cavern or other feature), 'open' (open to the sky). The drift's
+-- refusal counts them, so the reason line says what turned the search back.
+local function unsafe_why(x, y, z)
+    if warm(x, y, z) then return 'hot' end
     -- (0.105.40b) never raw adamantine, the spire or the underworld, nor beside them
-    if U.dig_forbidden(x, y, z) then return false end
+    if U.dig_forbidden(x, y, z) then return 'guard' end
     for dz = -1, 1 do
         for dy = -1, 1 do
             for dx = -1, 1 do
                 local d = dfhack.maps.getTileFlags(x + dx, y + dy, z + dz)
-                if not d then return false end
-                if d.flow_size > 0 or d.water_table or d.feature_global or d.feature_local then return false end
-                if d.outside then return false end
+                if not d then return 'edge' end
+                if d.flow_size > 0 then return 'water' end
+                if d.water_table then return 'aquifer' end
+                if d.feature_global or d.feature_local then return 'cavern' end
+                if d.outside then return 'open' end
             end
         end
     end
-    return true
+    return nil
+end
+
+local function safe(x, y, z)
+    return unsafe_why(x, y, z) == nil
 end
 
 local function walkable(x, y, z)
@@ -380,10 +390,14 @@ function room_wall(x, y, z)
     if smoothed(x, y, z) then return true end
     for dy = -ROOM_GUARD, ROOM_GUARD do
         for dx = -ROOM_GUARD, ROOM_GUARD do
-            local _, occ = dfhack.maps.getTileFlags(x + dx, y + dy, z)
+            local fl, occ = dfhack.maps.getTileFlags(x + dx, y + dy, z)
             if occ and occ.building ~= df.tile_building_occ.None then return true end
-            local okz, zs = pcall(function() return dfhack.buildings.findCivzonesAt(xyz2pos(x + dx, y + dy, z)) end)
-            if okz and zs and #zs > 0 then return true end
+            -- (r34a) zones lie on ground the dwarves have seen: a hidden tile's
+            -- zone lookup (the costliest read of a drift's search) is skipped
+            if not (fl and fl.hidden) then
+                local okz, zs = pcall(function() return dfhack.buildings.findCivzonesAt(xyz2pos(x + dx, y + dy, z)) end)
+                if okz and zs and #zs > 0 then return true end
+            end
         end
     end
     return false
@@ -404,11 +418,24 @@ end
 -- walk on: that tile opens the drift. {path = {entry ... last rock}, vein,
 -- mat} or nil. The vein tiles may be hidden: a drift is how a fort finds ore.
 DRIFT_MAX = 30          -- tiles of rock to the vein at most
-DRIFT_VISIT_MAX = 8000  -- tiles looked at in all (each checks its 3x3x3 once: item6 keeps the checks)
-DRIFT_SEED_VISIT = 1000 -- (item6) ...and from one vein tile (a 30-tile drift's diamond is ~1,800)
+-- (r34a) E (26 Nov, 27 miners, 0 tiles to dig): "no vein within 30 tiles"
+-- every time. The search was starved: 8,000 tiles in all and 1,000 a vein
+-- tile (a radius of ~22, not 30) went on the first 8 of up to 400 tiles,
+-- nearest the citizens' middle first, wherever they lay (in rock the fort has
+-- never seen, where no drift can open), only on the levels a citizen stood on
+-- at that moment, and the empty answer was kept a week. Now each vein tile
+-- needs ground the dwarves have seen within the drift's reach (a cheap look
+-- at its blocks), at most DRIFT_PER_VEIN tiles of one vein are tried, the
+-- fort's levels (the AI's too) all count, a search reaches its full 30 tiles,
+-- hidden tiles skip the zone lookup (room_wall), and the refusal says what
+-- turned it back.
+DRIFT_VISIT_MAX = 24000 -- tiles looked at in all (each checks its 3x3x3 once)
+DRIFT_SEED_VISIT = 2000 -- ...and from one vein tile (a 30-tile drift's diamond is ~1,860)
 DRIFT_SEEDS_MAX = 400   -- vein tiles it starts from, nearest the fort first
-DRIFT_RETRY_TICKS = 7 * 1200   -- a search that found nothing isn't repeated for a week
-DRIFT_FAILED = {}       -- metal -> absolute tick of the last empty search
+DRIFT_PER_VEIN = 4      -- (r34a) ...at most this many of one vein (one event in one block)
+DRIFT_RETRY_TICKS = 2 * 1200   -- (r34a) a search that found nothing isn't repeated for 2 days (was a week)
+DRIFT_FAILED = {}       -- metal -> {tick, why} of the last empty search
+DRIFT_LAST = nil        -- (r34a) the last search's counts (find_drift's second return)
 
 local function abs_tick()
     local ok, t = pcall(U.abs_tick)
@@ -422,27 +449,93 @@ local function near_levels(x, y, z, areas, m)
     return false
 end
 
+-- (r34a) has the fort seen any tile of this block? (cached per search)
+local function block_seen(cache, bx, by, z)
+    local kk = bx .. ',' .. by .. ',' .. z
+    local v = cache[kk]
+    if v == nil then
+        v = false
+        local block = dfhack.maps.getTileBlock(bx * 16, by * 16, z)
+        if block then
+            for x = 0, 15 do
+                for y = 0, 15 do
+                    local d = block.designation[x][y]
+                    if d and not d.hidden then v = true; break end
+                end
+                if v then break end
+            end
+        end
+        cache[kk] = v
+    end
+    return v
+end
+
+-- (r34a) any seen ground within r tiles (by blocks): else no drift from here
+-- can open onto the fort, and its search is skipped
+function seen_near(cache, x, y, z, r)
+    for by = (y - r) // 16, (y + r) // 16 do
+        for bx = (x - r) // 16, (x + r) // 16 do
+            if block_seen(cache, bx, by, z) then return true end
+        end
+    end
+    return false
+end
+
+-- (r34a) the counts of a search, in words for the refusal
+function drift_why(c)
+    local kinds = {}
+    for _, k in ipairs({'water', 'aquifer', 'cavern', 'open', 'hot', 'guard', 'edge'}) do
+        if (c.unsafe[k] or 0) > 0 then kinds[#kinds + 1] = ('%d %s'):format(c.unsafe[k], k) end
+    end
+    return ('%d tile(s) of it in the survey, %d on the fort\'s levels, %d clear of the levels with seen ground '
+            .. 'within reach; %d searched (%d tiles looked at): %s; '
+            .. 'turned back: %s, %d room walls, %d in or beside the AI\'s levels'):format(
+        c.veins, c.on_levels, c.usable, c.searched, c.visited,
+        c.searched > 0 and 'none opens onto the dwarves\' ground' or 'nowhere to search from',
+        #kinds > 0 and table.concat(kinds, ', ') or 'no unsafe rock', c.room, c.level)
+end
+
+-- (r34a) the z levels of the fort: where a citizen stands and every level of the AI's
+function fort_levels(areas)
+    local zs = {}
+    for _, p in ipairs(reqscript('ai-builder').citizen_positions()) do zs[p.z] = true end
+    for _, ar in ipairs(areas or {}) do
+        if type(ar) == 'table' and math.tointeger(ar.z) then zs[math.tointeger(ar.z)] = true end
+    end
+    return zs
+end
+
 function find_drift(a, metal, areas, groups, zs)
     local now = abs_tick()
     local last = DRIFT_FAILED[metal]
-    if now and last and now >= last and now - last < DRIFT_RETRY_TICKS then return nil end
-    local seen, queue, head = {}, {}, 1
+    if now and type(last) == 'table' and last.tick and now >= last.tick and now - last.tick < DRIFT_RETRY_TICKS then
+        return nil, {cached = true, why = last.why, days = (now - last.tick) // 1200}
+    end
     local function k(x, y, z) return x .. ',' .. y .. ',' .. z end
+    local c = {veins = 0, on_levels = 0, usable = 0, searched = 0, visited = 0, room = 0, level = 0, unsafe = {}}
+    local seen_cache = {}
     local seeds = {}
     each_vein(a, function(block, ev, metals)
         local has = false
         for _, m in ipairs(metals) do if m == metal then has = true end end
         if not has then return end
         local p = block.map_pos
+        local vein_id = tostring(ev)
         for x = 0, 15 do
             for y = 0, 15 do
                 local tx, ty = p.x + x, p.y + y
-                -- (review) only on levels where citizens stand: elsewhere no
-                -- drift can open onto the fort, and the search budget is spent
-                if (not zs or zs[p.z]) and dfhack.maps.getTileAssignment(ev.tile_bitmask, x, y)
-                        and not near_levels(tx, ty, p.z, areas, 2) then
-                    table.insert(seeds, {x = tx, y = ty, z = p.z, mat = ev.inorganic_mat,
-                                         d = math.abs(tx - a.cx) + math.abs(ty - a.cy) + 3 * math.abs(p.z - a.cz)})
+                if dfhack.maps.getTileAssignment(ev.tile_bitmask, x, y) then
+                    c.veins = c.veins + 1
+                    -- (review) only on the fort's levels: elsewhere no drift
+                    -- can open onto the fort, and the search budget is spent
+                    if not zs or zs[p.z] then
+                        c.on_levels = c.on_levels + 1
+                        if not near_levels(tx, ty, p.z, areas, 2) and seen_near(seen_cache, tx, ty, p.z, DRIFT_MAX) then
+                            c.usable = c.usable + 1
+                            table.insert(seeds, {x = tx, y = ty, z = p.z, mat = ev.inorganic_mat, vein = vein_id,
+                                                 d = math.abs(tx - a.cx) + math.abs(ty - a.cy) + 3 * math.abs(p.z - a.cz)})
+                        end
+                    end
                 end
             end
         end
@@ -455,7 +548,16 @@ function find_drift(a, metal, areas, groups, zs)
         local kk = k(x, y, z)
         local v = rock_ok[kk]
         if v == nil then
-            v = (safe(x, y, z) and not room_wall(x, y, z)) and true or false
+            local why = unsafe_why(x, y, z)
+            if why then
+                c.unsafe[why] = (c.unsafe[why] or 0) + 1
+                v = false
+            elseif room_wall(x, y, z) then
+                c.room = c.room + 1
+                v = false
+            else
+                v = true
+            end
             rock_ok[kk] = v
         end
         return v
@@ -472,16 +574,17 @@ function find_drift(a, metal, areas, groups, zs)
         return false
     end
     -- (item6, R32 e) one search from each vein tile in turn, nearest the fort
-    -- first, each at most DRIFT_SEED_VISIT tiles: the one search from all the
-    -- seeds at once spent its 2,500 tiles within ~3 tiles of 400 seeds (gem
-    -- clusters are many and small), so "no vein within 30 tiles" in every fort
+    -- first, each at most DRIFT_SEED_VISIT tiles
     local budget = DRIFT_VISIT_MAX
-    local tried = {}
+    local tried, per_vein = {}, {}
     for i = 1, math.min(#seeds, DRIFT_SEEDS_MAX) do
         if budget <= 0 then break end
         local t0 = seeds[i]
         local k0 = k(t0.x, t0.y, t0.z)
-        if not tried[k0] and is_wall(t0.x, t0.y, t0.z) and sound(t0.x, t0.y, t0.z) then
+        if not tried[k0] and (per_vein[t0.vein] or 0) < DRIFT_PER_VEIN
+                and is_wall(t0.x, t0.y, t0.z) and sound(t0.x, t0.y, t0.z) then
+            per_vein[t0.vein] = (per_vein[t0.vein] or 0) + 1
+            c.searched = c.searched + 1
             local seen, queue, head = {}, {}, 1
             seen[k0] = {d = 0, mat = t0.mat}
             queue[1] = {x = t0.x, y = t0.y, z = t0.z}
@@ -492,14 +595,16 @@ function find_drift(a, metal, areas, groups, zs)
                 local st = seen[k(t.x, t.y, t.z)]
                 -- a vein tile itself beside the fort was the ordinary case (not here)
                 if st.d > 0 and opens(t.x, t.y, t.z) then
-                    local path, c = {}, st
+                    local path, cc = {}, st
                     local cx, cy = t.x, t.y
-                    while c and c.d > 0 do
+                    while cc and cc.d > 0 do
                         table.insert(path, {x = cx, y = cy, z = t.z})
-                        cx, cy = c.px, c.py
-                        c = seen[k(cx, cy, t.z)]
+                        cx, cy = cc.px, cc.py
+                        cc = seen[k(cx, cy, t.z)]
                     end
-                    return {path = path, vein = {x = cx, y = cy, z = t.z}, mat = c and c.mat}
+                    c.visited = c.visited + head - 1
+                    DRIFT_LAST = c
+                    return {path = path, vein = {x = cx, y = cy, z = t.z}, mat = cc and cc.mat}, c
                 end
                 if st.d < DRIFT_MAX then
                     for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
@@ -515,6 +620,7 @@ function find_drift(a, metal, areas, groups, zs)
                             if near_levels(nx, ny, t.z, areas, 0) then place = false
                             elseif near_levels(nx, ny, t.z, areas, 1) then place = opens(nx, ny, t.z)
                             else place = true end
+                            if not place then c.level = c.level + 1 end
                             -- (review) a tile already marked for digging is passed
                             -- through: a drift not dug yet is found again, not a second beside it
                             if fl and place and sound(nx, ny, t.z) then
@@ -528,12 +634,15 @@ function find_drift(a, metal, areas, groups, zs)
                 end
             end
             budget = budget - (head - 1)
+            c.visited = c.visited + head - 1
             -- the vein tiles this search passed through: a search from them finds no more
             for kk, v in pairs(seen) do if v.d ~= math.huge then tried[kk] = true end end
         end
     end
-    if now then DRIFT_FAILED[metal] = now end
-    return nil
+    c.why = drift_why(c)
+    if now then DRIFT_FAILED[metal] = {tick = now, why = c.why} end
+    DRIFT_LAST = c
+    return nil, c
 end
 
 -- (item6, R32 e) Exploratory mining's run past a small pocket. Gems lie in
@@ -677,22 +786,34 @@ function mine(metal, count, dry_run, prospect)
             end
         end
     end, metal == 'GEM')
-    local drift
+    local drift, drift_info
     if not best then
         -- (0.105.9) every uncovered vein lies in the walls of the AI's own
         -- levels (the six forts, y257: 29-30 refusals each, 0 veins ever
         -- mined): a drift, a 1-wide tunnel through plain rock from the fort
         -- to the nearest vein (hidden or not), then the vein
-        local zs = {}
-        for _, p in ipairs(reqscript('ai-builder').citizen_positions()) do zs[p.z] = true end
-        drift = find_drift(a, metal, areas, groups, zs)
+        -- (r34a) the fort's levels: where citizens stand, and the AI's levels
+        -- (a level with nobody on it this moment still opens onto the fort)
+        local zs = fort_levels(areas)
+        local info
+        drift, info = find_drift(a, metal, areas, groups, zs)
         if drift then best, best_mat = drift.vein, drift.mat end
+        drift_info = info
     end
     if not best then
+        -- (r34a) the search's counts in the refusal: what turned it back
+        local why = ''
+        if type(drift_info) == 'table' and drift_info.why then
+            why = ': ' .. drift_info.why
+            if drift_info.cached then why = why .. (' (searched %d day(s) ago; again after 2 days)'):format(drift_info.days or 0) end
+        end
         return {ok = false, rejected = true,
                 error = ('no uncovered %s the dwarves can reach safely, and no vein within %d tiles '
                          .. 'of the fort through safe rock'):format(metal == 'GEM' and 'gems' or (metal:lower() .. ' ore'),
-                                                                  DRIFT_MAX)}
+                                                                  DRIFT_MAX) .. why,
+                search = type(drift_info) == 'table' and not drift_info.cached and {
+                    veins = drift_info.veins, on_levels = drift_info.on_levels, usable = drift_info.usable,
+                    searched = drift_info.searched, visited = drift_info.visited} or nil}
     end
     -- follow the vein (same stone, same level), safe tiles only
     local marked, seen, queue, head = {}, {}, {best}, 1
@@ -794,8 +915,16 @@ end
 -- dwarves walk on: each tile dug gives a boulder. Away from the AI's levels
 -- (their walls are their rooms), never next to water, magma, an aquifer, a
 -- cavern or open sky (the same check as ore veins).
-QUARRY_MAX = 30
-QUARRY_REACH = 3          -- tiles from the first one (a chamber, not a tunnel)
+-- (r34a) E (26 Nov): quarries of 1-5 tiles every day or two, the masons'
+-- stone stuck at 9. Every tile past the first had to be uncovered, and only
+-- the face of a wall is (the rock behind it is hidden till dug): the chamber
+-- was the face alone. Now the rock behind the face is quarried too (the same
+-- checks: safe, no room's wall, clear of the levels), the chamber's reach
+-- grows with its size, and a quarry may be 60 tiles: DF leaves a boulder for
+-- only about one in four layer-stone tiles dug (the brain's quarry_size asks
+-- 4 tiles a boulder wanted).
+QUARRY_MAX = 60
+QUARRY_REACH = 3          -- tiles from the first one (a chamber, not a tunnel); more for a bigger quarry
 QUARRY_SCAN_MAX = 200000  -- (0.105.33 review) floor tiles read at most looking for the wall
 
 local function economic(idx)
@@ -940,10 +1069,12 @@ function quarry(count, dry_run)
         local g = dfhack.maps.getWalkableGroup(xyz2pos(p.x, p.y, p.z))
         if g and g ~= 0 then groups[g] = true end
     end
-    local function ok_tile(x, y, z)
+    -- (r34a) face: the first tile, beside the dwarves' ground (uncovered);
+    -- the chamber behind it may be hidden rock
+    local function ok_tile(x, y, z, face)
         if not is_wall(x, y, z) then return false end
         local d = dfhack.maps.getTileFlags(x, y, z)
-        if not d or d.hidden or d.dig ~= df.tile_dig_designation.No then return false end
+        if not d or (face and d.hidden) or d.dig ~= df.tile_dig_designation.No then return false end
         local tt = dfhack.maps.getTileType(x, y, z)
         local at = tt and df.tiletype.attrs[tt]
         local mat = at and df.tiletype_material[at.material]
@@ -970,7 +1101,7 @@ function quarry(count, dry_run)
             local tx, ty = x + d[1], y + d[2]
             local dist = math.abs(tx - a.cx) + math.abs(ty - a.cy) + 3 * math.abs(z - a.cz)
             if not best_d or dist < best_d then
-                local good, idx = ok_tile(tx, ty, z)
+                local good, idx = ok_tile(tx, ty, z, true)
                 if good then best, best_d, best_idx = {x = tx, y = ty, z = z}, dist, idx end
             end
         end
@@ -1006,6 +1137,7 @@ function quarry(count, dry_run)
     end
     local marked, seen, queue, head = {}, {}, {best}, 1
     seen[best.x .. ',' .. best.y] = true
+    local reach = math.max(QUARRY_REACH, math.ceil(math.sqrt(count)))      -- (r34a) 60 tiles: 8
     while head <= #queue and #marked < count do
         local t = queue[head]
         head = head + 1
@@ -1013,9 +1145,9 @@ function quarry(count, dry_run)
         for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
             local nx, ny = t.x + d[1], t.y + d[2]
             local k = nx .. ',' .. ny
-            if not seen[k] and math.abs(nx - best.x) <= QUARRY_REACH and math.abs(ny - best.y) <= QUARRY_REACH then
+            if not seen[k] and math.abs(nx - best.x) <= reach and math.abs(ny - best.y) <= reach then
                 seen[k] = true
-                local good, idx = ok_tile(nx, ny, t.z)
+                local good, idx = ok_tile(nx, ny, t.z, false)
                 if good and idx == best_idx then table.insert(queue, {x = nx, y = ny, z = t.z}) end
             end
         end
@@ -1038,4 +1170,14 @@ function quarry(count, dry_run)
     remember_quarry(best, tried, marked)
     out.tried = #tried > 0 and #tried or nil
     return out
+end
+
+
+-- (r34a) the exploratory tunnels for idle miners (explore, explore_dig) live in
+-- lua/ai-industry-explore.lua; it takes these helpers from here
+XI = {area = area, is_wall = is_wall, safe = safe, walkable = walkable, project_areas = project_areas,
+      vein_at = vein_at, near_levels = near_levels, now_tick = now_tick}
+
+function explore(count, tunnels, dry_run)
+    return reqscript('ai-industry-explore').explore(count, tunnels, dry_run)
 end
