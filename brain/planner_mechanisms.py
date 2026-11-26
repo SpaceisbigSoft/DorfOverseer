@@ -14,7 +14,8 @@ The rule (_mechanism_stock_rule, after every rule that orders mechanisms):
     linked, 3 a cell whose lever is not built: the lever and its link; 3 a
     cell of a were_cells level still being dug), the gates (2 a drawbridge
     no lever works, and a lever for each beyond the free AI levers), the
-    kill zones (2 a built drawbridge not linked), the rest (what
+    kill zones (2 a built drawbridge not linked), (item6) the cavern way
+    (2 for its gate's link, 1 more before its lever is placed), the rest (what
     buildingplan's waiting buildings lack);
   * what there is: the free mechanisms (the bridge's mechanisms_free: not in
     a building, not encased, not an artifact, where a dwarf can walk), the
@@ -103,6 +104,30 @@ def _killzone_need(s: dict, bridges: set) -> tuple[int, str]:
     return want * LINK, (f"{want} kill-zone drawbridge(s) to link" if want else "")
 
 
+# (item6, R32 e) the cavern way's states before its lever is linked, and
+# whether its lever (one mechanism) is still to be placed
+CAVERN_WAY_BEFORE_LINK = {"dig": True, "digging": True, "lever": True, "lever_building": False, "hatch": False,
+                          "hatch_building": False, "link": False}
+
+
+def _cavern_way_need(s: dict) -> tuple[int, str]:
+    """(item6, R32 e) The guarded cavern way's gate link (2) and, before its
+    lever is placed, the lever's own (D: "2 free mechanisms are needed for the
+    link" 69 times, nothing ordered them)."""
+    from planner_cavern_way import cavern_way
+    w = cavern_way(s)
+    st = w.get("state") if w else None
+    if st not in CAVERN_WAY_BEFORE_LINK:
+        return 0, ""
+    n = LINK + (LEVER if CAVERN_WAY_BEFORE_LINK[st] else 0)
+    have = w.get("mechanisms")
+    if st == "link" and isinstance(have, int) and not isinstance(have, bool) and have < LINK:
+        # the stock's free ones the way's link can't use (the bridge counts those a
+        # linker may take): not supply for it
+        n += max(0, free_stock(s, "mechanisms") - have)
+    return n, ("its gate's lever link" if st == "link" else f"its lever and link to come ({st.replace('_', ' ')})")
+
+
 def _planned_need(s: dict) -> tuple[int, str]:
     from planner_building_stores import planned_wants
     n = _int(planned_wants(s).get("mechanism"))
@@ -115,7 +140,8 @@ def mechanism_demand(s: dict) -> list:
     bridges: set = set()
     out = []
     for what, fn in (("were cells", lambda: _were_need(s)), ("gates", lambda: _gate_need(s, bridges)),
-                     ("kill zones", lambda: _killzone_need(s, bridges)), ("the rest", lambda: _planned_need(s))):
+                     ("kill zones", lambda: _killzone_need(s, bridges)),
+                     ("the cavern way", lambda: _cavern_way_need(s)), ("the rest", lambda: _planned_need(s))):
         try:
             n, words = fn()
         except Exception:  # noqa: BLE001  (one part unreadable leaves the others)

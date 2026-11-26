@@ -47,8 +47,12 @@ BELOW_ROCK = 2           -- solid rock levels under the cavern's layer the stair
 MAX_LEVELS = 60          -- the column runs at most this many levels down
 DANGER_RADIUS = 25       -- a hostile creature in the layer this near the column: wait
 local NB = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}
--- open tiles a wall can be built on (anything else open in the way refuses)
-local BUILD_ON = {EMPTY = true, FLOOR = true, PEBBLES = true}
+-- open tiles a wall can be built on (anything else open in the way refuses).
+-- (item6, R32 e) a shrub or a sapling on the cavern floor too: DF builds a
+-- construction over one (quickfort's own check takes them, as the gates' and
+-- the cistern's walls do) and the plant goes. E's crossing was refused 13
+-- times for "a shrub where the stair goes" and nothing cleared it.
+BUILD_ON = {EMPTY = true, FLOOR = true, PEBBLES = true, SHRUB = true, SAPLING = true}
 local NATURAL = {STONE = true, MINERAL = true, SOIL = true, LAVA_STONE = true}
 local STAIRS = {STAIR_UP = true, STAIR_DOWN = true, STAIR_UPDOWN = true}
 

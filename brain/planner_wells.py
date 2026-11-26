@@ -431,6 +431,34 @@ def _cistern_parts(s: dict, st: dict, proposals: list, notes: list | None = None
                                   4, is_order=True))
 
 
+CISTERN_PULL_KEY = "cistern_pull"       # (item6) memory.last_fired: the last top-up pull asked for (_shut, _opened)
+CISTERN_PULL_DAYS = 1                   # ...a pull that left the floodgate as it was asked again a day on
+
+
+def _cistern_pull_wait(s: dict, st: dict, memory, notes: list) -> bool:
+    """(item6, R32 e) The built cistern's top-up pull (shut when full, open when
+    low): not asked for again while a dwarf is on the way to the lever (B: "the
+    cistern is 7/7 deep: shut the floodgate" every cycle, ~25 s, the bridge
+    answering "a dwarf is already on the way"), and a pull that left the
+    floodgate as it was asked again only a day on. True: wait (a note said why)."""
+    want = "shut" if st.get("gate") == "open" else "opened"
+    if st.get("pull_pending"):
+        notes.append(f"the cistern is {st.get('depth')}/7 deep: a dwarf is on the way to its lever to have the "
+                     f"floodgate {want}")
+        return True
+    if memory is None or not isinstance(getattr(memory, "last_fired", None), dict):
+        return False
+    now = abs_tick(s)
+    key = f"{CISTERN_PULL_KEY}_{want}"     # (a shut asked for doesn't hold back the open after it)
+    last = memory.last_fired.get(key)
+    if isinstance(last, int) and not isinstance(last, bool) and 0 <= now - last < CISTERN_PULL_DAYS * TICKS_PER_DAY:
+        notes.append(f"the cistern is {st.get('depth')}/7 deep and its floodgate still {st.get('gate')} after its "
+                     f"lever was pulled: asked again in a day (the lever's link may be lost)")
+        return True
+    memory.last_fired[key] = now
+    return False
+
+
 def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rules_: dict) -> None:
     """Water step W2: the cistern (lua/ai-builder.lua cistern_step), built a
     step at a time once the AI decides the fort needs one, then kept filled
@@ -563,6 +591,8 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
                                       f"the cistern: {CISTERN_WORDS.get(st.get('stage'), 'next step')}: the next step", 4))
             _cistern_parts(s, st, proposals, notes)
         elif (st.get("gate") == "shut" and (st.get("depth") or 0) < 3) or (st.get("gate") == "open" and (st.get("depth") or 0) >= 6):
+            if _cistern_pull_wait(s, st, memory, notes):
+                return
             proposals.append(Proposal("cistern", dict(step),
                                       f"the cistern is {st.get('depth')}/7 deep: "
                                       + ("open the floodgate to refill it" if st.get("gate") == "shut" else "shut the floodgate"), 4))

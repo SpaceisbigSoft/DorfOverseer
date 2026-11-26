@@ -168,6 +168,12 @@ function cistern_status()
         for _ in pairs(d.sealing) do n = n + 1 end
         out.sealing = n > 0 and n or nil
     end
+    -- (item6, R32 e) built and full, its floodgate open: a pull already
+    -- waiting for a dwarf (the brain asked for the shut every cycle meanwhile:
+    -- "the cistern is 7/7 deep: shut the floodgate", B every ~25 s)
+    if d.stage == 'done' and d.lever_id and gate and gate.built and not gate.closed then
+        out.pull_pending = lever_pull_pending(d.lever_id) or nil
+    end
     if d.stage == 'filling' or d.stage == 'plug' then
         local okp, path = pcall(cistern_path, p)
         out.path = okp and path or nil
