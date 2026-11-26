@@ -8,7 +8,7 @@
 -- The top-level locals the ai-builder-projects files share come through
 -- PROJECTS_PART_LOCALS (the same functions).
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-founding'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-founding'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 local find = PROJECTS_PART_LOCALS.find

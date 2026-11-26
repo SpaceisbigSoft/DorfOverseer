@@ -11,6 +11,18 @@
   `perf_slow_cycle_factor` times further apart, but never while a threat
   or a siege is on the map (the safety rules keep their cadence).
 
+- (R29 W7) each row also says the population (state dwarves.total), the
+  full and pulse reports of that day and each kind's median ms, the real
+  seconds the day took and the AI's share of them (`ai_share`: the game
+  stands still while a bridge call runs), and the day's costliest
+  sections summed over all its reports (`sections`, built ones only).
+- (R29 W7) the soak comparison (Phase 13e's exit): `python brain/perf.py
+  compare <fort folder or perf.jsonl>` sets each later game year beside
+  year one at the same population (bins of `--bin` dwarves; a row without
+  `pop` takes it from the folder's timeline.csv) and says whether the FPS
+  stays within `--tol` (20%) of year one's, with the AI's ms per game day
+  and share beside it.
+
 Pure functions and one small per-fort meter; nothing here raises into a
 cycle (Meter.note swallows its own trouble).
 """
@@ -18,10 +30,13 @@ cycle (Meter.note swallows its own trouble).
 from __future__ import annotations
 
 import json
+import time
 from collections import deque
 from datetime import datetime
 
 TICKS_PER_DAY = 1200
+TICKS_PER_YEAR = TICKS_PER_DAY * 28 * 12   # (R29 W7) a game year
+SECTIONS_KEPT = 6               # (R29 W7) the day's costliest sections kept in a row
 PERF_FILE = "perf.jsonl"
 PERF_MAX_BYTES = 1_000_000      # ~5000 rows (some 14 game years a file), then perf.old.jsonl
 RECENT_ROWS = 60                # the last rows kept in memory per fort
@@ -31,6 +46,10 @@ from util import as_dict as _d  # noqa: E402  (r6 c2) was a copy here
 
 
 from util import is_num as _num  # noqa: E402  (r6 c2) was a copy here
+
+
+def _wall() -> float:
+    return time.monotonic()
 
 
 def slow_sections(perf: dict, n: int = 3) -> list[tuple[str, float]]:
@@ -132,40 +151,68 @@ class Meter:
     with the absolute game tick and the bridge's running call total; once a
     game day has passed since the last row it gives (and writes) a row."""
 
-    def __init__(self, write: bool = True) -> None:
+    def __init__(self, write: bool = True, clock=None) -> None:
         self.write = write
-        self.base: dict = {}        # key -> {"tick", "ms", "calls"}: where the current row began
+        self.clock = clock or _wall    # (R29 W7) real seconds (the tests swap in their own)
+        self.base: dict = {}        # key -> {"tick", "ms", "calls", "wall"}: where the current row began
         self.recent: dict = {}      # key -> deque of rows
         self.reports: dict = {}     # key -> [total_ms of the reports in this row]
+        self.tiers: dict = {}       # (R29 W7) key -> {"full": [ms], "pulse": [ms]}
+        self.secs: dict = {}        # (R29 W7) key -> {section: ms summed over the row's reports}
 
     def note(self, key: str, tick: int, call_ms: float, calls: int = 0, perf: dict | None = None,
-             folder=None) -> dict | None:
+             folder=None, state: dict | None = None) -> dict | None:
         try:
-            return self._note(key, tick, call_ms, calls, perf, folder)
+            return self._note(key, tick, call_ms, calls, perf, folder, state)
         except Exception:  # noqa: BLE001  (a measure never stops the fort)
             return None
 
-    def _note(self, key, tick, call_ms, calls, perf, folder):
+    def _reset(self, key, tick, call_ms, calls) -> None:
+        self.base[key] = {"tick": tick, "ms": call_ms, "calls": calls, "wall": self.clock()}
+        self.reports[key] = []
+        self.tiers[key] = {"full": [], "pulse": []}
+        self.secs[key] = {}
+
+    def _note(self, key, tick, call_ms, calls, perf, folder, state=None):
         p = _d(perf)
+        st = _d(state)
         if _num(p.get("total_ms")) and "error" not in p:
             self.reports.setdefault(key, []).append(p["total_ms"])
+            # (R29 W7) by kind: the pulse between days, every other tier a full report
+            kind = "pulse" if st.get("tier") == "pulse" else "full"
+            self.tiers.setdefault(key, {"full": [], "pulse": []})[kind].append(p["total_ms"])
+            acc = self.secs.setdefault(key, {})
+            cached = _d(p.get("cached"))
+            for k, v in _d(p.get("sections")).items():
+                if _num(v) and not cached.get(k):
+                    acc[k] = acc.get(k, 0.0) + v
         b = self.base.get(key)
         if b is None or tick < b["tick"]:            # a new fort, or an older save loaded
-            self.base[key] = {"tick": tick, "ms": call_ms, "calls": calls}
-            self.reports[key] = []
+            self._reset(key, tick, call_ms, calls)
             return None
         ticks = tick - b["tick"]
         if ticks < TICKS_PER_DAY:
             return None
         ms = max(0.0, call_ms - b["ms"])
         rep = sorted(self.reports.get(key) or [])
+        tiers = self.tiers.get(key) or {"full": [], "pulse": []}
+        wall = self.clock() - b["wall"] if _num(b.get("wall")) else None
+        top = sorted(_d(self.secs.get(key)).items(), key=lambda kv: (-kv[1], kv[0]))[:SECTIONS_KEPT]
+        pop = _d(st.get("dwarves")).get("total")
         row = {"time": datetime.now().isoformat(timespec="seconds"), "tick": tick,
                "days": round(ticks / TICKS_PER_DAY, 2), "ai_ms": round(ms, 1),
                "ms_per_day": ms_per_day(ms, ticks), "calls": max(0, calls - b["calls"]),
                "report_ms": rep[len(rep) // 2] if rep else None,
-               "slow": [[k, v] for k, v in slow_sections(p)], "fps": p.get("fps") if _num(p.get("fps")) else None}
-        self.base[key] = {"tick": tick, "ms": call_ms, "calls": calls}
-        self.reports[key] = []
+               "slow": [[k, v] for k, v in slow_sections(p)], "fps": p.get("fps") if _num(p.get("fps")) else None,
+               # (R29 W7) what the soak comparison needs
+               "pop": pop if _num(pop) else None,
+               "full": len(tiers["full"]), "full_ms": median(tiers["full"]),
+               "pulse": len(tiers["pulse"]), "pulse_ms": median(tiers["pulse"]),
+               "wall_s": round(wall, 1) if _num(wall) and wall > 0 else None,
+               # (a share only over a real second or more: a test's or a replay's instant row has none)
+               "ai_share": round(ms / (wall * 1000), 3) if _num(wall) and wall >= 1 else None,
+               "sections": [[k, round(v, 1)] for k, v in top]}
+        self._reset(key, tick, call_ms, calls)
         self.recent.setdefault(key, deque(maxlen=RECENT_ROWS)).append(row)
         if self.write and folder is not None:
             import memstore
@@ -201,3 +248,130 @@ def read_rows(path) -> list[dict]:
 def median(vals) -> float | None:
     v = sorted(x for x in vals if _num(x))
     return v[len(v) // 2] if v else None
+
+
+# --- (R29 W7, 13e) the soak comparison ---------------------------------------------------
+
+def timeline_pops(path) -> dict:
+    """day -> population from a fort's timeline.csv ({} without one)."""
+    import csv
+    out = {}
+    try:
+        with open(path, encoding="utf-8", errors="replace", newline="") as f:
+            for r in csv.DictReader(f):
+                try:
+                    out[int(r["day"])] = int(float(r["pop"]))
+                except (KeyError, TypeError, ValueError):
+                    continue
+    except OSError:
+        return {}
+    return out
+
+
+def fill_pop(rows: list[dict], pops: dict) -> list[dict]:
+    """Rows without `pop` (written before R29) take the timeline's population
+    of their game day, or the last day before it."""
+    if not pops:
+        return rows
+    days = sorted(pops)
+    import bisect
+    for r in rows:
+        if _num(r.get("pop")) or not _num(r.get("tick")):
+            continue
+        i = bisect.bisect_right(days, int(r["tick"]) // TICKS_PER_DAY) - 1
+        if i >= 0:
+            r["pop"] = pops[days[i]]
+    return rows
+
+
+def soak_compare(rows: list[dict], bin_size: int = 10, tol: float = 0.2, ref: str = "year1") -> dict:
+    """Each later game year set beside year one at the same population.
+
+    Years count from the first row's tick (year 1 = its first 403,200
+    ticks). Rows are put in population bins of `bin_size`; for each later
+    year and each bin it shares with year one (3 rows at least on each
+    side) the median FPS, AI ms per game day and AI share are compared.
+    A bin passes when the later FPS is at least (1 - tol) of year one's.
+    ref "first": each bin is set against the first year it was seen in
+    (a fort that grows every year meets year one's population only then).
+    Returns {"years": {year: [bin rows]}, "verdict": "pass" | "fail" |
+    "no overlap", "first_tick", "ref"}."""
+    good = [r for r in rows if _num(r.get("tick")) and _num(r.get("pop"))]
+    if not good:
+        return {"years": {}, "verdict": "no overlap", "first_tick": None}
+    t0 = min(r["tick"] for r in good)
+    by: dict = {}
+    for r in good:
+        y = int((r["tick"] - t0) // TICKS_PER_YEAR) + 1
+        b = int(r["pop"]) // bin_size * bin_size
+        by.setdefault(y, {}).setdefault(b, []).append(r)
+
+    def stats(rs):
+        return {"n": len(rs), "fps": median(r.get("fps") for r in rs),
+                "ms_per_day": median(r.get("ms_per_day") for r in rs),
+                "ai_share": median(r.get("ai_share") for r in rs)}
+    base, base_year = {}, {}
+    for y in sorted(by):
+        if ref != "first" and y != 1:
+            break
+        for b, rs in by[y].items():
+            if b not in base and len(rs) >= 3:
+                base[b], base_year[b] = stats(rs), y
+    out, fails, compared = {}, 0, 0
+    for y in sorted(by):
+        lines = []
+        for b, rs in sorted(by[y].items()):
+            if len(rs) < 3 or b not in base or y <= base_year[b]:
+                continue
+            now, refs = stats(rs), base[b]
+            ratio = (now["fps"] / refs["fps"]) if _num(now["fps"]) and _num(refs["fps"]) and refs["fps"] else None
+            ok = ratio is not None and ratio >= 1 - tol
+            compared += 1
+            fails += 0 if ok else 1
+            lines.append({"pop": f"{b}-{b + bin_size - 1}", "year1": refs, "ref_year": base_year[b], "now": now,
+                          "fps_ratio": round(ratio, 2) if ratio is not None else None, "ok": ok})
+        if lines:
+            out[y] = lines
+    verdict = "no overlap" if not compared else ("pass" if not fails else "fail")
+    return {"years": out, "verdict": verdict, "first_tick": t0, "ref": ref}
+
+
+def compare_text(res: dict) -> str:
+    """The comparison as lines for the console."""
+    def f(v, nd=0):
+        return "?" if not _num(v) else (f"{v:.{nd}f}")
+    lines = [f"soak comparison (year 1 from tick {res.get('first_tick')}, against "
+             f"{'the first year at each population' if res.get('ref') == 'first' else 'year 1'}): {res.get('verdict')}"]
+    for y, rows in sorted(res.get("years", {}).items()):
+        for r in rows:
+            a, b = r["year1"], r["now"]
+            lines.append(f"year {y} pop {r['pop']:>7}: fps {f(b['fps'])} vs {f(a['fps'])} in year {r['ref_year']}"
+                         f" (x{f(r['fps_ratio'], 2)}) "
+                         f"{'ok' if r['ok'] else 'SLOWER'} | AI ms/day {f(b['ms_per_day'])} vs {f(a['ms_per_day'])}"
+                         f" | AI share {f(b['ai_share'], 3)} vs {f(a['ai_share'], 3)} | rows {b['n']}/{a['n']}")
+    return "\n".join(lines)
+
+
+def main(argv: list[str]) -> int:
+    """python brain/perf.py compare <fort folder | perf.jsonl> [--bin 10] [--tol 0.2] [--first]"""
+    from pathlib import Path
+    if len(argv) < 2 or argv[0] != "compare":
+        print(main.__doc__)
+        return 2
+    target = Path(argv[1])
+    bin_size, tol = 10, 0.2
+    if "--bin" in argv:
+        bin_size = int(argv[argv.index("--bin") + 1])
+    if "--tol" in argv:
+        tol = float(argv[argv.index("--tol") + 1])
+    folder = target if target.is_dir() else target.parent
+    path = target / PERF_FILE if target.is_dir() else target
+    rows = read_rows(folder / "perf.old.jsonl") + read_rows(path) if path.name == PERF_FILE else read_rows(path)
+    rows = fill_pop(rows, timeline_pops(folder / "timeline.csv"))
+    print(compare_text(soak_compare(rows, bin_size, tol, "first" if "--first" in argv else "year1")))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    raise SystemExit(main(sys.argv[1:]))

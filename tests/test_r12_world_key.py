@@ -193,10 +193,11 @@ def _():
     old = {"result": "stopped", "step": "site", "reason": "unexpected",
            "why": "still on world/NORMAL after the click (40 frames)"}
     third = dict(old, why="still on world/NORMAL after the click (40 frames) (miss 4 this DF session)")
-    assert PM.click_missed(new) and PM.click_missed(old) and not PM.click_missed(third)
+    assert PM.click_missed(new) and PM.click_missed(old)
     assert PM.retry_ticks(new, TICKS_PER_YEAR) == TICKS_PER_DAY
     assert PM.retry_ticks(old, TICKS_PER_YEAR) == TICKS_PER_DAY
-    assert PM.retry_ticks(third, TICKS_PER_YEAR) == TICKS_PER_YEAR
+    # (R29) past 3 a session: a week, no longer a year (every live fort sat in a year's block)
+    assert PM.stuck_click(third) and PM.retry_ticks(third, TICKS_PER_YEAR) == 7 * TICKS_PER_DAY
 
 
 @test("site: the delayed click never lands after the run stopped (a window of the player's); the mouse put back")

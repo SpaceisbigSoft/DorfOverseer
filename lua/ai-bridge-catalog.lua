@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -412,6 +412,8 @@ ACTIONS = {
         if type(a.kind) ~= 'string' then return reject('place_mood_shop needs kind (Smelter, Jewelers...)') end
         return reqscript('ai-siege').place_mood_shop(a.kind, a.dry_run == true)
     end,
+    -- (R29 W2) the Rules' "Invite a siege (test)": one army queued by DFHack's force, once a fort
+    invite_siege = function(a) return reqscript('ai-siege').invite_siege(a.dry_run == true) end,
     -- (0.105.41, item 11) syndromes and miasma (lua/ai-syndromes.lua): the syndrome-carrying
     -- spatter cleaned off the citizens and the fort's floors, the carriers kept in the
     -- hospital burrow, what rots near miasma marked for the dump under the sky

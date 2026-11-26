@@ -493,4 +493,108 @@ def _():
             assert ok[0], (name, ok)
 
 
+# --- (R29 W6) repeated time-outs, the results journalled -------------------------------------
+
+@test("R29: each time-out rests the target again; after hunt_time_tries it is out of reach while on the map")
+def _():
+    sq = [squad(1, 6, 900, at_home=False, hunting=500), squad(2, 5, 900), squad(3, 5, 900)]
+    s = state([target()], sq, [_hunting(since_tick=abs_tick(state()) - 3 * DAY - 1)])
+    now = abs_tick(s)
+    m = Memory()
+    # E 25 Nov: the first time-out's tick was kept (setdefault): later time-outs rested 0 days
+    m.hunt_seen = {"off": {"500": {"tick": now - 30 * DAY, "why": "time"}}}
+    p, n = run(s, m)
+    assert len(recalls(p)) == 1
+    off = m.hunt_seen["off"]["500"]
+    assert off["why"] == "time" and off["tick"] == now and off["tries"] == 1, off
+    p, n = run(s, m)                            # the second time-out: out of reach
+    r = recalls(p)
+    assert m.hunt_seen["off"]["500"]["why"] == "reach", m.hunt_seen
+    assert "not hunted again while it is on the map" in r[0].reason, r[0].reason
+    free = state([target()], [squad(1, 6, 900), squad(2, 5, 900), squad(3, 5, 900)])
+    m.hunt_seen["off"]["500"]["tick"] = now - 100 * DAY
+    p, n = run(free, m)
+    assert not sends(p) and any("keeps out of reach" in x for x in n), n
+    # a lost hunt is never turned back into a time-out
+    m2 = Memory()
+    m2.hunt_seen = {"off": {"500": {"tick": now, "why": "lost"}}}
+    run(s, m2)
+    assert m2.hunt_seen["off"]["500"]["why"] == "lost", m2.hunt_seen
+
+
+@test("R29: combat_journal: each hunt's result once (killed, back, lost, fled, caught), with target and squad")
+def _():
+    from planner_combat_log import combat_journal
+    hist = [{"squad_id": 205, "target_id": 17797, "target_name": "Giant Black Bear", "outcome": "won",
+             "since_tick": 1000, "end_tick": 3400, "soldiers_at_start": 10, "soldiers_lost": 0, "target_dead": True},
+            {"squad_id": 219, "target_id": 17744, "target_name": "Black Bear", "outcome": "recalled",
+             "reason": "the hunt has gone on over 3 days", "since_tick": 1, "end_tick": 4000,
+             "soldiers_at_start": 4, "soldiers_lost": 0},
+            {"squad_id": 219, "target_id": 1, "target_name": "Wolf", "outcome": "recalled", "since_tick": 1,
+             "end_tick": 5000, "soldiers_at_start": 4, "soldiers_lost": 2},
+            {"squad_id": 219, "target_id": 2, "target_name": "Elk", "outcome": "gone", "end_tick": 6000},
+            {"squad_id": 219, "target_id": 3, "target_name": "Troll", "outcome": "caged", "end_tick": 7000}]
+    s = state([], [squad(205, name="The Bears"), squad(219)], [], history=hist)
+    m = Memory()
+    out = combat_journal(s, m)
+    assert [e["outcome"] for e in out] == ["killed", "back", "lost", "fled", "caught"], out
+    e = out[0]
+    assert e["of"] == "hunt" and e["target"] == "Giant Black Bear" and e["squad"] == "The Bears", e
+    assert e["days"] == 2.0 and e["lost"] == 0 and "killed" in e["text"], e
+    assert out[2]["lost"] == 2 and "2 soldier(s) lost" in out[2]["text"], out[2]
+    assert combat_journal(s, m) == []           # once each
+    hist.append({"squad_id": 205, "target_id": 9, "target_name": "Wren", "outcome": "won", "end_tick": 9000})
+    assert [e["target"] for e in combat_journal(state([], [], [], history=hist), m)] == ["Wren"]
+
+
+@test("R29: combat_journal: a sortie's result once the gates' record goes (killed by a death event; back; lost)")
+def _():
+    from planner_combat_log import combat_journal, sortie_party
+    cyc = {"id": 16472, "name": "Cyclops", "great_danger": False}
+    mil = {"squads": [{"id": 183, "ai_orders": 1, "kill_ids": [16472], "members": 10},
+                      {"id": 201, "ai_orders": 1, "kill_ids": [16472], "members": 9},
+                      {"id": 209, "ai_orders": 0, "kill_ids": [], "members": 5}]}
+    s = state(threats=[cyc], military=mil)
+    party = sortie_party(s, [16472])
+    assert party == {"targets": {"16472": "Cyclops"}, "squads": {"183": 10, "201": 9}}, party
+    m = Memory()
+    m.atlas = {"sortie": {"since": abs_tick(s) - 600, **party}}
+    assert combat_journal(s, m, []) == []                            # under way: nothing yet
+    death = {"kind": "death", "unit_id": 16472, "name": "Cyclops", "killer_id": 17360}
+    assert combat_journal(state(military=mil), m, [death]) == []     # killed, the gates not shut yet
+    m.atlas.pop("sortie")
+    [e] = combat_journal(state(military=mil), m, [])
+    assert e["of"] == "sortie" and e["outcome"] == "killed" and e["target"] == "Cyclops", e
+    assert e["squad"] == ["183", "201"] and e["soldiers"] == 19 and e["killed"] == 1, e
+    assert combat_journal(state(military=mil), m, []) == []          # once
+    # the squads back, the enemy still on the map; a citizen killed by it: lost
+    m.atlas = {"sortie": {"since": abs_tick(s), **party}}
+    combat_journal(s, m, [{"kind": "death", "unit_id": 77, "killer_id": 16472, "animal": False}])
+    m.atlas.pop("sortie")
+    [e] = combat_journal(s, m, [])
+    assert e["outcome"] == "lost" and e["lost"] == 1, e
+    m.atlas = {"sortie": {"since": abs_tick(s), **party}}
+    combat_journal(s, m, [])
+    m.atlas = {}
+    assert combat_journal(s, m, [])[0]["outcome"] == "back"
+
+
+@test("R29: the gates' sortie record keeps who went out at whom (planner_gates_lockdown._sortie_on)")
+def _():
+    from planner_gates_lockdown import _sortie_on
+    mil = {"squads": [{"id": 183, "ai_orders": 1, "kill_ids": [16472], "members": 10}]}
+    s = state(threats=[{"id": 16472, "name": "Cyclops"}], military=mil)
+    m = Memory()
+    m.atlas = {}
+    assert _sortie_on(s, CFG, m, [16472]) == [16472]
+    rec = m.atlas["sortie"]
+    assert rec["since"] == abs_tick(s) and rec["targets"] == {"16472": "Cyclops"} and rec["squads"] == {"183": 10}
+
+
+@test("R29: overseer_cycle journals the results (kind combat_result)")
+def _():
+    src = (ROOT / "brain" / "overseer_cycle.py").read_text(encoding="utf-8")
+    assert code_has(src, "combat_journal(state, memory, events)") and code_has(src, '"kind": "combat_result"')
+
+
 finish()

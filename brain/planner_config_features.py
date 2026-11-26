@@ -67,6 +67,10 @@ PART = {
     "paper_codex_batch": 2,               # written quires bound into codices an order
     "paper_wood_min": 10,                 # logs before scroll rollers or book bindings are carved
     "paper_cooldown_ticks": 1200,
+    # (R29 W5) a library's scholars, who write the fort's own books (brain/planner_health.py scholars_wanted)
+    "library_scholar_min_citizens": 20,   # no scholar's post in a smaller fort (it needs its hands)
+    "library_scholar_per": 30,            # one scholar per this many citizens...
+    "library_scholars_max": 3,            # ...up to this many
     "paper_shop_cooldown_ticks": 14 * 1200,
     # (item10) cavern logging and the grove (brain/planner_forestry.py)
     "cavern_logging_surface_min": 20,     # cavern trees felled while fewer surface trees than this stand (the grove's not counted)

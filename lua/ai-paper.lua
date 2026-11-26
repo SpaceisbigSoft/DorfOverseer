@@ -364,5 +364,65 @@ function report()
             end
         end
     end)
+    pcall(function() out.writing = writing() end)
     return out
+end
+
+-- (R29 W5) the fort's written works, so the books can be watched: `items`
+-- every written item held (codices, written quires and scrolls; no trader's),
+-- `works` the distinct works among them, `copies` the items that are no
+-- artifact (a scribe's copy: the originals are artifacts), `own` the works
+-- whose author is one of the fort's citizens (written here; the 25 Nov run's
+-- 37 codices were all old artifacts), `scholars` the fort's scholar posts
+-- filled. Live (probe 25 Nov 21:33): A 7 codices and 1 copy, B 11 and 11,
+-- E 11 and 10, D none; own 0 everywhere.
+local function contents_of(it)
+    local ids = {}
+    pcall(function()
+        for _, imp in ipairs(it.improvements) do
+            local ty = imp:getType()
+            if ty == df.improvement_type.WRITING or ty == df.improvement_type.PAGES then
+                for _, w in ipairs(imp.contents) do table.insert(ids, w) end
+            end
+        end
+    end)
+    return ids
+end
+
+function writing()
+    local w = {items = 0, works = 0, copies = 0, own = 0, scholars = 0}
+    local seen, citizen_hf = {}, {}
+    pcall(function()
+        for _, u in ipairs(dfhack.units.getCitizens()) do
+            if u.hist_figure_id ~= -1 then citizen_hf[u.hist_figure_id] = true end
+            for _, o in ipairs(u.occupations) do
+                if df.occupation_type[o.type] == 'SCHOLAR' then w.scholars = w.scholars + 1 end
+            end
+        end
+    end)
+    local function look(it)
+        if it.flags.trader or it.flags.garbage_collect then return end
+        local ids = contents_of(it)
+        if #ids == 0 then return end
+        w.items = w.items + 1
+        if not it.flags.artifact then w.copies = w.copies + 1 end
+        for _, id in ipairs(ids) do
+            if not seen[id] then
+                seen[id] = true
+                w.works = w.works + 1
+                pcall(function()
+                    local wc = df.written_content.find(id)
+                    if wc and citizen_hf[wc.author] then w.own = w.own + 1 end
+                end)
+            end
+        end
+    end
+    pcall(function() for _, it in ipairs(df.global.world.items.other.BOOK) do look(it) end end)
+    pcall(function()
+        for _, it in ipairs(df.global.world.items.other.TOOL) do
+            local id = it.subtype and it.subtype.id
+            if id == 'ITEM_TOOL_QUIRE' or id == 'ITEM_TOOL_SCROLL' then look(it) end
+        end
+    end)
+    return w
 end

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from digest import _d, _l
 from planner_core import (EMERGENCY, LIMIT_EXEMPT, LOOP_EXEMPT, NO_COOLDOWN, PLANNER_CONFIG, STEER_PROTECTED,
-                          TICKS_PER_YEAR, Proposal, player_rules, young_fort, _traits)
+                          TICKS_PER_YEAR, Proposal, player_rules, young_fort, _traits, queued)
 from planner_hazards import magma_shut_works
 
 # (0.105.35) the pump labour given at most once a fortnight (assign_labor adds
@@ -340,6 +340,14 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
         line += f", {power_line(row)}"
     if row.get("why"):
         line += f" ({row['why']})"
+    gp = _d(row.get("gate_proven"))
+    if gp:
+        # (R29 W3) the phase's exit check: the emergency gate shown to work
+        at = _d(gp.get("at"))
+        line += (f"; emergency gate proven (floodgate at x{at.get('x')} y{at.get('y')} elevation {at.get('e')}, "
+                 f"shut by its lever \"{row.get('lever_name') or '?'}\" at stage {gp.get('stage')})")
+    elif row.get("gate_test") == "failed":
+        line += "; emergency gate test FAILED"
     notes.append(line)
     step = {"type": "water_work", "kind": kind}
     if kind == "magma" and row.get("shop"):
@@ -398,8 +406,12 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
         # (0.105.0 review) a done work with its floodgate open: the bridge's done
         # step looks for a leak (and shuts it); it answers "waiting", so the
         # refusal book asks again every couple of days
-        if stage == "done" and row.get("gate") == "open":
-            proposals.append(Proposal("waterworks_check", step, f"{words}: done: the leak check", 7))
+        # (R29 W3) and the emergency gate test under way (the floodgate shut by
+        # its lever, then opened again): asked until it passes
+        if stage == "done" and (row.get("gate") == "open" or row.get("gate_test") == "testing"):
+            proposals.append(Proposal("waterworks_check", step,
+                                      f"{words}: done: " + ("the emergency gate test" if row.get("gate_test") == "testing"
+                                                            else "the leak check"), 7))
         return False
     # (0.105.36) the bridge sets the screw pumps to "Start pump manually"
     # (`manual`: how many); then the labour is given, once as pumping starts
@@ -413,6 +425,7 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
                                   (f"the pump stack's reservoir isn't rising" if row.get("stalled") else
                                    f"the pump stack's {row.get('manual')} screw pump(s) are set to be worked by hand")
                                   + f": put {n} dwarf(s) on the pump operator labour (one a pump)", 3))
+    _parts_orders(kind, row, s, stage, words, proposals, notes)
     for part, key in (("floodgate", "floodgates_free"), ("mechanisms", "mechanisms_free")):
         if row.get(key) == 0 and stage == "building":
             notes.append(f"{words} waits for {part} (none free)")
@@ -424,6 +437,56 @@ def _work_notes(id_: str, row: dict, s: dict, proposals: list, notes: list, floo
         return True
     proposals.append(Proposal(f"waterworks_{kind}", step, f"{words}: {STAGE_WORDS.get(stage, stage)}: the next step", 5))
     return True
+
+
+# (R29 W3) the parts a work's buildings wait on, and the mason's order for each.
+# Live 25 Nov: A, C and F's irrigation sat at "being built: the floodgate" for
+# 150-313 days (stuck_sweep 8-9 times an hour; B's retired after 99): the
+# floodgate was planned by buildingplan, its job suspended for want of a
+# floodgate item, 0 floodgates in each fort and no order for one: nothing
+# ever made the part (the cistern's rule orders its own, the works' didn't).
+WORK_PARTS = {"Floodgate": ("stone_floodgate", "floodgates", "a floodgate"),
+              "Hatch": ("stone_hatch_cover", "hatches", "a hatch cover"),
+              "Lever": ("mechanisms", "mechanisms", "a mechanism")}
+MAGMA_PART_RECIPES = {"floodgates": ("stone_floodgate", "floodgate"), "hatches": ("stone_hatch_cover", "hatch cover"),
+                      "mechanisms": ("mechanisms", "mechanism")}
+MAGMA_PARTS_WANT = {"floodgates": 1, "hatches": 1, "mechanisms": 3}
+
+
+def _queued(s: dict, recipe: str) -> bool:
+    """An order for it already queued; True too when the report has no orders
+    list (not known: nothing ordered twice)."""
+    return not isinstance(s.get("orders"), list) or queued(s, {recipe}) > 0
+
+
+def _parts_orders(kind, row: dict, s: dict, stage, words: str, proposals: list, notes: list) -> None:
+    """(R29 W3) A work waiting on a part nobody makes: the order for it.
+    Building: each piece still unbuilt (the report's `build_wait`) whose part
+    has none free and none carried to a job, and no order queued. Magma, dug:
+    the magma-safe parts short (stone ones: most rock is magma-safe; one of an
+    unsafe rock is refused by the step and the brain orders again)."""
+    if stage == "building":
+        for piece in dict.fromkeys(_l(row.get("build_wait"))):
+            if piece not in WORK_PARTS:
+                continue
+            recipe, key, what = WORK_PARTS[piece]
+            free, res = row.get(f"{key}_free"), row.get(f"{key}_reserved")
+            if not isinstance(free, int) or free + int(res or 0) > 0 or _queued(s, recipe):
+                continue
+            proposals.append(Proposal(f"waterworks_{kind}", {"type": "work_order", "recipe": recipe, "amount": 1},
+                                      f"{words} waits for {what} the fort doesn't have (0 free): a mason makes one",
+                                      4, is_order=True))
+        return
+    have = row.get("magma_parts")
+    if kind == "magma" and stage == "digging" and isinstance(have, dict):
+        for key, want in MAGMA_PARTS_WANT.items():
+            short = want - int(have.get(key) or 0)
+            recipe, what = MAGMA_PART_RECIPES[key]
+            if short <= 0 or _queued(s, recipe):
+                continue
+            proposals.append(Proposal(f"waterworks_{kind}", {"type": "work_order", "recipe": recipe, "amount": short},
+                                      f"{words} is dug and waits for {short} magma-safe {what}(s): a mason makes "
+                                      "them of stone", 4, is_order=True))
 
 
 def _waterworks_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:

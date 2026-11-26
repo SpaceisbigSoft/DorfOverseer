@@ -717,5 +717,70 @@ def _():
     assert not props and not notes
 
 
+# --- (R29 W6) never a demon of the underworld; the results journalled --------------------------
+
+@test("R29: great_beasts leaves out the underworld's (A: 8 demons at z 0 listed before its forgotten beasts)")
+def _():
+    need_lua()
+    lua, env, w = world()
+    lua.execute("""local env, W = ...
+      W.units[1] = {id = 1, fb = true, pos = {x = 5, y = 5, z = 0}, flags1 = {}}
+      W.units[2] = {id = 2, fb = true, pos = {x = 5, y = 5, z = 40}, flags1 = {}}
+      env.df.feature_type = {underworld_from_layer = 9, subterranean_from_layer = 7}
+      env.dfhack.maps.getTileBlock = function(x, y, z) return {global_feature = z == 0 and 3 or 4} end
+      env.dfhack.maps.getGlobalInitFeature = function(i)
+          return {getType = function() return i == 3 and 9 or 7 end}
+      end""", env, w)
+    got = [b["id"] for b in py(env.great_beasts())]
+    assert got == [2], got
+    assert env.in_underworld(L({"x": 5, "y": 5, "z": 0})) is True
+    assert env.in_underworld(L({"x": 5, "y": 5, "z": 40})) is False
+
+
+@test("R29: the lure is never for a beast in the underworld; a forgotten beast before a demon")
+def _():
+    demons = [{"id": 17086, "name": "Scorpion Fiend", "kind": "demon", "cavern": True, "immune": True}]
+    fb = {"id": 50, "name": "Ozkak", "kind": "forgotten beast", "cavern": True, "immune": False}
+    s = lstate(beasts=demons + [fb])
+    s["others_on_map"] = {"hidden_great": [{"id": 17086, "layer": "Underworld"}, {"id": 50, "layer": "Cavern1"}]}
+    assert [b["id"] for b in PL._loose_beasts(s)] == [50]
+    s = lstate(beasts=[dict(demons[0], id=9), fb])        # no layer known: the forgotten beast first
+    assert [b["id"] for b in PL._loose_beasts(s)] == [50, 9]
+    props, _ = run(lstate(beasts=demons + [fb]))
+    assert props and props[0].action.get("beast") == 50, [p.action for p in props]
+
+
+@test("R29: no AI cavern door at all (A, B, F: wells only): the note says why")
+def _():
+    props, notes = run(lstate(cands=[]))
+    assert not props and any("wells' hatches" in n for n in notes), notes
+
+
+@test("R29: combat_journal: a lure's catch, an empty opening, an escape and a kill, each once")
+def _():
+    from planner_combat_log import combat_journal
+    m = Memory()
+    assert combat_journal(lstate([row("ready")]), m) == []
+    assert combat_journal(lstate([row("open", open=True)]), m) == []
+    [e] = combat_journal(lstate([row("ready")]), m)                       # shut, nothing came
+    assert e["of"] == "lure" and e["outcome"] == "back" and e["target"] == "Ozkak" and e["squad"] is None, e
+    combat_journal(lstate([row("open", open=True)]), m)
+    [e] = combat_journal(lstate([row("caught", open=True, caught=True)]), m)
+    assert e["outcome"] == "caught", e
+    assert combat_journal(lstate([row("done", done={"how": "caught"})]), m) == []     # once
+    m = Memory()
+    combat_journal(lstate([row("open", open=True)]), m)
+    [e] = combat_journal(lstate([row("open", open=True, beast_gone=True)]), m,
+                         [{"kind": "death", "unit_id": 50}])
+    assert e["outcome"] == "killed", e
+    m = Memory()
+    combat_journal(lstate([row("open", open=True)]), m)
+    assert combat_journal(lstate([row("open", open=True, beast_gone=True)]), m)[0]["outcome"] == "fled"
+    m = Memory()
+    combat_journal(lstate([row("open", open=True, immune=True)]), m)
+    [e] = combat_journal(lstate([row("shut_in", immune=True)]), m)
+    assert e["outcome"] == "shut in", e
+
+
 if __name__ == "__main__":
     finish("lupa not installed" if SKIP else None)

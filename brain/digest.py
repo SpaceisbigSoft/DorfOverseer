@@ -390,6 +390,32 @@ def pile_links_line(s: dict) -> str:
         return ""
 
 
+def library_line(s: dict) -> str:
+    """(R29 W5) The books, so they can be watched: the library's books (the
+    written items on its bookcases and in its chests) and blank paper, its
+    scribes and scholars, and the fort's written works (paper section's
+    `writing`: items, distinct works, scribes' copies, works by its own
+    citizens). "" without a library or the paper section's count."""
+    lib = next((e for e in _l(_d(s.get("locations")).get("list"))
+                if isinstance(e, dict) and e.get("type") == "LIBRARY"), None)
+    w = _d(_d(s.get("paper")).get("writing"))
+    if lib is None and not w:
+        return ""
+    parts = []
+    if lib is not None:
+        jobs = _d(lib.get("jobs"))
+        posts = " ".join(f"{k.lower()}s:{_n(_d(jobs.get(k)).get('filled'))}/{_n(_d(jobs.get(k)).get('posts'))}"
+                         for k in ("SCRIBE", "SCHOLAR") if k in jobs)
+        parts.append(f"library books:{_n(lib.get('books'))} paper:{_n(_d(lib.get('have')).get('paper'))}"
+                     f"/{_n(_d(lib.get('want')).get('paper'))}" + (f" {posts}" if posts else "")
+                     + (" closed_to_visitors" if isinstance(lib.get("flags"), list)
+                        and "VISITORS_ALLOWED" not in lib["flags"] else ""))
+    if w:
+        parts.append(f"fort written:{_n(w.get('items'))} works:{_n(w.get('works'))} copies:{_n(w.get('copies'))}"
+                     f" own:{_n(w.get('own'))}")
+    return "BOOKS " + " | ".join(parts)
+
+
 def artifacts_line(s: dict) -> str:
     """(item 12) The fort's artifacts in one line (brain/planner_artifacts.py
     artifacts_line); "" without an artifacts section."""
@@ -505,6 +531,8 @@ def numbers(s: dict) -> dict[str, int]:
         "threats_can_reach": _n(o.get("threats_that_can_reach_dwarves")),
         "wealth_k": int(w) // 1000 if _num(w) else 0,
         "building": _n(b.get("under_construction")), "queued": _n(b.get("workshop_jobs_queued")),
+        # (R29 W5) the fort's written items (codices, written quires and scrolls), watched
+        "books": _n(_d(_d(s.get("paper")).get("writing")).get("items")),
     }
     for key, label in STOCK_ORDER:
         n[label] = _n(st.get(key))
@@ -675,6 +703,20 @@ def gate_split_line(s: dict) -> str:
     return "GATE_SPLIT open but the game holds it shut: " + "; ".join(parts)
 
 
+def _entrance_words(s: dict) -> str:
+    """(R29 W9) The fort's ways in from the entrances report (the gates by
+    their levers now live there; military.gates is only the old "AI gate"
+    levers, 0 on fort A, y256, whose hatch and bridge have levers): "" without the report."""
+    e = s.get("entrances") if isinstance(s.get("entrances"), dict) else {}
+    ents = [x for x in _l(e.get("entrances")) if isinstance(x, dict)]
+    if not ents:
+        return ""
+    lev = sum(1 for x in ents if any(isinstance(q, dict) and (q.get("lever_id") or q.get("levers"))
+                                     for q in _l(x.get("equipment")) + _l(x.get("outer"))))
+    shut = sum(1 for x in ents if x.get("closed"))
+    return f" | ways in {len(ents)}: {lev} levered, {shut} shut" + (", armed" if e.get("armed") else "")
+
+
 def digest(s: dict, news: int = 5) -> str:
     s = normalize(s)
     d, dw, b, o = _d(s.get("date")), _d(s.get("dwarves")), _d(s.get("buildings")), _d(s.get("others_on_map"))
@@ -701,7 +743,7 @@ def digest(s: dict, news: int = 5) -> str:
         + ("; ".join(f"{squad_name(q)} {q.get('members')}/{q.get('size')} {q.get('routine') or '?'}"
                      + (" ON ORDERS" if q.get("orders") else "")
                      for q in _l(_d(s.get("military")).get("squads"))[:5]) or "no squads")
-        + f" | gate levers {len(_l(_d(s.get('military')).get('gates')))}"
+        + f" | gate levers {len(_l(_d(s.get('military')).get('gates')))}" + _entrance_words(s)
         + (lambda g: f" | gear: {g.get('armed')}/{g.get('soldiers')} armed, {g.get('armored')} armoured,"
                      f" {g.get('squads_with_uniform')} squads with a uniform" if g.get("soldiers") else "")(
             _d(_d(s.get("military")).get("gear"))),
@@ -719,7 +761,7 @@ def digest(s: dict, news: int = 5) -> str:
     for extra in (threat_line(s), world_line(s), infection_line(s), built_line(s), gate_split_line(s), water_line(s),
                   missions_line(s), perf_line(s), cleanup_line(s), hauling_line(s), food_line(s), sickness_line(s),
                   pile_links_line(s), deep_hazard_line(s), traffic_line(s), floors_line(s), artifacts_line(s),
-                  recovery_line(s)):          # (0.105.46, I4)
+                  recovery_line(s), library_line(s)):     # (R29 W5) library_line          # (0.105.46, I4)
         if extra:
             lines.append(extra)
     m = _d(s.get("map"))

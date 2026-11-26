@@ -54,7 +54,9 @@ What it does:
     half of those left are wounded, it lasts over `hunt_max_days`, or the
     target turns out a fire breather or a flier the party can't handle; a
     lost one marks the target (never hunted again while it is on the map),
-    a timed-out one rests it a few days. With the switch off or a siege,
+    a timed-out one rests it a few days, and (R29) after `hunt_time_tries`
+    time-outs it is out of reach for good while on the map (E's wrens: one
+    flier hunted 7 times). With the switch off or a siege,
     the hunters come home. (The bridge's `hunt` is in the full report only:
     the retreat is judged once a game day until `hunt` joins PULSE_SECTIONS.)
   * learning: each history entry once (memory.hunt_seen["learned"]): a won
@@ -457,9 +459,27 @@ def _retreat(s: dict, memory, cfg: dict, targets: dict, squads: dict, hunts: lis
             off = seen.get("off")
             if not isinstance(off, dict):
                 off = seen["off"] = {}
-            off.setdefault(str(tid), {"tick": now, "why": kind})
+            old = _d(off.get(str(tid)))
+            if kind == "time":
+                # (R29 W6) E 25 Nov: 207 sent at one Agitated Giant Wren 7 times, each
+                # recalled after 3 days (setdefault kept the first time-out's tick, so
+                # after the first rest every later time-out rested 0 days). Each
+                # time-out now rests it again; after `hunt_time_tries` it is out of
+                # reach (a flier that keeps to the air): never hunted while it is here
+                tries = _int(old.get("tries")) + 1
+                if old.get("why") in ("lost", "ability", "reach"):
+                    kind = old["why"]
+                elif tries >= int(cfg.get("hunt_time_tries", 2)):
+                    kind = "reach"
+                    off[str(tid)] = {"tick": now, "why": "reach", "tries": tries}
+                else:
+                    off[str(tid)] = {"tick": now, "why": "time", "tries": tries}
+            else:
+                off[str(tid)] = {"tick": now, "why": kind, "tries": _int(old.get("tries"))}
         then = {"lost": ": it is not hunted again while it is on the map",
                 "ability": ": it is not hunted again while it is on the map",
+                "reach": f": {cfg.get('hunt_time_tries', 2)} hunts ran out of time, it keeps out of reach: not "
+                         "hunted again while it is on the map",
                 "time": f": it is left {cfg.get('hunt_rest_days', 5)} days before another try"}.get(kind, "")
         reason = f"call the hunt after {_head(t)} back: {why}{then}"
         proposals.append(Proposal("squad_recall", {"type": "hunt_recall", "squad_ids": ids, "reason": why[:120]},
@@ -577,6 +597,10 @@ def _hunt_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
         if t.get("kill_ok") is False:
             said.append(f"{head}: not one the squads may be sent to kill (the bridge's kill_ok)"
                         + (f": {t.get('why')}" if isinstance(t.get("why"), str) and t.get("why") else ""))
+            continue
+        if off_hunt.get(tid) == "reach":
+            said.append(f"{head}: hunts after it ran out of time {cfg.get('hunt_time_tries', 2)} times (it keeps "
+                        "out of reach); not hunted again while it is here")
             continue
         if tid in off_military or off_hunt.get(tid) in ("lost", "ability"):
             said.append(f"{head}: a fight or hunt with it was called off; not hunted again while it is here")

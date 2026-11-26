@@ -10,7 +10,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-dead is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-dead'] = '0.105.121'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-dead'] = '0.105.122'   -- bumped with BRIDGE_VERSION
 
 local inc = REPORT_PART_LOCALS.inc
 
@@ -60,7 +60,9 @@ function in_ai_tombs(x, y, z)
         AI_TOMBS = {}
         pcall(function()
             local B = reqscript('ai-builder')
-            for _, p in ipairs(B.load_projects().list) do
+            -- (R29 W7) read only (own_areas builds its own tables): no copy of the record
+            local read = type(B.projects_read_only) == 'function' and B.projects_read_only or B.load_projects
+            for _, p in ipairs(read().list) do
                 if p.kind == 'tombs' and type(p.area) == 'table' then
                     -- (F4, S2) a floor tomb level: its own rooms only (a.own)
                     local oko, own = pcall(function() return B.own_areas(p) end)

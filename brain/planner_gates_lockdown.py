@@ -178,7 +178,17 @@ def _sortie_on(s: dict, cfg: dict, memory, opening: list) -> list:
     if memory is None or not isinstance(getattr(memory, "atlas", None), dict):
         return []
     if opening:
-        memory.atlas["sortie"] = {"since": abs_tick(s)}
+        old = _d(memory.atlas.get("sortie"))
+        rec = {"since": old.get("since") if isinstance(old.get("since"), int) else abs_tick(s)}
+        try:
+            # (R29 W6) who went out at whom: the sortie's result is journalled from it
+            from planner_combat_log import sortie_party
+            party = sortie_party(s, opening)
+            rec["targets"] = {**_d(old.get("targets")), **party["targets"]}
+            rec["squads"] = {**_d(old.get("squads")), **party["squads"]}
+        except Exception:  # noqa: BLE001  (the gates open as before)
+            pass
+        memory.atlas["sortie"] = rec
         return opening
     if not _d(memory.atlas.get("sortie")):
         return []

@@ -6,7 +6,7 @@
 -- (r8) Split off ai-builder-cistern.lua by theme; the top-level locals the
 -- ai-builder-cistern files share with this one come from CISTERN_PART_LOCALS.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-status'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-status'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 local DIR8 = CISTERN_PART_LOCALS.DIR8
@@ -160,7 +160,9 @@ function cistern_status()
             relink_rounds = math.tointeger(d.relink_rounds) or nil,
             -- (0.104.168) why the AI can't close a gap itself (the player's then),
             -- and how many walls/floors it placed to close them
-            unsealed_why = d.unsealed and d.unsealed_why or nil, sealing = nil}
+            unsealed_why = d.unsealed and d.unsealed_why or nil, sealing = nil,
+            -- (R29 W3) the emergency gate shown to work (seen open, then shut by its lever)
+            gate_proven = type(d.gate_proven) == 'table' and d.gate_proven or nil}
     if d.unsealed and type(d.sealing) == 'table' then
         local n = 0
         for _ in pairs(d.sealing) do n = n + 1 end

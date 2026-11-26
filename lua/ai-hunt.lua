@@ -380,7 +380,8 @@ local function close_hunt(d, key, outcome, t, extra)
     end
     local row = {squad_id = h.squad_id, target_id = h.target_id, target_name = h.target_name,
                  outcome = outcome, since_tick = h.since_tick, end_tick = t,
-                 soldiers_at_start = h.soldiers_at_start, soldiers_lost = lost}
+                 soldiers_at_start = h.soldiers_at_start, soldiers_lost = lost,
+                 kinds = type(h.kinds) == 'table' and h.kinds or nil}   -- (R29 W6) what it learns of
     for k, v in pairs(extra or {}) do row[k] = v end
     d.history = push_history(d.history, row, HISTORY_MAX)
     d.active[key] = nil
@@ -629,8 +630,10 @@ function send(opts, dry_run)
                 close_hunt(d, key, 'recalled', t, {reason = 'sent at another target', target_dead = false})
             end
             if not (old and old.target_id == tid) then
+                local okk2, kinds = pcall(kinds_of, u)
                 d.active[key] = {squad_id = p.sid, target_id = tid, target_name = name, since_tick = t,
-                                 soldiers_at_start = p.soldiers, soldier_ids = p.soldier_ids}
+                                 soldiers_at_start = p.soldiers, soldier_ids = p.soldier_ids,
+                                 kinds = okk2 and kinds or nil}
             end
             table.insert(sent, p.sid)
         end

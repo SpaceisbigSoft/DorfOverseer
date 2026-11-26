@@ -11,7 +11,9 @@
 --
 --   cells(data)          every cell of those levels: {key, project, i, x1..y2, z, bridge, lever}
 --   cell_state(c)        its bridge and lever now: built, linked, raised, moving, link_job
---   ready(c)             a cell moon_cell may use: built, linked, lowered, still
+--   ready(c)             a cell moon_cell may use: built, linked, lowered, still, and
+--                        (R29 W8) sealed: no way out but its bridge (sealed(c));
+--                        cell_state's joined: raised, yet DF's walk map joins it to the lever
 --   find(key) / zone_of(c)  a cell by its key; the cell as a box for moon_cell's zone code
 --   set_raised(c, up, dry_run)  the lever pulled (ai-gates pull_instant: DFHack's
 --                        `lever pull --instant`, no dwarf) until the bridge stands as
@@ -133,6 +135,10 @@ function cell_state(c, links)
             st.moving = (f.raising or f.lowering) and true or false
         end)
     end
+    if st.raised and not st.moving then
+        local okj, j = pcall(joined, c)
+        if okj and j then st.joined = true end      -- (R29 W8) raised, yet DF walks out
+    end
     if br and lv then
         for _, l in ipairs((links or lever_links())[br.id] or {}) do
             if l == lv.id then st.linked = true end
@@ -146,9 +152,70 @@ function cell_state(c, links)
     return st
 end
 
+-- (R29 W8) F, 25 Nov 17:21-17:27: Besmar locked behind a raised bridge,
+-- found turned nine levels down. Is the cell shut on every side but its
+-- bridge? Every tile round its box on its level (diagonals too: DF walks
+-- diagonally) a wall; its own tiles floor (no stair, ramp or hole); above
+-- each of them and above the bridge a roof (no open space, ramp top or
+-- down stair: a climber or a stair goes up). (A weremole digs nothing: no
+-- creature of DF tunnels; a changed were breaks buildings, not walls, and
+-- a raised bridge is a wall it cannot break.) true, false and why, or nil
+-- when the tiles can't be read. Tests replace shape_at.
+local OPEN_ABOVE = {EMPTY = true, RAMP_TOP = true, STAIR_DOWN = true, STAIR_UPDOWN = true}
+function sealed(c)
+    if type(c) ~= 'table' or not (c.x1 and c.y1 and c.x2 and c.y2 and c.z) then return nil end
+    local z = c.z
+    local br = c.bridge or {}
+    local function inside(x, y) return x >= c.x1 and x <= c.x2 and y >= c.y1 and y <= c.y2 end
+    for y = c.y1 - 1, c.y2 + 1 do
+        for x = c.x1 - 1, c.x2 + 1 do
+            local s = shape_at(x, y, z)
+            if s == nil then return nil end
+            if inside(x, y) then
+                if s ~= 'FLOOR' then return false, ('the cell\'s own tile %d,%d,%d is %s, not floor'):format(x, y, z, s) end
+                local up = shape_at(x, y, z + 1)
+                if up == nil then return nil end
+                if OPEN_ABOVE[up] then return false, ('open above the cell at %d,%d,%d (%s)'):format(x, y, z + 1, up) end
+            elseif not (x == br.x and y == br.y) and s ~= 'WALL' then
+                return false, ('the cell\'s side %d,%d,%d is %s, not wall'):format(x, y, z, s)
+            end
+        end
+    end
+    if br.x and br.y then
+        local up = shape_at(br.x, br.y, z + 1)
+        if up and OPEN_ABOVE[up] then return false, ('open above the bridge at %d,%d,%d (%s)'):format(br.x, br.y, z + 1, up) end
+    end
+    return true
+end
+
+-- (R29 W8) raised and still: does DF still walk from inside the cell to the
+-- lever's tile in front of it? true (joined: the raise holds nothing), false,
+-- nil (can't tell). Tests replace walk_group.
+function walk_group(x, y, z)
+    local ok, g = pcall(function() return dfhack.maps.getWalkableGroup(xyz2pos(x, y, z)) end)
+    g = ok and tonumber(g) or 0
+    return g ~= 0 and g or nil
+end
+function joined(c)
+    local out
+    for y = c.y1, c.y2 do
+        for x = c.x1, c.x2 do
+            local g = walk_group(x, y, c.z)
+            if g and out == nil then
+                local gl = c.lever and walk_group(c.lever.x, c.lever.y, c.lever.z)
+                if gl then out = (g == gl) end
+            end
+        end
+    end
+    return out
+end
+
 function ready(c, links)
     local st = cell_state(c, links)
-    return st.built and st.linked and not st.raised and not st.moving, st
+    -- (R29 W8) a cell with a way out besides its bridge is never ready (can't tell: as before)
+    local okq, shut, why = pcall(sealed, c)
+    if okq and shut == false then st.open = why end
+    return st.built and st.linked and not st.raised and not st.moving and not st.open and true or false, st
 end
 
 -- anyone (any living unit) on the tile; can't tell: yes
@@ -248,8 +315,9 @@ function report(held)
     local links = lever_links()
     local out = {n = #list, built = 0, linked = 0, ready = 0, free = 0, raised = 0, unlinked = 0, rows = {}}
     for _, c in ipairs(list) do
-        local st = cell_state(c, links)
-        local ok = st.built and st.linked and not st.raised and not st.moving
+        local ok, st = ready(c, links)
+        if st.open then out.open = (out.open or 0) + 1 end           -- (R29 W8) a way out besides the bridge
+        if st.joined then out.joined = (out.joined or 0) + 1 end     -- (R29 W8) raised, yet DF walks out
         out.built = out.built + (st.built and 1 or 0)
         out.linked = out.linked + (st.linked and 1 or 0)
         out.raised = out.raised + (st.raised and 1 or 0)
@@ -259,6 +327,7 @@ function report(held)
         if #out.rows < REPORT_ROWS then
             table.insert(out.rows, {key = c.key, built = st.built or nil, linked = st.linked or nil,
                                     raised = st.raised or nil, link_job = st.link_job or nil,
+                                    open = st.open, joined = st.joined,         -- (R29 W8)
                                     unit_id = used[c.key], x = c.x1, y = c.y1, z = c.z})
         end
     end

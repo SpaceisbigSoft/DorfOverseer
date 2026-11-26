@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, add, overlaps, ez = info, has, add, overlaps, ez
 
@@ -1001,11 +1001,54 @@ end
 -- in a free floor tile of a level the main stair reaches, `dir` of it and
 -- min_dist..max_dist tiles out (never within min_dist of another stair),
 -- up/down stairs through untouched rock and an up stair on the district's
--- lowest level (elev_lo). The builder then grows the district's levels from
+-- lowest level (elev_lo); (R29 W8) constructed ones where it crosses a dug floor. The builder then grows the district's levels from
 -- it. params: dir, elev_lo, elev_hi, min_dist, max_dist, spine {x, y}.
 local STAIR_DIRS = {north = {0, -1}, south = {0, 1}, east = {1, 0}, west = {-1, 0}}
 
 local stairwell_search
+
+-- (R29 W8) D, 25 Nov 17:03-21:14 (29 refusals, "stairs down to z38: not solid
+-- rock (already dug or open) at x104 y139 z39"): the shaft had to be untouched
+-- rock all the way, beside nothing dug. Now a level where the stair tile is the
+-- fort's own dug floor takes a CONSTRUCTED stair (Cx; Cu at the bottom), and a
+-- rock tile may have the fort's walkable space beside it (it opens onto it).
+-- Still refused: open space, the sky, water, caverns, aquifers, buildings.
+local FORT_WALK = {FLOOR = true, RAMP = true, STAIR_UP = true, STAIR_DOWN = true, STAIR_UPDOWN = true}
+function fort_space(t)
+    return t ~= nil and FORT_WALK[t.shape] == true and not t.outside and not t.liquid and not t.feature
+        and not t.aquifer and not t.hidden
+end
+-- The stairwell's cells from its top (z, a floor: 'j') down to lo_z, each
+-- {z, key, mode = 'dig' | 'build'}; or nil and why.
+function stairwell_cells(x, y, z, lo_z)
+    local cells = {{z = z, key = 'j', mode = 'dig'}}
+    for zz = z - 1, lo_z, -1 do
+        local t, low = info(x, y, zz), zz == lo_z
+        if fort_space(t) and t.shape == 'FLOOR' and not t.building and not t.designated
+                and not building_at(x, y, zz) and #zone_types(x, y, zz) == 0 then
+            table.insert(cells, {z = zz, key = low and 'Cu' or 'Cx', mode = 'build'})
+        else
+            local ok, w = natural_wall(t)
+            local up = info(x, y, zz + 1)
+            if ok and up and (up.aquifer or up.liquid) then ok, w = false, 'water or aquifer above' end
+            local bx, by = x, y
+            for dx = -1, 1 do
+                for dy = -1, 1 do
+                    if ok and (dx ~= 0 or dy ~= 0) then
+                        local n = info(x + dx, y + dy, zz)
+                        local okn, wn = natural_wall(n)
+                        if not okn and not fort_space(n) then ok, w, bx, by = false, wn, x + dx, y + dy end
+                    end
+                end
+            end
+            if not ok then
+                return nil, ('stairs down to z%d: %s at x%d y%d z%d'):format(ez(lo_z), w, bx, by, ez(zz))
+            end
+            table.insert(cells, {z = zz, key = low and 'u' or 'i', mode = 'dig'})
+        end
+    end
+    return cells
+end
 
 function dig_stairwell(params, dry_run)
     OFFSET = elevation_offset()
@@ -1080,29 +1123,34 @@ stairwell_search = function(params, dry_run)
                         end
                         if not ok then why = 'too near another stair' end
                     end
+                    local cells
                     if ok then
-                        local okx, w = check_extension(x, y, z, lo_z, true)
-                        if not okx then ok, why = false, w end
+                        local w
+                        cells, w = stairwell_cells(x, y, z, lo_z)     -- (R29 W8) built over dug floors
+                        if not cells then ok, why = false, w end
                     end
                     if ok then
-                        local cells = {{z = z, key = 'j'}}
-                        for zz = z - 1, lo_z + 1, -1 do table.insert(cells, {z = zz, key = 'i'}) end
-                        table.insert(cells, {z = lo_z, key = 'u'})
-                        local all = true
+                        local all, built = true, 0
                         for _, c in ipairs(cells) do
-                            local dr = quickfort_apply('dig', {{x = 0, y = 0, text = c.key}}, c.z, x, y, 'run', true)
-                            if stat(dr, 'dig_designated') ~= 1 then all = false why = 'the game would not dig it' break end
+                            local dr = quickfort_apply(c.mode, {{x = 0, y = 0, text = c.key}}, c.z, x, y, 'run', true)
+                            if stat(dr, c.mode .. '_designated') ~= 1 then
+                                all = false
+                                why = c.mode == 'build' and 'the game would not build a stair there' or 'the game would not dig it'
+                                break
+                            end
+                            if c.mode == 'build' then built = built + 1 end
                         end
                         if all then
                             local out = {ok = true, x = x, y = y, elev_top = ez(z), elev_bottom = ez(lo_z),
-                                         levels = #cells, dir = params.dir, dry_run = dry_run or nil}
+                                         levels = #cells, built = built > 0 and built or nil,
+                                         dir = params.dir, turned_from = params.turned_from, dry_run = dry_run or nil}
                             if dry_run then return out end
                             -- (0.105.48, A3 19) each level checked; a miss undoes the rest
                             for i, c in ipairs(cells) do
-                                local okr, rs = pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = c.key}}, c.z, x, y)
-                                if not (okr and stat(rs, 'dig_designated') == 1) then
+                                local okr, rs = pcall(quickfort_apply, c.mode, {{x = 0, y = 0, text = c.key}}, c.z, x, y)
+                                if not (okr and stat(rs, c.mode .. '_designated') == 1) then
                                     for j = 1, i do
-                                        pcall(quickfort_apply, 'dig', {{x = 0, y = 0, text = cells[j].key}}, cells[j].z, x, y, 'undo')
+                                        pcall(quickfort_apply, cells[j].mode, {{x = 0, y = 0, text = cells[j].key}}, cells[j].z, x, y, 'undo')
                                     end
                                     return {ok = false, rejected = true,
                                             error = ('the game would not dig the stairwell at elevation %d: undone'):format(ez(c.z))}
@@ -1113,6 +1161,18 @@ stairwell_search = function(params, dry_run)
                     end
                 end
             end
+        end
+    end
+    -- (R29 W8) D's north was the open hillside (25 Nov): the two sides tried
+    -- before refusing (never the opposite way), the result saying so
+    if not params.turned_from then
+        local side = (params.dir == 'north' or params.dir == 'south') and {'east', 'west'} or {'north', 'south'}
+        for _, d2 in ipairs(side) do
+            local p2 = {}
+            for k, val in pairs(params) do p2[k] = val end
+            p2.dir, p2.turned_from = d2, params.dir
+            local r2 = stairwell_search(p2, dry_run)
+            if r2 and r2.ok then return r2 end
         end
     end
     return {ok = false, rejected = true, error = ('no place for a stairwell %s of the main stair: %s'):format(params.dir, why)}

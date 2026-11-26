@@ -404,13 +404,38 @@ REPORT_KINDS = {
 }
 
 
+SIEGE_MIN_INVADERS = 3     # (R29 W9) as phases.SIEGE_MIN_INVADERS
+
+
+def _invaders(state: dict) -> int | None:
+    """Invaders on the map now (the threat list's `invader`), or None without a list."""
+    oth = state.get("others_on_map") if isinstance(state, dict) else None
+    if not isinstance(oth, dict) or not isinstance(oth.get("threats"), list):
+        return None
+    return sum(1 for t in oth["threats"] if isinstance(t, dict) and t.get("invader"))
+
+
 def detect(prev: dict | None, state: dict, events: list[dict]) -> list[str]:
     """Kinds of significant events since the last cycle (see tokens.TOPUPS)."""
     s = normalize(state)
     kinds: list[str] = []
     topics = {"rest" if is_rest(e) else e.get("topic") for e in events if e.get("kind") == "report"}   # (r5 p2)
-    if any(e.get("kind") == "invasion" for e in events) or "siege" in topics:
+    # (R29 W9) DF makes an invasion for a lone thief too (handoff-ai.md's known
+    # gap): a siege only when an army came, at the event (invaders_now) or seen
+    # on the map since the last cycle (a forced siege's army walks on after its
+    # event); a small one is a thief's
+    inv = [e for e in events if e.get("kind") == "invasion"]
+    def _small(e):          # a count under an army's; no count (an older bridge): taken as a siege
+        n = e.get("invaders_now")
+        return isinstance(n, int) and not isinstance(n, bool) and n < SIEGE_MIN_INVADERS
+    army = any(not _small(e) for e in inv)
+    now_inv, was_inv = _invaders(state), (_d(_d(prev).get("others_on_map")).get("invaders") if prev else None)
+    came = (isinstance(now_inv, int) and now_inv >= SIEGE_MIN_INVADERS and isinstance(was_inv, int)
+            and not isinstance(was_inv, bool) and was_inv < SIEGE_MIN_INVADERS)
+    if army or came or "siege" in topics:
         kinds.append("siege")
+    elif inv and "thief" not in kinds:
+        kinds.append("thief")
     for topic, kind in REPORT_KINDS.items():
         if topic in topics and kind not in kinds:
             kinds.append(kind)

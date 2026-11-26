@@ -546,6 +546,7 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
                          f"needed: {bar_why}) and no group apart to strike at: no sortie; the gates and the alarm "
                          "hold them off and the squads stay in")
             _fall_back_lost(s, memory, cfg, rows, key, on + sent, bar, names, add, busy)
+            _siege_hold(s, cfg, rows, pool, names, add, busy, notes, sent_ids)
             return
     if target_ids is None and {q["id"] for q in party} == sent_ids:
         notes.append(f"{names}: the squads sent go ({how}: {r:.1f}x; {bar_why})")
@@ -563,6 +564,52 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
         add.append(Proposal(first.rule, act, f"{names}: send {q.get('name') or q['id']} ({how}: {r:.1f}x; "
                                              f"{bar_why})", pr, getattr(first, "guard", False)))
         busy.add(q["id"])
+
+
+def siege_gate(s: dict, rows: list) -> dict | None:
+    """(R29 W2) The surface entrance these enemies are nearest to (the one
+    the siege comes at), from the entrances section; None without one."""
+    es = [e for e in _l(_d(s.get("entrances")).get("entrances")) if isinstance(e, dict)
+          and e.get("kind") != "cavern" and all(_int(e.get(k)) is not None for k in ("x", "y", "z"))]
+    pos = [_d(t.get("pos")) for t in rows if _int(_d(t.get("pos")).get("x")) is not None]
+    if not es or not pos:
+        return None
+    return min(es, key=lambda e: (min((_dist(p, e) for p in pos if _dist(p, e) is not None), default=10 ** 6),
+                                  e.get("id") or 0))
+
+
+def _siege_hold(s: dict, cfg: dict, rows: list, pool: list, names: str, add: list, busy: set, notes: list,
+                sent_ids=()) -> None:
+    """(R29 W2) An army outside the squads can't beat: no sortie, but the
+    free squads hold the gate it comes at (a defend order on the gate guard
+    burrow just inside it: ai-society guard_gate), behind the kill zone or
+    the gatehouse there, instead of training on wherever they were. Before,
+    they stayed where they were (the gate guard, planner_gates, waits until
+    no enemy can reach the dwarves: the gates shut). Never for enemies
+    inside, never against the Rules' train_squads, never on the player's squads."""
+    if not player_rules(s).get("train_squads", True) or not any(t.get("invader") for t in rows):
+        return
+    if set(t.get("id") for t in rows) & _inside_ids(s):
+        return
+    gate = siege_gate(s, rows)
+    if not gate:
+        return
+    taken = set(busy) - set(sent_ids)          # the kill orders dropped above free their squads
+    qs = [q for q in pool if q["id"] not in taken and not _players(q) and can_fight(q, cfg)
+          and not (isinstance(q.get("stationed"), dict) and _dist(_d(q["stationed"]), gate) is not None
+                   and _dist(_d(q["stationed"]), gate) <= 6)]
+    if not qs:
+        return
+    kz = {k.get("id"): k for k in _l(_d(s.get("killzones")).get("entrances")) if isinstance(k, dict)}
+    st = str(_d(kz.get(gate.get("id"))).get("state") or "")
+    behind = ("behind its gatehouse" if st == "gatehouse" else "behind its kill zone" if st in ("standing", "building")
+              else "inside it")
+    add.append(Proposal("gate_guard", {"type": "guard_gate", "x": gate["x"], "y": gate["y"], "z": gate["z"],
+                                       "squads": [q["id"] for q in qs]},
+                        f"{names}: too strong to go out at, so {len(qs)} squad(s) hold the gate they come at "
+                        f"(x{gate['x']} y{gate['y']}), {behind}; the gate shuts when they are 12 tiles off", 0))
+    busy.update(q["id"] for q in qs)
+    notes.append(f"{names}: {len(qs)} squad(s) hold the gate x{gate['x']} y{gate['y']} ({behind})")
 
 
 def _fall_back_lost(s, memory, cfg, rows, key, cands, bar, names, add, busy) -> None:
@@ -955,6 +1002,9 @@ def note_holdfast_cycle(s: dict, memory, cfg: dict) -> None:
     the guards no longer on their posts forgotten."""
     if memory is None:
         return
+    # (R29 W2) the siege watch and its summary (planner_siege_watch): any report with the threats
+    from planner_siege_watch import note_siege_watch
+    note_siege_watch(s, memory, cfg)
     if "military" in _d(s.get("_errors")):
         return
     note_kill_orders(s, memory, cfg)
@@ -1041,6 +1091,10 @@ def note_holdfast(p, r: dict, state: dict, memory, now: int) -> None:
     if memory is None or not isinstance(getattr(p, "action", None), dict) or p.action.get("dry_run"):
         return
     a = p.action
+    if a.get("type") == "invite_siege":              # (R29 W2) the invited siege's answer, a journal line
+        from planner_siege_watch import note_invite
+        note_invite(p, r, state, memory, now)
+        return
     if p.rule == GUARD_RULE and a.get("type") == "squad_station" and r.get("ok") is not False:
         _sub(holdfast(memory), "guards")[str(a.get("squad_id"))] = {
             "x": a.get("x"), "y": a.get("y"), "z": a.get("z"), "what": a.get("what"), "tick": now}

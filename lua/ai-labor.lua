@@ -30,6 +30,7 @@ GATHER_RADIUS = 40        -- shrubs this far from the fort's centre are gathered
 SCAN_EVERY_TICKS = 7 * 1200   -- (0.100) the shrub and water scans: once a game week
 SCAN_CACHE = SCAN_CACHE      -- kept across reloads of this module within a session
 SCAN_GRID = 20
+SCAN_KEEP = 8                 -- (R29 W7) centres whose scans are kept at once
 GATHER_MAX = 150          -- at most this many marked at a time
 FISH_RADIUS = 40          -- water this close counts for fishing
 
@@ -471,14 +472,28 @@ function survey()
     -- middle moves every report, and the exact tile missed the cache each time
     -- (overnight run: labor 60-76 ms a report)
     local where = c and ((c.x // SCAN_GRID) .. ',' .. (c.y // SCAN_GRID) .. ',' .. c.z) or '-'
-    local sc = SCAN_CACHE
-    if okt and sc and sc.where == where and now >= sc.at and now - sc.at < SCAN_EVERY_TICKS then
-        out.shrubs, out.fish_water, out.ice = sc.shrubs, sc.fish_water, sc.ice
+    -- (R29 W7, 13e) one copy per centre: the centre's level is the one most
+    -- citizens stand on, and in a grown fort it changes between two or three
+    -- levels from report to report, so the one copy kept missed almost every
+    -- time (25 Nov: `scanned` in five forts of six, ~55 ms a report). Each
+    -- centre's copy keeps its own week, as the one copy did.
+    local sc = type(SCAN_CACHE) == 'table' and type(SCAN_CACHE.by) == 'table' and SCAN_CACHE or {by = {}}
+    SCAN_CACHE = sc
+    local e = okt and sc.by[where]
+    if e and now >= e.at and now - e.at < SCAN_EVERY_TICKS then
+        out.shrubs, out.fish_water, out.ice = e.shrubs, e.fish_water, e.ice
     else
         out.shrubs = shrubs(c, 500, false)
         out.fish_water, out.ice = fish_water(c)
-        SCAN_CACHE = okt and {at = now, where = where, shrubs = out.shrubs, fish_water = out.fish_water,
-                              ice = out.ice} or nil
+        if okt then
+            -- the stale copies dropped, and never more than SCAN_KEEP kept
+            local n = 0
+            for k, v in pairs(sc.by) do
+                if now < v.at or now - v.at >= SCAN_EVERY_TICKS then sc.by[k] = nil else n = n + 1 end
+            end
+            if n >= SCAN_KEEP then sc.by = {} end
+            sc.by[where] = {at = now, shrubs = out.shrubs, fish_water = out.fish_water, ice = out.ice}
+        end
         ms.scanned = true
     end
     lap('scans')

@@ -54,6 +54,15 @@ The rules (_siege_rules), each behind its Rules switch:
   * the squads sent are not called back by "no more threats" while what
     they were sent at is still listed (the animals are no threat to the
     game, so _military_rules would call them back every cycle).
+  * (R29 W2) invite_siege, the Rules' "Invite a siege (test)" (off by
+    default; the Army tab, or logs/rules-request.json {"rules":
+    {"invite_siege": true}}): on, one `invite_siege` action
+    (lua/ai-siege.lua: DFHack's force queues DF's army event for a civ at
+    war with the fort), never while enemies are already on the map or in a
+    crisis; the bridge records it in the save (field_watch.invited) and
+    turns the switch off, so it happens once per fort; a switch turned on
+    again after that is turned off by the same action's refusal. The
+    siege's watch and its summary: planner_siege_watch.
 Without a `siege` / `field_watch` section (an older bridge) nothing here
 proposes or notes anything.
 """
@@ -65,7 +74,7 @@ from planner_core import (PLANNER_CONFIG, RECIPE_SHOPS, TICKS_PER_DAY, Proposal,
                           abs_tick, can_fight, is_ranged, player_rules, queued, reachable_threats)
 
 __all__ = ["siege_of", "field_of", "_siege_rules", "siege_lean", "engines_wanted", "SIEGE_CONFIG", "threat_seen",
-           "beasts_outside"]
+           "beasts_outside", "_invite_rule"]
 
 SIEGE_CONFIG = {
     "siege_slider": 50,                 # Fortification or Engineering at least this for siege engines
@@ -100,12 +109,17 @@ SIEGE_CONFIG = {
     # this long at most (it was recalled at the edge and sent again)
     "wild_keep_factor": 2.0,
     "wild_keep_ticks": TICKS_PER_DAY,
+    "invite_siege_cooldown_ticks": TICKS_PER_DAY,     # (R29 W2) the test switch's action, a day apart at most
 }
 for _k, _v in SIEGE_CONFIG.items():
     PLANNER_CONFIG.setdefault(_k, _v)
 for _r, _shop in (("ballista_parts", "Siege"), ("catapult_parts", "Siege"), ("ballista_arrows", "Siege"),
                   ("ballista_arrowheads", "MetalsmithsForge")):
     RECIPE_SHOPS.setdefault(_r, _shop)
+
+
+from planner_core import AGENDA_THEMES  # noqa: E402  (R29 W2)
+AGENDA_THEMES.setdefault("invite_siege", "a siege invited to test the defence")
 
 
 # (r6 c2) kept local: unlike util's helpers (SIEGE_CONFIG)
@@ -603,9 +617,35 @@ def _keep_on(s: dict, guarded: set, proposals: list, notes: list, near: set | No
         notes.append(f"{len(kept)} squad(s) stay on the caravan's attackers or the wild animals they were sent at")
 
 
+def _invite_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
+    """(R29 W2) The Rules' "Invite a siege (test)": one army called by
+    DFHack's force, once a fort (the bridge keeps the record and turns the
+    switch off). Waits while enemies are on the map or the fort is in a crisis."""
+    if _d(s.get("settings")).get("invite_siege") is not True:
+        return
+    done = _d(field_of(s).get("invited"))
+    if done.get("tick") is not None:
+        proposals.append(Proposal("invite_siege", {"type": "invite_siege"},
+                                  f"the Rules' \"Invite a siege (test)\" is on again, but this fort had its invited "
+                                  f"siege (year {done.get('year')}, {done.get('civ_name') or 'no civ named'}): the "
+                                  "bridge refuses it and turns the switch off", 6))
+        return
+    from planner_core import held_off_threats
+    if _besieged(s) or reachable_threats(s, _traits(s), cfg) or [t for t in held_off_threats(s) if t.get("invader")]:
+        notes.append("Invite a siege (test) is on: it waits while enemies are already on the map")
+        return
+    if _d(getattr(memory, "crisis", None)).get("why") if memory is not None else False:
+        notes.append("Invite a siege (test) is on: it waits until the crisis is over")
+        return
+    proposals.append(Proposal("invite_siege", {"type": "invite_siege"},
+                              "the Rules' \"Invite a siege (test)\" is on: DFHack's force calls one army of a civ at "
+                              "war with the fort, once (the switch then turns itself off)", 6))
+
+
 def _siege_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> None:
     if not isinstance(s.get("settings"), dict):
         return
+    _invite_rule(s, memory, cfg, proposals, notes)
     _engine_rule(s, memory, cfg, proposals, notes)
     _fortify_rule(s, memory, cfg, proposals, notes)
     _post_rule(s, memory, cfg, proposals, notes)

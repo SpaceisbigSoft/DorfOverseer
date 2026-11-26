@@ -89,7 +89,7 @@ BUTTONS_KEY = 'ai-overseer/world-buttons'    -- where the player showed the butt
 LOG_KEEP = 4                                 -- runs kept in mission-send.json
 POLL_FRAMES = 2                              -- frames between looks at the screen
 WAIT_FRAMES = 40                             -- frames a step may take to show its screen
-RUN_FRAMES = 400                             -- a whole run, at most (then stopped)
+RUN_FRAMES = 600                             -- a whole run, at most (then stopped; R29: 400 -> 600, the site's clicks and the words' reads wait longer)
 CLOSE_TRIES = 4                              -- LEAVESCREEN presses to shut the World screen
 -- the buttons the player shows the AI once, and what each is kept from:
 -- the World button sits in the bottom-left toolbar; the goal buttons in the
@@ -202,18 +202,42 @@ function controller_ids_now()
     return out
 end
 
+-- (R29) the fort's own entities (its government and its civilisation): the
+-- only ones a run's new controller can belong to (recorded 14 Nov: entity
+-- 3169, the fort's group). Nil when they can't be read (then no filter).
+function fort_entities()
+    local ids
+    pcall(function()
+        local p = df.global.plotinfo
+        local g, c = p.group_id, nil
+        pcall(function() c = p.civ_id end)
+        ids = {}
+        if type(g) == 'number' and g >= 0 then ids[g] = true end
+        if type(c) == 'number' and c >= 0 then ids[c] = true end
+        if next(ids) == nil then ids = nil end
+    end)
+    return ids
+end
+
 -- the controllers in world.army_controllers.all that weren't there when the
--- run began (newest last)
+-- run began (newest last). (R29, live 25 Nov: E's and B's runs counted 3-4
+-- new controllers of other entities, the world's own armies, as "left
+-- behind" and read selected_ac as ambiguous) only the fort's own entities'
+-- (a controller whose entity can't be read is kept)
 function new_controllers(run)
     local out = {}
     local before = run and run.ac_before
     if not before then return out end
+    local ours = fort_entities()
     pcall(function()
         local all = df.global.world.army_controllers.all
         for i = math.max(0, before.n - BEFORE_KEEP), #all - 1 do
             local c = all[i]
             local id = id_of(c)
-            if c ~= nil and id and not before.ids[id] then table.insert(out, c) end
+            if c ~= nil and id and not before.ids[id] then
+                local oke, eid = pcall(function() return c.entity_id end)
+                if not ours or not oke or type(eid) ~= 'number' or ours[eid] then table.insert(out, c) end
+            end
         end
     end)
     return out
@@ -597,7 +621,7 @@ PART_LOCALS = {U = U, now_tick = now_tick, log_path = log_path, focus_string = f
 PARTS = {'steps', 'run'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-mission-send'] = '0.105.121'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-mission-send'] = '0.105.122'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

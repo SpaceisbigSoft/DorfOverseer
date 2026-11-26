@@ -266,4 +266,4 @@ def _scholar_note(s: dict, lib: dict, notes: list, memory) -> None:
     if lib.get("id") in mine:
         return          # the AI's own shut (planner_visitors): it says so itself
     notes.append("the library is shut to visitors (not by the AI): visiting scholars can't come to write there; "
-                 "its scribes still do")
+                 "its own scholars and scribes still do")   # (R29 W5) the fort's own scholars

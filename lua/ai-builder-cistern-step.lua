@@ -6,7 +6,7 @@
 -- (r8) Split off ai-builder-cistern.lua by theme; the top-level locals the
 -- ai-builder-cistern files share with this one come from CISTERN_PART_LOCALS.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-step'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern-step'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 local still_water, river_water = CISTERN_PART_LOCALS.still_water, CISTERN_PART_LOCALS.river_water
@@ -20,6 +20,8 @@ CISTERN_HOLD = false          -- (0.104.145) the second design: released
 CISTERN_HOLD_WHY = 'the cistern is on hold (the player: as built it would flood the fort): the floodgate stays shut'
 
 CISTERN_TUNNEL_ASKED = nil       -- (0.105.3) the brain's cistern_tunnel_max, set by cistern_step's caller
+CISTERN_SEARCH = CISTERN_SEARCH or nil   -- (R29 W3) the level-a-call search's progress: {i, tick, tunnel, best, why, cut}
+CISTERN_SEARCH_DAYS = 14         -- (R29 W3) a search older than this (game days) begins again
 function cistern_step(dry_run, prefs, tunnel)
     CISTERN_TUNNEL_ASKED = math.tointeger(tonumber(tunnel))
     OFFSET = elevation_offset()
@@ -54,15 +56,66 @@ function cistern_step(dry_run, prefs, tunnel)
         return {ok = false, rejected = true, held = true, error = 'no new cistern while the design is on hold'}
     end
     if not d then
-        -- (0.105.3) the same tunnel reach the survey planned it with
-        local plan, why, cut = plan_cistern(nil, nil, {tunnel = CISTERN_TUNNEL_ASKED})
-        if not plan and not cut then
-            -- (r2h1) a river's shaft way on the fort levels past the busiest (as the survey looked)
-            local okr, rv = pcall(cistern_rivers)
-            if okr and rv then
-                local p2, why2, cut2 = plan_cistern(CISTERN_LEVELS + 1, CISTERN_LEVELS + CISTERN_RIVER_LEVELS,
-                                                    {tunnel = CISTERN_TUNNEL_ASKED})
-                if p2 then plan = p2 else cut = cut2; why = why or why2 end
+        local plan, why, cut, from = nil, nil, nil, nil
+        -- (R29 W3) the survey's own plan first, when the map still fits it
+        local okw, wv = pcall(function() return reqscript('ai-water').last() end)
+        local sp = okw and type(wv) == 'table' and wv.cistern or nil
+        if type(sp) == 'table' and not sp.none then
+            local okv, good, vwhy = pcall(cistern_plan_valid, sp)
+            if okv and good then plan, from = sp, 'the water survey\'s plan'
+            else why = okv and vwhy and ('the survey\'s plan no longer fits: ' .. vwhy) or nil end
+        end
+        if not plan then
+            -- (R29 W3) else searched a fort level a call (as the survey does), the
+            -- best so far kept between calls: never the whole search in one call
+            local nowt = now_tick()
+            local S = CISTERN_SEARCH
+            if type(S) ~= 'table' or nowt - (tonumber(S.tick) or 0) > CISTERN_SEARCH_DAYS * 1200 or nowt < (tonumber(S.tick) or 0)
+                    or S.tunnel ~= CISTERN_TUNNEL_ASKED then
+                S = {i = 1, tick = nowt, tunnel = CISTERN_TUNNEL_ASKED}
+            end
+            -- levels while this call's time lasts (a small map: all in one call, as before)
+            local t0 = os.clock()
+            local first, c1
+            while true do
+                local last
+                first, last = S.i, S.i
+                if S.i > CISTERN_LEVELS then first, last = CISTERN_LEVELS + 1, CISTERN_LEVELS + CISTERN_RIVER_LEVELS end
+                local okp, p1, w1
+                -- the level's own search within what is left of this call's time
+                local full = CISTERN_SECONDS
+                CISTERN_SECONDS = math.max(0.5, full - (os.clock() - t0))
+                okp, p1, w1, c1 = pcall(plan_cistern, first, last, {tunnel = CISTERN_TUNNEL_ASKED})
+                CISTERN_SECONDS = full
+                if not okp then p1, w1, c1 = nil, tostring(p1):sub(1, 160), nil end
+                if p1 and (not S.best or p1.score < S.best.score) then S.best = p1 end
+                if c1 then S.cut = (S.cut or 0) + 1
+                elseif not p1 and w1 then S.why = S.why or w1 end
+                local more = S.i < CISTERN_LEVELS
+                if S.i == CISTERN_LEVELS then
+                    local okr, rv = pcall(cistern_rivers)
+                    more = okr and rv ~= nil
+                end
+                if not more then break end
+                S.i = S.i + 1
+                if os.clock() - t0 > CISTERN_SECONDS * 2 / 3 then
+                    CISTERN_SEARCH = S
+                    return {ok = false, rejected = true, waiting = true, searching = true, level = first,
+                            error = ('looking for a cistern site: fort level %d searched%s, the next one next time%s')
+                                :format(first, c1 and ' (in part: out of time)' or '',
+                                        S.best and (', the best so far at elevation ' .. tostring(S.best.elevation)) or '')}
+                end
+            end
+            CISTERN_SEARCH = nil
+            plan = S.best
+            if plan then from = 'the search' end
+            if not plan then
+                why = S.why or why
+                cut = S.cut ~= nil and S.why == nil
+                if S.cut then
+                    why = (why and (why .. '; ') or '') .. ('%d fort level(s) searched only in part (out of time)'):format(S.cut)
+                end
+                why = why or 'no cistern site found'
             end
         end
         if not plan then return {ok = false, error = why, timed_out = cut or nil} end
@@ -89,6 +142,26 @@ function cistern_step(dry_run, prefs, tunnel)
             return {ok = true, held = true, shut = true, error = CISTERN_HOLD_WHY}
         end
         return {ok = false, rejected = true, held = true, error = CISTERN_HOLD_WHY}
+    end
+    -- (R29 W3) the emergency gate shown to work: its floodgate seen open, then
+    -- seen shut while its lever is linked (only a lever pull shuts it): kept
+    -- in the save (gate_proven) and logged once, for the phase's exit check
+    if not dry_run and d.lever_id then
+        pcall(function()
+            local g0 = building_info(p.floodgate.x, p.floodgate.y, zi, 'Floodgate')
+            if not (g0 and g0.built) or d.gate_proven then return end
+            if not g0.closed then
+                if not d.gate_seen_open then d.gate_seen_open = game_tick(); save_cistern(d) end
+            elseif d.gate_seen_open then
+                local t0 = tile_info(wx, wy, z)
+                d.gate_proven = {tick = game_tick(), lever = d.lever_id, gate = d.gate_id, stage = d.stage,
+                                 depth = t0 and t0.liquid and t0.depth or 0,
+                                 at = {x = p.floodgate.x, y = p.floodgate.y, e = ez(zi)}}
+                save_cistern(d)
+                print(('[ai-builder] cistern emergency gate proven: floodgate %s at x%d y%d elevation %d shut by its lever %s (stage %s, %d/7)')
+                    :format(tostring(d.gate_id), p.floodgate.x, p.floodgate.y, ez(zi), tostring(d.lever_id), d.stage, d.gate_proven.depth))
+            end
+        end)
     end
     if d.stage == 'dig' then
         if dry_run then return {ok = true, dry_run = true, stage = 'dig', plan = p} end

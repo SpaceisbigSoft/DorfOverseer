@@ -124,9 +124,13 @@ function block_magma(bx, by, z, must)
     pcall(function() moving = block.flags.update_liquid == true end)
     if not must and not moving then return {}, false end
     local out = {}
+    -- (R29 W7, 13e) the column read once, not for every tile (160 blocks
+    -- read whole: 48 ms -> 21 ms live, 25 Nov probe)
+    local des = block.designation
     for lx = 0, 15 do
+        local col = des[lx]
         for ly = 0, 15 do
-            local d = block.designation[lx][ly]
+            local d = col[ly]
             if d.flow_size > 0 and (d.liquid_type == true or d.liquid_type == 1) then
                 local feat = false
                 pcall(function() feat = d.feature_local or d.feature_global end)
@@ -226,7 +230,10 @@ function ai_levels()
     local out = {}
     pcall(function()
         local B = reqscript('ai-builder')
-        for _, p in ipairs(B.load_projects().list or {}) do
+        -- (R29 W7) read only (bounds_of changes nothing): inside a report the
+        -- one decoded record, no copy of it (12-40 ms each)
+        local read = type(B.projects_read_only) == 'function' and B.projects_read_only or B.load_projects
+        for _, p in ipairs(read().list or {}) do
             local okb, b = pcall(B.bounds_of, p)
             if okb and type(b) == 'table' and b.z then
                 table.insert(out, {x1 = b.x1 - 1, y1 = b.y1 - 1, x2 = b.x2 + 1, y2 = b.y2 + 1, z = b.z})

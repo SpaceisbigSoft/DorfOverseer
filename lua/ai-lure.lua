@@ -452,7 +452,23 @@ local function plan_opts(rec_or_nil, immune)
     return {immune = immune, own = own, avoid = avoid, levels = own_levels()}
 end
 
--- The great dangers loose or caged: {{id, name, kind, caged, immune, destroyer, cavern, x, y, z}}
+-- (R29 W6) Is p in the underworld (its block's global feature an underworld
+-- layer)? Live 25 Nov: A's first 8 great beasts were Scorpion Fiends and
+-- Brine Specters at z 0 (its two forgotten beasts 9th and 10th of the 10
+-- kept), each marked cavern (the underworld is a global feature too), and the
+-- lure rule took the first: no lure is for a demon down there.
+function in_underworld(p)
+    local ok, yes = pcall(function()
+        local b = dfhack.maps.getTileBlock(p.x, p.y, p.z)
+        if not b or (b.global_feature or -1) < 0 then return false end
+        local f = dfhack.maps.getGlobalInitFeature(b.global_feature)
+        return f ~= nil and f:getType() == df.feature_type.underworld_from_layer
+    end)
+    return ok and yes == true
+end
+
+-- The great dangers loose or caged, none in the underworld: {{id, name, kind,
+-- caged, immune, destroyer, cavern, x, y, z}}
 function great_beasts()
     local out = {}
     local ok, units = pcall(function()
@@ -464,8 +480,9 @@ function great_beasts()
         local okd, dead = pcall(dfhack.units.isDead, u)
         if okd and not dead then
             local kind = great_kind(u)
+            local p = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
+            if kind and in_underworld(p) then kind = nil end
             if kind then
-                local p = {x = u.pos.x, y = u.pos.y, z = u.pos.z}
                 local okn, name = pcall(function() return dfhack.df2utf(dfhack.units.getReadableName(u)) end)
                 local caged = false
                 pcall(function() caged = (u.flags1.caged or u.flags1.chained) and true or false end)

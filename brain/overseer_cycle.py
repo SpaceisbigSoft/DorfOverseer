@@ -188,6 +188,13 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                             save_dir=(state.get("fort") or {}).get("save_dir"))   # (r1g9) the folder by the save
     except Exception:  # noqa: BLE001  (the logs folder's name never stops the fort)
         pass
+    try:      # (R29 W9) logs/ai-window.json: the strategist on for this fort for a span of game time
+        import ai_window
+        # only the folder's autopilot (the keeper's): a dry run watching beside it spends nothing
+        if autopilot:
+            backend = ai_window.WINDOW.backend(backend, state, key, _ov.make_backend, say, journal)
+    except Exception:  # noqa: BLE001  (the window never stops a cycle)
+        pass
     if _ov.PRESET:
         apply_preset(bridge, state, key, autopilot)    # (0.105.4) keeper.py --preset, before the first plan
     rules_request(bridge, autopilot)                   # (0.105.20) logs/rules-request.json
@@ -300,6 +307,14 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                 journal({"kind": "meeting", "fort": key, "date": state["date"], **e})
             for e in fight_journal(state, memory):    # (item1) the fight watcher capped or broke up a fight
                 journal({"kind": "fight_watch", "fort": key, "date": state["date"], **e})
+            from planner_combat_log import combat_journal
+            for e in combat_journal(state, memory, events):   # (R29 W6) how a hunt, lure or sortie ended
+                say(f"Result: {e.get('text')}")
+                journal({"kind": "combat_result", "fort": key, "date": state["date"], **e})
+            from planner_siege_watch import siege_journal      # (R29 W2) a siege invited, its summary at the end
+            for e in siege_journal(memory):
+                say(f"Siege: {str(e.get('text') or e.get('what'))[:400]}")
+                journal({"kind": "siege", "fort": key, "date": state["date"], **e})
         cycle_step(memory, state, "journals", _journals)
         cycle_step(memory, state, "note_tantrums", lambda: note_tantrums(state, memory, events))   # (0.104.31) tantrums counted for the jail
         cycle_step(memory, state, "note_tantrum_book", lambda: note_tantrum_book(state, memory, events))   # (0.105.47) tantrum/berserk/possession reports

@@ -41,7 +41,7 @@ from planner_threats import alarm_held
 __all__ = ["MISSION_GOALS", "OFFENSIVE_GOALS", "MISSION_LEVELS", "allowed_goals", "mission_reserve",
            "sendable_squads", "mission_target", "_mission_rule", "note_missions", "mission_journal",
            "mission_line", "MISSION_WORDS", "last_of_goal", "MISSIONS_SWITCH", "SEND_SWITCH",
-           "unreachable_sites", "unavailable_sites", "note_unreachable", "SOFT_STOPS", "click_missed", "departure_words", "note_departures",
+           "unreachable_sites", "unavailable_sites", "note_unreachable", "SOFT_STOPS", "click_missed", "stuck_click", "departure_words", "note_departures",
            "gate_danger", "way_out_gate", "_mission_way_rule"]
 
 # the goals in the order the AI prefers them (the contract's order)
@@ -194,9 +194,31 @@ def click_missed(last: dict) -> bool:
     # (0.105.74) the goal's word not read on New mission: the next day too
     if last.get("reason") in ("click_missed", "goal_unread"):
         return True
-    return (last.get("reason") == "unexpected" and last.get("step") == "site"
-            and "still on world/NORMAL after the click (" in str(last.get("why") or "")
-            and "miss " not in str(last.get("why") or ""))
+    why = str(last.get("why") or "")
+    if (last.get("reason") == "unexpected" and last.get("step") == "site"
+            and "still on world/NORMAL after the click (" in why and "miss " not in why):
+        return True
+    # (R29, live 25 Nov) past 3 a DF session the bridge books a miss as a
+    # surprise ('unexpected' at the site, 'not_found' at the goal with
+    # "(unread N"): no longer a year's block (every fort sat in one after its
+    # 4th try), but a week's (stuck_retry_ticks)
+    return stuck_click(last)
+
+
+def stuck_click(last: dict) -> bool:
+    """(R29) A missed click or unread goal past the bridge's 3 a DF session
+    (its why says "(miss N this DF session)" / "(unread N ...)")."""
+    last = _d(last)
+    why = str(last.get("why") or "")
+    if (last.get("step") == "site" and last.get("reason") == "unexpected" and "still on world/NORMAL after" in why
+            and "(miss " in why):
+        return True
+    if last.get("step") == "goal" and last.get("reason") in ("not_found", "unexpected") and "(unread " in why:
+        return True
+    return False
+
+
+STUCK_RETRY_DAYS = 7       # (R29) a click DF kept missing: tried again a week later
 
 
 # (0.105.47) a run that stopped for a reason the AI handles itself, not a
@@ -213,6 +235,8 @@ def retry_ticks(last: dict, year_ticks: int) -> int:
     """How long a stopped run blocks its goal: a day when the player
     interrupted it (or (0.105.47) DF listed no messenger), else `year_ticks`
     (a step nobody recorded, a surprise)."""
+    if stuck_click(last):
+        return min(year_ticks, STUCK_RETRY_DAYS * TICKS_PER_DAY)      # (R29)
     return (TICKS_PER_DAY if interrupted(last) or click_missed(last) or _d(last).get("reason") == "no_messenger"
             else year_ticks)
 
@@ -922,6 +946,8 @@ def note_missions(s: dict, memory) -> list[str]:
     pending = seen.setdefault("journal", [])
     done = seen.setdefault("done", [])      # controllers already followed home (DF may keep them listed a while)
     now = abs_tick(s)
+    notes += note_send_runs(s, seen, pending)          # (R29) each World-screen run, step by step
+    notes += note_messenger_trips(s, seen, pending, now)   # (R29) the messenger's Make contact out and back
     current = {}
     for c in _l(ms.get("controllers")):
         if not isinstance(c, dict) or _int(c.get("id")) is None or c.get("goal") == "DIPLOMACY" \
@@ -1010,6 +1036,115 @@ def note_missions(s: dict, memory) -> list[str]:
     del pending[:-JOURNAL_MAX]
     del done[:-2 * TRACK_MAX]
     return dep_notes + notes
+
+
+def send_steps(o: dict) -> list[str]:
+    """(R29) A World-screen run's steps as words: "open ok", "site ok (2
+    clicks)", "goal stop: not_found (...)" (the bridge's `results`)."""
+    out = []
+    for r in _l(_d(o).get("results"))[:12]:
+        r = _d(r)
+        w = f"{game_text(r.get('step') or '?', 16)} {game_text(r.get('result') or '?', 30)}"
+        extra = []
+        if _int(r.get("clicks")):
+            extra.append(f"{_int(r.get('clicks'))} click(s)")
+        if _int(r.get("tries")):
+            extra.append(f"read {_int(r.get('tries'))} times")
+        if extra:
+            w += " (" + ", ".join(extra) + ")"
+        if r.get("why") and str(r.get("result") or "").startswith("stop"):
+            w += ": " + game_text(r.get("why"), 100)
+        out.append(w)
+    return out
+
+
+def note_send_runs(s: dict, seen: dict, pending: list) -> list[str]:
+    """(R29) Each World-screen run once, when its outcome first shows in the
+    report (`missions.send.last_by_goal`, by its tick): a journal entry with
+    the goal, the site, how it ended and each step's result, so a live run
+    tells exactly where it stops. Returns notes."""
+    send = _d(_m(s).get("send"))
+    by = _d(send.get("last_by_goal")) or ({"_": send.get("last")} if _d(send.get("last")) else {})
+    had = seen.get("send_seen")
+    first = not isinstance(had, dict)
+    if first:
+        had = seen["send_seen"] = {}
+    notes = []
+    for g, o in by.items():
+        o = _d(o)
+        t = _int(o.get("tick"))
+        goal = str(o.get("goal") or g)
+        if t is None or had.get(goal) == t:
+            continue
+        had[goal] = t
+        if first:
+            continue                 # outcomes from before this memory: not journalled again
+        steps = send_steps(o)
+        e = {"event": "send", "goal": goal, "site": _q(o.get("site"), 40) if o.get("site") else None,
+             "site_id": o.get("site_id"), "result": game_text(o.get("result") or "?", 12),
+             "step": game_text(o.get("step"), 20) if o.get("step") else None,
+             "reason": game_text(o.get("reason"), 20) if o.get("reason") else None,
+             "why": game_text(o.get("why"), 160) if o.get("why") else None, "steps": steps}
+        for k in ("popup", "popup_closed", "dismissed", "closed"):
+            if o.get(k) is not None:
+                e[k] = o[k] if isinstance(o[k], bool) else game_text(o[k], 20)
+        pending.append(e)
+        words = (f"World screen: {MISSION_WORDS.get(goal, goal)}"
+                 + (f" {e['site']}" if e["site"] else "")
+                 + (" set up (" if o.get("result") == "sent" else f" stopped at {e['step'] or '?'} (")
+                 + ("; ".join(steps) or "no steps recorded") + ")")
+        notes.append(words)
+    return notes
+
+
+def note_messenger_trips(s: dict, seen: dict, pending: list, now: int) -> list[str]:
+    """(R29, Phase 13b's exit: a messenger appointed, sent and back) The
+    fort's own Diplomacy controllers with a messenger on them (the report's
+    `controllers`, `epp`; not one a stopped run left behind) followed: an
+    "out" entry when first seen, a "back" entry once it is gone from the
+    world. Returns notes."""
+    ms = _m(s)
+    send = _d(ms.get("send"))
+    left = set()
+    for o in list(_d(send.get("last_by_goal")).values()) + [send.get("last")]:
+        left |= {x for x in _l(_d(o).get("left_ids")) if _int(x) is not None}
+    trips = seen.get("trips")
+    if not isinstance(trips, dict):
+        trips = seen["trips"] = {}
+    if "missions" in _d(s.get("_errors")) or not isinstance(ms.get("controllers"), list):
+        return []                    # the report couldn't be read: nothing judged gone
+    notes = []
+    current = {}
+    for c in _l(ms.get("controllers")):
+        c = _d(c)
+        cid = _int(c.get("id"))
+        if cid is None or c.get("goal") != "DIPLOMACY" or cid in left:
+            continue
+        if not _l(c.get("epp")) and str(cid) not in trips:
+            continue                 # no messenger on it (yet): not a trip
+        current[str(cid)] = c
+    for cid, c in current.items():
+        if cid in trips or len(trips) >= TRACK_MAX:
+            continue
+        site = _q(c.get("site"), 40) if c.get("site") else None
+        trips[cid] = {"site": site, "site_id": c.get("site_id"), "since": now}
+        seen["messenger_sent"] = (_int(seen.get("messenger_sent")) or 0) + 1
+        pending.append({"event": "out", "goal": "make_contact", "site": site, "site_id": c.get("site_id"),
+                        "messenger": True})
+        notes.append("the messenger set off to make contact" + (f" with {site}" if site else ""))
+    for cid in list(trips):
+        if cid in current:
+            if current[cid].get("returning"):
+                trips[cid]["returning"] = True
+            continue
+        t = trips.pop(cid)
+        seen["messenger_back"] = (_int(seen.get("messenger_back")) or 0) + 1
+        days = max(0, (now - int(t.get("since") or now)) // TICKS_PER_DAY)
+        pending.append({"event": "back", "goal": "make_contact", "site": t.get("site"), "site_id": t.get("site_id"),
+                        "messenger": True, "days": days})
+        notes.append("the messenger's mission to make contact" + (f" with {t['site']}" if t.get("site") else "")
+                     + f" is over after {days} day(s) (its controller gone from the world)")
+    return notes
 
 
 def mission_journal(memory) -> list[dict]:

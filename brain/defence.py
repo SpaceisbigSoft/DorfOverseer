@@ -83,11 +83,14 @@ def _gates(a: dict, before: int) -> list[tuple[str, list[str]]]:
     recs = []
     for rid, rec in reg.items():
         prefix, _, spot = rid.partition(":")
-        if prefix not in ("gate", "doors", "traps") or not isinstance(rec, dict):
+        # (R29 W2) and the War-hold's gatehouse (atlas "gatehouse:<spot>"): before, never judged
+        if prefix not in ("gate", "doors", "traps", "gatehouse") or not isinstance(rec, dict):
             continue
         if not isinstance(rec.get("tick"), int) or rec["tick"] > before or _spot(spot) is None:
             continue
         variant = str(rec.get("variant") or ("doors" if prefix == "doors" else "plain"))
+        if prefix == "gatehouse":
+            variant = "gatehouse"                         # its variant is its traps' kind (cage)
         variant = variant.split(",")[0].strip()          # "plain, on the shore" -> plain
         if variant == "deep water":
             variant = "water"
@@ -149,7 +152,8 @@ def judge_sieges(state: dict, memory) -> list[str]:
                 continue
             for design in designs:
                 _add(d["scores"], design, v)
-            gate = (a.get("registry") or {}).get("gate:" + spot) or (a.get("registry") or {}).get("doors:" + spot)
+            reg = a.get("registry") or {}
+            gate = reg.get("gate:" + spot) or reg.get("doors:" + spot) or reg.get("gatehouse:" + spot)
             if isinstance(gate, dict):
                 gate.setdefault("sieges", []).append({"t": end, "threats": threats, "deaths": deaths,
                                                       "kills": kills, "verdict": v})
@@ -170,7 +174,8 @@ def _label(design: str) -> str:
     area, _, v = design.partition(":")
     if area == "traps":
         return f"{v} traps"
-    return {"doors": "its doors", "water": "its deep water", "hatch": "its hatch"}.get(v, f"the {v} gate")
+    return {"doors": "its doors", "water": "its deep water", "hatch": "its hatch",
+            "gatehouse": "its gatehouse"}.get(v, f"the {v} gate")
 
 
 # --- design scores for the weights engine -------------------------------------------------

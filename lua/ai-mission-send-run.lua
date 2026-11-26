@@ -7,7 +7,7 @@
 -- reqscript('ai-mission-send').name and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-mission-send-run is a part of ai-mission-send; run ai-mission-send') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-run'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-run'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, now_tick, log_path, focus_string, id_of, seen, click, first_name, contains = PART_LOCALS.U, PART_LOCALS.now_tick, PART_LOCALS.log_path, PART_LOCALS.focus_string, PART_LOCALS.id_of, PART_LOCALS.seen, PART_LOCALS.click, PART_LOCALS.first_name, PART_LOCALS.contains   -- (r9) the hub's and earlier parts' locals
 
@@ -40,7 +40,10 @@ local function save_log(run)
                             messenger_unverified = run.messenger_unverified,
                             messenger_flag_before = run.messenger_flag_before,
                             order_unverified = run.order_unverified,
-                            screen = run.screen, pressed = run.pressed})     -- (0.105.74)
+                            screen = run.screen, pressed = run.pressed,      -- (0.105.74)
+                            -- (R29) each step's result, DF's help window, the World screen's close
+                            results = run.results, popup = run.popup, popup_closed = run.popup_closed,
+                            site_clicks = run.site_clicks, dismissed = run.dismissed, close_presses = run.close_presses})
         while #runs > LOG_KEEP do table.remove(runs, 1) end
         pcall(function() dfhack.filesystem.mkdir_recursive(dfhack.getDFPath() .. '/dfhack-config/ai-overseer') end)
         json.encode_file({runs = runs}, log_path())
@@ -57,7 +60,9 @@ local function small(o)
             goal_mismatch = o.goal_mismatch,
             -- (0.105.47) the mission's own controller once sent; what couldn't be checked
             sent_ac = o.sent_ac, intent_mismatch = o.intent_mismatch, messenger_unverified = o.messenger_unverified,
-            order_unverified = o.order_unverified}
+            order_unverified = o.order_unverified,
+            -- (R29) each step's result ({step, result, frame, why}), DF's help window, the close
+            results = o.results, popup = o.popup, popup_closed = o.popup_closed, dismissed = o.dismissed}
 end
 
 -- the per-goal outcomes of a saved record; an old save (no by_goal) has its
@@ -90,7 +95,9 @@ local function save_outcome(run)
                  artifact_id = run.artifact_id, left_ids = run.left_ids, left_open = run.left_open,
                  goal_mismatch = run.goal_mismatch, sent_ac = run.sent_ac, intent_mismatch = run.intent_mismatch,
                  messenger_unverified = run.messenger_unverified, order_unverified = run.order_unverified,
-                 untick_failed = run.untick_failed}      -- (r9) squads a stopped run couldn't take off
+                 untick_failed = run.untick_failed,      -- (r9) squads a stopped run couldn't take off
+                 results = run.results, popup = run.popup, popup_closed = run.popup_closed,   -- (R29)
+                 dismissed = run.dismissed}
     local okp, old = pcall(function() return last_outcome() end)
     local by = by_goal_of(okp and old or nil)
     by[run.goal or 'make_contact'] = small(out)
@@ -143,6 +150,17 @@ end
 
 -- each step's look at the screen; a step's screen once it was right also in
 -- full (probe_missions' dump), so the run records what each screen held
+-- (R29) each step's result in a line of its own (run.results: {step, result,
+-- frame[, why]}), kept with the outcome, so the journal says how far each
+-- live run got and where it stopped
+local function step_result(run, result, why)
+    run.results = run.results or {}
+    if #run.results >= 12 then return end
+    table.insert(run.results, {step = run.step_name, result = result, frame = run.frames,
+                             why = why and tostring(why):sub(1, 100) or nil,
+                             tries = run.read_tries, clicks = run.step_name == 'site' and run.site_clicks or nil})
+end
+
 local function trail(run, what, st)
     if #run.trail < 24 then
         table.insert(run.trail, {step = run.step_name, what = what, frame = run.frames,
@@ -169,14 +187,52 @@ end
 -- screen to come back on top; if it never does it is left open under the
 -- player's window (run.left_open) and Needs you says so. The native screen
 -- is never dismissed by hand.
-function close_world(run, tries, done, waited)
+-- (R29, live 25 Nov: D's and F's runs ended "closed": false, the World
+-- screen left up with DF's help window or a site in focus; Esc pressed four
+-- times two frames apart) DF's help window over it shut first; after each
+-- Esc the screen is given CLOSE_SETTLE_FRAMES to go (a screen DF is
+-- already taking down counts as going: no second Esc lands on the fort's
+-- view, where Esc opens the main menu); after CLOSE_TRIES, DFHack's own
+-- dismiss of the World screen (run.dismissed), so the game is never left
+-- on it.
+CLOSE_SETTLE_FRAMES = 12
+
+local function world_going(scr)
+    local ok, b = pcall(function() return scr.breakdown_level end)
+    return ok and type(b) == 'number' and b ~= 0
+end
+
+local function dismiss_world(run, done)
+    local scr = world_screen()
+    if not scr then return done(true) end
+    local ok = pcall(function() dfhack.screen.dismiss(scr) end)
+    if run then run.dismissed = ok or nil end
+    if not ok then return done(false) end
+    later(POLL_FRAMES * 2, function()
+        local w = world_screen()
+        done(w == nil or world_going(w))
+    end)
+end
+
+function close_world(run, tries, done, waited, settle)
     tries = tries or 0
-    if not world_screen() then return done(true) end
-    if tries >= CLOSE_TRIES then return done(false) end
+    local scr = world_screen()
+    if not scr then return done(true) end
+    if world_going(scr) then return done(true) end      -- DF takes it down this frame
+    if settle and settle > 0 and world_on_top() then
+        -- the last Esc's frames: DF given time to take the screen down
+        return later(POLL_FRAMES, function() close_world(run, tries, done, nil, settle - POLL_FRAMES) end)
+    end
+    if tries >= CLOSE_TRIES then
+        if world_on_top() then return dismiss_world(run, done) end
+        return done(false)
+    end
     if world_on_top() then
+        pcall(world_popup_close)
         pcall(function() require('gui').simulateInput(dfhack.gui.getDFViewscreen(true), 'LEAVESCREEN') end)
+        if run then run.close_presses = (run.close_presses or 0) + 1 end
         if not world_screen() then return done(true) end
-        return later(POLL_FRAMES, function() close_world(run, tries + 1, done) end)
+        return later(POLL_FRAMES, function() close_world(run, tries + 1, done, nil, CLOSE_SETTLE_FRAMES) end)
     end
     waited = waited or {polls = 0, since = ms_now()}
     waited.polls = waited.polls + 1
@@ -202,10 +258,9 @@ finish = function(run, closed)
         local after = read_state(run)
         run.controllers = {before = run.controllers_before, after = after.controllers}
         -- a new army controller left behind once the screen shut (DF's own
-        -- planned mission, or one nobody leads): written down for the player
-        if run.controllers_before and after.controllers and after.controllers > run.controllers_before then
-            run.controller_left = true
-        end
+        -- planned mission, or one nobody leads): written down for the player.
+        -- (R29) only the fort's own (new_controllers, below): the count of all
+        -- the world's controllers grows with other entities' armies too
         -- (0.105.39 review) which ones: their ids, so the brain doesn't take a
         -- leftover for a mission out
         local ids = new_controllers(run)
@@ -246,6 +301,7 @@ function stop(run, result, reason)
     run.result = result
     run.reason = reason or run.reason
     run.stopped_at = run.step_name
+    if result ~= 'sent' then pcall(step_result, run, 'stop: ' .. tostring(reason or run.reason), run.why) end
     -- (r12) the World screen didn't open by DF's key: not tried again this DF
     -- session (the ask to show the button returns)
     -- (r12 v5) only the AI's own surprise (the open step timed out, or the key
@@ -399,6 +455,11 @@ local function tick(run)
         return stop(run, 'stopped', 'timeout')
     end
     local step = run.steps[run.step]
+    -- (R29) DF's help window over the World screen (POPUP_WORLD): closed
+    if world_screen() then
+        local closed = world_popup_close()
+        if closed then run.popup_closed = closed end
+    end
     local st = read_state(run)
     -- (0.105.39 review) the player took the game back mid-run: another
     -- screen on top, or the game paused / unpaused by hand: stopped at once
@@ -417,8 +478,9 @@ local function tick(run)
         local verdict, why, reason = step.check(st, run)
         if verdict == 'wait' then
             run.waited = run.waited + POLL_FRAMES
-            if run.waited <= WAIT_FRAMES then return later(POLL_FRAMES, function() tick(run) end) end
-            run.why = why .. ' (' .. WAIT_FRAMES .. ' frames)'
+            local limit = step.wait or WAIT_FRAMES               -- (R29) the site's own, longer
+            if run.waited <= limit then return later(POLL_FRAMES, function() tick(run) end) end
+            run.why = why .. ' (' .. limit .. ' frames)'
             return stop(run, 'stopped', 'unexpected')
         elseif verdict ~= 'ok' then
             run.why = why
@@ -426,8 +488,10 @@ local function tick(run)
             return stop(run, 'stopped', reason or 'unexpected')
         end
         trail(run, 'ok', st)
+        step_result(run, 'ok')
         if st.world then run.world_seen = true end
         run.step, run.acted, run.waited = run.step + 1, false, 0
+        run.read_waited, run.read_tries = 0, nil
         step = run.steps[run.step]
         if not step then return stop(run, 'sent') end
     end
@@ -442,11 +506,20 @@ local function tick(run)
         run.why = why
         return stop(run, 'stopped', 'unexpected')
     end
-    trail(run, 'act', st)
+    if (run.read_waited or 0) == 0 then trail(run, 'act', st) end
     if step.name == 'open' then run.pressed_world = true end
     local ok, reason, err = step.act(run)
     if not ok then
+        -- (R29) the words not on the screen yet: DF draws a new panel a few
+        -- frames after its mode changes; read again for READ_WAIT_FRAMES
+        if step.read_retry and READ_RETRY[reason] and (run.read_waited or 0) < READ_WAIT_FRAMES then
+            run.read_waited = (run.read_waited or 0) + POLL_FRAMES
+            run.read_tries = (run.read_tries or 1) + 1
+            return later(POLL_FRAMES, function() tick(run) end)
+        end
         run.why = err or reason
+        if run.read_tries then run.why = run.why .. ' (read ' .. run.read_tries .. ' times over ' ..
+                                         (run.read_waited or 0) .. ' frames)' end
         return stop(run, 'stopped', reason)
     end
     run.acted, run.waited = true, 0

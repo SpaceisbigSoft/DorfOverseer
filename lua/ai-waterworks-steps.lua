@@ -6,7 +6,7 @@
 -- (T, building, designate, load_state, ...) are in reach.
 
 if not WATERWORKS_PART_LOCALS then qerror('ai-waterworks-steps is a part of ai-waterworks; run ai-waterworks') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-waterworks-steps'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-waterworks-steps'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- (r8) the hub's and earlier parts' locals used here
 local seg_cells, dug, designate_all, undug, left_to_dig, leak, depth_at = WATERWORKS_PART_LOCALS.seg_cells, WATERWORKS_PART_LOCALS.dug, WATERWORKS_PART_LOCALS.designate_all, WATERWORKS_PART_LOCALS.undug, WATERWORKS_PART_LOCALS.left_to_dig, WATERWORKS_PART_LOCALS.leak, WATERWORKS_PART_LOCALS.depth_at
@@ -178,6 +178,7 @@ function step(kind, opts)
             return {ok = false, rejected = true, retired = n_ret, error = why0}
         end
         local plan, why, later
+        dry_reset()         -- (R29 W3) the planners' own dry runs, DRY_TRIES a call
         if kind == 'moat' then plan, why = plan_moat({plain = opts.plain})
         elseif kind == 'magma' then plan, why = plan_magma(opts.shop, {open_caverns = opts.open_caverns == true})
         else plan, why, later = PLANNERS[kind]() end
@@ -204,6 +205,26 @@ function step(kind, opts)
         return advance('planned', {path = path})
     end
     local p = wk.plan
+    -- (R29 W3) the emergency gate shown to work: the floodgate seen open, then
+    -- seen shut while its lever is linked (only the lever shuts it): kept as
+    -- `gate_proven` (the report shows it) and logged once
+    if not dry and wk.lever_id and not wk.gate_proven and type(p) == 'table' and p.gate then
+        pcall(function()
+            local g0 = gate_of(p)
+            if not (g0 and g0.built) then return end
+            if not g0.closed then
+                if not wk.gate_seen_open then wk.gate_seen_open = now(); save() end
+            elseif wk.gate_seen_open then
+                wk.gate_proven = {tick = now(), lever = wk.lever_id, gate = wk.gate_id, stage = wk.stage,
+                                  at = {x = p.gate.x, y = p.gate.y, e = ez(p.gate.z)},
+                                  days = (now() - wk.gate_seen_open) // DAY}
+                save()
+                log_line(('%s emergency gate proven: floodgate %s at x%d y%d elevation %d shut by its lever "%s" (%s), stage %s')
+                    :format(id, tostring(wk.gate_id), p.gate.x, p.gate.y, ez(p.gate.z),
+                            tostring(p.lever and p.lever.name or '?'), tostring(wk.lever_id), wk.stage))
+            end
+        end)
+    end
     if wk.stage == 'held' and wk.plug_guard then
         -- (fix41-ff) a plug the dig guard refused: read again each step (not
         -- counted again); filling goes on once the guard lets it be dug
@@ -594,6 +615,40 @@ function step(kind, opts)
             shut_now(g)
             return hold(('liquid got out at x%d y%d, elevation %d: the floodgate was shut'):format(lk.x, lk.y, ez(lk.z)))
         end
+        -- (R29 W3) the emergency gate test, once, for a work done with its
+        -- floodgate open (a moat, a magma pit, a pump stack): shut by its
+        -- lever, seen shut (gate_proven, above), then opened again as it was
+        if g and g.built and wk.lever_id and not dry then
+            if not wk.gate_proven and not g.closed and not wk.gate_test then
+                wk.gate_test = now()
+                cancel_pulls(wk.lever_id)
+                pull(wk.lever_id, true)
+                save()
+                log_line(('%s emergency gate test: its lever "%s" (%s) pulled to shut the floodgate'):format(
+                    id, tostring(p.lever and p.lever.name or '?'), tostring(wk.lever_id)))
+                return wait('the emergency gate test: the floodgate is being shut by its lever')
+            end
+            if wk.gate_test and not wk.gate_proven then
+                if now() - wk.gate_test > FILL_STALL_DAYS * DAY then
+                    wk.gate_test_failed = ('the floodgate did not shut in %d days of its lever being pulled'):format(FILL_STALL_DAYS)
+                    wk.gate_test = nil
+                    save()
+                    return hold('the emergency gate test failed: ' .. wk.gate_test_failed)
+                end
+                if not g.closed and now() - wk.gate_test > 3 * DAY then
+                    cancel_pulls(wk.lever_id)
+                    pull(wk.lever_id, true)          -- asked again (the pull job may have been lost)
+                end
+                return wait('the emergency gate test: waiting for the floodgate to shut')
+            end
+            if wk.gate_test and wk.gate_proven and g.closed then
+                wk.gate_test = nil
+                pull(wk.lever_id, false)
+                save()
+                log_line(('%s emergency gate test passed: the floodgate is opened again'):format(id))
+                return {ok = true, stage = 'done', gate_test = 'passed', opening = true}
+            end
+        end
         -- (0.105.0 review) waiting: the planner looks again in a few days (the leak check)
         return {ok = false, rejected = true, waiting = true, stage = 'done', error = 'the ' .. kind .. ' is done (no leak)'}
     end
@@ -618,6 +673,10 @@ function report()
                      path_tiles = wk.path and wk.path.tiles, lift = p.lift, power = p.power, wheel = p.wheel,
                      shop = p.shop, bridge = p.bridge and (p.bridge.drawbridge and 'drawbridge' or 'bridge') or nil,
                      lever_at = p.lever and {x = p.lever.x, y = p.lever.y, e = ez(p.lever.z)} or nil,
+                     -- (R29 W3) the emergency gate: proven (seen open, then shut by its lever), or under test
+                     gate_proven = type(wk.gate_proven) == 'table' and wk.gate_proven or nil,
+                     gate_test = wk.gate_test and 'testing' or (wk.gate_test_failed and 'failed') or nil,
+                     lever_name = p.lever and p.lever.name or nil,
                      gate_at = p.gate and {x = p.gate.x, y = p.gate.y, e = ez(p.gate.z)} or nil}
         if wk.kind == 'power' then
             -- (0.105.37 E3) the power: its source, the power check, on or off
@@ -637,28 +696,39 @@ function report()
                 local n = left_to_dig(seg and seg_cells(p, wk.seg or 1) or p.dig)
                 if n == 0 and not seg and p.dig2 and wk.dig2 then n = left_to_dig(p.dig2) end
                 row.dig_left = n
+                -- (R29 W3) magma: dug, it waits for magma-safe parts the brain then orders
+                if n == 0 and not seg and wk.kind == 'magma' then row.magma_parts = magma_parts() end
             elseif wk.stage == 'building' and p.gate and p.lever then
                 local n = 0
                 local g = building(p.gate.x, p.gate.y, p.gate.z, 'Floodgate')
                 local l = building(p.lever.x, p.lever.y, p.lever.z, 'Trap')
                 if not g or not l then return end            -- (gone: the step says so)
-                if not g.built then n = n + 1 end
-                if not l.built then n = n + 1 end
+                local left = {}         -- (R29 W3) which pieces: the brain orders the missing parts
+                if not g.built then n = n + 1; table.insert(left, 'Floodgate') end
+                if not l.built then n = n + 1; table.insert(left, 'Lever') end
                 for _, b in ipairs(p.builds or {}) do
                     local bb = building(b.x, b.y, b.z, b.kind)
-                    if not bb or not bb.built then n = n + 1 end
+                    if not bb or not bb.built then n = n + 1; table.insert(left, b.kind) end
                 end
                 row.build_left = n
+                row.build_wait = #left > 0 and left or nil
             end
         end)
         pcall(function()
             if wk.stage == 'linking' or wk.stage == 'building' then
                 if not parts then
                     local B = reqscript('ai-builder')
-                    parts = {floodgates = B.count_items('FLOODGATE'), mechanisms = B.count_items('TRAPPARTS'),
-                             pipes = B.count_items('PIPE_SECTION')}
+                    -- (R29 W3) the reserved ones too (a part carried to its job), and hatch
+                    -- covers: the brain orders a part only when none is free or on its way
+                    local fg, fg_res = B.count_items('FLOODGATE')
+                    local mech, mech_res = B.count_items('TRAPPARTS')
+                    local hatch, hatch_res = B.count_items('HATCH_COVER')
+                    parts = {floodgates = fg, floodgates_res = fg_res, mechanisms = mech, mechanisms_res = mech_res,
+                             hatches = hatch, hatches_res = hatch_res, pipes = B.count_items('PIPE_SECTION')}
                 end
                 row.floodgates_free, row.mechanisms_free, row.pipes_free = parts.floodgates, parts.mechanisms, parts.pipes
+                row.floodgates_reserved, row.mechanisms_reserved = parts.floodgates_res, parts.mechanisms_res
+                row.hatches_free, row.hatches_reserved = parts.hatches, parts.hatches_res
             end
         end)
         out.works[id] = row

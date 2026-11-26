@@ -211,6 +211,18 @@ hall, basic workshops and stockpiles are always built when missing.
   the soil of finished halls, and the stone blocks for them. Off: none of
   these is started or carried on; what is built stays. The keep (Surface
   50+) is not under this switch.
+- **Invite a siege (test, once)** (`invite_siege`, Army page, off, R29): on,
+  the AI has DFHack's `force` queue DF's own army event
+  (`EvaluateAttackAndSendImmediateArmy` in DF 53) for a civ at war with the
+  fort (TotalWar before Skirmishing, the most sites first; none: force's own
+  event), never while enemies are on the map or in a crisis. It happens once
+  per fort: the record is kept in the save (`ai-overseer/siege-invite`) and
+  the switch turns itself off; on again, it is refused and turned off. From
+  outside the game: `{"rules": {"invite_siege": true}}` in
+  `logs\rules-request.json`. The journal says the invitation (kind `siege`),
+  an army that never came (30 days), and at the end the siege summary
+  (brain/planner_siege_watch.py: survived, deaths, kills, each gate's record,
+  the alarm, the shelter, the squads, the field watch).
 - **Hunt threats** (`hunt`, Military page, 0.105.45): squads sent out after a
   threat that can't reach the dwarves yet, when they clearly beat it
   (brain/planner_hunt.py): a reserve of at least 3 soldiers (a third of all,

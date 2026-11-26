@@ -799,5 +799,41 @@ def _():
     assert PT.fight_journal(fort(sec), m) == []
 
 
+# --- (R29 W8) the spare_beatings switch ------------------------------------------
+
+@test("settings: spare_beatings on by default, sent to the AI, on the Rules tab (R29 fix: the right-hand column's free row 5)")
+def _():
+    st = src("ai-overseer-settings.lua")
+    assert "        spare_beatings = true," in st and "'spare_beatings'," in st and "spare_beatings = s.spare_beatings," in st
+    gui = src("gui/ai-overseer-rules.lua")
+    assert "view_id = 'spare_beatings'" in gui and "frame = {t = 5, l = 56, w = 40}" in gui
+    assert "self.subviews.spare_beatings:setOption(s.spare_beatings ~= false, false)" in gui
+    label = re.search(r"view_id = 'spare_beatings',.*?label = '((?:[^'\\]|\\.)*)',\s*label_width = (\d+)", gui, re.S)
+    assert label and len(label.group(1).replace("\\", "")) < int(label.group(2)) <= 40 - 4, label
+    assert player_rules({"settings": {}})["spare_beatings"] is True
+    assert player_rules({})["spare_beatings"] is True
+    assert player_rules({"settings": {"spare_beatings": False}})["spare_beatings"] is False
+
+
+@test("rule: spare_beatings off sent when arming and while armed when the section differs; on sent back")
+def _():
+    p = by_rule(plan(fort(OFF, spare_beatings=False), Memory())[0], "fight_watch")
+    assert len(p) == 1 and p[0].action == {"type": "fight_watch", "on": True, "end_tantrums": True,
+                                           "spare_beatings": False}, p
+    p = by_rule(plan(fort(dict(ARMED, end_tantrums=True, spare_beatings=True), spare_beatings=False), Memory())[0],
+                "fight_watch")
+    assert len(p) == 1 and p[0].action.get("spare_beatings") is False and "Spare convicts" in p[0].reason, p
+    p = by_rule(plan(fort(dict(ARMED, end_tantrums=True, spare_beatings=False)), Memory())[0], "fight_watch")
+    assert len(p) == 1 and p[0].action.get("spare_beatings") is True, p
+    # both differ: one action carries both
+    p = by_rule(plan(fort(dict(ARMED, end_tantrums=False, spare_beatings=True), spare_beatings=False), Memory())[0],
+                "fight_watch")
+    assert len(p) == 1 and p[0].action == {"type": "fight_watch", "on": True, "end_tantrums": True,
+                                           "spare_beatings": False}, p
+    assert not by_rule(plan(fort(dict(ARMED, end_tantrums=True, spare_beatings=True)), Memory())[0], "fight_watch")
+    assert not by_rule(plan(fort(dict(ARMED, end_tantrums=True, spare_beatings=False), spare_beatings=False),
+                            Memory())[0], "fight_watch")
+
+
 if __name__ == "__main__":
     finish()

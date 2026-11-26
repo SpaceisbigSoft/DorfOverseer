@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -13,11 +13,45 @@ local info, ez = info, ez
 -- Projects, saved with the fort
 ---------------------------------------------------------------------------
 
+-- (R29 W7, 13e) the record is 240-420 KB of JSON in a grown fort and its
+-- decode took 64-117 ms live (25 Nov probe), once a report and again in
+-- every action that read it. The stored text is read (~1 ms) and compared
+-- with the text last decoded: the same text gives a copy of that decode
+-- (10-14 ms), a changed one (any writer) is decoded afresh. Kept across
+-- reloads of the module within a session.
+PROJECTS_RAW_CACHE = PROJECTS_RAW_CACHE
+
+-- a copy of a decoded JSON tree (no shared parts, no cycles)
+local function copy_tree(v)
+    if type(v) ~= 'table' then return v end
+    local o = {}
+    for k, x in pairs(v) do
+        if type(x) == 'table' then o[k] = copy_tree(x) else o[k] = x end
+    end
+    local mt = getmetatable(v)
+    if mt ~= nil then setmetatable(o, mt) end
+    return o
+end
+
+local function raw_projects()
+    local ok, raw = pcall(function()
+        local f = dfhack.persistent.getSiteDataString
+        return type(f) == 'function' and f(PROJECTS_KEY) or nil
+    end)
+    return ok and type(raw) == 'string' and raw or nil
+end
+
 local function decode_projects()
+    local raw = raw_projects()
+    local c = PROJECTS_RAW_CACHE
+    if raw and type(c) == 'table' and c.raw == raw and type(c.data) == 'table' then
+        return copy_tree(c.data)
+    end
     -- (0.105.33, L8) through ai-util's site_get: a value that isn't a table reads as none
     local data = site_get(PROJECTS_KEY)
     data.next_id = math.tointeger(data.next_id) or 1
     data.list = type(data.list) == 'table' and data.list or {}
+    PROJECTS_RAW_CACHE = raw and {raw = raw, data = copy_tree(data)} or nil
     return data
 end
 

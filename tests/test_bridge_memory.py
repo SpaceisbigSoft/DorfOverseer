@@ -174,7 +174,7 @@ def _():
     for absent in ("supplies", "map", "jobs", "recent_announcements", "registry"):
         assert absent not in keys, absent
     daily = M.build_state(True)
-    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.105.121"
+    assert daily.tier == "daily" and daily.units[1].id == 1 and daily.bridge_version == "0.105.122"
     assert set(pulse.keys()) - {"tier"} <= set(daily.keys())
     assert daily.registry.error is not None                         # no builder here, but the section is there
     assert M.build_state(False, "survey").tier == "survey"
@@ -598,17 +598,39 @@ def _():
             getType = function() return 1 end,
             getContents = function() return {location_tier = 1, location_value = 50, desired_thread = 5, count_thread = 0,
                                               desired_cloth = 5, count_cloth = 2} end}
+        -- (R29 W5) its books: the written items on its bookcases and in its chests
+        -- (the bookcase's own material and a blank quire are no book)
+        df.building_type = {[1] = 'Bookcase', [2] = 'Box', [3] = 'Table'}
+        df.item_type = {BOOK = 7, TOOL = 8}
+        df.improvement_type = {WRITING = 3}
+        df.building_item_role_type = {TEMP = 0, PERM = 2}
+        local function item(kind, written, id)
+            return {getType = function() return kind end, subtype = id and {id = id} or nil,
+                    improvements = vec(written and {{getType = function() return 3 end}} or {})}
+        end
+        local case = {getType = function() return 1 end, contained_items = vec({
+            {use_mode = 2, item = item(9, false)}, {use_mode = 0, item = item(7, false)},
+            {use_mode = 0, item = item(8, true, 'ITEM_TOOL_QUIRE')}})}
+        local chest = {getType = function() return 2 end, contained_items = vec({
+            {use_mode = 0, item = item(8, false, 'ITEM_TOOL_QUIRE')}, {use_mode = 0, item = item(8, false, 'ITEM_TOOL_SCROLL')}})}
+        local table_ = {getType = function() return 3 end, contained_items = vec({{use_mode = 0, item = item(7, false)}})}
+        local zone = {id = 50, contained_buildings = vec({case, chest, table_})}
+        df.building = {find = function(id) return id == 50 and zone or nil end}
         local lib = {id = 4, flags = {}, copied_artifacts = vec({11, 12}),
-            occupations = vec({{type = 5, histfig_id = -1}, {type = 5, histfig_id = 9}}),
+            occupations = vec({{type = 5, histfig_id = -1, unit_id = -1}, {type = 5, histfig_id = 9, unit_id = -1}}),
             getType = function() return 2 end,
-            getContents = function() return {desired_paper = 0, count_paper = 0, desired_copies = 2} end}
+            getContents = function() return {desired_paper = 0, count_paper = 0, desired_copies = 2,
+                                              building_ids = vec({50})} end}
         dfhack.world.getCurrentSite = function() return {buildings = vec({hosp, lib})} end
     """, M, H.df, H.dfhack)
     r = M.get_locations()
     assert r.total == 2 and r.count.HOSPITAL == 1, dict(r.count)
     h, lib = r.list[1], r.list[2]
     assert h.type == "HOSPITAL" and h.want.thread == 5 and h.have.thread == 0 and h.have.cloth == 2, dict(h.want)
-    assert lib.books == 2 and lib.want.copies == 2 and lib.jobs.SCRIBE.posts == 2 and lib.jobs.SCRIBE.filled == 1
+    assert lib.want.copies == 2 and lib.jobs.SCRIBE.posts == 2 and lib.jobs.SCRIBE.filled == 1
+    # (R29 W5) books = the written items in its bookcases and chests (a codex, a written quire), not
+    # #copied_artifacts (DF never fills it in a fort: 0 everywhere), kept as copied_artifacts
+    assert lib.books == 2 and lib.blank == 2 and lib.copied_artifacts == 2, (lib.books, lib.blank, lib.copied_artifacts)
 
 
 @test("location_access (0.105.12): visitors shut out or let in by id; never a hospital; nothing to change refused")

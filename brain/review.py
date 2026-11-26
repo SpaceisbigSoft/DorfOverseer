@@ -82,8 +82,10 @@ def snapshot(state: dict) -> dict:
     """The small slice of a report that event detection compares next cycle."""
     s = normalize(state)
     o, dw = s["others_on_map"], _d(s.get("dwarves"))
+    from strategist import _invaders
     return {"others_on_map": {"threats_that_can_reach_dwarves": o.get("threats_that_can_reach_dwarves", 0),
-                              "merchants": o.get("merchants", 0)},
+                              "merchants": o.get("merchants", 0),
+                              "invaders": _invaders(state)},     # (R29 W9) a siege's army seen arriving
             "dwarves": {"stress": _d(dw.get("stress")), "total": dw.get("total", 0)}}
 
 
@@ -111,6 +113,34 @@ def note_events(state: dict, memory: Memory, bank: TokenBank | None, events: lis
         if k not in {p["kind"] for p in memory.pending_kinds}:
             memory.pending_kinds.append({"kind": k, "tick": now})
     return kinds
+
+
+# (R29 W9) A siege or a great danger near gets its review even when the month's
+# event reviews are used (a caravan or migrants took the slot): at most one
+# such extra review every URGENT_GAP_DAYS game days, within the bank (its event
+# reserve), the real-day caps and the AI window's caps like any review.
+URGENT_KINDS = ("siege", "great_danger_near")
+URGENT_GAP_DAYS = 3
+
+
+def urgent_allowed(bank: TokenBank, now: int, kinds) -> bool:
+    if not any(k in URGENT_KINDS for k in kinds or ()):
+        return False
+    recent = [t for t in (bank.event_reviews or []) if isinstance(t, int) and 0 <= now - t]
+    return not recent or now - max(recent) >= URGENT_GAP_DAYS * TICKS_PER_DAY
+
+
+def _window_ok(estimate: int, important: bool) -> tuple[bool, str]:
+    """(R29 W9) The AI window's caps (brain/ai_window.py); no window open: ok.
+    A window that can't be read refuses (fails closed)."""
+    try:
+        import ai_window
+        ok, why = ai_window.WINDOW.can_spend(estimate, important)
+        if not ok:
+            ai_window.WINDOW.note_skip()
+        return ok, why
+    except Exception as e:  # noqa: BLE001
+        return False, f"the AI window's caps couldn't be read ({type(e).__name__})"
 
 
 TOKEN_RATIO_RANGE = (0.5, 4.0)
@@ -188,7 +218,7 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     # (D0) the design ask: only when config.json's design_ai is on (never in D0)
     # (r4 k5) and never in advice-only mode: a design answer is stored as it comes
     design_ask = planner_design.due(memory, now) if planner_design.ai_allowed() and not shadow else None
-    if kinds and kinds_due and event_review_allowed(bank, now, plan):
+    if kinds and kinds_due and (event_review_allowed(bank, now, plan) or urgent_allowed(bank, now, kinds)):
         reason, important = "event: " + ", ".join(kinds), True
     elif routine_due(bank, now, plan) or season_due:
         reason, important = ("season" if season_due else "routine"), False
@@ -291,6 +321,8 @@ def maybe_review(state: dict, memory: Memory, bank: TokenBank, backend, bridge_i
     # twice the old estimate)
     estimate = int(raw_estimate * token_ratio(memory))
     ok, why = bank.can_spend(estimate, settings, is_event=important, today=today)
+    if ok:      # (R29 W9) logs/ai-window.json's caps: the whole window, each game season
+        ok, why = _window_ok(estimate, important)
     if not ok:
         if design_ask:
             _design_wait(memory, design_ask, now)

@@ -35,6 +35,7 @@ MAGMA_SHOPS = {MagmaForge = 'wv', MagmaSmelter = 'el', MagmaGlassFurnace = 'ea'}
 MOAT_GAP = 3            -- tiles from the gate's outside tile to the trench
 MOAT_HALF = 3           -- the trench runs this far each side of the gate's line
 MOAT_FEED_MAX = 40      -- tiles of feed channel from the river at most
+MOAT_UP_MAX = 2         -- (R29 W3) levels up a gate's stair/ramp to its open ground
 RETIRE_MAX = 2          -- (0.105.35) a work retired this often (held, retired by the AI) is not begun again
 PUMP_MAX_LIFT = 6       -- levels a pump stack lifts at most (one dwarf a pump)
 PUMP_TEST_DAYS = 14     -- no rise in the reservoir this long: said so
@@ -104,7 +105,19 @@ function occupants(box)
                 local t = df.building_type[b:getType()]
                 local why = (t == 'Workshop' or t == 'Furnace') and 'a workshop' or t == 'Bed' and 'a bed'
                     or t == 'Stockpile' and 'a stockpile' or ('a building (' .. tostring(t):lower() .. ')')
-                for x = b.x1, b.x2 do for y = b.y1, b.y2 do out[key(x, y, b.z)] = why end end
+                -- (R29 W3) a zone or stockpile by its own tiles (its extents), not its whole box
+                local ext, rx, ry, rw = nil, nil, nil, nil
+                pcall(function()
+                    if b.room and b.room.extents and b.room.width > 0 then ext, rx, ry, rw = b.room.extents, b.room.x, b.room.y, b.room.width end
+                end)
+                for x = b.x1, b.x2 do for y = b.y1, b.y2 do
+                    local inside_ext = true
+                    if ext then
+                        local okv, v = pcall(function() return ext[(x - rx) + (y - ry) * rw] end)
+                        inside_ext = not okv or (v ~= 0 and v ~= false)
+                    end
+                    if inside_ext then out[key(x, y, b.z)] = why end
+                end end
             end
         end
     end)
@@ -835,7 +848,7 @@ PARTS = {'plans', 'power', 'steps'}
 -- each part marks the version it came with (the bridge's `version` lists one
 -- that differs from BRIDGE_VERSION); started afresh at each load, so a part
 -- that failed to load shows as unmarked
-PART_VERSIONS = {['ai-waterworks'] = '0.105.121'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-waterworks'] = '0.105.122'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')

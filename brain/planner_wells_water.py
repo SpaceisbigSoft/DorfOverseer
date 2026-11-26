@@ -376,6 +376,13 @@ def _water_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         c = _d(w.get("cistern"))
         if isinstance(w.get("cistern_status"), dict):
             c = {}                    # (0.99.8) built or being built: the survey's plan for a new one says nothing
+            gp = _d(w["cistern_status"].get("gate_proven"))
+            if gp:
+                # (R29 W3) the phase's exit check: the cistern's emergency gate shown to work
+                at = _d(gp.get("at"))
+                notes.append(f"the cistern's emergency gate proven: its floodgate at x{at.get('x')} y{at.get('y')} "
+                             f"elevation {at.get('e')} shut by its lever (stage {gp.get('stage')}, "
+                             f"{gp.get('depth')}/7 deep)")
         if c and not c.get("none"):
             cw, cs = _d(c.get("well")), _d(c.get("cistern"))
             notes.append(f"cistern plan (not built yet): a 5x5 cistern at elevation {c.get('elevation')} filled from "

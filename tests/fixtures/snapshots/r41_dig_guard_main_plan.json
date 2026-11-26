@@ -24,7 +24,7 @@
  "enxah-0.104.52-y73-winter.json": [
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
-   "digest": "sha256:26eeb58b17635fada2d51317",
+   "digest": "sha256:75563b9efe5a926c77f5e888",
    "notes": "sha256:a76be1d185e69e105d3b5eb9",
    "props": "sha256:a1e2fbf845028da3cffb862b",
    "rules": [
@@ -61,7 +61,7 @@
   },
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:26eeb58b17635fada2d51317",
+   "digest": "sha256:75563b9efe5a926c77f5e888",
    "notes": "sha256:4b4604253d59b494def3104b",
    "props": "sha256:ed7755a0712bcda8eec37f0a",
    "rules": [
@@ -99,7 +99,7 @@
  "region2-0.42-y51-winter.json": [
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:404e87fd59f6a2cac8dc2312",
+   "digest": "sha256:4c308266ae33795dd0287b30",
    "notes": "sha256:6304c4ec3036dc5e3a0851c2",
    "props": "sha256:794a5fd6a44cf8e616b0da87",
    "rules": [
@@ -121,7 +121,7 @@
   },
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:404e87fd59f6a2cac8dc2312",
+   "digest": "sha256:4c308266ae33795dd0287b30",
    "notes": "sha256:6304c4ec3036dc5e3a0851c2",
    "props": "sha256:6579d202feabe624be01f2c8",
    "rules": [
@@ -144,7 +144,7 @@
  "region2-0.48-y52-spring.json": [
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:02b66e1372339990a724e038",
+   "digest": "sha256:d02b074872be2a6367f14e24",
    "notes": "sha256:a3740856dd64378e6e9c3a13",
    "props": "sha256:f4816aee66f8451252351c97",
    "rules": [
@@ -160,7 +160,7 @@
   },
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:02b66e1372339990a724e038",
+   "digest": "sha256:d02b074872be2a6367f14e24",
    "notes": "sha256:a3740856dd64378e6e9c3a13",
    "props": "sha256:9c91595f6d49c19f2b0c32fb",
    "rules": [
@@ -177,7 +177,7 @@
  "region2-0.50-y52-summer.json": [
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:7a1f5777bf88f65df581392e",
+   "digest": "sha256:dd6a8fca2f9a2cd0d1485157",
    "notes": "sha256:70e14defccb62b8f7bdeee54",
    "props": "sha256:e7e0ceec962d8faa1f1b007e",
    "rules": [
@@ -195,7 +195,7 @@
   },
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:7a1f5777bf88f65df581392e",
+   "digest": "sha256:dd6a8fca2f9a2cd0d1485157",
    "notes": "sha256:70e14defccb62b8f7bdeee54",
    "props": "sha256:1d04dd65e360b56804a26067",
    "rules": [
@@ -214,7 +214,7 @@
  "region2-0.83-y62-spring.json": [
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:caa13de766f914a138e40a9d",
+   "digest": "sha256:eed152fa66a37f7714005f5e",
    "notes": "sha256:dd2912d9055d076539426a5b",
    "props": "sha256:52b2e896d6eb2a2103e304fd",
    "rules": [
@@ -250,7 +250,7 @@
   },
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:caa13de766f914a138e40a9d",
+   "digest": "sha256:eed152fa66a37f7714005f5e",
    "notes": "sha256:dd2912d9055d076539426a5b",
    "props": "sha256:3fb3687a451b99b414d0e0d6",
    "rules": [
@@ -287,7 +287,7 @@
  "test_fort.json": [
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:dcd1a76193ad496639f25a91",
+   "digest": "sha256:608e2521b7bdc77393382376",
    "notes": "sha256:4f53cda18c2baa0c0354bb5f",
    "props": "sha256:6e899bd5b50691d9cee3fb0a",
    "rules": [
@@ -299,7 +299,7 @@
   },
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
-   "digest": "sha256:dcd1a76193ad496639f25a91",
+   "digest": "sha256:608e2521b7bdc77393382376",
    "notes": "sha256:4f53cda18c2baa0c0354bb5f",
    "props": "sha256:78ab2256022707e88cf5fff2",
    "rules": [

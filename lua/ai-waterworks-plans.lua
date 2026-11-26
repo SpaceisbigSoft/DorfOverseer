@@ -6,7 +6,7 @@
 -- (T, building, designate, load_state, ...) are in reach.
 
 if not WATERWORKS_PART_LOCALS then qerror('ai-waterworks-plans is a part of ai-waterworks; run ai-waterworks') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-waterworks-plans'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-waterworks-plans'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- (r8) the hub's and earlier parts' locals used here
 local OPEN, key, rock, cavern_tile, ground, still_water, l_path, N4, wet_beside = WATERWORKS_PART_LOCALS.OPEN, WATERWORKS_PART_LOCALS.key, WATERWORKS_PART_LOCALS.rock, WATERWORKS_PART_LOCALS.cavern_tile, WATERWORKS_PART_LOCALS.ground, WATERWORKS_PART_LOCALS.still_water, WATERWORKS_PART_LOCALS.l_path, WATERWORKS_PART_LOCALS.N4, WATERWORKS_PART_LOCALS.wet_beside
@@ -53,6 +53,20 @@ function lever_spot(x, y, z, avoid)
     return nil
 end
 
+-- (R29 W3) A plan's dry run before it is chosen: nil (it passes, or the
+-- checks of this call are used up: the step's own dry run still refuses it),
+-- or why. DRY_TRIES a call, each a walk of 400 tiles at most.
+DRY_TRIES = 12
+local dry_left = DRY_TRIES
+function dry_reset() dry_left = DRY_TRIES end
+function dry_try(p)
+    if dry_left <= 0 then return nil end
+    dry_left = dry_left - 1
+    local ok, chk = pcall(path_check, p)
+    if not ok or type(chk) ~= 'table' or chk.ok then return nil end
+    return ('dry run: %s at x%d y%d, elevation %d'):format(chk.why, chk.at.x, chk.at.y, chk.at.e)
+end
+
 local function add_tiles(p, list)
     for _, c in ipairs(list) do table.insert(p.tiles, {x = c.x, y = c.y, z = c.z}) end
 end
@@ -62,18 +76,41 @@ end
 -- (0.105.38) one river's moat: the river's nearest tile, its highest level,
 -- the feed's length at most. (0.105.38 review) Only the near river (as
 -- before 0.105.38): a far river never feeds a moat.
+-- (R29 W3) Where a gate meets the open ground: {z, dir} for each side of the
+-- gate's tile that opens onto outside ground, on the gate's own level, else
+-- up its stair or ramp (D 25 Nov: the gate was scanned at the stair's foot,
+-- z170, the outside one level up at z171: "the gate has no open ground
+-- outside it" 13 times). Every side is tried, not only the first one.
+function moat_sides(e)
+    local out = {}
+    for dz = 0, MOAT_UP_MAX do
+        local z = e.z + dz
+        if dz > 0 then
+            local here = T(e.x, e.y, z)
+            local below = T(e.x, e.y, z - 1)
+            -- up only through the gate's own stair or ramp (or open space over it)
+            local up_ok = below and (below.shape == 'STAIR_UP' or below.shape == 'STAIR_UPDOWN' or below.shape == 'RAMP'
+                                     or below.shape == 'EMPTY' or below.shape == 'RAMP_TOP')
+            if not (here and up_ok and OPEN[here.shape]) then break end
+        end
+        for _, d in ipairs(N4) do
+            local t = T(e.x + d[1], e.y + d[2], z)
+            if t and t.outside and OPEN[t.shape] and not t.liquid then table.insert(out, {z = z, dir = d}) end
+        end
+        if #out > 0 then break end
+    end
+    return out
+end
+
 local function moat_for(river, river_z2, feed_max, opts, es)
     local why
     for _, e in ipairs(es) do
-        -- the side the outside lies on
-        local dir
-        for _, d in ipairs(N4) do
-            local t = T(e.x + d[1], e.y + d[2], e.z)
-            if t and t.outside and OPEN[t.shape] and not t.liquid then dir = d break end
-        end
-        if not dir then why = why or 'the gate has no open ground outside it' goto next end
+        local sides = moat_sides(e)
+        if #sides == 0 then why = why or 'the gate has no open ground outside it (on its level or up its stair)' end
+        for _, side in ipairs(sides) do
+        local dir = side.dir
         do
-            local z = e.z
+            local z = side.z
             if river.z ~= z - 1 then
                 why = why or ('the river\'s water is not one level under the ground at the gate (river at elevation %d, '
                               .. 'ground %d): a moat there would overflow or stay dry'):format(ez(river.z), ez(z))
@@ -156,9 +193,13 @@ local function moat_for(river, river_z2, feed_max, opts, es)
             table.insert(p.builds, {x = bx, y = by, z = z, text = ('%s(%dx%d)'):format(bdir, bw, bh), kind = 'Bridge'})
             local by = bypass(p)             -- (0.105.33) the water never round the floodgate
             if by then why = why or by.why goto next end
+            -- (R29 W3) the dry run here, so a refused side lets the next one be tried
+            local chk = dry_try(p)
+            if chk then why = why or chk goto next end
             return p
         end
         ::next::
+        end
     end
     return nil, why or 'no gate fit for a moat'
 end
@@ -280,7 +321,11 @@ local function pump_at(src, fb, w, far)
                 local bad = far_route_check(p, false) or stage_plan(p)
                 if bad then by = {why = bad} end
             end
-            if not by then return p end
+            if not by then
+                local chk = dry_try(p)        -- (R29 W3) a refused site: the next one tried
+                if chk == nil then return p end
+                by = {why = chk}
+            end
             why_b = why_b or by.why
         end
     end
@@ -473,7 +518,15 @@ function plan_irrigation()
                                 local big = far_route_check(p, false) or stage_plan(p)
                                 if big then why = why or big goto skip end
                             end
-                            if not by then return p end
+                            if not by then
+                                -- (R29 W3) the dry run here, so a site whose water would reach a
+                                -- bedroom, stockpile or zone lets the next site be tried (A 25 Nov:
+                                -- "dry run: a building (civzone) in the way at x130 y143" 9 times,
+                                -- a bedroom beside the tunnel: the same first site every time)
+                                local chk = dry_try(p)
+                                if chk == nil then return p end
+                                by = {why = chk}
+                            end
                             why = why or by.why
                         end
                     end
@@ -656,25 +709,41 @@ function plan_magma(shop, opts)
     local w = water_survey()
     local m = w and w.magma and w.magma.top_nearest
     local cands, why, held = {}, nil, nil
+    local blocked_why, wet_cands = nil, {}
     if m then table.insert(cands, {m = m}) end
     for _, b in ipairs(far_sources(w, function(b) return b.kind == 'magma' end, nil, function(b)
             return 10000 * (MAGMA_RANK[b.magma] or 2) end, 8)) do
         local t = b.top or b.nearest
-        if b.blocked then
-            why = why or ('the %s magma: %s'):format(tostring(b.magma), tostring(b.blocked))
-        elseif fb.z_low - (t.z + 1) > MAGMA_STAIR_MAX then
+        -- (R29 W3) the survey's "blocked" is its estimate's (one shaft at the
+        -- fort's middle, then an L): water on or beside THAT line (A, B, D, E
+        -- 25 Nov: cavern lakes beside the middle's shaft, "other water beside
+        -- the way" for every magma body) says nothing of the planned dig
+        -- elsewhere, which far_route_check walks for water itself. Such a body
+        -- is still tried, after the others; magma, a deep feature, the sky or
+        -- the map's edge on the estimate still leave it out.
+        local wet_only = type(b.blocked) == 'string' and b.blocked:find('other water', 1, true) == 1
+        if fb.z_low - (t.z + 1) > MAGMA_STAIR_MAX then
             held = held or ('the %s magma is too deep for a stair (%d levels, %d at most)')
                 :format(tostring(b.magma), fb.z_low - (t.z + 1), MAGMA_STAIR_MAX)
+        elseif b.blocked and not wet_only then
+            blocked_why = blocked_why or ('the %s magma: %s'):format(tostring(b.magma), tostring(b.blocked))
         elseif b.magma == 'cavern' and not allow then
             -- a pool in a cavern: reaching it opens the cavern, whatever the way
             held = held or ('the %s magma %d tiles off: reaching it opens %s (the cavern switch does not allow it)')
                 :format(tostring(b.magma), tonumber(b.d) or 0, tostring(b.opens_cavern or b.cavern or 'a cavern'))
-        elseif not (m and t.x == m.x and t.y == m.y and t.z == m.z) then
+        elseif m and t.x == m.x and t.y == m.y and t.z == m.z then
+            -- the near box's own: tried first already
+        elseif wet_only then
+            table.insert(wet_cands, {m = {x = t.x, y = t.y, z = t.z}, b = b})
+            blocked_why = blocked_why or ('the %s magma: %s (the survey\'s line from the fort\'s middle)')
+                :format(tostring(b.magma), tostring(b.blocked))
+        else
             table.insert(cands, {m = {x = t.x, y = t.y, z = t.z}, b = b})
         end
     end
+    for _, c in ipairs(wet_cands) do table.insert(cands, c) end
     if #cands == 0 then
-        return nil, why or held or 'no magma found near the fort (or the survey is older than 0.105.0)'
+        return nil, blocked_why or held or 'no magma found near the fort (or the survey is older than 0.105.0)'
     end
     for _, c in ipairs(cands) do
         local p, w1 = magma_at(c.m, shop, fb, c.b and allow)
@@ -696,10 +765,16 @@ function plan_magma(shop, opts)
             end
             if bad then p, w1 = nil, bad end
         end
-        if p then return p end
+        if p then
+            -- (R29 W3) the dry run here: a refused site lets the next magma be tried
+            local chk = dry_try(p)
+            if chk == nil then return p end
+            p, w1 = nil, chk
+        end
         why = why or (c.b and (('the %s magma: '):format(tostring(c.b.magma)) .. tostring(w1)) or w1)
     end
-    return nil, why or held
+    -- (R29 W3) what the tried sites said first: the survey's estimate last
+    return nil, why or held or blocked_why
 end
 
 PLANNERS = {moat = plan_moat, pump = plan_pump, irrigation = plan_irrigation, magma = plan_magma}

@@ -328,7 +328,8 @@ def _():
     # what 14.0's audit measured a real call to cost
     # (0.105.27) +25 for the Rules tab's three disposal keys (some 60 characters)
     # (0.105.33) +25: the test fort (194 citizens, one way in) proposes its second way to the surface
-    assert (len(instr) + len(msg)) / 2.5 < 3750, len(instr) + len(msg)
+    # (R29 W9) +15: the MILITARY line's ways in and their levers (some 30 characters)
+    assert (len(instr) + len(msg)) / 2.5 < 3765, len(instr) + len(msg)
 
 
 @test("AI (0.104.89): a review's raise and hold reach the planner's memory, are said, and the token ratio is learned")

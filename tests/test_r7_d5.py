@@ -163,7 +163,8 @@ ALL = {
 # (0.105.99) re-pinned: the rotation's rest month kept by the sits-off rule (planner_military.py; E, 24 Nov)
 # (0.105.113 item11) _ranged_squad_rule: quivers from the places, wooden bolts first
 # (0.105.115 item20) _gate_parts_rule: free_gate_jobs paced (planner_gate_jobs)
-BASE_NODES = (123, "6005cfe5bc4b045b1b6a3a35ad4e7470")   # (0.105.119 item32) _military_rules: weres in beast form a target at once; _hazard_rules: every free squad
+# (0.105.119 item32) _military_rules: weres in beast form a target at once; _hazard_rules: every free squad
+BASE_NODES = (123, "726f740329974a5c6a84ddbd3bb6c090")   # (R29 item6) _sortie_on: the sortie's targets and squads kept for its result
 
 
 def _defined(name: str) -> list[str]:

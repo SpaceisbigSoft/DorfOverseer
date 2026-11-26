@@ -9,7 +9,7 @@
 -- helpers are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-civic is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-civic'] = '0.105.121'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-civic'] = '0.105.122'   -- bumped with BRIDGE_VERSION
 
 -- (0.91) Meetings (read only, a probe): diplomats and the outpost liaison
 -- meet the fort's leader (plotinfo.activities: the actor, the noble met, the
@@ -140,6 +140,43 @@ end
 LOCATION_SUPPLIES = {'goblets', 'instruments', 'paper', 'splints', 'thread', 'cloth', 'crutches', 'powder',
                      'buckets', 'soap'}
 
+-- (R29 W5) the written items (BOOK, or a quire/scroll with WRITING) and the
+-- blank quires and scrolls held by the furniture standing in a location's
+-- zones (bookcases, chests): written, blank
+local function written_on(it)
+    if it:getType() == df.item_type.BOOK then return true end
+    local w = false
+    pcall(function()
+        for _, imp in ipairs(it.improvements) do
+            if imp:getType() == df.improvement_type.WRITING then w = true end
+        end
+    end)
+    return w
+end
+
+local function library_books(c)
+    local n, blank = 0, 0
+    for _, bid in ipairs(c.building_ids) do
+        local z = df.building.find(bid)
+        for _, ib in ipairs(z and z.contained_buildings or {}) do
+            local bt = df.building_type[ib:getType()]
+            if bt == 'Bookcase' or bt == 'Box' then
+                for _, ci in ipairs(ib.contained_items) do
+                    local it = ci.item
+                    if it and ci.use_mode ~= df.building_item_role_type.PERM then
+                        if written_on(it) then n = n + 1
+                        else
+                            local okt, id = pcall(function() return it.subtype.id end)
+                            if okt and (id == 'ITEM_TOOL_QUIRE' or id == 'ITEM_TOOL_SCROLL') then blank = blank + 1 end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return n, blank
+end
+
 function get_locations()
     local site = dfhack.world.getCurrentSite()
     -- count = {...}: never an empty table, which would reach Python as a list
@@ -172,7 +209,28 @@ function get_locations()
                         if c.need_more[k] then e.short = e.short or {}; table.insert(e.short, k) end
                     end
                 end)
-                pcall(function() e.books = #b.copied_artifacts end)
+                -- (R29 W5) a library's books: the written items (codices, written
+                -- quires and scrolls) on its bookcases and in its chests. Until R29
+                -- `books` was #copied_artifacts, a list DF never fills in a fort:
+                -- 0 in every fort ever, while A held 6 codices and B 11 plus 11
+                -- copies (probe 25 Nov 21:32). That list stays as copied_artifacts
+                if t == 'LIBRARY' then
+                    pcall(function() e.copied_artifacts = #b.copied_artifacts end)
+                    pcall(function() e.books, e.blank = library_books(c) end)
+                    -- scholars no longer happy (the wiki: some dislike the post): given back
+                    pcall(function()
+                        for _, o in ipairs(b.occupations) do
+                            local u = o.unit_id ~= -1 and df.unit.find(o.unit_id)
+                            if u and df.occupation_type[o.type] == 'SCHOLAR' then
+                                local okc, cat = pcall(dfhack.units.getStressCategory, u)
+                                if okc and type(cat) == 'number' and cat <= 1 then
+                                    e.unhappy = e.unhappy or {}
+                                    table.insert(e.unhappy, {post = 'SCHOLAR', unit_id = u.id})
+                                end
+                            end
+                        end
+                    end)
+                end
                 -- (0.105.12, 14.1 step 4) who may come in (DF's location screen:
                 -- visitors, residents, members only): the flags set, by name
                 pcall(function()

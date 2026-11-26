@@ -88,12 +88,17 @@ def _loose_beasts(s: dict) -> list:
     pocket, in the caverns (on a cavern tile; a forgotten beast anywhere)."""
     L = _d(s.get("lures"))
     held = set(_l(L.get("held_beasts")))
+    # (R29 W6) never one in the underworld or the magma sea (an older bridge listed A's 8
+    # demons at z 0 first, marked cavern: the lure took a Scorpion Fiend)
+    deep = {h.get("id") for h in _l(_d(s.get("others_on_map")).get("hidden_great")) + _l(_d(s.get("hunt")).get("targets"))
+            if isinstance(h, dict) and str(h.get("layer") or "") in ("Underworld", "MagmaSea")}
     out = []
     for b in _l(L.get("beasts")):
-        if not isinstance(b, dict) or b.get("caged") or b.get("id") in held:
+        if not isinstance(b, dict) or b.get("caged") or b.get("id") in held or b.get("id") in deep:
             continue
         if b.get("cavern") or b.get("kind") == "forgotten beast":
             out.append(b)
+    out.sort(key=lambda b: 0 if b.get("kind") == "forgotten beast" else 1)     # stable: the bridge's order next
     return out
 
 
@@ -298,6 +303,12 @@ def _lure_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) ->
     cands.sort(key=lambda c: (0 if c["key"] in done else 1, c["key"]))
     if not cands:
         whys = [str(c.get("why")) for c in _l(L.get("candidates")) if isinstance(c, dict) and c.get("why")]
+        if not whys:
+            # (R29 W6) live 25 Nov (A, B, F): the AI's cavern openings were all its
+            # cavern wells (a hatch over the cavern's ceiling) and the doors of the
+            # well rooms 15-20 levels up: no door opens onto cavern floor
+            whys = ["no door of the AI's own on the seal's record: its cavern openings are wells' hatches over the "
+                    "cavern, no walking way in"]
         notes.append(f"{who} is sealed in the caverns {days} day(s), but no cavern door of the AI's has room behind "
                      "it for a lure pocket" + (f" ({whys[0]})" if whys else ""))
         return

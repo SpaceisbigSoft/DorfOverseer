@@ -4,7 +4,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-cistern'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 
@@ -775,6 +775,53 @@ function cistern_lever_spot(wx, wy, zw)
         end
     end
     return nil
+end
+
+-- (R29 W3) The water survey's own cistern plan (act_survey_water plans it a
+-- fort level a call, so it finishes), checked again on the map now: true, or
+-- false and why. B 25 Nov 21:25-21:33: the survey had planned "a 5x5 cistern
+-- at elevation 29 ... a 128-tile tunnel", and cistern_step searched every
+-- level again in one 3-second call, "search cut short" five times in 8
+-- minutes (A, F the same earlier). A plan still sound is taken as it is.
+function cistern_plan_valid(p)
+    if type(p) ~= 'table' or p.none or (tonumber(p.v) or 1) < CISTERN_V or type(p.cistern) ~= 'table'
+            or type(p.well) ~= 'table' or type(p.tunnel_path) ~= 'table' or #p.tunnel_path < 1
+            or type(p.water) ~= 'table' then
+        return false, 'no plan from the survey'
+    end
+    local c, z = p.cistern, p.cistern.z
+    local zi = tonumber(p.intake_z) or z
+    for x = c.x1 - 1, c.x2 + 1 do for y = c.y1 - 1, c.y2 + 1 do
+        if not solid_rock(tile_info(x, y, z)) then
+            return false, ('the cistern\'s rock is no longer solid at x%d y%d'):format(x, y)
+        end
+    end end
+    for x = c.x1, c.x2 do for y = c.y1, c.y2 do
+        if not capped(tile_info(x, y, p.well.z)) then return false, 'the floor over the cistern is open' end
+    end end
+    local f = tile_info(p.well.x, p.well.y, p.well.z)
+    if not (f and f.shape == 'FLOOR' and not f.outside and not f.building and not f.liquid)
+            or building_at(p.well.x, p.well.y, p.well.z) then
+        return false, 'the well\'s floor is taken'
+    end
+    for _, q in ipairs(p.tunnel_path) do
+        if not solid_rock(tile_info(q.x, q.y, zi)) then
+            return false, ('the tunnel\'s rock is no longer solid at x%d y%d'):format(q.x, q.y)
+        end
+    end
+    if not tunnel_closed(p.tunnel_path, zi) then return false, 'the tunnel is no longer capped' end
+    if type(p.shaft) == 'table' then
+        for zz = z, zi do
+            if not solid_rock(tile_info(p.shaft.x, p.shaft.y, zz)) then return false, 'the shaft\'s rock is no longer solid' end
+        end
+    end
+    if not source_water(tile_info(p.water.x, p.water.y, zi), true) then return false, 'its water is gone' end
+    local l = type(p.lever) == 'table' and tile_info(p.lever.x, p.lever.y, p.lever.z) or nil
+    if not (l and l.shape == 'FLOOR' and not l.building) or building_at(p.lever.x, p.lever.y, p.lever.z) then
+        p.lever = cistern_lever_spot(p.well.x, p.well.y, p.well.z)
+        if not p.lever then return false, 'no free floor for the floodgate\'s lever near the well' end
+    end
+    return true
 end
 
 -- (0.104.145) Is the cistern still closed where the water goes? The room's

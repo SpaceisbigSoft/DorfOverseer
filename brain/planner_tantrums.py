@@ -205,7 +205,9 @@ def _fight_watch_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     on. Nothing without the section (an older bridge). (item3) The action
     carries the Rules switch `end_tantrums` (on by default: a tantrum that
     attacks a citizen is ended in the game), and is sent again while armed
-    when the section's end_tantrums differs from the switch."""
+    when the section's end_tantrums differs from the switch. (R29 W8) The same
+    for the Rules switch `spare_beatings` (on by default: DF's beating of a
+    convict is spared; off: DF's own punishment is left alone)."""
     sec = _d(s.get("fights"))
     if not sec or "armed" not in sec:
         return
@@ -213,14 +215,23 @@ def _fight_watch_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     rules = player_rules(s)
     if rules.get("fight_watch", True):
         end = rules.get("end_tantrums", True) is not False
+        spare = rules.get("spare_beatings", True) is not False
+        act = {"type": "fight_watch", "on": True, "end_tantrums": end}
+        spare_differs = isinstance(sec.get("spare_beatings"), bool) and sec.get("spare_beatings") != spare
+        if not spare or spare_differs:
+            act["spare_beatings"] = spare     # (R29 W8) sent when off or changed: the bridge's default is on
         if not armed:
-            proposals.append(Proposal("fight_watch", {"type": "fight_watch", "on": True, "end_tantrums": end},
+            proposals.append(Proposal("fight_watch", act,
                                       "the fight watcher is off (a reload or a fresh start): arm it again, so a "
                                       "fight among the fort's own is capped at a brawl and broken up within "
                                       "ticks, not a game day later", 0))
         elif isinstance(sec.get("end_tantrums"), bool) and sec.get("end_tantrums") != end:
-            proposals.append(Proposal("fight_watch", {"type": "fight_watch", "on": True, "end_tantrums": end},
+            proposals.append(Proposal("fight_watch", act,
                                       "the Rules switch 'End a tantrum that attacks' is " + ("on" if end else "off")
+                                      + ": the fight watcher told so", 0))
+        elif spare_differs:
+            proposals.append(Proposal("fight_watch", act,
+                                      "the Rules switch 'Spare convicts DF's beatings' is " + ("on" if spare else "off")
                                       + ": the fight watcher told so", 0))
     elif armed or sec.get("on") is True:
         proposals.append(Proposal("fight_watch", {"type": "fight_watch", "on": False},

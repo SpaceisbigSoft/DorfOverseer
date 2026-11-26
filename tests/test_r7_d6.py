@@ -72,9 +72,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # chronic_convict_refused_days (E's killers let out, its chronic attackers free): 24 Nov
 # (0.105.112 item8) re-pinned after three deliberate keys: burial_assign_days, burial_assign_cooldown_ticks,
 # order_remake_days (B's coffin order in unreachable bauxite, Dodok unburied): 25 Nov
-DUMP_6298B4A = "c1bf49fbb132bc8005ed31cd851135c522f575ae5951d7c47c238104c4ed0ff5"
-KEYS_6298B4A = "4940cef26ec19433519bbfd6d5f5d2c34686c9b16070c503ccdb5c0018fda5da"
-COUNT_6298B4A = 1333
+# (0.105.122 W5) re-pinned after three deliberate keys: library_scholar_min_citizens, library_scholar_per,
+# library_scholars_max (a library's scholars writing the fort's own books): 25 Nov
+DUMP_6298B4A = "2b064735ab3108b8f55f58f262895ede0a90a69409695d7b2bfd93a1fa9f3d4d"
+KEYS_6298B4A = "b9f3c112a961ec00722bc7d9b56311955504c10ce8a8d5291133c41ca170a31e"
+COUNT_6298B4A = 1336
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

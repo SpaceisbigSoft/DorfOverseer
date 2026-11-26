@@ -62,6 +62,8 @@ def player_rules(s: dict) -> dict:
             "fight_watch": st.get("fight_watch") is not False,
             # (item3) the watcher ends a tantrum the moment that dwarf attacks a citizen: off only when the settings say so
             "end_tantrums": st.get("end_tantrums") is not False,
+            # (R29 W8) the watcher spares DF's beatings of convicts: off only when the settings say so
+            "spare_beatings": st.get("spare_beatings") is not False,
             # (0.105.0) tribute a civilisation asks: 'small' (refuses while the sum can't be read, 0.105.48), pay / refuse
             "tribute": st.get("tribute") if st.get("tribute") in ("small", "pay", "refuse") else "small",
             # (0.105.41, item 8) a peace proposal: the AI decides (sieges, sliders) / accept / refuse

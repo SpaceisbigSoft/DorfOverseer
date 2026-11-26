@@ -6,7 +6,7 @@
 -- and the names defined there and in the parts before it are in reach.
 
 if not SOCIETY_PART_LOCALS then qerror('ai-society-posts is a part of ai-society; run ai-society') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-posts'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-posts'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units = SOCIETY_PART_LOCALS.U, SOCIETY_PART_LOCALS.report_citizens, SOCIETY_PART_LOCALS.report_units   -- (r8) the hub's locals
 
@@ -22,7 +22,15 @@ local U, report_citizens, report_units = SOCIETY_PART_LOCALS.U, SOCIETY_PART_LOC
 -- the record (as the screen does); read back, undone if not seen.
 STAFF_SKILLS = {DOCTOR = {'DRESS_WOUNDS', 'DIAGNOSE', 'SURGERY', 'SET_BONE', 'SUTURE'}, DIAGNOSTICIAN = {'DIAGNOSE'},
                 SURGEON = {'SURGERY'}, BONE_DOCTOR = {'SET_BONE'}, SCRIBE = {'WRITING'},
-                TAVERN_KEEPER = {}}
+                TAVERN_KEEPER = {},
+                -- (R29 W5) a library's scholars write the fort's own books (DF wiki,
+                -- Library: "Assign a dwarf as a scholar (bonus if they have good writing
+                -- skills)"; medicine and mechanics give them more to write about).
+                -- Every codex in the six forts on 25 Nov was an old artifact: no scholar
+                -- post was ever made. A name the game lacks counts 0 (skill_of)
+                SCHOLAR = {'WRITING', 'PROSE', 'POETRY', 'READING', 'KNOWLEDGE_ACQUISITION', 'CRITICAL_THINKING',
+                           'LOGIC', 'MATHEMATICS', 'ASTRONOMY', 'CHEMISTRY', 'GEOGRAPHY', 'OPTICS_ENGINEER',
+                           'FLUID_ENGINEER', 'DIAGNOSE', 'MECHANICS'}}
 
 local function find_location(loc_id)
     local site = dfhack.world.getCurrentSite()
@@ -228,7 +236,7 @@ end
 -- only names the figure and unit, and the dwarf lists it). Only kinds the
 -- AI staffs (POST_KINDS), one record a kind, never one that exists.
 POST_KINDS = {HOSPITAL = {'DOCTOR', 'DIAGNOSTICIAN', 'SURGEON', 'BONE_DOCTOR'}, INN_TAVERN = {'TAVERN_KEEPER'},
-              LIBRARY = {'SCRIBE'}}
+              LIBRARY = {'SCRIBE', 'SCHOLAR'}}   -- (R29 W5) scholars
 
 function add_posts(loc_id, kinds, dry_run)
     local site = dfhack.world.getCurrentSite()
@@ -238,7 +246,12 @@ function add_posts(loc_id, kinds, dry_run)
     local allowed = {}
     for _, k in ipairs(POST_KINDS[ltype] or {}) do allowed[k] = true end
     local have = {}
-    for _, o in ipairs(loc.occupations) do have[df.occupation_type[o.type] or ''] = true end
+    for _, o in ipairs(loc.occupations) do
+        local k = df.occupation_type[o.type] or ''
+        -- (R29 W5) a library keeps several scholars: one more SCHOLAR post is
+        -- made while every one it has is filled (one record a call)
+        if k ~= 'SCHOLAR' or (o.histfig_id == -1 and o.unit_id == -1) then have[k] = true end
+    end
     local add = {}
     for _, k in ipairs(kinds or POST_KINDS[ltype] or {}) do
         if allowed[k] and not have[k] and df.occupation_type[k] ~= nil then table.insert(add, k) end

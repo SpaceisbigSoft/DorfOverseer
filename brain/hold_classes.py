@@ -44,7 +44,7 @@ BY_ACTION = {"strategist"}
 
 _EXPANSION_RULES = {
     # hunts, kill zones, lures, missions and contact
-    "hunt", "killzone", "killzone_parts", "lure_build", "lure_open", "lure_archer",
+    "hunt", "killzone", "killzone_parts", "lure_build", "lure_open", "lure_archer", "invite_siege",
     "beast_hunt",   # (0.105.54) the seal opened for a fight with the cavern beast: waits in a crisis
     "mission", "mission_pets", "mission_way", "contact", "training_squad",
     # building above ground and set pieces, landmarks, the grove, the garden court
@@ -159,7 +159,7 @@ STEP_CLASS = {
 }
 
 _EXPANSION_ACTIONS = {
-    "hunt_send", "build_killzone", "build_lure", "lure_open", "send_mission", "mission_way", "mission_pets",
+    "hunt_send", "build_killzone", "build_lure", "lure_open", "send_mission", "mission_way", "mission_pets", "invite_siege",
     "training_squad", "polish", "polish_room", "blueprint_sites", "build_blueprint", "landmark_step",
     "place_hall", "build_wings", "floor_rooms", "place_keep", "place_garden_court", "keep_grove",
     "place_siege_engine", "place_siege_shop", "fortify_post", "build_gatehouse", "cut_entrance",

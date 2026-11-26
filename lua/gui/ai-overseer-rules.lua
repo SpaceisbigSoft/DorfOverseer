@@ -7,7 +7,7 @@
 -- reqscript('gui/ai-overseer').name, as when it was one file.
 
 if not OVERSEER_PART_LOCALS then qerror('gui/ai-overseer-rules is a part of gui/ai-overseer; run gui/ai-overseer') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['gui/ai-overseer-rules'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['gui/ai-overseer-rules'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local widgets, S = OVERSEER_PART_LOCALS.widgets, OVERSEER_PART_LOCALS.S   -- (r9) the hub's locals
 
@@ -330,6 +330,18 @@ function RulesPage:init()
         label_width = 30,
         initial_option = p.settings.end_tantrums ~= false,
         on_change = function(v) p:set_field('end_tantrums', v) end,
+    })
+    -- (R29 W8) DF's beating of a convict spared by the watcher (off: DF's own
+    -- punishment left alone). (R29 fix) the right-hand column's free row 5,
+    -- between "New levels" (row 4) and the hospital burrow (4 + hrow): under
+    -- the tantrum switch it was row t + 14 = 28, past the window's last row 27
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'spare_beatings',
+        frame = {t = 5, l = 56, w = 40},
+        label = 'Spare convicts DF\'s beatings:',
+        label_width = 30,
+        initial_option = p.settings.spare_beatings ~= false,
+        on_change = function(v) p:set_field('spare_beatings', v) end,
     })
     -- (0.105.4 review) a cavern well may open a cavern nobody has found yet.
     -- (v35 fix) three-state: AI decides (the default: only when the fort is
@@ -718,6 +730,18 @@ function MilitaryPage:init()
         {text = 'a reserve stays home, one at a time, never with a threat near; off: you are told what to send',
          pen = COLOR_GREY}}})
     t = t + 20
+    -- (R29 W2) a siege invited on purpose, once (a test of the defence): the free
+    -- row t+2 (row 19) between the hunt's help line and the help text
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'invite_siege',
+        frame = {t = t + 2, l = 0, w = 44},
+        label = 'Invite a siege (test, once):',
+        label_width = 32,
+        initial_option = p.settings.invite_siege == true,
+        on_change = function(v) p:set_field('invite_siege', v) end,
+    })
+    table.insert(views, widgets.Label{frame = {t = t + 2, l = 46}, text = {
+        {text = "DFHack's force calls one army of an enemy civ; then off for good", pen = COLOR_GREY}}})
     table.insert(views, widgets.WrappedLabel{
         frame = {t = t + 3, l = 0, r = 2},
         text_to_wrap = 'Bedrooms, the dining hall, basic workshops and stockpiles are always built when '
@@ -753,6 +777,7 @@ function RulesPage:refresh()
     self.subviews.calm_burrow:setOption(s.calm_burrow ~= false, false)             -- (0.104.169)
     self.subviews.fight_watch:setOption(s.fight_watch ~= false, false)             -- (item1)
     self.subviews.end_tantrums:setOption(s.end_tantrums ~= false, false)           -- (item3)
+    self.subviews.spare_beatings:setOption(s.spare_beatings ~= false, false)       -- (R29 W8)
     self.subviews.tribute:setOption(s.tribute or 'small', false)                   -- (0.105.0)
     self.subviews.make_contact:setOption(s.make_contact ~= false, false)           -- (0.105.0)
     self.subviews.send_messenger:setOption(s.send_messenger == true, false)        -- (0.105.24)
@@ -786,6 +811,7 @@ function MilitaryPage:refresh()
     end
     self.subviews.killzones:setOption(s.killzones ~= false, false)                  -- (0.105.45)
     self.subviews.training_squad:setOption(s.training_squad ~= false, false)        -- (0.105.47)
+    self.subviews.invite_siege:setOption(s.invite_siege == true, false)             -- (R29 W2)
     self.subviews.gear_weapon:setOption(s.gear_weapon, false)
     self.subviews.prisoners:setOption(s.prisoners or 'keep', false)                -- (0.105.0)
     self.subviews.moon_cells:setOption(s.moon_cells ~= false, false)

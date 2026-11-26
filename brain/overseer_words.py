@@ -179,6 +179,7 @@ SHORT_WORDS = {
     "place_siege_engine": "place a ballista behind the entrance's fortifications",
     "place_siege_shop": "place a siege workshop (ballista parts and arrows), by the gate where there is room",
     "place_mood_shop": "place a strange mood's workshop on free floor in the fort (no level dug for it)",   # (item27)
+    "invite_siege": "invite one siege by DFHack's force (the Rules' test switch, once a fort)",   # (R29 W2)
     "build_killzone": "set traps in the narrow way in behind a gate or cavern opening, and a drawbridge",   # (0.105.45)
     "reset_cage_traps": "see that the kill zone's full cage traps can be emptied and loaded again",
     "squad_barracks": "give a squad its barracks",

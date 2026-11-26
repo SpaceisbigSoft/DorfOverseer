@@ -368,6 +368,7 @@ function defaults()
         calm_burrow = true,        -- (0.104.169) a dwarf in a tantrum kept in a free bedroom till calm (off: all let out)
         fight_watch = true,        -- (item1) a fight among citizens capped at a brawl and broken up in the game
         end_tantrums = true,       -- (item3) a tantrum that attacks a citizen ended in the game
+        spare_beatings = true,     -- (R29 W8) DF's beating of a convict spared by the fight watcher (off: DF's own)
         prisoners = 'keep',        -- (0.105.0) caged invaders: keep | release | kill (PRISONER_CHOICES)
         moon_cells = true,         -- (0.105.0) werebeast citizens locked in a cell round the full moon
         seal_caverns = true,       -- (0.105.0) the way down locked while a beast the squads can't take is in a cavern
@@ -553,6 +554,7 @@ function sanitize(s)
                         'calm_burrow',              -- (0.104.169) the calm-down burrows' switch
                         'fight_watch',              -- (item1) the in-game fight watcher's switch
                         'end_tantrums',             -- (item3) a tantrum that attacks a citizen ended
+                        'spare_beatings',           -- (R29 W8) DF's beatings of convicts spared
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
                         'make_contact',             -- (0.105.0) the messenger and Make contact
                         'send_messenger',           -- (0.105.24) the World screen driven to send it
@@ -677,6 +679,7 @@ function for_ai(s)
         calm_burrow = s.calm_burrow,               -- (0.104.169)
         fight_watch = s.fight_watch,               -- (item1)
         end_tantrums = s.end_tantrums,             -- (item3)
+        spare_beatings = s.spare_beatings,         -- (R29 W8)
         prisoners = s.prisoners,                   -- (0.105.0) round 3
         moon_cells = s.moon_cells,
         seal_caverns = s.seal_caverns,
@@ -937,6 +940,22 @@ function apply_preset(name, s, by, dry_run)
         dfhack.persistent.saveSiteData(PRESET_NAME_KEY, {name = name, by = by or 'window'})
     end
     return merged, applied
+end
+
+-- (R29 W2) "Invite a siege (test)" (Army tab): off by default; on, the AI has
+-- DFHack's force call one army at this fort (lua/ai-siege.lua invite_siege),
+-- once: the action records it in the site data and turns the switch off. A
+-- block of its own over defaults/sanitize/for_ai (set_rules takes it as an
+-- on/off switch: its default is false; no preset carries it).
+do
+    local base_defaults, base_sanitize, base_for_ai = defaults, sanitize, for_ai
+    function defaults() local d = base_defaults(); d.invite_siege = false; return d end
+    function sanitize(s)
+        local out = base_sanitize(s)
+        out.invite_siege = type(s) == 'table' and s.invite_siege == true
+        return out
+    end
+    function for_ai(s) local out = base_for_ai(s); out.invite_siege = sanitize(s).invite_siege; return out end
 end
 
 if dfhack_flags.module then

@@ -328,6 +328,26 @@ STAFF_POSTS = {"HOSPITAL": ("DIAGNOSTICIAN", "DOCTOR", "SURGEON", "BONE_DOCTOR")
 STAFF_MAX = {"SCRIBE": 2, "TAVERN_KEEPER": 2, "DIAGNOSTICIAN": 2, "DOCTOR": 2, "SURGEON": 2, "BONE_DOCTOR": 2}
 
 
+def scholars_wanted(s: dict, lib: dict, cfg: dict) -> int:
+    """(R29 W5) How many scholars a library keeps: the fort's own books are
+    written by its scholars (DF wiki, Library: a dwarf assigned as a scholar,
+    with desks, chairs and blank quires or scrolls in the library, "will
+    eventually write ... when they feel like it"; more scholars, more
+    chance). The AI never made the post: every codex in the six forts on 25
+    Nov was an old artifact, none written there. One per
+    `library_scholar_per` citizens up to `library_scholars_max`, none below
+    `library_scholar_min_citizens` (a small fort needs its hands) or while
+    the library has no blank paper to write on (they research meanwhile, but
+    the post costs a worker)."""
+    citizens = int(_d(s.get("dwarves")).get("total") or 0)
+    if citizens < int(cfg.get("library_scholar_min_citizens", 20)):
+        return 0
+    blank = int(_d(lib.get("have")).get("paper") or 0) or int(lib.get("blank") or 0)
+    if blank <= 0:
+        return 0
+    return max(1, min(int(cfg.get("library_scholars_max", 3)), citizens // max(1, int(cfg.get("library_scholar_per", 30)))))
+
+
 def _traction_rule(s: dict, cfg: dict, proposals: list, notes: list) -> None:
     """(0.88) A hospital wants a traction bench for broken bones that need
     traction (DF wiki, Hospital; region2's had beds, chests and a table, no
@@ -405,12 +425,25 @@ def _staff_rule(s: dict, cfg: dict, proposals: list) -> None:
     # A library's scribes only once it has paper or books (they copy and write).
     order = sorted((e for e in _l(_d(s.get("locations")).get("list")) if isinstance(e, dict)),
                    key=lambda e: list(STAFF_POSTS).index(e.get("type")) if e.get("type") in STAFF_POSTS else 9)
+    # (R29 W5) a scholar no longer happy in the post gives it back (the wiki: some
+    # dislike it); the post goes to another below (can_staff takes no unhappy one)
+    for e in order:
+        if e.get("type") == "LIBRARY" and e.get("id") is not None:
+            for u in _l(e.get("unhappy")):
+                if isinstance(u, dict) and u.get("post") == "SCHOLAR" and isinstance(u.get("unit_id"), int):
+                    proposals.append(Proposal("staff", {"type": "vacate_post", "location_id": e["id"],
+                                                        "unit_id": u["unit_id"]},
+                                              "a library scholar is unhappy in the post: it goes to another dwarf", 5))
+                    return
     for e in order:
         if e.get("type") not in STAFF_POSTS or e.get("id") is None:
             continue
         if e["type"] == "LIBRARY" and not (e.get("books") or _d(e.get("have")).get("paper")):
             continue
-        missing = [k for k in STAFF_POSTS[e["type"]] if k not in _d(e.get("jobs"))]
+        kinds = STAFF_POSTS[e["type"]]
+        if e["type"] == "LIBRARY":
+            kinds = kinds + (("SCHOLAR",) if scholars_wanted(s, e, cfg) else ())
+        missing = [k for k in kinds if k not in _d(e.get("jobs"))]
         if missing:
             hosp = e["type"] == "HOSPITAL"
             proposals.append(Proposal("staff", {"type": "add_posts", "location_id": e["id"], "posts": missing},
@@ -421,10 +454,21 @@ def _staff_rule(s: dict, cfg: dict, proposals: list) -> None:
             return
     for e in order:
         jobs = _d(e.get("jobs"))
-        for post in STAFF_POSTS.get(e.get("type"), ()):
+        kinds = STAFF_POSTS.get(e.get("type"), ())
+        if e.get("type") == "LIBRARY":
+            kinds = kinds + ("SCHOLAR",)
+        for post in kinds:
             j = _d(jobs.get(post))
             posts, filled = int(j.get("posts") or 0), int(j.get("filled") or 0)
-            if filled < min(posts, STAFF_MAX.get(post, posts)):
+            cap = scholars_wanted(s, e, cfg) if post == "SCHOLAR" else STAFF_MAX.get(post, posts)
+            if post == "SCHOLAR" and posts and filled >= posts and filled < cap:
+                # (R29 W5) every scholar's post filled and more wanted: one more post
+                proposals.append(Proposal("staff", {"type": "add_posts", "location_id": e.get("id"),
+                                                    "posts": ["SCHOLAR"]},
+                                          f"the library has {filled} scholar(s) of {cap} (more scholars, more "
+                                          "books written): make another scholar's post", 6))
+                return
+            if filled < min(posts, cap):
                 hosp = e.get("type") == "HOSPITAL"
                 what = post.lower().replace("_", " ")
                 proposals.append(Proposal("staff", {"type": "staff_location", "location_id": e.get("id"), "post": post},

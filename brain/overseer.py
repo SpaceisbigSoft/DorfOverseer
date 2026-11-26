@@ -632,7 +632,7 @@ def note_perf(state: dict, key: str) -> None:
         import bridge as _bridge
         cm = _bridge.CALL_MS
         row = PERF_METER.note(key, abs_tick(state), cm["ms"], cm["calls"], state.get("perf"),
-                              memstore.fort_dir(key))
+                              memstore.fort_dir(key), state=state)   # (R29 W7) the population and the tier
         if row is not None:
             PERF_LAST["ai_ms_day"] = row.get("ms_per_day")
         slow = perf.slow_sections(state.get("perf"))

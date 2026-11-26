@@ -243,8 +243,8 @@ def _():
     _stair(74, 60, 66, 80)
     r = B.dig_stairwell(params(dir="east", elev_lo=62, elev_hi=66, min_dist=10, max_dist=40), False)
     assert not r.ok and "too near another stair" in r.error, dict(r)   # the floors end at x80
-    r = B.dig_stairwell(params(dir="north", elev_lo=62, elev_hi=66, min_dist=10, max_dist=40), False)
-    assert not r.ok and r.rejected and "north" in r.error, dict(r)
+    r = B.dig_stairwell(params(dir="north", elev_lo=62, elev_hi=66, min_dist=10, max_dist=40, turned_from="test"), False)
+    assert not r.ok and r.rejected and "north" in r.error, dict(r)       # (R29 W8: turned_from set: no turn)
     assert designated_count() == 0
 
 
@@ -2135,6 +2135,11 @@ def _body():
     _cistern_game()
     step = lambda: B.cistern_step(False)
     r = step()
+    for _ in range(40):                     # (R29 W3) the search goes on over calls while a call's time runs out
+        if not r.searching:
+            break
+        assert r.waiting and "looking for a cistern site" in r.error, dict(r)
+        r = step()
     assert r.ok and r.stage == "digging", dict(r)
     plan = B.cistern_data().plan
     c, z, wx, wy = plan.cistern, plan.cistern.z, plan.well.x, plan.well.y

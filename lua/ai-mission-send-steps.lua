@@ -7,7 +7,7 @@
 -- reqscript('ai-mission-send').name and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-mission-send-steps is a part of ai-mission-send; run ai-mission-send') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.121'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-mission-send-steps'] = '0.105.122'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local id_of, click, press = PART_LOCALS.id_of, PART_LOCALS.click, PART_LOCALS.press   -- (r9) the hub's and earlier parts' locals
 
@@ -217,6 +217,80 @@ end
 -- stops there, every field it saw written down.
 
 SITE_HOVER_FRAMES, SITE_RECLICK_FRAMES = 4, 20   -- (r12) the hover before the site's click; a second click
+-- (R29, live 25 Nov: B-F's Make contact stopped 4-6 times a session "still on
+-- world/NORMAL after the click", the second click taking it only now and
+-- then) up to SITE_CLICKS clicks, SITE_RECLICK_FRAMES apart, each with the
+-- site written again in the same frame as the click (DF recomputes its hover
+-- from the real mouse between frames); the site step waits SITE_WAIT_FRAMES
+SITE_CLICKS = 4
+SITE_WAIT_FRAMES = 80
+-- (R29) a step that reads the screen's words is tried again while the words
+-- aren't there yet: DF draws a new panel a few frames after its mode changes
+-- (live 25 Nov: New mission's rows still held the fort's view, or DF's "The
+-- World" help window, when the goal's word was looked for in the same frame)
+READ_WAIT_FRAMES = 40
+READ_RETRY = {not_found = true, unreadable = true}
+
+-- (R29, live 25 Nov) DF's help window "The World" (main_interface.help,
+-- context POPUP_WORLD) opens over the World screen the first time a fort
+-- opens it, right over New mission's buttons (A's, C's and F's screens:
+-- "The World ... Don't show again ... Okay"). As DFHack's own hide-tutorials
+-- does: marked seen and hidden in the save (plotinfo.tutorial_seen /
+-- tutorial_hide) before the World screen opens, and closed (help.open false)
+-- if it shows anyway. Returns what was done: 'hidden', 'already', or nil.
+local function insert_sorted(vec, v)
+    local n = #vec
+    for i = 0, n - 1 do
+        if vec[i] == v then return false end
+    end
+    local ok = pcall(function() require('utils').insert_sorted(vec, v) end)
+    if not ok then vec:insert('#', v) end
+    return true
+end
+
+function world_popup_hide()
+    local done
+    pcall(function()
+        local W = df.help_context_type.POPUP_WORLD
+        if type(W) ~= 'number' then return end
+        local p = df.global.plotinfo
+        local a = insert_sorted(p.tutorial_seen, W)
+        local b = insert_sorted(p.tutorial_hide, W)
+        done = (a or b) and 'hidden' or 'already'
+    end)
+    return done
+end
+
+-- the help window over the World screen closed (a POPUP_ one only): true when it was open
+function world_popup_close()
+    local closed = false
+    pcall(function()
+        local help = df.global.game.main_interface.help
+        if not help.open then return end
+        local name = df.help_context_type[help.context]
+        if type(name) == 'string' and name:find('^POPUP_') then
+            help.open = false
+            closed = name
+        end
+    end)
+    return closed
+end
+
+-- (R29) the run's site written on the World screen: centred, focused, the
+-- hovered world tile; done again in the very frame of each click
+local function write_site(run)
+    local scr = world_screen()
+    if not scr then return false, 'the World screen closed' end
+    local s = df.world_site.find(run.site_id)
+    pcall(function() scr.region_cent_x, scr.region_cent_y = s.pos.x, s.pos.y end)
+    pcall(function() scr.focus_ax, scr.focus_ay = s.pos.x, s.pos.y end)
+    local okw, err = pcall(function()
+        if type(scr.focus_site) == 'number' then scr.focus_site = run.site_id
+        else scr.focus_site = s end
+    end)
+    if not okw then return false, tostring(err) end
+    return true
+end
 
 -- (r12 v6) the site's click: the mouse on (x, y) for SITE_HOVER_FRAMES, then
 -- the click, only while this run is still on its site step with the World
@@ -236,8 +310,14 @@ function hover_click(run, x, y)
         end)
         dfhack.timeout(SITE_HOVER_FRAMES, 'frames', function()
             local okt, top = pcall(world_on_top)
-            if RUN == run and not run.stopping and run.step_name == 'site' and okt and top then
+            -- (R29) and only while the map still shows world/NORMAL: a click
+            -- an earlier one already turned into New mission is never repeated
+            local okm, mode = pcall(function() return read_state(run).mode end)
+            if RUN == run and not run.stopping and run.step_name == 'site' and okt and top
+                    and okm and mode == 'NORMAL' then
                 run.clicked_waited = run.waited or 0       -- the AI's own click (tick: not the player's)
+                pcall(write_site, run)                     -- (R29) in the click's own frame
+                run.site_clicks = (run.site_clicks or 0) + 1
                 pcall(click, x, y)
             end
             gps.mouse_x, gps.mouse_y = ox, oy
@@ -253,6 +333,7 @@ STEP_DEFS = {
      expect = function(st) return not st.world, 'the World screen is open already' end,
      act = function(run)
          WORLD_VIA_KEY = false
+         run.popup = world_popup_hide()                    -- (R29) DF's "The World" help window
          local ok, a, b = press('World')
          run.world_via_key = WORLD_VIA_KEY or nil          -- (r12) opened by DF's key, not a click
          return ok, a, b
@@ -264,7 +345,7 @@ STEP_DEFS = {
      end},
     -- the site: hovering one set focus_site (recorded); here it is written and
     -- the map clicked in its middle, the click the player made on the site
-    site = {name = 'site',
+    site = {name = 'site', wait = SITE_WAIT_FRAMES,
      expect = function(st) return st.world and st.mode == 'NORMAL', 'not on world/NORMAL' end,
      act = function(run)
          local scr = world_screen()
@@ -272,14 +353,8 @@ STEP_DEFS = {
          -- (0.105.47) the map centred on the site first (region_cent_x/y in
          -- world tiles, as recorded: the tile under the screen's middle is the
          -- centre), so the hover under the click agrees with focus_site
-         pcall(function()
-             local s = df.world_site.find(run.site_id)
-             scr.region_cent_x, scr.region_cent_y = s.pos.x, s.pos.y
-         end)
-         local okw, err = pcall(function()
-             if type(scr.focus_site) == 'number' then scr.focus_site = run.site_id
-             else scr.focus_site = df.world_site.find(run.site_id) end
-         end)
+         -- (R29: write_site, also the hovered tile focus_ax/ay)
+         local okw, err = write_site(run)
          if not okw then return false, 'unwritable', 'focus_site could not be set: ' .. tostring(err):sub(1, 120) end
          -- (r12, live 22 Nov: the click at once left the World screen on
          -- NORMAL) the mouse put on the map's middle first and left there a
@@ -297,18 +372,16 @@ STEP_DEFS = {
      check = function(st, run)
          if not st.world then return 'bad', 'the World screen closed' end
          if st.mode == 'NORMAL' then
-             if not run.reclicked and (run.waited or 0) >= SITE_RECLICK_FRAMES and run.site_xy then
+             -- (R29) up to SITE_CLICKS clicks in all, SITE_RECLICK_FRAMES apart
+             local n = run.reclicks or 0
+             if run.site_xy and n + 1 < SITE_CLICKS and (run.waited or 0) >= SITE_RECLICK_FRAMES * (n + 1) then
+                 run.reclicks = n + 1
                  run.reclicked = true
-                 pcall(function()
-                     local scr = world_screen()
-                     local s = df.world_site.find(run.site_id)
-                     scr.region_cent_x, scr.region_cent_y = s.pos.x, s.pos.y
-                     if type(scr.focus_site) == 'number' then scr.focus_site = run.site_id
-                     else scr.focus_site = s end
-                 end)
+                 pcall(write_site, run)
                  hover_click(run, run.site_xy[1], run.site_xy[2])     -- (r12 v6) hovered too
              end
-             return 'wait', 'still on world/NORMAL after the click'
+             return 'wait', 'still on world/NORMAL after ' .. tostring(run.site_clicks or 1) .. ' click(s)' ..
+                            ' (focus_site ' .. tostring(st.focus_site) .. ')'
          end
          if st.mode ~= 'NEW_MISSION' then
              return 'bad', 'the click led to world/' .. tostring(st.mode) .. ', not NEW_MISSION (recorded)'
@@ -328,7 +401,7 @@ STEP_DEFS = {
      end},
     -- the goal's button on New mission -> Mission details with a new army
     -- controller (recorded for Diplomacy; the other goals' buttons go the same way)
-    goal = {name = 'goal',
+    goal = {name = 'goal', read_retry = true,
      expect = function(st, run)
          return st.mode == 'NEW_MISSION' and st.goal_ok == 'OKAY' and st.focus_site == run.site_id,
                 'not on world/NEW_MISSION with ' .. run.button .. ' OKAY for the site'
@@ -345,7 +418,7 @@ STEP_DEFS = {
          end
          for _, w in ipairs(G.words) do
              local ok, m, why = press_word(w, {rows = rows})
-             if ok then run.pressed = w; return true end
+             if ok then run.pressed = w; run.goal_unread = nil; return true end   -- (R29) an earlier read's miss forgotten
              if m ~= 'not_found' then return false, m, why end
          end
          -- (0.105.74) the word in capitals (DIPLOMACY, ATTACK; never a lowercase
@@ -361,6 +434,7 @@ STEP_DEFS = {
                  run.pressed = w .. ' (case ignored)'
                  run.screen = screen_dump(rows)
                  run.goal_ci = true
+                 run.goal_unread = nil
                  return true
              end
          end
@@ -427,7 +501,7 @@ end
 -- player never chose it): left as it is. Only a topic list read empty gets
 -- the "Make contact" row pressed (by its word, never the title "Make
 -- contact at ..."); a list that can't be read is left too (as recorded).
-STEP_DEFS.make_contact = {name = 'make_contact',
+STEP_DEFS.make_contact = {name = 'make_contact', read_retry = true,
     expect = function(st, run) return on_details(st, run, 'DIPLOMACY') end,
     act = function(run)
         local st = read_state(run)
@@ -456,7 +530,7 @@ STEP_DEFS.make_contact = {name = 'make_contact',
 -- ("No messengers available", recorded before one was appointed): stopped,
 -- the planner appoints one. Checked on the controller's messengers
 -- (assigned_epp_epp_id; DF's own field, not seen in the recording).
-STEP_DEFS.messenger = {name = 'messenger',
+STEP_DEFS.messenger = {name = 'messenger', read_retry = true,
     expect = function(st, run) return on_details(st, run, 'DIPLOMACY') end,
     act = function(run)
         local st = read_state(run)
@@ -519,7 +593,7 @@ end
 -- the right panel ("Pillage", "Demand one-time tribute", "Conquer and
 -- occupy", "Explore": never seen pressed) and must show on the
 -- controller after; an intent that can't be read then stops the run.
-STEP_DEFS.intent = {name = 'intent',
+STEP_DEFS.intent = {name = 'intent', read_retry = true,
     expect = function(st, run) return on_details(st, run, 'SITE_INVASION') end,
     act = function(run)
         local G = GOALS[run.goal] or {}
@@ -551,7 +625,7 @@ STEP_DEFS.intent = {name = 'intent',
 -- the controller's squads 0 -> 1 as the top row's box was ticked). A
 -- squad's row is its place in the screen's squad list; every box is found
 -- and its row read ("No specific orders") before any is pressed.
-STEP_DEFS.squads = {name = 'squads',
+STEP_DEFS.squads = {name = 'squads', read_retry = true,
     expect = function(st, run) return on_details(st, run, 'SITE_INVASION') end,
     act = function(run)
         local st = read_state(run)
@@ -607,7 +681,7 @@ STEP_DEFS.details = {name = 'details',
 -- after it is written down (not undone). (0.105.47, 17:17: the player
 -- checked both Mission details screens: only "Done assigning" and "Remove",
 -- no other confirmation: Done assigning is the confirm.)
-STEP_DEFS.confirm = {name = 'confirm',
+STEP_DEFS.confirm = {name = 'confirm', read_retry = true,
     expect = function(st, run) return on_details(st, run) end,
     act = function(run) return press_word('Done assigning') end,
     check = function(st, run)
