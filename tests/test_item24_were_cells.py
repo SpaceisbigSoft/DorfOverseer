@@ -231,13 +231,106 @@ def _():
     assert ok and G.pulls == 1 and E.cell_state(c).raised and E.piece_ids()[900] and E.piece_ids()[901]
     ok, why = E.set_raised(c, True, False)
     assert ok and why == "already" and G.pulls == 1
-    # a lever out of step: pulled twice; the bridge stuck: false after two
+    # (R32 a) a lever out of step: one pull per call, never two (a second could
+    # send a bridge on its way straight back); the next call pulls again
     lua.execute("local E = ...; E.G.stuck = true", E)
     ok, why = E.set_raised(c, False, False)
-    assert not ok and "two pulls" in why and G.pulls == 3
+    assert not ok and "out of step" in why and "next call" in why and G.pulls == 2, why
+    ok, why = E.set_raised(c, False, False)
+    assert not ok and G.pulls == 3
     lua.execute("local E = ...; E.G.stuck = false", E)
     ok, _ = E.set_raised(c, False, False)
-    assert ok and not E.cell_state(c).raised
+    assert ok and not E.cell_state(c).raised and G.pulls == 4
+
+
+# (R32 a) E, 26 Nov 04:08-09:14: three passers-by killed by the were cells' bridges
+# seconds after moon_cell moved them (the tile empty when it looked: DF moves the
+# bridge over the next ticks). The fake's cell: box x10-11 y11-12, bridge 11,13, lever 11,14.
+OWN = r"""
+local E = ...
+E.dfhack.units.isCitizen = function(u) return u.citizen == true end
+E.dfhack.units.isDanger = function(u) return u.danger == true end
+E.df.global.plotinfo = {civ_id = 5}
+E.G.links[900] = {901}
+E.put = function(u) E.G.units[1] = u end
+E.clear = function() E.G.units[1] = nil end
+"""
+
+
+def own_env():
+    lua, E = were_env()
+    lua.execute(OWN, E)
+    return lua, E, E.cells()[1]
+
+
+def put(lua, E, **u):
+    path = u.pop("path", None)
+    dest = u.pop("dest", None)
+    x, y, z = u.pop("at")
+    code = ("local E, x, y, z, cit, civ, dg = ...; E.put({id = 33, pos = {x = x, y = y, z = z}, citizen = cit, civ_id = civ, "
+            "danger = dg, path = {path = {x = {}, y = {}, z = {}}, dest = {x = -30000, y = -30000, z = -30000}}})")
+    lua.execute(code, E, x, y, z, u.get("citizen", False), u.get("civ", 9), u.get("danger", False))
+    if path:
+        for i, (px, py) in enumerate(path, 1):
+            lua.execute("local E, i, x, y = ...; local p = E.G.units[1].path.path; p.x[i] = x; p.y[i] = y; p.z[i] = 10",
+                        E, i, px, py)
+    if dest:
+        lua.execute("local E, x, y = ...; E.G.units[1].path.dest = {x = x, y = y, z = 10}", E, dest[0], dest[1])
+
+
+@test("lua: (R32 a) a were cell's bridge never moves with one of the fort's own next to it or about to cross it")
+def _():
+    need_lua()
+    lua, E, c = own_env()
+    G = E.G
+    waits = [  # (unit, words): each one makes the raise wait, no pull
+        (dict(at=(11, 14, 10), citizen=True), "next to"),          # on the lever tile in front
+        (dict(at=(12, 14, 10), citizen=True), "next to"),          # a diagonal
+        (dict(at=(10, 13, 10), civ=5), "next to"),                 # a tame animal (the fort's civ)
+        (dict(at=(12, 12, 10), civ=5), "next to"),                 # beside the cell, outside its box
+        (dict(at=(11, 18, 10), citizen=True, path=[(11, 17), (11, 16), (11, 15), (11, 14), (11, 13)]), "on its way"),
+        (dict(at=(20, 20, 10), citizen=True, dest=(11, 13)), "on its way"),
+    ]
+    for u, words in waits:
+        put(lua, E, **u)
+        for up in (True, False):
+            lua.execute("local E, r = ...; E.G.bridge.gate_flags.raised = r", E, not up)
+            ok, why = E.set_raised(c, up, False)
+            assert not ok and words in why and "waits" in why and G.pulls == 0, (u, up, why)
+            assert ("fling" if up else "crush") in why, why
+            ok, why = E.set_raised(c, up, True)
+            assert not ok and G.pulls == 0, (u, "dry run", why)     # a dry run says the same
+    lua.execute("local E = ...; E.G.bridge.gate_flags.raised = false", E)
+    fine = [  # none of these hold it
+        dict(at=(11, 12, 10), citizen=True),                       # the cell's werebeast inside, by the bridge
+        dict(at=(11, 14, 10), citizen=True, danger=True),          # a citizen in a rage (a danger)
+        dict(at=(11, 14, 10), civ=9),                              # a stranger beside it
+        dict(at=(11, 14, 9), citizen=True),                        # a level down
+        dict(at=(11, 16, 10), citizen=True),                       # two tiles off
+        dict(at=(11, 20, 10), citizen=True, path=[(11, 19), (11, 18), (11, 17), (11, 16), (11, 15), (11, 14), (11, 13)]),
+    ]
+    for u in fine:
+        put(lua, E, **u)
+        lua.execute("local E = ...; E.G.bridge.gate_flags.raised = false", E)
+        n = G.pulls
+        ok, why = E.set_raised(c, True, False)
+        assert ok and G.pulls == n + 1, (u, why)
+    # the units can't be read: it waits
+    lua.execute("local E = ...; E.G.bridge.gate_flags.raised = false; E.put({id = 1, citizen = true})", E)
+    n = G.pulls
+    ok, why = E.set_raised(c, True, False)
+    assert not ok and G.pulls == n, why
+    lua.execute("local E = ...; E.clear()", E)
+    # a bridge on its way: 'raising', never a second pull
+    lua.execute("local E = ...; local f = E.G.bridge.gate_flags; f.raised = false; f.raising = true", E)
+    n = G.pulls
+    ok, why = E.set_raised(c, True, False)
+    assert ok and why == "raising" and G.pulls == n, why
+    ok, why = E.set_raised(c, False, False)
+    assert not ok and "moving" in why and G.pulls == n, why
+    lua.execute("local E = ...; local f = E.G.bridge.gate_flags; f.raised = true; f.raising = false", E)
+    ok, why = E.set_raised(c, True, False)
+    assert ok and why == "already" and G.pulls == n
 
 
 @test("lua: moon_cell takes a ready were cell first, raises its bridge once alone inside, lowers it at the release")
@@ -268,6 +361,7 @@ def _():
         W.cell_state = function() return W.st end
         W.set_raised = function(c, up, dry)
             if W.occupied then return false, 'someone is on the cell\\'s bridge tile' end
+            if W.rising and not dry then return true, 'raising' end
             if not dry then W.st.raised = up; table.insert(W.sets, up) end
             return true
         end
@@ -278,7 +372,14 @@ def _():
     st = G.saved["ai-overseer/threats"]
     c = st.cells["4"]
     assert c.zone == "were:7:1" and c.kind == "were" and not c.locked, dict(r)    # the were cell, not jail 77
-    # moved in (the change close): alone inside -> the bridge raised, locked
+    # (R32 a) moved in, the bridge still rising (DF moves it over the next ticks): not a
+    # wall yet, so neither locked nor "not sealed"; the next call finds it up and locks
+    LUA.execute("local E = ...; E.G.W.rising = true", E)
+    r = E.moon_cell(LUA.table_from([4]), False, False, None, LUA.table_from({"move_in": True}))
+    c = G.saved["ai-overseer/threats"].cells["4"]
+    assert G.moved == 1 and not c.locked and r.raising and not r.not_sealed and len(r.waiting) == 1, dict(r)
+    LUA.execute("local E = ...; E.G.W.rising = false", E)
+    # alone inside -> the bridge raised, locked
     r = E.moon_cell(LUA.table_from([4]), False, False, None, LUA.table_from({"move_in": True}))
     c = G.saved["ai-overseer/threats"].cells["4"]
     W = G.W

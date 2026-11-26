@@ -40,6 +40,15 @@ slider only adds above it (its share stays the target when larger).
   third drafted the tavern keeper and two of the doctors; 14 of the 19
   soldiers badly missed friends, a drink and prayer. The guard (3 soldiers
   for 15+ adults, soldiers_wanted) stands.
+- (item8, the player, 26 Nov: "Trim to its slider") With no real threat on
+  the map (an invader, or a great danger that can reach the dwarves; not one
+  sealed in the caverns or the underworld) the cap eases from the third down to the slider's own share
+  (soldier_share), halving every `floor_quiet_half_life_days` since a threat
+  was last on the map (memory.defence_floor["present_tick"], else the peak's
+  tick; unknown: at once): the floor is a raise while a real threat is here
+  that decays after it has gone, and the slider is the target again. E, 26
+  Nov (Deep mine, Militarism 0: 10%): a forgotten beast gone kept the third
+  (31 of 95 adults; 39 with Goblin-haunted's quarter on top) for two years.
 """
 
 from __future__ import annotations
@@ -50,7 +59,7 @@ from digest import _d, _l
 from planner_core import TICKS_PER_DAY, abs_tick, wildlife_threat
 
 __all__ = ["defence_floor", "note_defence_floor", "floor_note", "present_threat", "soldier_power_avg",
-           "history_threat", "peaceful_ranged", "floor_cap_share", "hidden_from"]
+           "history_threat", "peaceful_ranged", "floor_cap_share", "hidden_from", "quiet_cap_share"]
 
 # the kinds whose learned factor (memory.fight_factor) a nominal beast takes
 BEAST_KEYS = ("ForgottenBeast", "Titan", "Megabeast", "Demon", "SemiMegabeast")
@@ -63,12 +72,19 @@ def _great(t: dict) -> bool:
     return bool(t.get("great_danger") or set(_l(t.get("kinds"))) & set(BEAST_KEYS))
 
 
-def present_threat(s: dict, memory, cfg: dict) -> tuple[float, str]:
+def present_threat(s: dict, memory, cfg: dict, real_only: bool = False) -> tuple[float, str]:
     """The biggest fight on the map now: (power, words). The invaders
-    together, or the strongest great danger alone. Wildlife is not counted."""
+    together, or the strongest great danger alone. Wildlife is not counted.
+    (item8) real_only: only a real threat, an invader or a great danger that
+    can reach the dwarves (or a were in beast form), not one sealed in the
+    caverns or the underworld (a Deep mine has them for years)."""
     from planner_military import fight_key, threat_power
     rows = [t for t in _l(_d(s.get("others_on_map")).get("threats"))
             if isinstance(t, dict) and not wildlife_threat(t, cfg)]
+    if real_only:
+        from planner_military_weres import were_ids
+        weres = were_ids(s)
+        rows = [t for t in rows if t.get("invader") or t.get("can_reach_dwarves") is True or t.get("id") in weres]
     ff = _d(getattr(memory, "fight_factor", None)) if memory is not None else {}
     cap = float(cfg.get("floor_learned_max", 4.0))
 
@@ -254,6 +270,27 @@ def floor_cap_share(s: dict, cfg: dict, present: float) -> float:
     return hi + (lo - hi) * t
 
 
+def quiet_cap_share(s: dict, memory, cfg: dict, hi: float) -> tuple[float, float | None]:
+    """(item8) The floor's cap with no threat on the map: from `hi` down to
+    the slider's own share (soldier_share), the raise halving every
+    `floor_quiet_half_life_days` since a threat was last here
+    (memory.defence_floor["present_tick"], else the peak's tick); fully
+    eased when neither is known, or once the raise is under a soldier in a
+    hundred. (share, quiet days or None)."""
+    from planner_military_squads import soldier_share
+    lo = min(hi, soldier_share(s, cfg))
+    d = _d(getattr(memory, "defence_floor", None)) if memory is not None else {}
+    t = _num(d.get("present_tick"))
+    if t is None and "present_tick" not in d:
+        t = _num(_d(d.get("peak")).get("tick"))     # a memory from before item8
+    if t is None:
+        return lo, None
+    days = max(0.0, (abs_tick(s) - float(t)) / TICKS_PER_DAY)
+    half = max(1.0, float(cfg.get("floor_quiet_half_life_days", 42)))
+    raise_ = (hi - lo) * 0.5 ** (days / half)
+    return (lo if raise_ < 0.01 else lo + raise_), days
+
+
 def defence_floor(s: dict, memory, cfg: dict, citizens: int | None = None) -> dict:
     """The defence floor: {soldiers, power (wanted), threat, why, per_soldier,
     present, cap}. soldiers 0 when the fort has met no threat."""
@@ -293,12 +330,20 @@ def defence_floor(s: dict, memory, cfg: dict, citizens: int | None = None) -> di
     # (item4) a peaceful fort hides from a great danger (no invasion) it is sheltered from or that can't reach it
     hidden = hidden_from(s, memory, cfg) if pres > 0 else ""
     share = floor_cap_share(s, cfg, 0.0 if hidden else pres)   # (0.105.97) by Militarism with no threat here now
+    quiet_days = None
+    real = present_threat(s, memory, cfg, real_only=True)[0] if pres > 0 else 0.0
+    if real <= 0:
+        # (item8) no real threat here now: the cap eases to the slider's share
+        q_share, quiet_days = quiet_cap_share(s, memory, cfg, float(cfg.get("floor_max_share", 0.33)))
+        share = min(share, q_share)
     cap = int(adults * share)
     # (as soldiers_wanted) a handful of dwarves keep to their work unless a threat is on the map now
     if (citizens or adults) < cfg.get("squad_min_citizens", 0) and pres <= 0:
         cap = 0
-    out.update({"soldiers": max(0, min(n, cap)), "wanted": n, "power": round(need, 1), "per_soldier": round(per, 1),
+    out.update({"soldiers": max(0, min(n, cap)), "wanted": n, "real": round(real, 1),
+                "power": round(need, 1), "per_soldier": round(per, 1),
                 "per_known": known, "cap": cap, "cap_share": round(share, 3), "hidden": hidden or None,
+                "quiet_days": None if quiet_days is None else round(quiet_days),
                 "militarism": int(float(_num(_d(_d(s.get("settings")).get("traits")).get("militarism")) or 0))})
     return out
 
@@ -314,6 +359,11 @@ def note_defence_floor(s: dict, memory, cfg: dict) -> None:
     d = getattr(memory, "defence_floor", None)
     d = d if isinstance(d, dict) else {}
     now = abs_tick(s)
+    # (item8) the quiet cap eases from the last time a real threat was here (None: none yet)
+    if present_threat(s, memory, cfg, real_only=True)[0] > 0:
+        d["present_tick"] = now
+    else:
+        d.setdefault("present_tick", None)
     if pres >= _decayed(_d(d.get("peak")), now, cfg) - 1e-9:
         d["peak"] = {"power": round(pres, 1), "tick": now, "why": why.split(" (strength")[0]}
     memory.defence_floor = d
@@ -330,7 +380,10 @@ def floor_note(f: dict, have: int, militarism_want: int) -> str:
         extra = (f" (cap {f.get('cap')} = {sh * 100:.0f}% of the adults"
                  + (f" at Militarism {f.get('militarism', 0):+d}: {f['hidden']}" if f.get("hidden") else
                     " while a threat is on the map" if f.get("present", 0) > 0 else
-                    f" at Militarism {f.get('militarism', 0):+d}" if sh < 0.33 - 1e-6 else "")
+                    (f" at Militarism {f.get('militarism', 0):+d}"
+                     + (f", easing to the slider {f.get('quiet_days')} days after the last threat"
+                        if f.get("quiet_days") is not None else ", the slider's share with no threat here"))
+                    if sh < 0.33 - 1e-6 else "")
                  + f"; {f.get('wanted')} to match)")
     elif f.get("hidden"):
         extra = f" (at Militarism {f.get('militarism', 0):+d}: {f['hidden']})"   # (item4) said even when not capped

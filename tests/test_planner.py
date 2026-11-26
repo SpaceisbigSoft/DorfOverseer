@@ -3433,7 +3433,7 @@ def _():
     assert not by_rule(plan(s, m)[0], "fortify")
 
 
-@test("0.105.12/0.105.23 machinery: on by default; a lever for the founding hatch, then linked; none elsewhere")
+@test("0.105.12/0.105.23 machinery: on by default; a lever for the founding hatch, then linked; (R32 b) every fort")
 def _():
     hatch = [{"id": 7, "kind": "hatch", "lever_away": False, "levers": []}]
     s = entrances({"door_spots": 0, "width": 1, "x": 108, "y": 149, "sealed": True, "equipment": hatch})
@@ -3445,10 +3445,13 @@ def _():
     s["entrances"]["free_levers"] = [{"id": 90, "x": 108, "y": 120, "z": 160}]
     g = by_rule(plan(s, Memory())[0], "gate_lever")
     assert g and g[0].action == {"type": "link_lever", "lever_id": 90, "target_id": 7}, [p.action for p in g]
+    # (R32 b) a fort of low Engineering and Fortification too (B's gatehouse hatch had none)
     s["settings"]["traits"] = {"engineering": 0, "fortification": 0}
-    assert not by_rule(plan(s, Memory())[0], "gate_lever")
+    g = by_rule(plan(s, Memory())[0], "gate_lever")
+    assert g and g[0].action == {"type": "link_lever", "lever_id": 90, "target_id": 7}, [p.action for p in g]
     s["entrances"]["free_levers"] = []
-    assert not by_rule(plan(s, Memory())[0], "gate_lever")
+    g = by_rule(plan(s, Memory())[0], "gate_lever")
+    assert g and g[0].action == {"type": "place_gate_lever", "entrance_id": eid}, [p.action for p in g]
     PLANNER_CONFIG["hatch_levers"] = False
     try:
         s["settings"]["traits"] = {"engineering": 60}
@@ -3920,9 +3923,11 @@ def _():
     p = by_rule(plan(lever_state(), m)[0], "gate_lever")
     assert p and p[0].action == {"type": "link_lever", "lever_id": 67938, "target_id": 51799}, p
     assert "x35 y120" in p[0].reason
-    for s in (lever_state(away=True), lever_state(lever_linked=1), lever_state(pending=True),
-              lever_state(levers=(51800, 67938))):
+    for s in (lever_state(away=True), lever_state(pending=True), lever_state(levers=(51800, 67938))):
         assert not by_rule(plan(s, Memory())[0], "gate_lever")
+    # (R32 b) the AI gate lever linked elsewhere: a lever of its own for this bridge
+    g = by_rule(plan(lever_state(lever_linked=1), Memory())[0], "gate_lever")
+    assert g and g[0].action == {"type": "place_gate_lever", "entrance_id": 1}, [x.action for x in g]
     # a bridge no lever inside works: linked too, and not walled over meanwhile
     s = entrances({"door_spots": 0, "width": 3, "x": 35, "y": 120, "bridges_unworked": [51799]})
     s["military"]["gates"] = [{"id": 67938, "linked": 0, "pending": False, "x": 36, "y": 124, "z": 179}]
@@ -5240,9 +5245,15 @@ def _():
     assert not by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap"), "the month's swaps are used"
     s["date"]["tick"] += 29 * 1200
     assert by_rule(plan(copy.deepcopy(s), m)[0], "soldier_swap")
-    big = copy.deepcopy(s)                                           # (0.104.66) no trim while the keen wait
+    big = copy.deepcopy(s)
     big["military"]["soldiers"] = 60
-    assert not by_rule(plan(big, Memory())[0], "squad_trim")
+    # (item8, "Trim to its slider") the keen waiting no longer hold the trim for ever (E: 14 keen, 39
+    # soldiers at Militarism 0); only the keen lift (a crisis) does
+    assert by_rule(plan(big, Memory())[0], "squad_trim")
+    mk = Memory()
+    from planner_core import abs_tick
+    mk.keen_lift = {"n": 5, "tick": abs_tick(big)}
+    assert not by_rule(plan(big, mk)[0], "squad_trim")
     big["needs"]["keen_civilians"] = 0
     assert by_rule(plan(big, Memory())[0], "squad_trim")
 

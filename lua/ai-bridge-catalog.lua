@@ -10,7 +10,7 @@
 -- reqscript('ai-bridge').<name>). Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-catalog is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.127'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-catalog'] = '0.105.128'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 ACTIONS = {
     join_levels = act_join_levels,
@@ -243,6 +243,19 @@ ACTIONS = {
         end
         -- (0.105.40b fix) release_only: the held locks freed, none made (run_action sets it while halted)
         return reqscript('ai-insane').guard({units = ids, release_only = a.release_only == true}, a.dry_run == true)
+    end,
+    -- (item7) the melancholy and raving kept from dying of thirst and hunger: DF lets
+    -- them neither drink nor eat, so their timers are set back (lua/ai-insane.lua water)
+    insane_water = function(a)
+        if type(a.units) ~= 'table' then return reject('insane_water: units is a list of unit ids') end
+        local ids = {}
+        for _, id in ipairs(a.units) do
+            local n = type(id) == 'number' and math.tointeger(id) or nil
+            if not n then return reject('insane_water: units is a list of unit ids') end
+            table.insert(ids, n)
+        end
+        if #ids == 0 then return reject('insane_water: no unit ids') end
+        return reqscript('ai-insane').water({units = ids}, a.dry_run == true)
     end,
     -- (item3) a killer among the fort's own locked away in a cell (lua/ai-killers.lua)
     killer_cell = function(a)
@@ -850,6 +863,7 @@ for _, name in ipairs({
     -- (0.105.40) world cleanup: each dry run counts and returns before it removes anything
     'cleanup_items', 'cleanup_units', 'cleanup_spatter', 'cleanup_dead_units',
     'insane_guard',   -- (0.105.40b) its dry run counts the doors and changes nothing
+    'insane_water',   -- (item7) its dry run names who is due and sets no timer
     'killer_cell',    -- (item3) its dry run finds the rooms and changes nothing
     'shelter_pick', 'squad_station',   -- (0.105.45) each dry run checks and changes nothing
     'stuck_reset',    -- (0.105.45) its dry run counts the lever's pull jobs and changes nothing

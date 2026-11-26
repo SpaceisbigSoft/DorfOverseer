@@ -812,7 +812,7 @@ function build_step(a, dry_run, layers)
         if not place('build', 'H', plan.top) then return {ok = false, error = 'the game would not place the hatch'} end
         return {ok = true, stage = 'hatch_placed'}
     elseif st.state == 'link' then
-        if mechanisms() < 2 then return wait('2 free mechanisms are needed for the link', {mechanisms = mechanisms()}) end
+        if mechanisms() < 2 then return wait('2 free mechanisms are needed for the link (the brain has them made meanwhile)', {mechanisms = mechanisms()}) end
         name_it(st.lever.b, LEVER_NAME)
         name_it(st.hatch.b, GATE_NAME)
         if dry_run then return {ok = true, dry_run = true, stage = 'link'} end
@@ -825,7 +825,7 @@ function build_step(a, dry_run, layers)
         if sealed() then return wait('the caverns are sealed against a great beast') end
         local near = dangers_near(plan.out, BREACH_CLEAR)
         if #near > 0 then return wait(('%s is near the cavern side'):format(near[1].name)) end
-        if free_doors() < 1 then return wait('a door is needed in store before the cavern is opened') end
+        if free_doors() < 1 then return wait('a door is needed in store before the cavern is opened (the brain has one made meanwhile)', {doors_free = 0}) end
         if st.closed then
             -- the diggers go down through it
             if dry_run then return {ok = true, dry_run = true, stage = 'open_for_breach'} end
@@ -973,6 +973,13 @@ function report(layers)
     local by = beyond(d, st.closed == true)
     out.beyond, out.beyond_first = by.n, by.first
     if st.state == 'ready' or st.state == 'door' or st.state == 'door_building' then out.webs = webs_beyond(plan.out, st.closed == true) end
+    -- (item6, R32 e) the parts a waiting step wants, so the brain orders them
+    -- rather than asking for the step every cycle (D: "2 free mechanisms are
+    -- needed for the link" 69 times; C waited for a door in store)
+    if st.state == 'link' then out.mechanisms = mechanisms() end
+    if st.state == 'breach' or st.state == 'breaching' or st.state == 'door' or st.state == 'door_building' then
+        out.doors_free = free_doors()
+    end
     out.watch = watch_alive() or nil
     out.watch_error = CW_WATCH.error
     -- an open gate (a reload, the brain's open): the watcher on

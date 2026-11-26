@@ -4,7 +4,7 @@
 -- into its own environment, so every name here is reqscript('ai-gates').name
 -- and the helpers defined there (tile, building_at, key, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-save'] = '0.105.127'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-save'] = '0.105.128'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, key, unkey, pull, DAY_TICKS = U, key, unkey, pull, DAY_TICKS   -- (13e) the hub's and earlier parts' locals
 
@@ -98,7 +98,8 @@ function open_saved_gates(saved)
             if g.kind == 'bridge' then
                 local ok, raised = pcall(function() return b.gate_flags.raised end)
                 if ok and raised then
-                    if g.lever_id and #b.jobs == 0 and not bridge_occupied(b) and pull(g.lever_id) then
+                    if g.lever_id and #b.jobs == 0 and not bridge_occupied(b) and not bridge_hold(b, false)   -- (item2)
+                            and pull(g.lever_id) then
                         opened = opened + 1
                     end
                     waiting = waiting + 1

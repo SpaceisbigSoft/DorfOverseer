@@ -6,7 +6,7 @@
 -- and the names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-threats-actions is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.127'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-actions'] = '0.105.128'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, now_tick, name_of, save_state, unkey, is, citizens, fire_points, each_job, changed, okey, watcher_held, lure_open_ids = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.unkey, PART_LOCALS.is, PART_LOCALS.citizens, PART_LOCALS.fire_points, PART_LOCALS.each_job, PART_LOCALS.changed, PART_LOCALS.okey, PART_LOCALS.watcher_held, PART_LOCALS.lure_open_ids   -- (r8) the hub's and earlier parts' locals
 
@@ -833,13 +833,22 @@ function moon_cell(ids, release, dry_run, txt, opts)
                         -- (R30b) raised, yet DF's walk map still joins the cell to the corridor:
                         -- not locked (said; the next call looks again)
                         local okj, open = false, nil
-                        if okr and up and not dry_run then
+                        -- (R32 a) still rising (DF moves it over the next ticks): not a wall yet,
+                        -- the walk map not yet cut; neither locked nor "not sealed" (the next call looks)
+                        local rising = okr and up and why == 'raising'
+                        if rising then
+                            table.insert(out.waiting, name_of(u, txt))
+                            out.raising = out.raising or {}
+                            table.insert(out.raising, name_of(u, txt))
+                        elseif okr and up and not dry_run then
                             okj, open = pcall(function()
                                 local wc = W().find(c.zone)
                                 return wc and W().joined(wc)
                             end)
                         end
-                        if okr and up and okj and open == true then
+                        if rising then
+                            -- said above
+                        elseif okr and up and okj and open == true then
                             table.insert(out.waiting, name_of(u, txt))
                             out.not_sealed = out.not_sealed or {}
                             table.insert(out.not_sealed, name_of(u, txt) .. ': the bridge is up, yet DF walks out of the cell')

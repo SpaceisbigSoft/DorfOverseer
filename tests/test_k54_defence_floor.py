@@ -79,20 +79,31 @@ def _():
       "0.105.97: 12% at -50 and below)")
 def _():
     # (0.105.97) at Militarism -100 the cap with no threat here is 12%: int(40 x .12) = 4
+    # (item8) the cap at its height only just after a threat was on the map (present_tick now)
     m0 = Memory()
     m0.culture = {"sieges": 2}
+    m0.defence_floor = {"present_tick": DF.abs_tick(fort())}
     assert DF.defence_floor(fort(), m0, CFG, 40)["soldiers"] == 4
     s = fort(mil=0)
     m = Memory()
     m.culture = {"sieges": 2}
+    m.defence_floor = {"present_tick": DF.abs_tick(s)}
     f = DF.defence_floor(s, m, CFG, 40)
     # 40 x 1.25 = 50 at 4 a soldier (none known) -> 13; the cap int(40 x 0.33) = 13
     assert f["soldiers"] == 13 and "2 siege(s) on record" in f["why"], f
     assert soldiers_wanted(s, 40, CFG, memory=m) == 13
-    # the world report's siege counts count too (an older memory)  (Militarism 0: the slider's 4 below)
+    # the world report's siege counts count too (an older memory)
     s2 = copy.deepcopy(s)
     s2["world"] = {"sieges": [{"id": 5, "n": 1}]}
-    assert DF.defence_floor(s2, Memory(), CFG, 40)["soldiers"] == 10      # 40 / 4
+    m2 = Memory()
+    m2.defence_floor = {"present_tick": DF.abs_tick(s2)}
+    assert DF.defence_floor(s2, m2, CFG, 40)["soldiers"] == 10      # 40 / 4
+    # (item8) no threat on the map since none can say when: the cap is the slider's share (10% at 0, 5% at -100)
+    m.defence_floor = {}
+    assert DF.defence_floor(s, m, CFG, 40)["soldiers"] == 4
+    m0.defence_floor = {}
+    assert DF.defence_floor(fort(), m0, CFG, 40)["soldiers"] == 2
+    assert soldiers_wanted(fort(), 40, CFG, memory=m0) == 3        # the guard stands
 
 
 @test("a siege on the map: the invaders summed, the floor at once; capped at a third of the adults")
@@ -177,6 +188,7 @@ def _():
     s = fort(mil=0, adults=20)                                  # (0.105.97) the cap a third at Militarism 0
     m = Memory()
     m.culture = {"sieges": 5}
+    m.defence_floor = {"present_tick": DF.abs_tick(s)}          # (item8) just after the threat: the cap at its height
     # floor wants 80/4 = 20, capped at int(20 x .33) = 6; the civilian cap 20 - 12 = 8
     assert soldiers_wanted(s, 20, CFG, memory=m) == 6
     s = fort(mil=0, adults=16)

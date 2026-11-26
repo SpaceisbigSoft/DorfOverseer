@@ -84,6 +84,15 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
             memory.released[str(p.action["unit_id"])] = now
             for k in [k for k, t in memory.released.items() if not isinstance(t, int) or now - t > 168 * TICKS_PER_DAY]:
                 del memory.released[k]
+        if p.action.get("type") == "squad_trim" and ok is True:
+            # (item8) who the trim sent home, when: a squad's worth a season, and the fill passes them over
+            if not isinstance(getattr(memory, "trimmed", None), dict):
+                memory.trimmed = {}
+            for x in _l(_d(r).get("removed")):
+                if isinstance(x, dict) and x.get("unit_id") is not None:
+                    memory.trimmed[str(x["unit_id"])] = now
+            for k in [k for k, t in memory.trimmed.items() if not isinstance(t, int) or now - t > 168 * TICKS_PER_DAY]:
+                del memory.trimmed[k]
         if p.rule == "siege_cleanup" and ok is not None:
             memory.pruned_after = int(memory.last_threat_tick or 0)        # (0.104.140) once an attack, done or not
         if (p.action.get("type") == "squad_orders" and isinstance(p.action.get("kill"), list)
@@ -150,7 +159,10 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                 memory.last_fired[p.rule] = now - cooldown + TICKS_PER_DAY
             elif p.rule == "found" and not brief_timeout_now:
                 memory.last_fired[p.rule] = now          # the ground won't allow it: ask again in 3 days
-            elif p.rule in ("burial_others",):     # (item4) its own cooldown begins at a refusal too
+            elif p.rule in ("burial_others", "prospect"):     # (item4) its own cooldown begins at a refusal too
+                # (item6, R32 e) prospect too: refused "no uncovered gems ... and no vein
+                # within 30 tiles" it asked again every cycle, the next metal each time
+                # (the refusal back-off is the metal's): now its prospect_days pace
                 # (item4) the rule's own cooldown begins at a refusal too (it
                 # began only at a success: burial_others_cooldown_ticks never
                 # held a refused mark_dump, B 24 Nov, 16 refusals)

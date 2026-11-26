@@ -15,16 +15,18 @@
 --                        (R29 W8) sealed: no way out but its bridge (sealed(c));
 --                        cell_state's joined: raised, yet DF's walk map joins it to the lever
 --   find(key) / zone_of(c)  a cell by its key; the cell as a box for moon_cell's zone code
---   set_raised(c, up, dry_run)  the lever pulled (ai-gates pull_instant: DFHack's
---                        `lever pull --instant`, no dwarf) until the bridge stands as
---                        asked; never while anyone is on the bridge tile (raising
---                        flings them, lowering destroys what lies under it)
+--   set_raised(c, up, dry_run)  the lever pulled once (ai-gates pull_instant: DFHack's
+--                        `lever pull --instant`, no dwarf) toward the state asked;
+--                        never while anyone is on the bridge tile (raising flings
+--                        them, lowering destroys what lies under it) nor (R32 a)
+--                        while one of the fort's own is next to it or about to
+--                        cross it (own_near)
 --   link(dry_run)        the action were_cells: each built lever not yet linked is
 --                        linked to its bridge (ai-gates link_lever: a mechanic's job)
 --   report(held)         the threats section's were.were_cells
 --   piece_ids()          the bridges and levers, for ai-threats' claimed_doors
 --
--- Tests replace building_at, occupied, pull, lever_links and projects.
+-- Tests replace building_at, occupied, own_near, pull, lever_links and projects.
 --@ module = true
 
 LEVER_NAME = 'AI were cell lever'
@@ -236,9 +238,71 @@ function pull(lever_id)
     return ok and done or false
 end
 
--- The bridge raised (up) or lowered: true, or false and why. An instant
--- pull sets the bridge to the lever's new state, so a lever out of step
--- with its bridge needs a second pull (checked, and the tile looked at again).
+-- (R32 a) E, 26 Nov 04:08, 07:01, 09:14: three passers-by (an administrator,
+-- a stonecrafter, a fisherdwarf) killed by the were cells' bridges seconds
+-- after moon_cell moved them, the bridge tile empty when it looked. DFHack's
+-- `lever pull --instant` only skips the dwarf's job: it hands the linked
+-- bridge the lever's state (setTriggerState) and DF moves it over the next
+-- ticks, so the bridge comes up or down a moment after the check; a unit
+-- moving onto the tile is still on the tile it left (pos changes on
+-- arrival). So a bridge waits while one of the fort's own (a citizen, a
+-- tame animal, a peaceful guest of the fort's civ: ai-gates-watch
+-- own_on_bridge's test) is on its tile, on any tile next to it but the
+-- cell's own (the werebeast inside), or has the tile in its path's next
+-- PATH_STEPS steps (or as the path's end). nil, or why it waits; can't
+-- tell: it waits. Tests replace this (or units.active, isCitizen, isDanger).
+PATH_STEPS = 6
+local function own_unit(u, civ)
+    local okc, cit = pcall(dfhack.units.isCitizen, u, true)
+    if not ((okc and cit) or (civ ~= nil and u.civ_id == civ)) then return false end
+    local okd, danger = pcall(dfhack.units.isDanger, u)
+    return not (okd and danger)
+end
+
+function own_near(c)
+    local b = c.bridge
+    local function inside(x, y) return c.x1 and x >= c.x1 and x <= c.x2 and y >= c.y1 and y <= c.y2 end
+    local function on(p) return p and p.x == b.x and p.y == b.y and p.z == b.z end
+    local ok, why = pcall(function()
+        local okv, civ = pcall(function() return df.global.plotinfo.civ_id end)
+        civ = okv and civ or nil
+        for _, u in ipairs(df.global.world.units.active) do
+            if not dfhack.units.isDead(u) and own_unit(u, civ) then
+                local p = u.pos
+                local dx, dy = math.abs(p.x - b.x), math.abs(p.y - b.y)
+                if p.z == b.z and dx <= 1 and dy <= 1 and not inside(p.x, p.y) then
+                    return ('unit %s is %s'):format(tostring(u.id),
+                        (dx == 0 and dy == 0) and 'on the cell\'s bridge tile' or 'next to the cell\'s bridge')
+                end
+                local okp, crosses = pcall(function()
+                    local pp = u.path.path
+                    local n = 0
+                    for i, x in ipairs(pp.x) do
+                        if n >= PATH_STEPS then break end
+                        n = n + 1
+                        if on({x = x, y = pp.y[i], z = pp.z[i]}) then return true end
+                    end
+                    return on(u.path.dest)
+                end)
+                if okp and crosses then
+                    return ('unit %s is on its way over the cell\'s bridge'):format(tostring(u.id))
+                end
+            end
+        end
+        return nil
+    end)
+    if not ok then return 'the units near the bridge could not be read' end
+    return why
+end
+
+-- The bridge raised (up) or lowered: true, or false and why. (R32 a) At
+-- most one pull per call: an instant pull hands the bridge the lever's
+-- state, so a lever out of step with its bridge leaves it as it was, and
+-- the next call (the tiles looked at again) pulls again; a second pull in
+-- the same call could send a bridge already on its way straight back down,
+-- onto whoever stepped on it. Never while anyone is on the bridge tile or
+-- one of the fort's own is near it (own_near). A bridge still on its way
+-- to the state asked: true, 'raising' / 'lowering' (not yet a wall).
 function set_raised(c, up, dry_run)
     up = up and true or false
     local st = cell_state(c)
@@ -246,18 +310,21 @@ function set_raised(c, up, dry_run)
     if not st.lever_id then return false, 'no lever in front of the cell' end
     if not st.built then return false, 'the cell\'s bridge or lever is not built yet' end
     if not st.linked then return false, 'the cell\'s lever is not linked to its bridge yet' end
-    if st.raised == up then return true, 'already' end
+    if st.raised == up then return true, st.moving and (up and 'raising' or 'lowering') or 'already' end
     if st.moving then return false, 'the bridge is moving' end
-    for try = 1, 2 do
-        if occupied(c.bridge) then
-            return false, 'someone is on the cell\'s bridge tile ('
-                .. (up and 'raising would fling them' or 'lowering would crush them') .. ')'
-        end
-        if dry_run then return true, 'dry run' end
-        if not pull(st.lever_id) then return false, 'the lever pull was refused' end
-        if cell_state(c).raised == up then return true, (up and 'raised' or 'lowered') end
+    local harm = up and 'raising would fling them' or 'lowering would crush them'
+    if occupied(c.bridge) then
+        return false, 'someone is on the cell\'s bridge tile (' .. harm .. ')'
     end
-    return false, 'the bridge did not move after two pulls'
+    local near = own_near(c)
+    if near then return false, near .. ' (' .. harm .. '): it waits' end
+    if dry_run then return true, 'dry run' end
+    if not pull(st.lever_id) then return false, 'the lever pull was refused' end
+    local now = cell_state(c)
+    if now.raised == up then
+        return true, now.moving and (up and 'raising' or 'lowering') or (up and 'raised' or 'lowered')
+    end
+    return false, 'the pull left the bridge as it was (its lever out of step): the next call pulls again'
 end
 
 -- The action: each built lever linked to its own bridge (one link job each,

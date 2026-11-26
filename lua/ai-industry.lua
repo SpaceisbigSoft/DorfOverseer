@@ -404,7 +404,8 @@ end
 -- walk on: that tile opens the drift. {path = {entry ... last rock}, vein,
 -- mat} or nil. The vein tiles may be hidden: a drift is how a fort finds ore.
 DRIFT_MAX = 30          -- tiles of rock to the vein at most
-DRIFT_VISIT_MAX = 2500  -- tiles looked at in one search (each checks its 3x3x3 for safety)
+DRIFT_VISIT_MAX = 8000  -- tiles looked at in all (each checks its 3x3x3 once: item6 keeps the checks)
+DRIFT_SEED_VISIT = 1000 -- (item6) ...and from one vein tile (a 30-tile drift's diamond is ~1,800)
 DRIFT_SEEDS_MAX = 400   -- vein tiles it starts from, nearest the fort first
 DRIFT_RETRY_TICKS = 7 * 1200   -- a search that found nothing isn't repeated for a week
 DRIFT_FAILED = {}       -- metal -> absolute tick of the last empty search
@@ -447,13 +448,17 @@ function find_drift(a, metal, areas, groups, zs)
         end
     end, metal == 'GEM')
     table.sort(seeds, function(p1, p2) return p1.d < p2.d end)
-    for i = 1, math.min(#seeds, DRIFT_SEEDS_MAX) do
-        local t = seeds[i]
-        local kk = k(t.x, t.y, t.z)
-        if not seen[kk] and is_wall(t.x, t.y, t.z) and safe(t.x, t.y, t.z) and not room_wall(t.x, t.y, t.z) then
-            seen[kk] = {d = 0, mat = t.mat}
-            table.insert(queue, {x = t.x, y = t.y, z = t.z})
+    -- (item6, R32 e) the rock checks kept for the whole search: a tile is
+    -- looked at once however many searches pass it (safe and room_wall read ~50 tiles)
+    local rock_ok = {}
+    local function sound(x, y, z)
+        local kk = k(x, y, z)
+        local v = rock_ok[kk]
+        if v == nil then
+            v = (safe(x, y, z) and not room_wall(x, y, z)) and true or false
+            rock_ok[kk] = v
         end
+        return v
     end
     local function opens(x, y, z)
         for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
@@ -466,54 +471,173 @@ function find_drift(a, metal, areas, groups, zs)
         end
         return false
     end
-    while head <= #queue and head <= DRIFT_VISIT_MAX do
-        local t = queue[head]
-        head = head + 1
-        local st = seen[k(t.x, t.y, t.z)]
-        -- a vein tile itself beside the fort was the ordinary case (not here)
-        if st.d > 0 and opens(t.x, t.y, t.z) then
-            local path, c = {}, st
-            local cx, cy = t.x, t.y
-            while c and c.d > 0 do
-                table.insert(path, {x = cx, y = cy, z = t.z})
-                cx, cy = c.px, c.py
-                c = seen[k(cx, cy, t.z)]
-            end
-            return {path = path, vein = {x = cx, y = cy, z = t.z}, mat = c and c.mat}
-        end
-        if st.d < DRIFT_MAX then
-            for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
-                local nx, ny = t.x + d[1], t.y + d[2]
-                local nk = k(nx, ny, t.z)
-                if not seen[nk] and is_wall(nx, ny, t.z) then
-                    local fl = dfhack.maps.getTileFlags(nx, ny, t.z)
-                    -- the opening tile may stand next to a level (it opens
-                    -- onto the fort); the rest keeps a wall between.
-                    -- (the cheap checks first: safe and room_wall read ~50 tiles)
-                    -- never inside a level; within 1 tile of one only as the
-                    -- drift's opening (opens is read only for those)
-                    local place
-                    if near_levels(nx, ny, t.z, areas, 0) then place = false
-                    elseif near_levels(nx, ny, t.z, areas, 1) then place = opens(nx, ny, t.z)
-                    else place = true end
-                    -- (review) a tile already marked for digging is passed
-                    -- through: a drift not dug yet is found again, not a second beside it
-                    if fl and place and safe(nx, ny, t.z) and not room_wall(nx, ny, t.z) then
-                        seen[nk] = {d = st.d + 1, px = t.x, py = t.y}
-                        table.insert(queue, {x = nx, y = ny, z = t.z})
-                    else
-                        seen[nk] = {d = math.huge}       -- (looked at: not dug)
+    -- (item6, R32 e) one search from each vein tile in turn, nearest the fort
+    -- first, each at most DRIFT_SEED_VISIT tiles: the one search from all the
+    -- seeds at once spent its 2,500 tiles within ~3 tiles of 400 seeds (gem
+    -- clusters are many and small), so "no vein within 30 tiles" in every fort
+    local budget = DRIFT_VISIT_MAX
+    local tried = {}
+    for i = 1, math.min(#seeds, DRIFT_SEEDS_MAX) do
+        if budget <= 0 then break end
+        local t0 = seeds[i]
+        local k0 = k(t0.x, t0.y, t0.z)
+        if not tried[k0] and is_wall(t0.x, t0.y, t0.z) and sound(t0.x, t0.y, t0.z) then
+            local seen, queue, head = {}, {}, 1
+            seen[k0] = {d = 0, mat = t0.mat}
+            queue[1] = {x = t0.x, y = t0.y, z = t0.z}
+            local cap = math.min(budget, DRIFT_SEED_VISIT)
+            while head <= #queue and head <= cap do
+                local t = queue[head]
+                head = head + 1
+                local st = seen[k(t.x, t.y, t.z)]
+                -- a vein tile itself beside the fort was the ordinary case (not here)
+                if st.d > 0 and opens(t.x, t.y, t.z) then
+                    local path, c = {}, st
+                    local cx, cy = t.x, t.y
+                    while c and c.d > 0 do
+                        table.insert(path, {x = cx, y = cy, z = t.z})
+                        cx, cy = c.px, c.py
+                        c = seen[k(cx, cy, t.z)]
+                    end
+                    return {path = path, vein = {x = cx, y = cy, z = t.z}, mat = c and c.mat}
+                end
+                if st.d < DRIFT_MAX then
+                    for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+                        local nx, ny = t.x + d[1], t.y + d[2]
+                        local nk = k(nx, ny, t.z)
+                        if not seen[nk] and is_wall(nx, ny, t.z) then
+                            local fl = dfhack.maps.getTileFlags(nx, ny, t.z)
+                            -- the opening tile may stand next to a level (it opens
+                            -- onto the fort); the rest keeps a wall between.
+                            -- never inside a level; within 1 tile of one only as the
+                            -- drift's opening (opens is read only for those)
+                            local place
+                            if near_levels(nx, ny, t.z, areas, 0) then place = false
+                            elseif near_levels(nx, ny, t.z, areas, 1) then place = opens(nx, ny, t.z)
+                            else place = true end
+                            -- (review) a tile already marked for digging is passed
+                            -- through: a drift not dug yet is found again, not a second beside it
+                            if fl and place and sound(nx, ny, t.z) then
+                                seen[nk] = {d = st.d + 1, px = t.x, py = t.y}
+                                table.insert(queue, {x = nx, y = ny, z = t.z})
+                            else
+                                seen[nk] = {d = math.huge}       -- (looked at: not dug)
+                            end
+                        end
                     end
                 end
             end
+            budget = budget - (head - 1)
+            -- the vein tiles this search passed through: a search from them finds no more
+            for kk, v in pairs(seen) do if v.d ~= math.huge then tried[kk] = true end end
         end
     end
     if now then DRIFT_FAILED[metal] = now end
     return nil
 end
 
+-- (item6, R32 e) Exploratory mining's run past a small pocket. Gems lie in
+-- clusters of one to a few tiles and many small veins end soon: E's
+-- prospects marked "VARISCITE tiles 1" of 80 asked, so 20 miners stood idle
+-- ("only 0 tiles to dig") and the rule asked again. From the tiles marked, a
+-- tunnel through safe rock (4 ways, on the level) to the nearest other
+-- pocket of the same kind (any gem; or an ore of the metal), hidden or not,
+-- within HOP_REACH tiles; that pocket followed; again while tiles are left,
+-- at most HOP_MAX hops and HOP_VISIT tiles looked at in all.
+HOP_REACH = 12
+HOP_MAX = 8
+HOP_VISIT = 3000
+
+-- does any vein event at (x, y, z) hold `metal` (or a gem, for 'GEM')? its material
+local function vein_of(x, y, z, metal)
+    local block = dfhack.maps.getTileBlock(x, y, z)
+    if not block then return nil end
+    for _, ev in ipairs(block.block_events) do
+        if df.block_square_event_mineralst:is_instance(ev)
+                and dfhack.maps.getTileAssignment(ev.tile_bitmask, x & 15, y & 15) then
+            local m = ev.inorganic_mat
+            if metal == 'GEM' then
+                if is_gem(m) then return m end
+            else
+                for _, mm in ipairs(metals_of(m)) do if mm == metal then return m end end
+            end
+        end
+    end
+    return nil
+end
+
+-- Pure (its map reads passed in: the tests call it): the hops. marked: the
+-- tiles marked so far (all on one level, appended to); count: tiles wanted.
+--   ok_rock(x, y)              a wall tile safe to dig, clear of levels and rooms
+--   pocket(x, y)               the vein's material there when of the kind, else nil
+--   follow(x, y, mat, room, taken) the pocket's tiles from (x, y) (itself first), at most room
+-- Returns the hops made and the tiles they added (tunnels and pockets).
+function hop_on(marked, count, ok_rock, pocket, follow)
+    local hops, added, visits = 0, 0, 0
+    local function key(x, y) return x .. ',' .. y end
+    local taken = {}
+    for _, t in ipairs(marked) do taken[key(t.x, t.y)] = true end
+    local z = marked[1] and marked[1].z
+    while #marked > 0 and #marked < count and hops < HOP_MAX and visits < HOP_VISIT do
+        local from, q, head, found = {}, {}, 1, nil
+        for _, t in ipairs(marked) do
+            from[key(t.x, t.y)] = {d = 0}
+            q[#q + 1] = {x = t.x, y = t.y}
+        end
+        while head <= #q and visits < HOP_VISIT and not found do
+            local t = q[head]
+            head = head + 1
+            visits = visits + 1
+            local st = from[key(t.x, t.y)]
+            if st.d < HOP_REACH then
+                for _, d in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
+                    local nx, ny = t.x + d[1], t.y + d[2]
+                    local nk = key(nx, ny)
+                    if not from[nk] and not taken[nk] then
+                        if ok_rock(nx, ny) then
+                            from[nk] = {d = st.d + 1, px = t.x, py = t.y}
+                            local mat = pocket(nx, ny)
+                            if mat then found = {x = nx, y = ny, mat = mat}; break end
+                            q[#q + 1] = {x = nx, y = ny}
+                        else
+                            from[nk] = {d = math.huge}
+                        end
+                    end
+                end
+            end
+        end
+        if not found then break end
+        -- the tunnel back to what was marked (the pocket's own tile not in it)
+        local path = {}
+        local c = from[key(found.x, found.y)]
+        local cx, cy = c.px, c.py
+        c = from[key(cx, cy)]
+        while c and c.d > 0 do
+            table.insert(path, 1, {x = cx, y = cy})
+            cx, cy = c.px, c.py
+            c = from[key(cx, cy)]
+        end
+        if #marked + #path + 1 > count then break end        -- no room for the tunnel and the pocket
+        local before = #marked
+        for _, p in ipairs(path) do
+            marked[#marked + 1] = {x = p.x, y = p.y, z = z}
+            taken[key(p.x, p.y)] = true
+        end
+        for _, p in ipairs(follow(found.x, found.y, found.mat, count - #marked, taken)) do
+            if not taken[key(p.x, p.y)] then
+                marked[#marked + 1] = {x = p.x, y = p.y, z = z}
+                taken[key(p.x, p.y)] = true
+            end
+        end
+        hops = hops + 1
+        added = added + (#marked - before)
+    end
+    return hops, added
+end
+
 -- (item4) metal 'GEM': a vein of any gem (is_gem), the same way: exploratory mining
-function mine(metal, count, dry_run)
+-- (item6) prospect: past a small pocket, on to the next (hop_on)
+function mine(metal, count, dry_run, prospect)
     local a = area()
     if not a then return {ok = false, error = 'no citizens'} end
     count = math.max(1, math.min(VEIN_MAX, count or VEIN_MAX))
@@ -598,8 +722,48 @@ function mine(metal, count, dry_run)
             end
         end
     end
+    local hops
+    if prospect and #marked < count then
+        local z = best.z
+        local rock_ok = {}
+        local function ok_rock(x, y)
+            local kk = x .. ',' .. y
+            local v = rock_ok[kk]
+            if v == nil then
+                v = (is_wall(x, y, z) and safe(x, y, z) and not by_levels(x, y, z, areas)
+                     and not room_wall(x, y, z)) and true or false
+                rock_ok[kk] = v
+            end
+            return v
+        end
+        local function pocket(x, y)
+            local m = vein_of(x, y, z, metal)
+            if m and not U.is_deep_inorganic(m) then return m end
+            return nil
+        end
+        local function follow(x, y, mat, room, taken)
+            local out, q, h, looked = {}, {{x = x, y = y}}, 1, {[x .. ',' .. y] = true}
+            while h <= #q and #out < room do
+                local t = q[h]
+                h = h + 1
+                out[#out + 1] = t
+                for dy = -1, 1 do
+                    for dx = -1, 1 do
+                        local nx, ny = t.x + dx, t.y + dy
+                        local kk = nx .. ',' .. ny
+                        if not looked[kk] and not taken[kk] then
+                            looked[kk] = true
+                            if vein_at(nx, ny, z) == mat and ok_rock(nx, ny) then q[#q + 1] = {x = nx, y = ny} end
+                        end
+                    end
+                end
+            end
+            return out
+        end
+        hops = hop_on(marked, count, ok_rock, pocket, follow)
+    end
     local inorg = inorganic(best_mat)
-    local out = {ok = true, metal = metal, ore = inorg and inorg.id or nil, tiles = #marked,
+    local out = {ok = true, metal = metal, ore = inorg and inorg.id or nil, tiles = #marked, hops = hops,
                  x = best.x, y = best.y, z = best.z, dry_run = dry_run or nil,
                  drift = drift and #drift.path or nil,
                  drift_from = drift and drift.path[1] or nil}

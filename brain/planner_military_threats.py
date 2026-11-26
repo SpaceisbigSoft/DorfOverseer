@@ -102,7 +102,7 @@ def called_off_ids(s: dict, memory) -> set:
     return out
 
 
-def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[bool, str]:
+def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list, info: dict | None = None) -> tuple[bool, str]:
     """Squads' strength (the bridge's per-squad `power`) against the great
     dangers' (threat_power), times what the fort learned from its own fights
     of that kind (memory.fight_factor). (0.105.54, the player: "fight when
@@ -110,7 +110,16 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
     odds (`fight_even_ratio`), a clear win (`fight_ratio`) only for abilities
     the AI can't read, lower for a wounded beast; an all-out attack once the
     wait is over (planner_matchup.all_out); a fight called off for its
-    losses goes again when the odds return. The verdict says why."""
+    losses goes again when the odds return. The verdict says why.
+
+    (R32 c) One judgement for the sortie and the recall: a great danger the
+    military rules judged too strong (note_great_hold) is gone out at again
+    only at the full bar (fight_bar), not at one lowered for a moment (it
+    "falls back" a few tiles, a wound read): F's Hydra (26 Nov) was hidden
+    from at 0.9x, sent at by the x0.8 bar a minute later, and the squads
+    called back "too weak now" 50 s after, 5 soldiers dead. One inside the
+    fort is judged as before (holding the choke protects nobody). `info`,
+    when given, is filled with {army, need, ratio, bar, held, inside}."""
     from planner_matchup import all_out, losses_turned, strike_bar
     from planner_holdfast import retreating_ids
     army = sum(float(_d(q.get("power")).get("power") or 0) for q in able)
@@ -124,6 +133,10 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
     need, ratio = j["need"], j["ratio"]
     army = j["army"]
     full_bar, bar_why = strike_bar(great, cfg, retreating_ids(memory, cfg))
+    # (R32 c) held as too strong, outside: the full bar, never one lowered for a moment
+    from planner_great_hold import hold_bar
+    full_bar, bar_why, held = hold_bar(s, memory, cfg, great, full_bar, bar_why,
+                                       info, army=army, need=need, ratio=ratio)
     words = (f"squads {army:.0f} against {need:.0f} ({ratio:.1f}x; {bar_why})"
              + ("; " + "; ".join(j["reasons"]) if j["reasons"] else ""))
     off = called_off_ids(s, memory) & {t.get("id") for t in great}
@@ -191,7 +204,7 @@ def fight_or_hide(s: dict, memory, cfg: dict, great: list, able: list) -> tuple[
         turned = losses_turned(out, {}, cfg)
         if turned:
             return False, words + f"; {turned}: the squads come back and go again when the odds return"
-    bar = full_bar * (0.75 if on else 1.0)
+    bar = full_bar * (0.75 if on and not held else 1.0)     # (R32 c) held: no fight on to keep going
     if ratio >= bar:
         return True, words
     ao = all_out(s, memory, cfg)

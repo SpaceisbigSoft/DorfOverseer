@@ -272,6 +272,17 @@ def regrouping(s: dict, memory, cfg: dict) -> set:
     return {k for k, t in fb.items() if isinstance(t, int) and 0 <= now - t < span}
 
 
+NEVER_INSIDE_WHY = " (inside the fort: the Rules tab's never attack means no sorties outside"
+
+
+def _kept_why(reason) -> str:
+    """(R32 c) The military rules' word why a kill order goes under "never
+    attack" (the enemy inside the walls), kept when the matchup re-words it."""
+    r = str(reason or "")
+    k = r.find(NEVER_INSIDE_WHY)
+    return r[k:] if k >= 0 else ""
+
+
 def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: list) -> list:
     """Kill orders on ordinary enemies only with squads strong enough: per
     group of orders on the same enemies, the squads already on them and the
@@ -368,7 +379,8 @@ def _squad_matchup_filter(s: dict, memory, cfg: dict, proposals: list, notes: li
                           "every free squad together, still short of the bar (the enemy is inside the fort)")
             add.append(Proposal(first.rule, dict(first.action, squad_id=q["id"]),
                                 f"{names}: send {q.get('name') or q['id']} ({why}: {r_all:.1f}x, {bar:g}x needed, "
-                                f"{bar_why}; {alone} alone was too weak)", pr, getattr(first, "guard", False)))
+                                f"{bar_why}; {alone} alone was too weak){_kept_why(first.reason)}", pr,
+                                getattr(first, "guard", False)))
             busy.add(q["id"])
     if not drop:
         return proposals
@@ -546,7 +558,7 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
                          f"needed: {bar_why}) and no group apart to strike at: no sortie; the gates and the alarm "
                          "hold them off and the squads stay in")
             _fall_back_lost(s, memory, cfg, rows, key, on + sent, bar, names, add, busy)
-            _siege_hold(s, cfg, rows, pool, names, add, busy, notes, sent_ids)
+            _siege_hold(s, cfg, rows, pool, names, add, busy, notes, sent_ids, memory)
             return
     if target_ids is None and {q["id"] for q in party} == sent_ids:
         notes.append(f"{names}: the squads sent go ({how}: {r:.1f}x; {bar_why})")
@@ -562,24 +574,22 @@ def _many_matchup(s, memory, cfg, rows, key, ps, sent, on, squads, busy, inside,
         if target_ids:
             act["kill"] = list(target_ids)[:50]
         add.append(Proposal(first.rule, act, f"{names}: send {q.get('name') or q['id']} ({how}: {r:.1f}x; "
-                                             f"{bar_why})", pr, getattr(first, "guard", False)))
+                                             f"{bar_why}){_kept_why(first.reason)}", pr,
+                            getattr(first, "guard", False)))
         busy.add(q["id"])
 
 
-def siege_gate(s: dict, rows: list) -> dict | None:
-    """(R29 W2) The surface entrance these enemies are nearest to (the one
-    the siege comes at), from the entrances section; None without one."""
-    es = [e for e in _l(_d(s.get("entrances")).get("entrances")) if isinstance(e, dict)
-          and e.get("kind") != "cavern" and all(_int(e.get(k)) is not None for k in ("x", "y", "z"))]
-    pos = [_d(t.get("pos")) for t in rows if _int(_d(t.get("pos")).get("x")) is not None]
-    if not es or not pos:
-        return None
-    return min(es, key=lambda e: (min((_dist(p, e) for p in pos if _dist(p, e) is not None), default=10 ** 6),
-                                  e.get("id") or 0))
+def siege_gate(s: dict, rows: list, memory=None) -> dict | None:
+    """(R29 W2) The surface entrance these enemies come at, from the entrances
+    section; None without one. (R32 d) The one most of them are heading to
+    (planner_siege_watch.gate_they_come_at), not the one nearest to whichever
+    enemy is nearest to any gate (A, 26 Nov: gate 3 held, 31 came at gate 1)."""
+    from planner_siege_watch import gate_they_come_at
+    return gate_they_come_at(s, rows, memory)[0]
 
 
 def _siege_hold(s: dict, cfg: dict, rows: list, pool: list, names: str, add: list, busy: set, notes: list,
-                sent_ids=()) -> None:
+                sent_ids=(), memory=None) -> None:
     """(R29 W2) An army outside the squads can't beat: no sortie, but the
     free squads hold the gate it comes at (a defend order on the gate guard
     burrow just inside it: ai-society guard_gate), behind the kill zone or
@@ -591,7 +601,7 @@ def _siege_hold(s: dict, cfg: dict, rows: list, pool: list, names: str, add: lis
         return
     if set(t.get("id") for t in rows) & _inside_ids(s):
         return
-    gate = siege_gate(s, rows)
+    gate = siege_gate(s, rows, memory)
     if not gate:
         return
     taken = set(busy) - set(sent_ids)          # the kill orders dropped above free their squads
@@ -607,7 +617,7 @@ def _siege_hold(s: dict, cfg: dict, rows: list, pool: list, names: str, add: lis
     add.append(Proposal("gate_guard", {"type": "guard_gate", "x": gate["x"], "y": gate["y"], "z": gate["z"],
                                        "squads": [q["id"] for q in qs]},
                         f"{names}: too strong to go out at, so {len(qs)} squad(s) hold the gate they come at "
-                        f"(x{gate['x']} y{gate['y']}), {behind}; the gate shuts when they are 12 tiles off", 0))
+                        f"(x{gate['x']} y{gate['y']}), {behind}; each gate shuts before they are 12 tiles off", 0))
     busy.update(q["id"] for q in qs)
     notes.append(f"{names}: {len(qs)} squad(s) hold the gate x{gate['x']} y{gate['y']} ({behind})")
 

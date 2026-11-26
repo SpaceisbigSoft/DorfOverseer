@@ -190,7 +190,7 @@
  "enxah-0.104.52-y73-winter.json:Deep mine": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:6b524ccec71b5c61b3ac1444",
+   "props": "sha256:d3a01283c8e60d0f9c18f666",
    "rules": [
     "build",
     "hospital",
@@ -226,7 +226,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:9a7bae2233f74e35b6c57c0d",
+   "props": "sha256:6e191dbbdfb2569eaf8fb6ab",
    "rules": [
     "build",
     "hospital",
@@ -261,7 +261,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:6b524ccec71b5c61b3ac1444",
+   "props": "sha256:d3a01283c8e60d0f9c18f666",
    "rules": [
     "build",
     "hospital",
@@ -299,7 +299,7 @@
  "enxah-0.104.52-y73-winter.json:Garden fort": [
   {
    "notes": "sha256:1d54210acc6c22f89675941f",
-   "props": "sha256:6f5a7801f9bb89ce62cd27b5",
+   "props": "sha256:94bc2449b8a9763e792099a3",
    "rules": [
     "build",
     "hospital",
@@ -338,7 +338,7 @@
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:beec1f01d5e33070bfa37ecc",
+   "props": "sha256:c6e5424e00b8778db98b6025",
    "rules": [
     "build",
     "hospital",
@@ -376,7 +376,7 @@
   },
   {
    "notes": "sha256:6cd672ca69e0da191931269e",
-   "props": "sha256:6f5a7801f9bb89ce62cd27b5",
+   "props": "sha256:94bc2449b8a9763e792099a3",
    "rules": [
     "build",
     "hospital",
@@ -417,7 +417,7 @@
  "enxah-0.104.52-y73-winter.json:Hermit hold": [
   {
    "notes": "sha256:d8737d8cf05b896b10570ad3",
-   "props": "sha256:825257c17cda2ca494a0f8d3",
+   "props": "sha256:0ce001750c70bf8a29d9b02f",
    "rules": [
     "build",
     "hospital",
@@ -452,7 +452,7 @@
   },
   {
    "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:5faa171f4544e5e93c2aa66f",
+   "props": "sha256:5e16b39580b34ca29833614a",
    "rules": [
     "build",
     "hospital",
@@ -486,7 +486,7 @@
   },
   {
    "notes": "sha256:4ca9b968ae40358552cd1614",
-   "props": "sha256:825257c17cda2ca494a0f8d3",
+   "props": "sha256:0ce001750c70bf8a29d9b02f",
    "rules": [
     "build",
     "hospital",
@@ -523,7 +523,7 @@
  "enxah-0.104.52-y73-winter.json:Merchant city": [
   {
    "notes": "sha256:a67e39d50a50b92f215c9892",
-   "props": "sha256:9e47f7c1b64d1f07c57dcc3c",
+   "props": "sha256:c7a537992ffe8e719dc0954e",
    "rules": [
     "build",
     "hospital",
@@ -561,7 +561,7 @@
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:63e208bbdd5a5e0000f7cc4d",
+   "props": "sha256:5424ec881750dff5fde3c1df",
    "rules": [
     "build",
     "hospital",
@@ -598,7 +598,7 @@
   },
   {
    "notes": "sha256:d9fde94238e8465a3f6ab139",
-   "props": "sha256:9e47f7c1b64d1f07c57dcc3c",
+   "props": "sha256:c7a537992ffe8e719dc0954e",
    "rules": [
     "build",
     "hospital",
@@ -638,7 +638,7 @@
  "enxah-0.104.52-y73-winter.json:Monastery": [
   {
    "notes": "sha256:0825f5818f727f9c3aa6a770",
-   "props": "sha256:874c4dac3ee66f44d7ab08b8",
+   "props": "sha256:1224fd79ed9f5e4c3ecd531d",
    "rules": [
     "build",
     "hospital",
@@ -672,7 +672,7 @@
   },
   {
    "notes": "sha256:18485460882f7f483bf237ab",
-   "props": "sha256:9c924fb796b5ba7727525a9b",
+   "props": "sha256:910d3b451ad8c708d0184f8b",
    "rules": [
     "build",
     "hospital",
@@ -705,7 +705,7 @@
   },
   {
    "notes": "sha256:18485460882f7f483bf237ab",
-   "props": "sha256:874c4dac3ee66f44d7ab08b8",
+   "props": "sha256:1224fd79ed9f5e4c3ecd531d",
    "rules": [
     "build",
     "hospital",
@@ -844,7 +844,7 @@
  "enxah-0.104.52-y73-winter.json:own": [
   {
    "notes": "sha256:5f8c7b456ea058dee6f17598",
-   "props": "sha256:8ddf9f36c7de9c74a835715d",
+   "props": "sha256:fceb929ee7a23bb3d2c31f7f",
    "rules": [
     "build",
     "hospital",
@@ -880,7 +880,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:d5c6d6ab9749f4a253962a3f",
+   "props": "sha256:351344cd8cca7d8206297e3b",
    "rules": [
     "build",
     "hospital",
@@ -915,7 +915,7 @@
   },
   {
    "notes": "sha256:353e5270aaf493f0cb1f45ec",
-   "props": "sha256:8ddf9f36c7de9c74a835715d",
+   "props": "sha256:fceb929ee7a23bb3d2c31f7f",
    "rules": [
     "build",
     "hospital",
@@ -2126,7 +2126,7 @@
  "region2-0.83-y62-spring.json:Deep mine": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:e82eb299843c42deecdd5246",
+   "props": "sha256:7b4f1f6a31c99533bb03ab1a",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2161,7 +2161,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:9c4b391fd97db9ede88fb1a3",
+   "props": "sha256:0b313b1aca96f0ebe88e6d4e",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2195,7 +2195,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:e82eb299843c42deecdd5246",
+   "props": "sha256:7b4f1f6a31c99533bb03ab1a",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2232,7 +2232,7 @@
  "region2-0.83-y62-spring.json:Garden fort": [
   {
    "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
-   "props": "sha256:e7a58a5215ca05d6be5c0277",
+   "props": "sha256:531b3aed307d62c747d4df1f",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2269,7 +2269,7 @@
   },
   {
    "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
-   "props": "sha256:b6fdce1b6dba055447c1ddd0",
+   "props": "sha256:7606c0c0f0559dc0a5007991",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2305,7 +2305,7 @@
   },
   {
    "notes": "sha256:5d322f93a2bbdb5f226ae4a1",
-   "props": "sha256:e7a58a5215ca05d6be5c0277",
+   "props": "sha256:531b3aed307d62c747d4df1f",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2344,7 +2344,7 @@
  "region2-0.83-y62-spring.json:Hermit hold": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:ee9ea44abffba3ad967917da",
+   "props": "sha256:329a458d9691d944d3c57265",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2378,7 +2378,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:f227ff22e066e614f3615391",
+   "props": "sha256:bdf3d81f15231e04ca9e5fd0",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2411,7 +2411,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:ee9ea44abffba3ad967917da",
+   "props": "sha256:329a458d9691d944d3c57265",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2447,7 +2447,7 @@
  "region2-0.83-y62-spring.json:Merchant city": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:c217866085b6ebeb22a94ee9",
+   "props": "sha256:619f3473504bf9aa6a72887f",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2484,7 +2484,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:2dfd0aec07ba344aec0c8758",
+   "props": "sha256:d9384973d3a2640abec46561",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2520,7 +2520,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:c217866085b6ebeb22a94ee9",
+   "props": "sha256:619f3473504bf9aa6a72887f",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2559,7 +2559,7 @@
  "region2-0.83-y62-spring.json:Monastery": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:5cf44310e6dfa059438a2dec",
+   "props": "sha256:22f9a43b30d064e06f2abbd5",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2589,7 +2589,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:bf7d06fe6dad1ce0c590ea5f",
+   "props": "sha256:1e95d5f1f1347fd54b2c527c",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2618,7 +2618,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:5cf44310e6dfa059438a2dec",
+   "props": "sha256:22f9a43b30d064e06f2abbd5",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2750,7 +2750,7 @@
  "region2-0.83-y62-spring.json:own": [
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:52b2e896d6eb2a2103e304fd",
+   "props": "sha256:00c777fde1528133e98c7f7c",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2784,7 +2784,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:3fb3687a451b99b414d0e0d6",
+   "props": "sha256:71af41819c054d139fd53729",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -2817,7 +2817,7 @@
   },
   {
    "notes": "sha256:dd2912d9055d076539426a5b",
-   "props": "sha256:52b2e896d6eb2a2103e304fd",
+   "props": "sha256:00c777fde1528133e98c7f7c",
    "rules": [
     "hospital",
     "hospital_stock",
@@ -3014,7 +3014,7 @@
  "test_fort.json:Monastery": [
   {
    "notes": "sha256:97cd24fed560913515ebe9cd",
-   "props": "sha256:3d3d526958426c3ff0731726",
+   "props": "sha256:329612588b347661f2b29d4a",
    "rules": [
     "mandate",
     "tools",
@@ -3026,7 +3026,7 @@
   },
   {
    "notes": "sha256:97cd24fed560913515ebe9cd",
-   "props": "sha256:a8b7d5f3991bfb94688b9c76",
+   "props": "sha256:41611951b002ebec49066c50",
    "rules": [
     "mandate",
     "tools",
@@ -3037,7 +3037,7 @@
   },
   {
    "notes": "sha256:97cd24fed560913515ebe9cd",
-   "props": "sha256:3d3d526958426c3ff0731726",
+   "props": "sha256:329612588b347661f2b29d4a",
    "rules": [
     "mandate",
     "tools",

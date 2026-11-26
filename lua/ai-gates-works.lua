@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-gates').name
 -- and the helpers defined there (tile, building_at, key, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-works'] = '0.105.127'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-works'] = '0.105.128'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, key, unkey, T, interior, moves, inside_or_courtyard, DOOR_GROUND, citizen_starts, place, entrance = U, key, unkey, T, interior, moves, inside_or_courtyard, DOOR_GROUND, citizen_starts, place, entrance   -- (13e) the hub's and earlier parts' locals
 
@@ -737,7 +737,9 @@ end
 function place_gate_lever(id, dry_run, starts)
     local e = entrance(id)
     if not e then return {ok = false, rejected = true, error = 'no such entrance (scan first)'} end
-    if #(e.equipment or {}) == 0 then
+    -- (R32 b) a drawbridge no lever inside works is a gate too (the scan
+    -- keeps it out of the equipment until a lever works it)
+    if #(e.equipment or {}) == 0 and #(e.bridges_unworked or {}) == 0 then
         return {ok = false, rejected = true, error = 'that entrance has no gate yet: a lever works a gate'}
     end
     -- (0.105.32) a gate there stuck shut for DF and was taken down: no lever for a year

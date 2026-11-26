@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-gates').name
 -- and the helpers defined there (tile, building_at, key, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-wings'] = '0.105.127'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-wings'] = '0.105.128'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, key, unkey, T, TK, moves_k, moves, treetop, inside_or_courtyard, seals, WALL_GROUND, open_ground, citizen_starts, place, entrance = U, key, unkey, T, TK, moves_k, moves, treetop, inside_or_courtyard, seals, WALL_GROUND, open_ground, citizen_starts, place, entrance   -- (13e) the hub's and earlier parts' locals
 
@@ -348,6 +348,8 @@ function summary()
                             -- (0.105.33) a door or hatch on a shared lever: only locked when "closed"
                             lock_only = e_lock_only,
                             closed = GATES.closed and GATES.closed[e.id] or false,
+                            -- (R32 d) the nearest danger when the watcher shut it (its own look)
+                            closed_near = GATES.closed and GATES.closed[e.id] and GATES.close_near and GATES.close_near[e.id] or nil,
                             -- (0.105.23) the founding stair's lid, a gatehouse in front of it
                             lid = e.lid, gatehouse = e.gatehouse, gatehouse_why = e.gatehouse_why,
                             wings = e.wing_pieces and 'standing' or nil,   -- (0.105.30 seams) recorded wing walls

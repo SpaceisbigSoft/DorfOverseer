@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-gates').name
 -- and the helpers defined there (tile, building_at, key, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-watch-look'] = '0.105.127'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-watch-look'] = '0.105.128'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, gate_name, lever_pull_pending, pull, set_entrance = U, gate_name, lever_pull_pending, pull, set_entrance   -- (r9) the hub's and earlier parts' locals
 
@@ -102,6 +102,64 @@ local function clear_look(nearest, invaders, great, away)
     return invaders == 0 and (great or 0) == 0 and nearest > WIDE
 end
 
+---------------------------------------------------------------------------
+-- (R32 d) Shut before the enemy is at the gate. Fort A's siege test (26 Nov):
+-- 25 goblins set down at the map edge; gate 3 was seen shut with the nearest
+-- 0 tiles off and gate 1 never. The watcher looks every CHECK_TICKS (100):
+-- a goblin walks 10 or more tiles a look, and a drawbridge shuts only when a
+-- dwarf has walked to its lever, so "within IMMINENT" seen at one look was
+-- the gate itself by the next, or past it. Each danger's walk since the last
+-- look (GATES.danger_prev, by unit id) is its step; one coming nearer to an
+-- entrance counts LEAD_LOOKS steps nearer than it stands (one first seen:
+-- STEP_DEFAULT a look; a leap over STEP_MAX, a teleport or a reload, is no
+-- step), so the entrance shuts with IMMINENT tiles still between them two
+-- looks on. Per entrance: every one a danger comes at shuts.
+---------------------------------------------------------------------------
+LEAD_LOOKS = 2
+STEP_DEFAULT = 10
+STEP_MAX = 30
+
+-- Pure: {id = tiles a look} and the positions to keep for the next look.
+-- vis: visible_dangers(); prev: {id = {x, y, z}}; gap: ticks since that look (nil unknown).
+function danger_steps(vis, prev, gap)
+    local steps, keep = {}, {}
+    prev = type(prev) == 'table' and prev or {}
+    local scale = (type(gap) == 'number' and gap > 0) and (CHECK_TICKS / gap) or 1
+    for _, d in ipairs(vis or {}) do
+        if d.id ~= nil and d.pos then
+            local p = prev[d.id]
+            local step = STEP_DEFAULT
+            if p and p.z == d.pos.z and type(gap) == 'number' and gap > 0 and gap <= 3 * CHECK_TICKS then
+                local moved = math.max(math.abs(d.pos.x - p.x), math.abs(d.pos.y - p.y))
+                if moved * scale <= STEP_MAX then step = math.floor(moved * scale + 0.5) end
+            end
+            steps[d.id] = step
+            keep[d.id] = {x = d.pos.x, y = d.pos.y, z = d.pos.z}
+        end
+    end
+    return steps, keep
+end
+
+-- Pure but for distance_to: the nearest danger to entrance e (as before) and
+-- the nearest counting each approaching one LEAD_LOOKS steps nearer (the
+-- distance the close rules read). steps, prev: danger_steps' and the last look's.
+function lead_distance(e, vis, steps, prev)
+    local nearest, lead = math.huge, math.huge
+    steps, prev = steps or {}, prev or {}
+    for _, d in ipairs(vis or {}) do
+        local dd = distance_to(e, d.pos)
+        if dd < nearest then nearest = dd end
+        local eff = dd
+        if dd < math.huge and d.id ~= nil then
+            local p = prev[d.id]
+            local coming = not p or distance_to(e, p) > dd       -- first seen: taken as coming
+            if coming then eff = math.max(0, dd - LEAD_LOOKS * (steps[d.id] or STEP_DEFAULT)) end
+        end
+        if eff < lead then lead = eff end
+    end
+    return nearest, lead
+end
+
 -- One look by the watcher: close what needs closing.
 function check()
     if not GATES.armed or not GATES.entrances then return end
@@ -113,6 +171,14 @@ function check()
         if d.great then great = great + 1 end
     end
     if type(GATES.peak) == 'number' then GATES.peak = math.max(GATES.peak, #vis) end
+    -- (R32 d) each danger's step since the last look, for the lead distance
+    local tnow_look = now_abs()
+    local gap = (tnow_look and GATES.danger_prev_tick and tnow_look > GATES.danger_prev_tick)
+        and (tnow_look - GATES.danger_prev_tick) or nil
+    local prev_pos = GATES.danger_prev or {}
+    local steps, keep_pos = danger_steps(vis, prev_pos, gap)
+    GATES.danger_prev, GATES.danger_prev_tick = keep_pos, tnow_look
+    GATES.close_near = GATES.close_near or {}
     local outside = citizens_outside()
     GATES.clear_looks = GATES.clear_looks or {}
     GATES.opening = GATES.opening or {}
@@ -122,6 +188,8 @@ function check()
     if halted then away = true end
     GATES.away = away or nil
     GATES.halted = halted or nil
+    -- (item2) a gate bridge's queued pull looked at again (the lure's pieces left alone)
+    pcall(hold_queued_bridge_pulls, lure)
     -- (0.105.47, J16) with the brain away, an entrance shuts only for a danger within IMMINENT
     local function close_for(nearest)
         if halted then return false end
@@ -140,14 +208,14 @@ function check()
             -- bridge still up, or down already, isn't a lost close. Danger
             -- comes: closed again; else the opening tried again (pulls only
             -- what is still up and still), and done once every gate is open
-            local nearest = math.huge
-            for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
+            local nearest, lead = lead_distance(e, vis, steps, prev_pos)    -- (R32 d)
             GATES.clear_looks[e.id] = nil
             -- (0.105.47) held open for a mission's travellers: only an enemy
             -- within IMMINENT shuts it again while it opens
             local okh0, held0 = pcall(function() return reqscript('ai-mission-way').mission_held(e.id) end)
-            local close_now = close_for(nearest)
-            if okh0 and held0 == true then close_now = nearest <= IMMINENT and not halted end
+            local close_now = close_for(lead)
+            if okh0 and held0 == true then close_now = lead <= IMMINENT and not halted end
+            if close_now then GATES.close_near[e.id] = nearest < math.huge and nearest or nil end
             if close_now then
                 GATES.opening[e.id] = nil
                 set_entrance(e, true, true)        -- (0.105.36 fix) its queued opening pull taken away
@@ -234,8 +302,12 @@ function check()
                         GATES.let_open = (GATES.let_open or 0) + 1
                     end                 -- (else: the own pull on its way, no danger near: waited for)
                 elseif ok and still and #b.jobs == 0 and (not last or now < last or now - last > 10 * CHECK_TICKS) then
-                    GATES.repulled[g.id] = now
-                    pcall(pull, g.lever_id)
+                    -- (item2) checked as the watcher's own pull is (bridge_hold)
+                    local okh, held = pcall(bridge_hold, b, true)
+                    if not (okh and held) then
+                        GATES.repulled[g.id] = now
+                        pcall(pull, g.lever_id)
+                    end
                 end
             elseif GATES.closed[e.id] and g.kind ~= 'bridge' and g.lever_driven and g.drive_lever
                     and door_shut(b) == false then
@@ -280,17 +352,19 @@ function check()
             GATES.clear_looks[e.id] = nil
         end
         if not GATES.closed[e.id] and #e.equipment > 0 then
-            local nearest = math.huge
-            for _, p in ipairs(ds) do nearest = math.min(nearest, distance_to(e, p)) end
+            -- (R32 d) the close rules read the lead distance (an approaching
+            -- danger LEAD_LOOKS steps nearer); the words say where it stands
+            local nearest, lead = lead_distance(e, vis, steps, prev_pos)
             -- (0.105.47) a way opened for a mission's travellers (the
             -- messenger, a squad walking off the map) isn't shut on the
             -- "danger coming, nobody outside" look while its hold lasts
             -- (lua/ai-mission-way.lua); an enemy within IMMINENT still shuts it
             local okh, held = pcall(function() return reqscript('ai-mission-way').mission_held(e.id) end)
-            if okh and held == true and nearest > IMMINENT then
+            if okh and held == true and lead > IMMINENT then
                 GATES.mission_held_skips = (GATES.mission_held_skips or 0) + 1
-            elseif close_for(nearest) then
+            elseif close_for(lead) then
                 set_entrance(e, true)
+                if GATES.closed[e.id] then GATES.close_near[e.id] = nearest < math.huge and nearest or nil end
                 -- (0.105.36 fix) said only when the AI shut something (gates the
                 -- player shut already stay theirs: not booked, not said)
                 if GATES.closed[e.id] then

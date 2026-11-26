@@ -167,7 +167,14 @@ ALL = {
 # (R29 item6) _sortie_on: the sortie's targets and squads kept for its result
 # (R30c item24) _military_rules: no fill when everyone draftable is in avoid
 # (item2 war bolts) _ranged_squad_rule: the bolts order in planner_bolts (one at a time, a stalled recipe gives way)
-BASE_NODES = (123, "b7658c0e758d8b343e19e6f6945519fb")
+# (R32 c) fight_or_hide: a great danger held as too strong is gone out at only at the full bar (planner_great_hold);
+#         _military_rules: the verdict booked, "never attack" gives way to an enemy inside the walls
+# (R32 b) _gate_rules: every entrance counted and the ones that can't shut named; the lifted lockdown's open said
+#   (planner_gates_why); _lever_rule: a lever for any lever-less hatch or drawbridge, whatever the fort's leanings;
+#   _lockdown_cap_why / note_lockdown: never lifted (and taken back) for a destroyer, flier or one among the dwarves
+# (R32 d item5) _gate_guard_rule: the gate the invaders are heading to (planner_siege_watch.gate_they_come_at)
+# (item8 trim to the slider) _military_rules: the quirk's quarter on the slider's number, the trim in planner_squad_trim
+BASE_NODES = (123, "9192adbd3bcc4b3284ddc8e58acbf607")
 
 
 def _defined(name: str) -> list[str]:

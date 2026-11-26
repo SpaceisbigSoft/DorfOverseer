@@ -47,7 +47,7 @@ from __future__ import annotations
 
 from digest import _d, _l, game_text
 from planner_core import (AGENDA_THEMES, LIMIT_EXEMPT, PLANNER_CONFIG, STEER_PROTECTED, TICKS_PER_DAY, Proposal,
-                          _has_shop, _traits, abs_tick, player_rules, young_fort)
+                          _has_shop, _traits, abs_tick, player_rules, queued, young_fort)
 
 __all__ = ["CAVERN_WAY_CONFIG", "cavern_way", "way_jobs", "way_danger", "_cavern_way_rule"]
 
@@ -255,6 +255,57 @@ def _mem(memory) -> dict:
     return m
 
 
+LINK_MECHANISMS = 2                      # a lever's link takes two (lua/ai-cavern-way.lua's link step)
+DOOR_RECIPES = {"stone_door", "wooden_door", "metal_door", "glass_door"}
+
+
+def _parts_wait(s: dict, w: dict, state: str, proposals: list, notes: list) -> bool:
+    """(item6, R32 e) A step that waits for parts: the parts got, and the step
+    not asked for until they are (True). D's link was refused 69 times ("2 free
+    mechanisms are needed for the link"), C's breach waited for a door in
+    store: the bridge said so every cycle and nothing made one.
+      * the link: the mechanisms go into planner_mechanisms' demand ("cavern
+        way"), so its rule orders them at the Mechanic's workshop (one dug and
+        built if there is none, the Mechanics labour given, a quarry when no
+        ordinary stone is left) with the other links' and a reserve;
+      * the breach (the last tile into the cavern is dug only with a door in
+        store for its end): a stone door ordered at the Mason's workshop when
+        none is free and none is on order."""
+    if state == "link":
+        have = w.get("mechanisms")
+        if isinstance(have, int) and not isinstance(have, bool) and have < LINK_MECHANISMS:
+            notes.append(f"the cavern way's gate waits for its lever link: {LINK_MECHANISMS} free mechanisms wanted, "
+                         f"{have} free; the mechanisms rule has them made at the Mechanic's workshop, and the link "
+                         "is asked for once they are in store")
+            return True
+        return False
+    if state != "breach":
+        return False
+    have = w.get("doors_free")
+    if not isinstance(have, int) or isinstance(have, bool) or have >= 1:
+        return False
+    on_order = queued(s, DOOR_RECIPES) if isinstance(s.get("orders"), list) else 0
+    if on_order or any(_d(p.action).get("type") == "work_order" and _d(p.action).get("recipe") in DOOR_RECIPES
+                       for p in proposals):
+        notes.append(f"the cavern way waits for a door before its last tile into the cavern is dug: "
+                     f"{on_order or 1} door(s) on order")
+        return True
+    b = _d(s.get("buildings"))
+    if "workshops" in b and not _has_shop(b, "Masons"):
+        if _has_shop(b, "Carpenters"):
+            recipe, shop = "wooden_door", "Carpenter's"
+        else:
+            notes.append("the cavern way waits for a door before its last tile into the cavern is dug, and the "
+                         "fort has no Mason's or Carpenter's workshop to make one")
+            return True
+    else:
+        recipe, shop = "stone_door", "Mason's"
+    proposals.append(Proposal("cavern_way_build", {"type": "work_order", "recipe": recipe, "amount": 1},
+                              f"the cavern way's last tile into the cavern is dug only with a door in store for "
+                              f"its end, and no door is free: make one at the {shop} workshop", 5, True))
+    return True
+
+
 def _cavern_way_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     w = cavern_way(s)
     if w is None:
@@ -311,6 +362,8 @@ def _cavern_way_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=No
         if not on:
             return
         if state in ("digging", "lever_building", "hatch_building", "linking", "breaching", "door_building"):
+            return
+        if _parts_wait(s, w, state, proposals, notes):
             return
         proposals.append(Proposal("cavern_way_build", {"type": "cavern_way", "step": "build"},
                                   f"the cavern way's next step ({state.replace('_', ' ')})", 6))
