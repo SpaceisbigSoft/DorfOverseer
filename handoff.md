@@ -193,7 +193,7 @@ One line per version, newest first (0.105.118 and older: the archive file, "Move
 
 | Version | Date | What changed | Status |
 | --- | --- | --- | --- |
-| 0.105.130 | Nov 26 | R33: B's were cells (no reserve/release flip-flop; bridge-less cells freed or re-kinded); B's cistern lever paced, instant when stuck; idle: honest count, narrowed labours widened when jobs wait, crafts sized to the idle | delivered 26 Nov 15:55 |
+| 0.105.130 | Nov 26 | R33: B's were cells (no reserve/release flip-flop; bridge-less cells freed or re-kinded); B's cistern lever paced, instant when stuck; idle: honest count, narrowed labours widened when jobs wait, crafts sized to the idle | delivered 26 Nov 16:08 (the run gate held it: a release whose test step the gate refuses hangs instead of failing) |
 | 0.105.129 | Nov 26 | Army trims at most 4 a season (`trim_season_max` 10 → 4), every fort (the player: slower) | delivered 26 Nov 14:35 |
 | 0.105.128 | Nov 26 | R32: were-cell and gate bridges never move with the fort's own on, beside or crossing them (E's 3 drawbridge deaths); too-strong great beasts held at the choke (F's Hydra); never attack gives way inside; levers for lever-less entrances, every entrance counted, no early lift with a destroyer inside (B's Giantess); siege gates by heading and walk lead; R31's blocks (mechanisms, door, shrub, prospect, cistern repeat); `insane_water`; E's army to its slider | delivered 26 Nov 14:14 (all tests pass); keepers 14:25: were cells lock via `raising`, trims in every fort |
 | 0.105.127 | Nov 26 | A siege test again once the last is over; 30 strong, the spread grown, straight to the war party after a test one | delivered 26 Nov 01:20; **in game** 01:22: 25 goblins, 0 deaths, Phase 11's exit met |
