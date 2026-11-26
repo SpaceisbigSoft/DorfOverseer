@@ -1,6 +1,6 @@
 # DF AI Overseer: Handoff
 
-26 Nov 2026 (01:00) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
+26 Nov 2026 (01:30) · @Scott · the one doc to carry between chats: what this is, the plan, how to work, where things live and where to start. History and long lists live in local files (see "Files kept outside this note").
 
 ## Standing instructions
 
@@ -22,7 +22,9 @@ The AI Overseer runs a Dwarf Fortress fort through DFHack while the player watch
 
 **AI module work (Phase 14.3, 14a-14d) has its own note: `handoff-ai.md` (project doc "DF AI Overseer AI Module Handoff"), written 11 Nov; read it with this one.**
 
-**Latest version: 0.105.126** (26 Nov 00:55, `main` `75f6703`, 1039 files, 0 differ in all six; on GitHub).
+**Latest version: 0.105.127** (26 Nov 01:20, `main` `a852d14`, 1039 files, 0 differ in all six; on GitHub; Python in `planner_siege.py`: the keepers' next restart picks it up).
+
+**0.105.127** (01:20): a siege test again once the last is over (was once a fort), the next war party 30 strong, the spread grown to 12 to fit, straight to the war party after a test one when every ranked civ sent no army; **in game** 01:22: 25 placed, all killed, 0 deaths.
 
 **0.105.126** (00:55): units made by `dfhack.units.create` (into `units.active`, `teleport`, civ and invader flags, armed by `createItem` + `moveToInventory`), after DFHack's stale `create-unit`; the arena click route removed (A 00:35: "the click placed no unit", the game restored cleanly, no stray units); the siege and danger-test records keep 600 chars and the spawner's `info`. **Never run in DF yet**: the siege invitation was switched on again 00:56.
 
@@ -38,7 +40,7 @@ Older notes (0.105.123 and before; 0.105.124's in full): the archive, "Moved out
 
 The road to completion: each phase a few rounds, each checked against the live keeper log; what can lose the fort first, the agent last. Open gaps per phase: the Gap Checklist file. **The full text of every phase below (dates, the history of each decision, what each round built): the archive, "Moved out 22 Nov 2026 (12:00)"; read it before changing a phase.** Order (agreed 21 Nov 11:20, the audit): survival before features; then make built things run; then the agent.
 
-- [ ] **The siege at A (Phase 11's exit):** **first test passed 26 Nov 01:04** (0.105.126's native spawner; no DF army in three invitations, civs ~51 tiles away): 9 of 16 armed goblins placed at x287 y1 (capped by free edge tiles), they marched ~120 tiles, the alarm and shelter, squads 205+210 ("about even odds"), all 9 killed in 1.3 days, 0 citizens died (100/100), gates watched but none shut (no enemy within 12 tiles), the siege summary written. Left for the exit: the Defence verdict (~2 days after), a bigger party (more edge tiles: the spawner's `spawn_tiles` found 9) and one that brings the gates into play.
+- [x] **The siege at A (Phase 11's exit), met 26 Nov 01:27:** test 1 (01:04, 0.105.126): 9 goblins, squads out, all killed, 0 deaths; test 2 (01:22, 0.105.127, the player's yes 01:13): 25 armed goblins placed at once, `gate_guard` held 5 squads inside gate 3 ("too strong to go out at"), all 25 killed in 2.9 days, 0 citizens died (99/99), alarm and shelter; per gate: gate 1 never shut (31 at it, 24 killed there), gate 3 shut with the nearest enemy 0 tiles off (17 at it). **For R32:** the guard chose gate 3 but most came at gate 1 (never shut); gate 3 shut at 0 tiles (the aim is 12); the Defence verdict (~2 days after) to read.
 - [ ] **A's AI year (Phase 14.3), running** (22:57: seasons 20,946 + 71,359 tokens of 80,000 each, ~92k of 240k; 12 reviews ~8k each; advice sensible: three flag A's 0 bolts of 500, the scripts' `wooden_bolts` orders stall at "2 left" and are cancelled as stuck, training eats the stock: an R31 item):** read the spend with `python brain\ai_window.py` or `logs\ai-window.state.json` / journal kinds `ai_window` and `review` (tokens per call); the "ended" line ~2.5 real hours after 22:04. Advice only (the player, 22:04: "advise only for now"); acting = `"strategist_shadow": false` in `config.json` + restart, only with the player's yes. Judge the reviews against what the scripts did.
 - [x] **R31 = 0.105.125** (26 Nov 00:30): items 1, 2, 3, 4 and 7 below built; 5's "tomorrow" and docs done; 6 (the scorecard series on the PC) and 8 (lines that show nothing) left for R32.
 - [ ] **R31's list (for the record):** (1) a **guarded cavern way** (the player, 22:38: "yes look into it"): one AI-held gate (door + lever) onto real cavern floor, for silk webs (3,300-13,200 a fort, all out of reach), lures (no fort has a pocket spot: only wells' hatches reach the caverns) and cavern hunts (`no_path`/`seal`); (2) D's idle 26.7% with 20 picks and nothing to dig; the Deep mine's depth (23 vs F's 28) and ore (60, lowest); (3) paper sheets: no stockpile takes them, quire orders stall (A's 10 sheets in the screw press); (4) libraries closed to visitors keep visiting scholars out (`planner_visitors.py`'s rule: the player's call?); (5) `planner_world`'s note says "tomorrow" for a week's wait; `docs/military.md` for the mission sender; (6) the scorecard `--every 2y` needs every fort's folder (B-F not reachable from the cloud chat: run it on the PC, or a `summary` option that writes; see R30c's note); (7) Welfare fails 3 of 5 (unhappy E 19.3, good meals, hospital beds); (8) the lines that still show nothing (locations open to visitors, levels above the surface, roofed surface, tamed wild animals, gatehouses 1 each).
@@ -178,7 +180,7 @@ Notes for the next chat only (they move to the archive once done).
 
 **26 Nov 01:00 (0.105.126 delivered 00:55; the keepers restarted 00:31 on 0.105.125, a restart for 0.105.126's one Python line is optional; A's AI year open since 25 Nov 22:04; the siege invitation on again 00:56).** Next, in order:
 0. `start_here`, `memory_start_here_read_first`; folders and `add_repo` (push) at once (the standing permission).
-1. **The siege at A** (the plan's first line): passed once at 01:04 (9 goblins, 0 deaths); read the Defence verdict; then a bigger test (16+, the gates in play) when the player wants one.
+1. **Phase 11 is met** (two siege tests, 0 deaths): read the Defence verdict; R32 fixes the gate choice (gate 1 never shut) and the late shut (0 tiles). Another test only with the player's yes (the switch; the war party comes at once after a test one, 30 strong).
 2. **See in game** 0.105.124-125 (the plan's lists); tick the changelog.
 3. **A's AI year:** the spend (`ai_window` lines) and the reviews against what the scripts did.
 4. **R32:** the scorecard `--every 2y` series on the PC (Claude Helper `summary` `tools`, or `run_command`); the lines that still show nothing; E's soldiers (42% of adults, most unmet needs: fewer soldiers or less training while agitated animals keep the squads busy? the player's call); D's smelting backlog (257 ore, 18 idle smelters); whatever the live checks show. Builders in parallel; tests by `run_tests` `branch` (push the merge branch), `record: true` when snapshots move (Claude Helper 0.2.41 keeps the tar in `results\rec-base\`).
@@ -194,6 +196,7 @@ One line per version, newest first (0.105.114 and older: the archive file, "Chan
 
 | Version | Date | What changed | Status |
 | --- | --- | --- | --- |
+| 0.105.127 | Nov 26 | A siege test again once the last is over; 30 strong, the spread grown, straight to the war party after a test one | delivered 26 Nov 01:20; **in game** 01:22: 25 goblins, 0 deaths, Phase 11's exit met |
 | 0.105.126 | Nov 26 | Units by `dfhack.units.create` + teleport, armed; the arena click route removed; spawn records keep 600 chars and the info | delivered 26 Nov 00:55; **in game** 01:04: 9 armed goblins placed, marched, killed, 0 deaths |
 | 0.105.125 | Nov 26 | R31: the guarded cavern way; `prospect` and the Deep mine's veins and crossing (E only); sheet piles; libraries open; flour for good meals; hospital beds | delivered 26 Nov 00:30 |
 | 0.105.124 | Nov 25 | Units by DF 53's arena spawner when create-unit fails (the war party, the danger test); bolts: one order sized to the gap, the next material for a stalled one, a combat-only reserve at war | delivered 25 Nov 23:51; the arena spawn failed live (00:35), replaced 0.105.126 |
