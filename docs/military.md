@@ -235,6 +235,57 @@ chronicle entry from the game's mission report and spoils (the game's words
 quoted, cut short), and counts the outcomes in the fort's memory
 (`missions_sent`, `missions_back`, `rescued`, `artifacts_recovered`).
 
+### The mission sender
+
+`lua/ai-mission-send.lua` (with its parts `-steps` and `-run`) presses DF's
+World screen buttons. The brain asks for one run at a time with a
+`send_mission` action:
+
+- **Make contact** (`brain/planner_world.py`, the `contact` rule): the
+  messenger (the MESSENGER post, appointed by the messenger rule) goes to the
+  site the contact plan picks (`brain/planner_contact.py`). Not while a
+  threat is near, a siege or the alarm is on, or the messenger is already
+  out.
+- **Squad missions** (`brain/planner_missions.py`, the `mission` rule):
+  rescue, recover_artifact, explore, tribute, raid, pillage, conquer, with
+  the squads and the citizen or artifact (see Targets above).
+
+A run's steps, in order: `open` (the World button), `site` (the site is
+hovered, then clicked, up to 4 clicks), `goal` (the goal's button on New
+mission: Diplomacy, or Attack for the site invasions), then for Make contact
+`make_contact`, `messenger`, `confirm` ("Done assigning"), and for a site
+invasion `intent`, `squads`, `details`, `confirm`. Rescue and
+recover_artifact stop after `site`, because their buttons have never been
+recorded. Each step's result goes in the journal as one line, for example
+`World screen: make contact X set up (open ok; site ok (2 click(s)); goal
+ok; ...)`, or `stopped at site (...)`. A run that reaches `confirm` ends as
+`sent`. After that, DF sets the mission out itself, in game time.
+
+When a run stops, the next try waits (`retry_ticks`):
+
+- 1 day if the player interrupted it, DF listed no messenger, or DF missed
+  the click on the site or the goal's word.
+- `STUCK_RETRY_DAYS` (7 days) once that miss has happened more than 3
+  times in the same DF session.
+- A year for a step nobody has recorded (Needs you says where it stopped).
+
+The notes give this wait as "tried again in N days".
+
+The messenger is followed by its Diplomacy army controller. The journal
+gets "the messenger set off to make contact with X" when the controller
+first shows. It gets "the messenger's mission ... is over after N day(s)"
+when the controller is gone (`messenger_sent`, `messenger_back`).
+
+The switches:
+
+- On the Rules tab: **Appoint a messenger, make contact** (`make_contact`)
+  and **Send the messenger by the World screen** (`send_messenger`).
+- On the Army tab: **Missions to send out** (`missions`), **Send missions by
+  the World screen** (`send_missions`) and **Raids** (`raid_policy`).
+
+With a send switch off, the AI only names the site and the squads, and
+Needs you says what to send.
+
 ## Not done yet
 
 Siege engines and archers' fortifications. The messenger and the missions

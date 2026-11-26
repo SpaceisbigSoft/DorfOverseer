@@ -249,16 +249,16 @@ def shut(s, m):
     return [p for p in props if p.action.get("visitors") is False]
 
 
-@test("3a E: taverns, temple and library 'yours' from y251 (no time kept): a theft shuts them with the guildhall")
+@test("3a E: taverns, temple and library 'yours' from y251 (no time kept): a theft shuts them with the guildhall (item6: not the library)")
 def _():
     s = town()
     m = Memory(locations_yours=[0, 1, 2, 3])
     m.heists = [[abs_tick(s) - 50, "Om Konlihiñer"]]
     p = shut(s, m)
-    assert p and p[0].action["ids"] == [0, 1, 2, 3, 5], [x.action for x in p]
-    # recorded: the AI's again (no longer yours)
-    record([(p[0], {"ok": True, "changed": [0, 1, 2, 3, 5], "visitors": False})], s, m)
-    assert m.locations_closed == [0, 1, 2, 3, 5] and m.locations_yours == [], (m.locations_closed, m.locations_yours)
+    assert p and p[0].action["ids"] == [0, 1, 3, 5], [x.action for x in p]
+    # recorded: the AI's again (no longer yours); the library stays yours and open
+    record([(p[0], {"ok": True, "changed": [0, 1, 3, 5], "visitors": False})], s, m)
+    assert m.locations_closed == [0, 1, 3, 5] and m.locations_yours == [2], (m.locations_closed, m.locations_yours)
 
 
 @test("3a one you opened after the theft stays open; a stranger's wary days leave yours alone as before")

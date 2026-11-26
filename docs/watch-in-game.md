@@ -305,7 +305,7 @@ Suggested placement: in "Starting the next step", in place of the current "then 
   - Keeper log: a "calm burrows retired" note once 90% of 40+ tantrum sightings are outside the burrow. The 2-5 Nov logs had 344 of 349 outside.
   - SameBooze stress shrinking (`_booze_variety_rule`: a fruit brew, a second brewable crop; supplies `drink_kinds`).
 - **Visitors (all; B and F for meetings, C never).**
-  - After a heist or a visitor's killing, the tavern, temples, library and guildhalls are shut to visitors for `heist_lockout_days` (168). Look for `location_access` in the journal, and for `killer_visitor` or `killer_dead` on the `Died:` lines.
+  - After a heist or a visitor's killing, the tavern, temples and guildhalls are shut to visitors for `heist_lockout_days` (168); the library only after a visitor's killing (item6: otherwise it stays open, and one the AI shut earlier reopens with "libraries stay open to visitors"). Look for `location_access` in the journal, and for `killer_visitor` or `killer_dead` on the `Died:` lines.
   - With 5+ citizens unable to complain and at least 3 meetings that are half or more with visitors, the same locations shut for 56 days (`visitor_shut`). This never happens at Outsiders 100+, and the Merchant city preset has it off.
   - "Unable to complain" in `needs.stress_causes` should fall. The bridge counts every non-citizen, residents too, as a visitor in meetings.
   - An unattended meeting screen is left after 2 minutes.

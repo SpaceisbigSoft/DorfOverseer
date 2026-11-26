@@ -3610,11 +3610,12 @@ def _():
     assert note_heists(s, m, [heist, dict(heist)]) == 1 and m.heists[0][1] == "Human baroness consort Lalgi Aspaescu", m.heists
     props = []
     _location_access_rule(s, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3], "visitors": False}, props
+    # (item6) a theft leaves the library open (visiting scholars): only the tavern
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1], "visitors": False}, props
     assert "Lalgi" in props[0].reason and "168 more day" in props[0].reason, props[0].reason
-    record([(props[0], {"ok": True, "changed": [1, 3]})], s, m)
+    record([(props[0], {"ok": True, "changed": [1]})], s, m)
     for e in s["locations"]["list"]:
-        if e["id"] in (1, 3):
+        if e["id"] in (1,):
             e["flags"] = ["NON_CITIZENS_ALLOWED"]
     props = []
     _location_access_rule(s, m, PLANNER_CONFIG, props, [])
@@ -3624,7 +3625,7 @@ def _():
     later["date"]["tick"] += 169 * TICKS_PER_DAY
     props = []
     _location_access_rule(later, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3], "visitors": True}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1], "visitors": True}, props
     assert "no heist for 168 days" in props[0].reason, props[0].reason
     # a visitor who killed a citizen (not berserk, alive) counts too; off at 0 days
     m2 = Memory()
@@ -3661,11 +3662,11 @@ def _():
     props = []
     _location_access_rule(off, m, PLANNER_CONFIG, props, [])
     assert not props, props
-    # on: shut (as before)
+    # on: shut (as before; item6: not the library for a theft)
     props = []
     _location_access_rule(s, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3], "visitors": False}, props
-    record([(props[0], {"ok": True, "changed": [1, 3]})], s, m)
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1], "visitors": False}, props
+    record([(props[0], {"ok": True, "changed": [1]})], s, m)
     # a library the player shut before: never the AI's
     s["locations"]["list"].append({"id": 4, "type": "LIBRARY", "flags": ["NON_CITIZENS_ALLOWED"]})
     for e in s["locations"]["list"]:
@@ -3675,7 +3676,7 @@ def _():
     off["settings"]["heist_lockout"] = False
     props = []
     _location_access_rule(off, m, PLANNER_CONFIG, props, [])
-    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1, 3], "visitors": True}, props
+    assert len(props) == 1 and _access(props[0]) == {"type": "location_access", "ids": [1], "visitors": True}, props
     assert "off on the Rules tab" in props[0].reason, props[0].reason
     # a closed fort keeps them shut whatever the switch says
     off["settings"]["traits"] = {"outsiders": -150}

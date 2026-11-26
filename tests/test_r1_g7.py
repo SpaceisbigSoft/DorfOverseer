@@ -106,14 +106,14 @@ def opening(props):
 
 # --- the brain: locations shut while claimed artifacts are in the fort --------------------------
 
-@test("B's Monastery (Outsiders +60, ~19 artifacts other civs claim, no theft yet): its 2 taverns, 2 temples "
-      "and library shut to visitors (the hospital stays open); welcoming Outsiders +100 too")
+@test("B's Monastery (Outsiders +60, ~19 artifacts other civs claim, no theft yet): its 2 taverns and 2 temples "
+      "shut to visitors (the hospital and, item6, the library stay open); welcoming Outsiders +100 too")
 def _():
     for outsiders in (60, 100):
         s = fort(outsiders, artifacts=B_ARTIFACTS, counts=B_COUNTS)
         props = rule(s, Memory())
         c = closing(props)
-        assert c and sorted(c[0].action["ids"]) == [0, 1, 2, 3, 4], (outsiders, [(p.rule, p.action) for p in props])
+        assert c and sorted(c[0].action["ids"]) == [0, 1, 2, 3], (outsiders, [(p.rule, p.action) for p in props])
         assert "claimed" in c[0].reason and "Nightsearch" in c[0].reason, c[0].reason
         assert c[0].priority == 3
     risk = artifacts_at_risk(fort(artifacts=B_ARTIFACTS, counts=B_COUNTS), Memory(), CFG)
@@ -130,7 +130,8 @@ def _():
     note_locations(s, m, CFG)
     notes = []
     props = rule(s, m, notes)
-    assert not opening(props), [(p.rule, p.action, p.reason) for p in props]
+    # (item6) only the library the AI shut opens (visiting scholars), the rest held
+    assert [sorted(p.action["ids"]) for p in opening(props)] == [[4]], [(p.rule, p.action, p.reason) for p in props]
     assert any("while" in n and "artifact(s) someone may come for" in n for n in notes), notes
     # the claimed ones gone (taken home, or the player's choice): the fort opens up
     s2 = fort(flags=SHUT, artifacts=[B_ARTIFACTS[3]], counts={"claimed": 0, "total": 1})
@@ -184,7 +185,7 @@ def _():
     bare = fort(flags=SHUT)                                 # no artifacts section
     bare["date"]["tick"] += 3 * TICKS_PER_DAY
     bare["locations"]["built"] = abs_tick(bare)
-    assert claimed_shut(bare, m, CFG) and not opening(rule(bare, m))
+    assert claimed_shut(bare, m, CFG) and [p.action["ids"] for p in opening(rule(bare, m))] == [[4]]   # (item6) the library only
     bare["date"]["tick"] += 6 * TICKS_PER_DAY
     bare["locations"]["built"] = abs_tick(bare)
     assert claimed_shut(bare, m, CFG) is None and opening(rule(bare, m))
@@ -213,8 +214,8 @@ def _():
     s = fort(artifacts=B_ARTIFACTS, counts=B_COUNTS)
     props, _ = plan(s, Memory())
     c = [p for p in props if p.rule == "location_access" and p.action.get("visitors") is False]
-    assert c and sorted(c[0].action["ids"]) == [0, 1, 2, 3, 4], [(p.rule, p.action) for p in props
-                                                                if p.rule == "location_access"]
+    assert c and sorted(c[0].action["ids"]) == [0, 1, 2, 3], [(p.rule, p.action) for p in props
+                                                             if p.rule == "location_access"]
 
 
 # --- the brain: a visitor turned killer is a target -------------------------------------------
