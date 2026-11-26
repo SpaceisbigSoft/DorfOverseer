@@ -39,8 +39,7 @@ FLOUR_EDIBLE_SHARE = 0.5   # the edible share of the millable plants the order n
 FLOUR_MIN = 4              # edible millable plants, the least worth an order
 
 
-def _int(v) -> int:
-    return v if isinstance(v, int) and not isinstance(v, bool) else 0
+from util import int_or_zero as _int  # noqa: E402  (util's, test_r6_c2)
 
 
 def flour_due(s: dict, cfg: dict, memory=None) -> tuple[int, str]:
