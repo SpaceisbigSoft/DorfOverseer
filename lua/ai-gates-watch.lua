@@ -220,6 +220,70 @@ function own_on_bridge(b)
     return ok and yes         -- can't tell: not held (a siege gate must still close)
 end
 
+-- (item2, E 26 Nov: a were-cell bridge killed 3 passers-by despite an exact-tile
+-- check) u.pos changes only on arrival: a unit stepping onto the bridge, or
+-- whose next steps cross it, reads as off it. One of the fort's own (as
+-- own_on_bridge) next to the footprint (its z, or the ramp levels z-1/z+1
+-- beside it, not under it), or whose path's next BRIDGE_PATH_STEPS steps or
+-- destination are on it: near. One pass over units.active, bounding boxes
+-- first. Returns near, enemy_close: enemy_close is a live, loose danger or
+-- invader (not the fort's) within IMMINENT of the bridge (|dz| <= 3), so a
+-- close the near rule would hold is decided by the existing rules instead.
+-- Can't tell: false, false (not held, as own_on_bridge).
+BRIDGE_PATH_STEPS = 3
+local NEAR_BOX = BRIDGE_PATH_STEPS + 1     -- tiles: past this no step or ring tile can touch the bridge
+function own_near_bridge(b)
+    local ok, near, enemy = pcall(function()
+        local civ = df.global.plotinfo.civ_id
+        local x1, x2, y1, y2, z = b.x1, b.x2, b.y1, b.y2, b.z
+        local reach = IMMINENT or 12
+        local function on(x, y, zz)
+            return zz == z and x >= x1 and x <= x2 and y >= y1 and y <= y2
+        end
+        local near, enemy = false, false
+        for _, u in ipairs(df.global.world.units.active) do
+            local p = u.pos
+            local dz = math.abs(p.z - z)
+            local dx = math.max(x1 - p.x, p.x - x2, 0)
+            local dy = math.max(y1 - p.y, p.y - y2, 0)
+            local d = math.max(dx, dy)
+            if dz <= 3 and d <= reach and not dfhack.units.isDead(u) then
+                local own = dfhack.units.isCitizen(u, true) or u.civ_id == civ
+                local okd, danger = pcall(function() return dfhack.units.isDanger(u) end)
+                danger = okd and danger
+                if own and not danger then
+                    if not near and dz <= 1 and d <= NEAR_BOX then
+                        if d <= 1 and (dz == 0 or d == 1) then
+                            near = true            -- on it or beside it (the ramp levels: beside only)
+                        else
+                            pcall(function()
+                                local path = u.path
+                                local dst = path.dest
+                                if dst and on(dst.x, dst.y, dst.z) then near = true; return end
+                                local px, py, pz = path.path.x, path.path.y, path.path.z
+                                local n = #px
+                                for i = 0, math.min(n, BRIDGE_PATH_STEPS) - 1 do
+                                    if on(px[i], py[i], pz[i]) then near = true; return end
+                                end
+                            end)
+                        end
+                    end
+                elseif not enemy and d <= reach and not own then
+                    local okh, hostile = pcall(function()
+                        return not u.flags1.caged and not u.flags1.chained
+                            and (danger or dfhack.units.isInvader(u))
+                    end)
+                    if okh and hostile then enemy = true end
+                end
+            end
+            if near and enemy then break end
+        end
+        return near, enemy
+    end)
+    if not ok then return false, false end
+    return near == true, enemy == true
+end
+
 -- (0.105.23, 14.1 step 4a) A lever pulled at once (DFHack's `lever pull
 -- --instant`: no dwarf runs to it), as ai-builder's shaft gate does. A pull
 -- a dwarf is on the way to make is called off first: arriving late it would
@@ -331,8 +395,18 @@ local function set_bridge(g, b, close)
     -- lowering (opening) waits while anyone stands where it comes down;
     -- (0.105.120) raising waits while one of the fort's own stands on it (a
     -- hostile on it is raised under)
+    -- (item2) and while one of the fort's own is beside it or about to step on
+    -- it (own_near_bridge); a close with an enemy within IMMINENT of the
+    -- bridge isn't held by that (only by own_on_bridge, as before)
+    local function held_near()
+        local near, enemy = own_near_bridge(b)
+        local held = near and not (close and enemy)
+        if held then GATES.bridge_near_holds = (GATES.bridge_near_holds or 0) + 1 end
+        return held
+    end
     local done = ok and c ~= close and not (okm and moving) and g.lever_id and #b.jobs == 0
-        and not own_on_bridge(b) and (close or not bridge_occupied(b)) and pull(g.lever_id) or false
+        and not own_on_bridge(b) and not held_near() and (close or not bridge_occupied(b))
+        and pull(g.lever_id) or false
     -- (0.105.48, K2) a close pull is a dwarf's job: the bridge reads down until
     -- it is done, which is not "found open" (the watcher's own pull on its way)
     if done and close then
