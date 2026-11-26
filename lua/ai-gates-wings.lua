@@ -348,6 +348,8 @@ function summary()
                             -- (0.105.33) a door or hatch on a shared lever: only locked when "closed"
                             lock_only = e_lock_only,
                             closed = GATES.closed and GATES.closed[e.id] or false,
+                            -- (R32 d) the nearest danger when the watcher shut it (its own look)
+                            closed_near = GATES.closed and GATES.closed[e.id] and GATES.close_near and GATES.close_near[e.id] or nil,
                             -- (0.105.23) the founding stair's lid, a gatehouse in front of it
                             lid = e.lid, gatehouse = e.gatehouse, gatehouse_why = e.gatehouse_why,
                             wings = e.wing_pieces and 'standing' or nil,   -- (0.105.30 seams) recorded wing walls

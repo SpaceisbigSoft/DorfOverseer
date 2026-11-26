@@ -39,7 +39,8 @@ from digest import _d, _l
 from planner_core import PLANNER_CONFIG, TICKS_PER_DAY, abs_tick
 from util import int_or_none as _int
 
-__all__ = ["note_siege_watch", "note_invite", "siege_journal", "siege_summary", "invaders", "WATCH_CONFIG"]
+__all__ = ["note_siege_watch", "note_invite", "siege_journal", "siege_summary", "invaders", "WATCH_CONFIG",
+           "gate_they_come_at", "HEADING_CYCLES"]
 
 WATCH_CONFIG = {
     "siege_watch_end_ticks": TICKS_PER_DAY // 2,     # no invader seen this long: the siege is over
@@ -49,6 +50,8 @@ WATCH_CONFIG = {
 for _k, _v in WATCH_CONFIG.items():
     PLANNER_CONFIG.setdefault(_k, _v)
 
+HEADING_CYCLES = 2      # (R32 d) an enemy's walk projected this many brain cycles ahead to name its gate
+HEADING_STEP_MAX = 40   # (R32 d) tiles a cycle at most (a fast or teleported unit's leap is not a heading)
 GATE_REACH = 3          # an atlas event this near an entrance (same level) is that gate's (defence.REACH)
 JOURNAL_MAX = 10
 
@@ -131,6 +134,7 @@ def note_siege_watch(s: dict, memory, cfg: dict | None = None) -> None:
     sp = _d(s.get("shelter_plan"))
     if sp.get("burrow") or sp.get("pick"):
         w["shelter_plan"] = sp.get("burrow") or sp.get("pick")
+    _track(w, inv, now)
     # each gate: seen shut, how near the invaders were then, the nearest ever
     pos = [_d(t.get("pos")) for t in inv]
     gates = w.setdefault("gates", {})
@@ -142,10 +146,16 @@ def note_siege_watch(s: dict, memory, cfg: dict | None = None) -> None:
         near = min(ds) if ds else None
         if near is not None:
             g["near"] = min(near, g["near"]) if isinstance(g.get("near"), int) else near
-        if e.get("closed") or e.get("closing"):
+        # (R32 d) `closing` is the scan's "a gate being built here", not a shut
+        # gate: never counted as shut. The watcher's own distance when it shut
+        # it (ai-gates `closed_near`, read at its look) is the record's, the
+        # brain's cycle comes up to a day later (A 26 Nov: "0 tiles off")
+        if e.get("closed"):
             if not g.get("closed"):
                 g["closed"], g["closed_tick"] = True, now
-                g["closed_near"] = near
+                wn = _int(e.get("closed_near"))
+                g["closed_near"] = wn if wn is not None else near
+                g["closed_near_by"] = "watcher" if wn is not None else "brain"
         elif g.get("closed"):
             g["opened"] = int(g.get("opened") or 0) + 1
     for k in _l(_d(s.get("killzones")).get("entrances")):
@@ -161,6 +171,92 @@ def note_siege_watch(s: dict, memory, cfg: dict | None = None) -> None:
     fw = _d(s.get("field_watch"))
     w["caravan"] = max(int(w.get("caravan") or 0), len(_l(fw.get("caravan"))))
     h["siege_watch"] = w
+
+
+def _track(w: dict, inv: list, now: int) -> None:
+    """(R32 d) Each invader's last two positions read at different ticks
+    (w["track"]: {id: {p, t, pp, pt}}), so a heading can be read whichever
+    side of the plan this bookkeeping runs."""
+    tr = w["track"] if isinstance(w.get("track"), dict) else {}
+    keep = {}
+    for t in inv:
+        p = _d(t.get("pos"))
+        if not all(_int(p.get(k)) is not None for k in "xyz"):
+            continue
+        k = str(t["id"])
+        old = _d(tr.get(k))
+        cur = [int(p["x"]), int(p["y"]), int(p["z"])]
+        if isinstance(old.get("t"), int) and old["t"] < now:
+            keep[k] = {"p": cur, "t": now, "pp": old.get("p"), "pt": old["t"]}
+        elif isinstance(old.get("t"), int) and old["t"] == now:
+            keep[k] = dict(old, p=cur)
+        else:
+            keep[k] = {"p": cur, "t": now}
+    w["track"] = keep
+
+
+def _prev_pos(memory, tid, now):
+    """(R32 d) Where this invader was at the brain's last read before now (None unknown)."""
+    if memory is None:
+        return None
+    w = _d(_d(getattr(memory, "holdfast", None)).get("siege_watch"))
+    e = _d(_d(w.get("track")).get(str(tid)))
+    if isinstance(e.get("t"), int) and isinstance(now, int) and e["t"] < now and isinstance(e.get("p"), list):
+        return e["p"]
+    if isinstance(e.get("pt"), int) and isinstance(now, int) and e["pt"] < now and isinstance(e.get("pp"), list):
+        return e["pp"]
+    return None
+
+
+def gate_they_come_at(s: dict, rows: list, memory=None):
+    """(R32 d) The surface entrance most of these enemies are heading to, and
+    {entrance id: enemies heading to it}. Fort A (26 Nov): 25 goblins set down
+    at the map edge, the squads held gate 3, nearest to the one goblin
+    closest to any gate, while 31 came at gate 1. Now each enemy's gate is the
+    one nearest to where it will be HEADING_CYCLES cycles on (its walk since
+    the last cycle, siege_watch's track; where it stands without one), and the
+    gate with the most wins (a tie: the one the squads hold already, then the
+    nearest enemy, then the id). Read again each cycle, so the pick follows
+    them as they move. (None, {}) without a gate or a position."""
+    es = [e for e in _l(_d(s.get("entrances")).get("entrances")) if isinstance(e, dict)
+          and e.get("kind") != "cavern" and all(_int(e.get(k)) is not None for k in ("x", "y", "z"))]
+    if not es:
+        return None, {}
+    now = abs_tick(s)
+
+    def dist(p, e):
+        return max(abs(p[0] - e["x"]), abs(p[1] - e["y"])) + 3 * abs(p[2] - e["z"])
+
+    counts, nearest = {}, {}
+    for t in rows:
+        p = _d(t.get("pos"))
+        if not all(_int(p.get(k)) is not None for k in "xyz"):
+            continue
+        cur = [int(p["x"]), int(p["y"]), int(p["z"])]
+        aim = cur
+        prev = _prev_pos(memory, t.get("id"), now)
+        if prev and len(prev) >= 3:
+            dx, dy = cur[0] - int(prev[0]), cur[1] - int(prev[1])
+            if max(abs(dx), abs(dy)) <= HEADING_STEP_MAX:
+                aim = [cur[0] + HEADING_CYCLES * dx, cur[1] + HEADING_CYCLES * dy, cur[2]]
+        g = min(es, key=lambda e: (dist(aim, e), dist(cur, e), e.get("id") or 0))
+        counts[g["id"]] = counts.get(g["id"], 0) + 1
+        d = dist(cur, g)
+        nearest[g["id"]] = min(d, nearest.get(g["id"], d))
+    if not counts:
+        return None, {}
+    # the gate a squad of the AI's already holds (stationed within 6 tiles): a tie keeps it
+    held = None
+    for q in _l(_d(s.get("military")).get("squads")):
+        st = _d(q.get("stationed")) if isinstance(q, dict) and q.get("ai_orders") else {}
+        if all(_int(st.get(k)) is not None for k in "xyz"):
+            at = [int(st["x"]), int(st["y"]), int(st["z"])]
+            g = min(es, key=lambda e: dist(at, e))
+            if dist(at, g) <= 6:
+                held = g["id"]
+                break
+    best = min(counts, key=lambda i: (-counts[i], 0 if i == held else 1, nearest[i], i if isinstance(i, int) else 0))
+    return next(e for e in es if e["id"] == best), counts
 
 
 def _queue(h: dict, entry: dict) -> None:

@@ -172,7 +172,8 @@ ALL = {
 # (R32 b) _gate_rules: every entrance counted and the ones that can't shut named; the lifted lockdown's open said
 #   (planner_gates_why); _lever_rule: a lever for any lever-less hatch or drawbridge, whatever the fort's leanings;
 #   _lockdown_cap_why / note_lockdown: never lifted (and taken back) for a destroyer, flier or one among the dwarves
-BASE_NODES = (123, "PIN")
+# (R32 d item5) _gate_guard_rule: the gate the invaders are heading to (planner_siege_watch.gate_they_come_at)
+BASE_NODES = (123, "ddd2a3f1147fef8aaca8bef9ff9889f5")
 
 
 def _defined(name: str) -> list[str]:
