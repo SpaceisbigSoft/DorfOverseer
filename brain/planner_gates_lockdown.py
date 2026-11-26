@@ -425,7 +425,11 @@ def _gate_guard_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     if int(_d(s.get("others_on_map")).get("threats_that_can_reach_dwarves") or 0) > 0:
         return
     inv = gate_invaders(s)
-    gate = main_gate(s, memory)
+    # (R32 d) the gate they are heading to (most of them, read again each
+    # cycle as they move); the main gate only when none can be told
+    from planner_siege_watch import gate_they_come_at
+    gate = gate_they_come_at(s, inv, memory)[0] if inv else None
+    gate = gate or main_gate(s, memory)
     if not inv or not gate:
         return
     squads = [q for q in _l(_d(s.get("military")).get("squads")) if isinstance(q, dict) and q.get("id") is not None]
@@ -436,7 +440,7 @@ def _gate_guard_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
     proposals.append(Proposal("gate_guard", {"type": "guard_gate", "x": gate["x"], "y": gate["y"], "z": gate["z"],
                                              "squads": [q["id"] for q in able]},
                               f"{len(inv)} invader(s) on the map, none in reach of the dwarves yet: "
-                              f"{len(able)} squad(s) hold the main gate (x{gate['x']} y{gate['y']})", 0))
+                              f"{len(able)} squad(s) hold the gate they come at (x{gate['x']} y{gate['y']})", 0))
 
 
 def _gate_dogs_rule(s: dict, memory, cfg: dict, proposals: list) -> None:

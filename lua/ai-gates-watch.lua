@@ -734,7 +734,8 @@ function visible_dangers()
         if ok and yes then
             local oki, inv = pcall(dfhack.units.isInvader, u)
             local okg, great = pcall(dfhack.units.isGreatDanger, u)      -- (0.105.4 review)
-            table.insert(out, {pos = u.pos, invader = oki and inv or false, great = okg and great or false})
+            -- (R32 d) id: the watcher's look reads each one's step since the last
+            table.insert(out, {id = u.id, pos = u.pos, invader = oki and inv or false, great = okg and great or false})
         end
     end
     return out

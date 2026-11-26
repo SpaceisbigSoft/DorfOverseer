@@ -193,7 +193,7 @@ SHORT_WORDS = {
     "gather_plants": "gather the shrubs near the fort",
     "unstick_uniforms": "untangle the soldiers' uniforms (uniform-unstick)",
     "free_stray_gear": "hand out the gear the game had lost track of",  # (0.104.58)
-    "guard_gate": "send the squads to hold the main gate",  # (0.104.83)
+    "guard_gate": "send the squads to hold the gate the enemy comes at",  # (0.104.83; R32 d)
     "gate_dogs": "pen the war dogs inside the main gate",  # (0.104.83)
     "train_war": "put tame animals to war training",  # (0.104.81)
     "nest_boxes": "pen the hens together and put nest boxes in their pasture",  # (0.104.80)
