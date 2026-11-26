@@ -39,6 +39,23 @@ before the death. A locked "quiet room" was weighed and left out: the insane
 can't be led into one, nobody grieved what they saw, and a door locked on a
 wanderer would only shut out the burial.
 
+(item7, the player's decision of 26 Nov: "Bring water to them") D lost 12
+melancholy and raving dwarves to thirst in one night. DF lets no insane dwarf
+drink or eat by any means (no Drink or Eat job; drink on their tile or in a
+locked room is never touched; DF's carriers water only a patient resting in
+bed), so drink barrels or a stockpile brought to them would change nothing.
+The one way left is DFHack's own (its full-heal script's): the `insane_water`
+action sets a melancholy or raving dwarf's thirst timer back to 0 once it
+reaches `insane_water_thirst` (DF: dehydrated 50000, dead 75000) and the
+hunger timer once it reaches `insane_water_hunger` (hungry 50000, starving
+75000). A direct change of the game's numbers, not a DF job: the reason
+line says so plainly, and `insane_water` False turns it off. Never a
+berserk dwarf (DF's, and the soldiers'), never a catatonic one (left to the
+player: the same would keep them alive, staring), never a sane one; the
+bridge checks each itself. The insane are never killed by the AI. Each
+row's thirst and hunger, and how often the AI has watered them, are in the
+`insane` section and said in the note.
+
 Without the `insane` section (an older bridge, the fixtures) nothing here
 proposes or notes anything, and planner_moods says what it always said.
 """
@@ -48,9 +65,19 @@ from __future__ import annotations
 import re
 
 from digest import _d, _l
-from planner_core import Proposal
+from planner_core import EMERGENCY, LIMIT_EXEMPT, MULTI_PER_CYCLE, NO_COOLDOWN, STEER_PROTECTED, Proposal, abs_tick
 
-__all__ = ["INSANE_KINDS", "insane_rows", "insane_risk", "insane_kin", "hazard_words", "_insane_rule"]
+__all__ = ["INSANE_KINDS", "insane_rows", "insane_risk", "insane_kin", "hazard_words", "_insane_rule",
+           "water_due", "WATER_RULE"]
+
+# (item7) water for the insane: a life each, so an emergency rule (no action
+# limit, cooldown or strategist hold), as the thirst rule is
+WATER_RULE = "insane_water"
+for _s in (EMERGENCY, NO_COOLDOWN, LIMIT_EXEMPT, STEER_PROTECTED, MULTI_PER_CYCLE):
+    _s.add(WATER_RULE)
+WATERED = ("melancholy", "raving")       # the kinds watered (lua/ai-insane.lua WATERED)
+DEHYDRATED = 50000
+STARVING = 75000
 
 INSANE_KINDS = ("melancholy", "raving", "berserk", "catatonic")
 GUARDED = ("melancholy", "raving")
@@ -192,6 +219,74 @@ def _doors_words(r: dict) -> str:
             "locked)")
 
 
+def _num(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def _water_bars(s: dict, cfg: dict) -> tuple[int, int]:
+    """(item7) The thirst and hunger from which the AI waters and feeds: the
+    settings', never below the bridge's own (it refuses anyone short of it)."""
+    ins = _d(s.get("insane"))
+    th = int(cfg.get("insane_water_thirst", 40000))
+    hu = int(cfg.get("insane_water_hunger", 65000))
+    bt, bh = _num(ins.get("water_thirst")), _num(ins.get("water_hunger"))
+    return max(th, bt or 0), max(hu, bh or 0)
+
+
+def water_due(s: dict, cfg: dict) -> list:
+    """(item7) The melancholy and raving rows whose thirst or hunger reached
+    the bars (_water_bars), with the AI's water on (`insane_water`): [row].
+    One the AI tried lately (`insane_water_retry_ticks`) and still due (the
+    try did not take) waits for the retry. The bridge's `water_more` (the due
+    past its listed rows, a fort with more than ten insane) are seen to too."""
+    if not cfg.get("insane_water", True):
+        return []
+    th, hu = _water_bars(s, cfg)
+    now = abs_tick(s)
+    retry = int(cfg.get("insane_water_retry_ticks", 600))
+    out, seen = [], set()
+    more = [r for r in _l(_d(s.get("insane")).get("water_more")) if isinstance(r, dict)]
+    for r in insane_rows(s) + more:
+        if r.get("kind") not in WATERED or not isinstance(r.get("id"), int) or r["id"] in seen:
+            continue
+        seen.add(r["id"])
+        t, h = _num(r.get("thirst")), _num(r.get("hunger"))
+        if not ((t is not None and t >= th) or (h is not None and h >= hu)):
+            continue
+        tried = _num(r.get("water_tried"))
+        if tried is not None and 0 <= now - tried < retry:
+            continue
+        out.append(r)
+    return out
+
+
+def _needs_words(r: dict, s: dict, cfg: dict) -> str:
+    """(item7) '; thirst 43000 (dehydrated at 50000), hunger 12000: ...' with
+    what the AI does about it; the old words with an older bridge (no timers)."""
+    t, h = _num(r.get("thirst")), _num(r.get("hunger"))
+    if t is None and h is None:
+        return "; DF lets nobody feed or water the insane, so meanwhile nothing more can be done"
+    th, hu = _water_bars(s, cfg)
+    bits = []
+    if t is not None:
+        bits.append(f"thirst {t}" + (" (dehydrated)" if t >= DEHYDRATED else ""))
+    if h is not None:
+        bits.append(f"hunger {h}" + (" (starving)" if h >= STARVING else ""))
+    state = ", ".join(bits)
+    if not cfg.get("insane_water", True):
+        return (f"; {state}: DF lets no insane dwarf drink or eat, and the AI's water for them is off "
+                "(insane_water): they will die of thirst unless you turn it on")
+    words = (f"; {state}: DF lets no insane dwarf drink or eat (drink beside them is never touched), so the AI "
+             f"sets their thirst back to 0 directly through DFHack once it reaches {th} (dehydrated at "
+             f"{DEHYDRATED}) and their hunger once it reaches {hu}: a change of the game's numbers, not a DF job")
+    n = _num(r.get("watered"))
+    if n:
+        words += f" (done {n} time{'s' if n != 1 else ''} so far)"
+    if r.get("water_error"):
+        words += f"; the last try failed ({r['water_error']})"
+    return words
+
+
 def _insane_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) -> None:
     """Each insane citizen said with their kind, where, the deadly ground
     near them and what the AI does; the guard proposed while a melancholy or
@@ -211,13 +306,13 @@ def _insane_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
         if kind == "melancholy":
             notes.append(f"{name} has fallen into melancholy{where}: insane for good (DF has no cure); they eat "
                          "and drink nothing and seek death in water, magma or a fall" + _doors_words(r)
-                         + "; DF lets nobody feed or water the insane, so meanwhile nothing more can be done"
+                         + _needs_words(r, s, cfg)
                          + _kin_words(r, cfg) + tail)
         elif kind == "raving":
             notes.append(f"{name} has gone stark raving mad{where}: insane for good; they strip, wander and "
                          "babble, eat and drink nothing, and attack no one (no alarm is raised for them); they "
                          "ignore danger" + _doors_words(r)
-                         + "; DF lets nobody feed or water the insane, so meanwhile nothing more can be done"
+                         + _needs_words(r, s, cfg)
                          + _kin_words(r, cfg) + tail)
         elif kind == "catatonic":
             notes.append(f"{name} is catatonic{where}: insane for good; they stare into space until they starve, "
@@ -233,6 +328,18 @@ def _insane_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None) 
             why += ("; " if why else "") + (f"{held} door(s) locked for the insane: opened again once nobody "
                                             "insane is near")
         proposals.append(Proposal("insane", {"type": "insane_guard", "units": guard_ids}, why, 1))
+    due = water_due(s, cfg)
+    if due:
+        th, hu = _water_bars(s, cfg)
+        who = "; ".join(
+            f"{r.get('name') or 'a dwarf'} ({r.get('kind')}, thirst {r.get('thirst')}, hunger {r.get('hunger')})"
+            for r in due[:4]) + (f" and {len(due) - 4} more" if len(due) > 4 else "")
+        proposals.append(Proposal(WATER_RULE, {"type": "insane_water", "units": [r["id"] for r in due]},
+                                  f"{len(due)} insane dwarf(s) nearing death of thirst or hunger: {who}; DF lets no "
+                                  "insane dwarf drink or eat, so the AI sets their thirst timer (from "
+                                  f"{th}) and hunger timer (from {hu}) back to 0 directly through DFHack, as "
+                                  "DFHack's full-heal does: a cheat the player can turn off (insane_water False); "
+                                  "never a berserk, catatonic or sane dwarf", 0))
     risk = _breaking(s, cfg)
     if risk:
         total = len(risk)

@@ -14,7 +14,9 @@ reads the bridge's `thirst` section (lua/ai-thirst.lua: one `reason` a
 dwarf) and, per dwarf, uses the remedy that exists for that reason; a rule
 that already acts on it this cycle is left to it (no second action):
 
-  insane       nothing makes them drink: said (the insane rule's doors)
+  insane       nothing makes them drink: said; (item7) the melancholy and
+               raving get their thirst set back by the insane rule
+               (insane_water, planner_insane)
   mood         a strange mood: said (the mood rules bring the materials)
   chained, jailed   release_prisoners for them (unless the prisoners' water
                rule lets them go this cycle)
@@ -418,6 +420,11 @@ def _remedy_old(r: dict, s: dict, cfg: dict, ex: dict) -> tuple[dict | None, str
     reason, uid = r["reason"], r["id"]
     timer = int(r.get("timer") or 0)
     if reason == "insane":
+        if r.get("insane") in ("melancholy", "raving") and cfg.get("insane_water", True):
+            # (item7) DF lets no insane dwarf drink: the insane rule sets their thirst back (DFHack)
+            return None, (f"{r.get('insane')}: DF lets no insane dwarf drink; the insane rule sets their thirst "
+                          f"back to 0 directly through DFHack from {int(cfg.get('insane_water_thirst', 40000))} "
+                          "(insane_water)")
         return None, (f"{r.get('insane') or 'insane'}: nothing makes them drink (the insane rule keeps the AI's "
                       "doors between them and deadly ground)")
     if reason == "mood":

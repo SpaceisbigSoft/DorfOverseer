@@ -52,6 +52,7 @@ CAMERA_QUIET = {"census", "join_levels", "dismiss_alerts", "sand_zone", "report_
                 # (0.105.40) world cleanup: nothing to look at
                 "cleanup_items", "cleanup_units", "cleanup_spatter", "cleanup_dead_units",
                 "insane_guard",   # (0.105.40b) doors locked and opened: nothing to look at
+                "insane_water",   # (item7) two numbers set: nothing to look at
                 "add_haulers", "relieve_haulers",
                 "paint_traffic",   # (0.105.41) traffic designations: nothing to look at
                 "clean_contaminants", "quarantine_syndromes", "clear_miasma"}   # (0.105.41, item 11) nothing to look at   # (0.105.40b fix) a work detail changed: nothing to look at
@@ -230,6 +231,7 @@ SHORT_WORDS = {
     "cleanup_spatter": "clean blood and spatter off the map",
     "cleanup_dead_units": "take long-dead creatures off the game's active list",
     "insane_guard": "lock the AI's own doors between an insane dwarf and deep water, magma or a drop while they are near",  # (0.105.40b)
+    "insane_water": "set an insane dwarf's thirst and hunger back through DFHack (DF lets them neither drink nor eat)",  # (item7)
     "killer_cell": "lock a killer or a vampire among the fort's own in a cell (let out to eat and drink)",  # (item3)
     "were_cells": "link the werebeast cells' levers to their drawbridges",  # (0.105.115 item24)
     "stuck_reset": "take an AI lever's waiting pull job off (and ask the pull afresh)",  # (0.105.45)

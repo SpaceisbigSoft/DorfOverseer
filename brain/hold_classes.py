@@ -112,7 +112,7 @@ _SURVIVAL_RULES = {
     "care_clean", "care_diagnose", "care_feed", "infected_rest", "traction", "traction_parts", "traction_rest",
     "bed_rest",   # (item5)
     "soap", "soap_rush", "syndrome_clean", "syndrome_quarantine", "miasma_clear", "miasma_dump", "miasma_refuse",
-    "rescue_labor", "stranded", "insane", "cave_in_dig_out", "way_in", "way_out", "way_out_dig", "second_way",
+    "rescue_labor", "stranded", "insane", "insane_water", "cave_in_dig_out", "way_in", "way_out", "way_out_dig", "second_way",
     "webs", "remove_webs",
     # the dead
     "burial", "burial_coffins", "burial_corner", "burial_others", "burial_assign", "coffins", "slabs", "slabs_free", "slabs_ahead",
@@ -191,7 +191,7 @@ _SURVIVAL_ACTIONS = {
     "survey_water", "water_zone", "restrict_water", "place_well", "renew_well_dig", "seal_well_stairs",
     "well_shaft", "well_safety", "well_rescue", "cistern_step", "water_work", "retire_water_zones",
     "magma_guard", "magma_reclaim", "lure_shut", "forbid_secrets", "thirst_unforbid", "thirst_way", "thirst_patient", "thirst_probe", "clear_webs", "remove_webs", "clean_contaminants",
-    "quarantine_syndromes", "clear_miasma", "insane_guard",
+    "quarantine_syndromes", "clear_miasma", "insane_guard", "insane_water",
     # ways in and out for the stranded
     "open_entrance", "dig_way_in", "way_out_open", "way_out_leave", "close_world", "redig_projects", "location_access",
     # food, drink, farms, the herd

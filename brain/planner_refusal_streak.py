@@ -87,13 +87,13 @@ TRANSIENT_RULES = {
     "thirst", "drink_fruit", "water_traffic", "well_rescue", "well_lid", "well_parts", "well_shaft",
     "well_safety", "cistern_shut", "waterworks_shut", "magma_shut", "lure_shut", "stranded", "way_in",
     "way_out", "way_out_dig", "hospital", "hospital_burrow", "hospital_guard", "doctor_patient", "doctor_post",
-    "rescue_labor", "infected_rest", "traction_rest", "insane", "break_fights", "fight_watch", "calm_burrow", "jail_urgent",
+    "rescue_labor", "infected_rest", "traction_rest", "insane", "insane_water", "break_fights", "fight_watch", "calm_burrow", "jail_urgent",
     "mood", "mood_shelter", "cave_in_dig_out", "prisoners_water", "tavern_urgent",
 }
 TRANSIENT_ACTIONS = {
     "civ_alert", "thirst_unforbid", "thirst_way", "thirst_patient", "thirst_probe", "open_entrance",
     "dig_way_in", "way_out_open", "way_out_leave", "well_rescue", "well_safety", "well_shaft",
-    "hospital_burrow", "calm_burrow", "break_fights", "fight_watch", "insane_guard", "mood_free_items", "mood_shelter",
+    "hospital_burrow", "calm_burrow", "break_fights", "fight_watch", "insane_guard", "insane_water", "mood_free_items", "mood_shelter",
     "hospital_release",   # (item2) a mood's thread; the hospital's quotas put back
     "unpause", "save_game", "report_status", "save_memory", "dismiss_alerts",
 }
@@ -115,7 +115,7 @@ CRITICAL_RULES = {
     "shelter", "shelter_flee", "shelter_pick", "shelter_refresh", "shelter_squads", "shelter_supply",
     "squad_attack", "squad_recall", "archer_post", "caravan_guard", "near_gates", "near_gates_refresh",
     "killer", "cursed", "reanimation", "flood", "fire_guard", "intruder_guard", "thief_watch",
-    "break_fights", "fight_watch", "calm_burrow", "insane", "thirst", "moon_cell",
+    "break_fights", "fight_watch", "calm_burrow", "insane", "insane_water", "thirst", "moon_cell",
 }
 CRITICAL_PREFIXES = ("thirst", "fight", "killer", "shelter", "gate", "alarm", "alert")
 # (item7) safety steps that may wait, but never long: at most r112_short_cap_days

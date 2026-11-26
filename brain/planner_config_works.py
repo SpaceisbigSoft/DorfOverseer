@@ -155,6 +155,16 @@ PART = {
     # very unhappy or worse, or unhappy with long-term stress this high
     "insane_kin_care": True,
     "insane_kin_longterm": 25000,
+    # (item7, the player's "Bring water to them") DF lets no insane dwarf drink or
+    # eat: the melancholy and raving get their thirst timer set back to 0 from
+    # this thirst (DF: dehydrated 50000, dead 75000) and their hunger timer from
+    # this hunger (starving 75000), directly through DFHack (insane_water action;
+    # the bridge never goes below its own 40000 / 65000); a try that did not take
+    # is asked again after insane_water_retry_ticks. False: off (they die of thirst).
+    "insane_water": True,
+    "insane_water_thirst": 40000,
+    "insane_water_hunger": 65000,
+    "insane_water_retry_ticks": 600,
     # (0.105.40, 13e) world cleanup (brain/planner_cleanup.py), only past these
     # counts; while the game runs slowly each threshold is divided by
     # cleanup_slow_factor, and the item one grows with the items on the map
