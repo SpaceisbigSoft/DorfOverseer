@@ -174,7 +174,7 @@ ALL = {
 #   _lockdown_cap_why / note_lockdown: never lifted (and taken back) for a destroyer, flier or one among the dwarves
 # (R32 d item5) _gate_guard_rule: the gate the invaders are heading to (planner_siege_watch.gate_they_come_at)
 # (item8 trim to the slider) _military_rules: the quirk's quarter on the slider's number, the trim in planner_squad_trim
-BASE_NODES = (123, "9192adbd3bcc4b3284ddc8e58acbf607")
+BASE_NODES = (123, "3da9454cf5c0c9d074ef8541c92e9cfd")   # (r36) the AI gate lever block moved to planner_military_gatelever, the stalker path
 
 
 def _defined(name: str) -> list[str]:

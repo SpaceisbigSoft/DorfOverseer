@@ -39,11 +39,6 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # has its own switch); gate_lever is only closing gates and their levers
     if gate_rules and "entrances" in s and "entrances" not in s["_errors"]:
         _gate_rules(s, memory, cfg, rules_, any_reach, proposals, notes, traits)
-    # A lever the player named "AI gate" and linked to something: pulled too.
-    gates = [g for g in _l(mil.get("gates")) if isinstance(g, dict) and not g.get("pending") and g.get("linked")]
-    # (one linked to an entrance's drawbridge is the gate watcher's to pull)
-    watched = watched_gate_levers(s)
-    gates = [g for g in gates if g.get("id") not in watched]
     # (0.105.3) not for a lone intruder inside, nor after the lockdown was lifted
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
     open_up = bool(lone) or lockdown_released(memory) or bool(any_reach and hunted_outside(s, cfg, traits, memory)
@@ -52,25 +47,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     from planner_gates import sortie_out
     sortie = bool(sortie_out(s, cfg, memory)) and not lone
     open_up = open_up or sortie
-    if rules_["gate_lever"] and gates:
-        # (0.105.36) never pulled while the report says the gate is already
-        # shut (the player's, or the AI's own not yet read back)
-        if any_reach and not memory.gate_closed_by_ai and not open_up and gates[0].get("shut") is not True:
-            proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
-                                      "a threat can reach the dwarves: pull the AI gate lever", 0))
-        elif memory.gate_closed_by_ai and sortie:
-            proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
-                                      "the squads sortie against the enemies outside, the civilians in the "
-                                      "shelter: pull the AI gate lever back (open) to let them out", 0))
-        elif memory.gate_closed_by_ai and any_reach and open_up:
-            proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
-                                      "only a few enemies left, inside the fort, or no new one for days: pull "
-                                      "the AI gate lever back (open)", 0))
-        elif (not any_reach and memory.gate_closed_by_ai and gates
-              and (all_clear(s, memory, cfg)[0] or quick_clear(s, memory, cfg))):     # (0.105.3)
-            proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
-                                      f"no threat for {memory.quiet_cycles} cycles: pull the AI gate "
-                                      "lever back", 1))
+    from planner_military_gatelever import ai_gate_lever    # (r36) moved out whole (60 KB)
+    ai_gate_lever(s, memory, cfg, rules_, mil, any_reach, open_up, sortie, proposals)
 
     # Squads at threats: kill orders the AI gives, and clears again.
     able = [q for q in squads if can_fight(q, cfg)]
