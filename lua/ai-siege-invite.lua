@@ -493,7 +493,7 @@ function spawn_party(civ, count)
     if SP.spawn_tiles then
         while spread < SPAWN_SPREAD_MAX do
             local okt, tiles = pcall(SP.spawn_tiles, {x = at.x, y = at.y, z = at.z}, spread)
-            if okt and type(tiles) == 'table' and #tiles >= count then break end
+            if not okt or type(tiles) ~= 'table' or #tiles >= count then break end   -- unreadable: as it was
             spread = spread + 3
         end
         spread = math.min(spread, SPAWN_SPREAD_MAX)
@@ -612,7 +612,9 @@ function invite_siege(dry, opts)
     end
     local ranking = short_rank(rank_civs(reach_rows(), rec and rec.state == 'no_army' and before or {}))
     local civ = ranking[1]
-    local direct = rec ~= nil and #ranking > 0
+    -- only a repeat test after a war party (state 'came' with `spawned`): a plain no-army
+    -- invitation gives DF's armies another try (the civs tried before go last)
+    local direct = rec ~= nil and rec.state == 'came' and rec.spawned ~= nil and #ranking > 0
     for _, r in ipairs(ranking) do if not quiet[r.id] then direct = false end end
     local quiet_list = {}
     for c in pairs(quiet) do table.insert(quiet_list, c) end

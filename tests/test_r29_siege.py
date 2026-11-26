@@ -323,7 +323,7 @@ def _():
     assert len(made) == 1, made
     mk = made[0]
     # the farthest reachable edge tile from the entrance (3,3): 17,19 (x 19 is another walkable group)
-    assert (mk.x, mk.y, mk.z) == (17, 19, 5) and mk.ltype == "Walkable" and mk.spread == 3, dict(mk)
+    assert (mk.x, mk.y, mk.z) == (17, 19, 5) and mk.ltype == "Walkable" and mk.spread in (3, 6, 9, 12), dict(mk)   # (0.105.127) grown to fit the party
     assert mk.race == "GOBLIN" and mk.civ == 314 and mk.qty == 16 and mk.equip == 4, dict(mk)
     assert mk.flags == "active_invader,invader_origin"
     u = w.units[1]
