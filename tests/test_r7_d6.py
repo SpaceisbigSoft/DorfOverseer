@@ -90,9 +90,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # (r34a idle miners) re-pinned after six deliberate keys: quarry_tiles_per_boulder, quarry_max_tiles
 # (E's quarries of 1-5 tiles, a boulder for ~1 tile in 4), explore_cooldown_ticks, explore_days,
 # explore_tiles, explore_per_tunnel_miners (E's 27 miners with nothing to dig): 26 Nov
-DUMP_6298B4A = "35a34445ead83204c9671f94880578265c974957c410e8b063505e80b52716da"
-KEYS_6298B4A = "054f7974faf540a17537288de28861f7846c6574eec9817871870c363da90dee"
-COUNT_6298B4A = 1366
+# (r36c explore wait) re-pinned after one deliberate key: explore_pending_wait_days (B, D, E: a 0-tile
+# "done" each day while every tunnel was still being dug): 26 Nov
+DUMP_6298B4A = "063fdae7df542dc2567dbd431fcbaa68916fac836bebaa3cd535834cc127db35"
+KEYS_6298B4A = "0b341e4c1f424d16b8d0eeb6f147194325b34e0a054c4cf8a2e3d2e2187b240d"
+COUNT_6298B4A = 1367
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

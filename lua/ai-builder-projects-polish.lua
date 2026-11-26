@@ -5,7 +5,7 @@
 -- loads it into its own environment right after the part before it (PARTS), so every
 -- name here is reqscript('ai-builder').name and the hub's helpers are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-polish'] = '0.105.132'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects-polish'] = '0.105.133'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local ez = ez
 

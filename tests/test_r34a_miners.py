@@ -138,6 +138,34 @@ def _():
     assert "reqscript('ai-industry').explore(n, t, a.dry_run == true)" in act
 
 
+@test("(r36c) an answer 'all tunnels still being dug' (0 tiles): explore waits explore_pending_wait_days, quietly")
+def _():
+    from planner_record import record
+    s, m = fort(), Memory()
+    refused_gems(s, m)
+    props, _ = explore(s, m)
+    assert [p.rule for p in props] == ["explore"], props
+    now = abs_tick(s)
+    record([(props[0], {"ok": True, "tiles": 0, "tunnels": 0, "pending": 2,
+                        "waiting": "2 exploratory tunnel(s) still being dug: no new ones until they are"})], s, m)
+    assert m.last_fired.get("explore_pending") == now, m.last_fired
+    # past explore's own day pace, inside the pending wait: nothing, and no note
+    m.last_fired["explore"] = now - 5 * TICKS_PER_DAY
+    props2, notes2 = explore(s, m)
+    assert [p.rule for p in props2] == [] and not any("explore" in n for n in notes2), (props2, notes2)
+    # the wait over: asked again
+    m.last_fired["explore_pending"] = now - 30 * TICKS_PER_DAY
+    assert [p.rule for p in explore(s, m)[0]] == ["explore"]
+    # an answer with tiles marked books no wait
+    m2 = Memory()
+    refused_gems(s, m2)
+    p3 = explore(s, m2)[0][0]
+    record([(p3, {"ok": True, "tiles": 30, "tunnels": 2, "pending": 0})], s, m2)
+    assert "explore_pending" not in m2.last_fired
+    cyc = (ROOT / "brain" / "overseer_cycle.py").read_text(encoding="utf-8")
+    assert 'p.action["type"] == "explore_dig" and r.get("tiles") == 0' in cyc
+
+
 @test("quarry_size: 4 tiles a boulder wanted, at most twice the Mining slider's size and 60 (E: 44, was 12)")
 def _():
     s = fort(usable=9)                                            # 2 x 10 - 9 = 11 boulders

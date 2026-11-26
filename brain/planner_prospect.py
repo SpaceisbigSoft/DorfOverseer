@@ -213,6 +213,9 @@ def _explore_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
         return          # a vein or a quarry this cycle: that's the miners' work
     if not _paced(memory, "explore", cfg.get("explore_days", 1) / f, abs_tick(s)):
         return
+    # (r36c) the last answer: every slot held by a tunnel still being dug: wait (quietly)
+    if not _paced(memory, "explore_pending", cfg.get("explore_pending_wait_days", 3) / f, abs_tick(s)):
+        return
     n, t = explore_size(miners, f, cfg)
     proposals.append(Proposal(
         "explore", {"type": "explore_dig", "count": n, "tunnels": t},

@@ -569,6 +569,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                             # (0.105.35) kept: the AI presses only a button it has been shown
                             outcome_txt += ("; not pressed: the AI hasn't been shown the Trade button (python "
                                             "brain\\probe_trade.py --here), so the goods stay ticked on the screen")
+                    elif r.get("ok") is True and p.action["type"] == "explore_dig" and r.get("tiles") == 0:
+                        # (r36c) every slot held by a tunnel still being dug
+                        outcome_txt = f"waiting: {r.get('waiting') or 'the last tunnels are still being dug'}"
                     elif r.get("waiting"):
                         outcome_txt = f"waiting: {r.get('error')}"
                     if p.action["type"] == "start_project":

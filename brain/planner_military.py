@@ -39,11 +39,6 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     # has its own switch); gate_lever is only closing gates and their levers
     if gate_rules and "entrances" in s and "entrances" not in s["_errors"]:
         _gate_rules(s, memory, cfg, rules_, any_reach, proposals, notes, traits)
-    # A lever the player named "AI gate" and linked to something: pulled too.
-    gates = [g for g in _l(mil.get("gates")) if isinstance(g, dict) and not g.get("pending") and g.get("linked")]
-    # (one linked to an entrance's drawbridge is the gate watcher's to pull)
-    watched = watched_gate_levers(s)
-    gates = [g for g in gates if g.get("id") not in watched]
     # (0.105.3) not for a lone intruder inside, nor after the lockdown was lifted
     lone = lone_intruders(s, cfg, traits, memory) if any_reach else []
     open_up = bool(lone) or lockdown_released(memory) or bool(any_reach and hunted_outside(s, cfg, traits, memory)
@@ -52,25 +47,8 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     from planner_gates import sortie_out
     sortie = bool(sortie_out(s, cfg, memory)) and not lone
     open_up = open_up or sortie
-    if rules_["gate_lever"] and gates:
-        # (0.105.36) never pulled while the report says the gate is already
-        # shut (the player's, or the AI's own not yet read back)
-        if any_reach and not memory.gate_closed_by_ai and not open_up and gates[0].get("shut") is not True:
-            proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
-                                      "a threat can reach the dwarves: pull the AI gate lever", 0))
-        elif memory.gate_closed_by_ai and sortie:
-            proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
-                                      "the squads sortie against the enemies outside, the civilians in the "
-                                      "shelter: pull the AI gate lever back (open) to let them out", 0))
-        elif memory.gate_closed_by_ai and any_reach and open_up:
-            proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
-                                      "only a few enemies left, inside the fort, or no new one for days: pull "
-                                      "the AI gate lever back (open)", 0))
-        elif (not any_reach and memory.gate_closed_by_ai and gates
-              and (all_clear(s, memory, cfg)[0] or quick_clear(s, memory, cfg))):     # (0.105.3)
-            proposals.append(Proposal("gate", {"type": "pull_gate", "lever_id": gates[0]["id"]},
-                                      f"no threat for {memory.quiet_cycles} cycles: pull the AI gate "
-                                      "lever back", 1))
+    from planner_military_gatelever import ai_gate_lever    # (r36) moved out whole (60 KB)
+    ai_gate_lever(s, memory, cfg, rules_, mil, any_reach, open_up, sortie, proposals)
 
     # Squads at threats: kill orders the AI gives, and clears again.
     able = [q for q in squads if can_fight(q, cfg)]
@@ -132,6 +110,13 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
              if t["id"] in threats and t["id"] not in fire and t.get("can_reach_dwarves") is not False]
     if weres:
         targets = list(dict.fromkeys(weres + [i for i in targets if i not in weres]))
+    # (r36) a stalker inside the fort (hidden, ambushing, a night creature, a were) is a
+    # target at once as a were is: the crowd and lone-thief rules are for seen guests
+    # (B 26 Nov 18:22: a hidden hero swordsman killed the tavern keeper, no squad sent)
+    from planner_stalker_inside import stalkers_inside, stalker_words
+    stalk = [i for i in stalkers_inside(s, threats) if i not in off]
+    if stalk:
+        targets = list(dict.fromkeys(stalk + [i for i in targets if i not in stalk]))
     recalled = set()
     held_back = [i for i in reach if i not in targets and i not in fire and i not in no_sortie and i not in crowd
                  and i not in cloud and (policy != "never" or bool(threats[i].get("great_danger")))]
@@ -186,7 +171,7 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
     if not lone and not targets and reach:
         from planner_leisure import inside_few
         lone = inside_few(s, cfg, reach, threats)
-    if lone and not weres:
+    if lone and not weres and not stalk:
         # (0.105.3) a lone intruder inside: one armed squad, whatever the policy
         _lone_squad(s, memory, cfg, squads, lone, threats, proposals, notes)
     elif targets:
@@ -197,9 +182,12 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         if never_inside:
             why_in = (" (inside the fort: the Rules tab's never attack means no sorties outside, not leaving "
                       "an enemy loose inside the walls among the dwarves)")
+        elif stalk:
+            why_in = stalker_words(threats, stalk)
         elif set(info.get("inside") or ()) & set(targets) & set(great):
             why_in = (" (the great danger is inside the fort, among the dwarves: holding the choke protects "
                       f"nobody there, so the odds decide: {verdict[:80]})")
+        inside_ |= set(stalk)
         for q in able:
             if q.get("id") in recalled:
                 continue                 # (0.105.26) called back this cycle: sent again next
