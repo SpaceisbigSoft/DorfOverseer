@@ -1062,7 +1062,7 @@ PART_LOCALS = {U = U, is = is, entrances_of = entrances_of}
 PARTS = {'invite'}
 -- each part marks the version it came with; started afresh at each load, so
 -- a part that failed to load shows as unmarked
-PART_VERSIONS = {['ai-siege'] = '0.105.133'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-siege'] = '0.105.134'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local info = debug and debug.getinfo and debug.getinfo(1, 'S')

@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.133'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.134'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, add, overlaps, ez = info, has, add, overlaps, ez
 
@@ -158,6 +158,10 @@ end
 -- (0.105.33) all_last: the 8 neighbours on z are read too (a new stairwell
 -- has no hub check on its bottom level to cover them)
 function check_extension(sx, sy, zb, z, all_last)
+    -- (r35a, 0.105.134) a staircase the game refused before, for every caller (the floors'
+    -- and landmarks' searches too: D chose x128 y149 again 13 minutes after it was booked)
+    local bad = bad_extension(sx, sy)
+    if bad then return false, ('stairs at x%d y%d: the game refused them before (%s)'):format(sx, sy, bad) end
     for zz = zb - 1, z, -1 do
         for dx = -1, 1 do
             for dy = -1, 1 do
@@ -799,10 +803,6 @@ function choose_site(L, stairs, reserved, plan, ceil_z)
                     -- (0.105.47) a hospital is never centred on a stair (nor dug below one)
                     if ok and L.stair_gap then ok, why = false, 'a hospital is not centred on the stairs' end
                     if lv.extend then
-                        if ok then
-                            local bad = bad_extension(stair.x, stair.y)    -- (r35a)
-                            if bad then ok, why = false, 'the game refused these stairs before: ' .. bad end
-                        end
                         if ok then
                             ok, why = check_extension(stair.x, stair.y, stair.z_bottom, z)
                         end
