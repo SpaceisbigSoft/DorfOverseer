@@ -79,6 +79,9 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
             notes.append(hold["why"])
             hunted = []
     released = lockdown_released(memory)
+    from planner_gates_why import release_void, released_text, entrances_not_shutting, cant_text
+    if released and release_void(s, cfg, _lockdown_ids(s, traits if traits is not None else _traits(s), cfg)):
+        released = False                    # (R32 b) a destroyer, a flier or one among the dwarves: not lifted
     # (0.105.54) the squads out on a sortie: the gates open for them (a
     # gatehouse's drawbridge lowered) while the civilians shelter
     sortie = [] if lone or hunted else sortie_out(s, cfg, memory)
@@ -92,11 +95,15 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
                      "(shut, they keep only the others out)" if lone else
                      f"only {len(hunted)} ordinary enemy/enemies outside, and a squad on them or citizens out: "
                      "the gates stay open (shut, they keep the squads in and the citizens out)" if hunted else
-                     "the AI's lockdown was lifted (no new enemy for days): the gates stay open until a new one comes")
+                     "the AI's lockdown was lifted (only a few ordinary enemies left, all inside the fort): the "
+                     "gates stay open until a new one comes")
     elif any_reach and closable and not ent.get("armed") and rules_["gate_lever"] and not letting_in:
+        # (R32 b) every entrance counted, and the ones that can't shut named with why
+        cant = entrances_not_shutting(s, memory, cfg, es, off)
         proposals.append(Proposal("gates", {"type": "arm_gates"},
-                                  f"a threat can reach the dwarves: watch the {len(closable)} gate(s); each closes "
-                                  "once everyone is inside or the danger is 12 tiles away", 0))
+                                  f"a threat can reach the dwarves: watch the {len(closable)} gate(s) of the "
+                                  f"{len(es)} entrance(s); each closes once everyone is inside or the danger is "
+                                  "12 tiles away" + cant_text(cant), 0))
     elif any_reach and closable and _reach_lift(s, memory, cfg, traits):
         # (0.105.48, K16) the reach alarm came down at its cap: the lockdown lifts too
         proposals.append(Proposal("gates", {"type": "open_gates"}, _reach_lift(s, memory, cfg, traits), 0))
@@ -113,7 +120,7 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
                                   + (f"{int(ent.get('citizens_outside') or 0)} citizen(s) shut out"
                                      if int(ent.get("citizens_outside") or 0) else "a squad sent at them")
                                   + ": open the gates (the squads go out, the citizens come in)" if hunted else
-                                  "the fort has been shut for days with no new enemy: open the gates", 0))
+                                  released_text(s, memory, cfg, traits), 0))
     elif not any_reach and ent.get("armed") and all_clear(s, memory, cfg)[0]:
         proposals.append(Proposal("gates", {"type": "open_gates"},
                                   f"no threat for {memory.quiet_cycles} cycles: open the gates", 1))
@@ -121,6 +128,10 @@ def _gate_rules(s: dict, memory, cfg: dict, rules_: dict, any_reach: bool,
         # (0.105.3) A (2 Nov): shut on 9 citizens for a sneaker who hid again
         proposals.append(Proposal("gates", {"type": "open_gates"},
                                   f"{quick_clear(s, memory, cfg)}: open the gates", 0))
+    if any_reach and es and not closable and rules_["gate_lever"]:
+        # (R32 b) no entrance has a gate to close: said, each with why
+        notes.append(f"a threat can reach the dwarves and none of the {len(es)} entrance(s) can shut"
+                     + cant_text(entrances_not_shutting(s, memory, cfg, es, off)))
     werr = _d(ent.get("watch_error"))
     if ent.get("armed") and werr.get("error"):
         # (0.104.81, 13c) the gate watcher errors: it closes nothing.
@@ -432,7 +443,12 @@ def _lever_rule(s: dict, memory, cfg: dict, es: list, now: int, proposals: list,
     lever is linked once, and the next gate gets a lever of its own.
     Drawbridges before hatches; a lever is placed only with 3 mechanisms
     free (its own and the link's two), else they're ordered."""
-    hatches = (cfg.get("hatch_levers") and machinery_wanted(traits or {})
+    # (R32 b) every fort, not only one that cares for its machinery (the
+    # standing rule: the AI does it itself). B (26 Nov): the gatehouse's hatch
+    # had no lever ("levers": []) in a fort of low Engineering, and nothing
+    # ever placed one. Still never while a threat can reach the dwarves (the
+    # link shuts the hatch; the watcher opens it again)
+    hatches = (cfg.get("hatch_levers")
                and not _d(s.get("others_on_map")).get("threats_that_can_reach_dwarves"))
     ent = _d(s.get("entrances"))
     # (0.105.23) drawbridges before hatches: entrances with a bridge to link come first
@@ -442,28 +458,36 @@ def _lever_rule(s: dict, memory, cfg: dict, es: list, now: int, proposals: list,
     es = sorted(es, key=bridge_first)
     levers = _free_gate_levers(s)
     if not levers:
-        # (0.105.12) a fort that wants machinery and has a gate no lever works: a lever of its own
-        if hatches:
-            for e in es:
-                if (e.get("sealed") and _lever_hatches_ok(e, cfg)
-                        and _link_wanted(s, e, None, hatches=True)):
-                    off = _d(s.get("map")).get("elevation_offset")
-                    elev = (e.get("z") or 0) + (off if isinstance(off, int) else 0)
-                    free = ent.get("free_mechanisms")
-                    need = cfg.get("hatch_lever_mechanisms", 3)
-                    if isinstance(free, int) and free < need:
-                        # (0.105.23) the lever and its link's two first: never a lever left unlinked for want
-                        if not queued(s, {"mechanisms"}):
-                            proposals.append(Proposal("mechanisms", {"type": "work_order", "recipe": "mechanisms",
-                                                                     "amount": need - free},
-                                                      f"{need - free} mechanism(s) for a gate lever and its link "
-                                                      f"({free} free)", 6, is_order=True))
-                        break
-                    proposals.append(Proposal("gate_lever", {"type": "place_gate_lever", "entrance_id": e["id"]},
-                                              f"the gate at the {e.get('kind')} entrance at elevation {elev} has no "
-                                              "lever, and this fort works its gates by machinery: a lever inside, "
-                                              "away from the gate", 6))
-                    break
+        # (0.105.12) a gate no lever works: a lever of its own. (R32 b) a
+        # drawbridge too (one whose lever is gone or at the gate: nothing
+        # placed a new one), whatever the fort's leanings. Not while an AI
+        # gate lever is being built (it goes first: place_gate_lever waits)
+        if any(isinstance(g, dict) and g.get("pending") for g in _l(_d(s.get("military")).get("gates"))):
+            return
+        for e in es:
+            bridge_wants = bool(_link_wanted(s, e, None, hatches=False))
+            hatch_wants = bool(hatches and e.get("sealed") and _lever_hatches_ok(e, cfg)
+                               and _link_wanted(s, e, None, hatches=True))
+            if not (bridge_wants or hatch_wants):
+                continue
+            off = _d(s.get("map")).get("elevation_offset")
+            elev = (e.get("z") or 0) + (off if isinstance(off, int) else 0)
+            free = ent.get("free_mechanisms")
+            need = cfg.get("hatch_lever_mechanisms", 3)
+            if isinstance(free, int) and free < need:
+                # (0.105.23) the lever and its link's two first: never a lever left unlinked for want
+                if not queued(s, {"mechanisms"}):
+                    proposals.append(Proposal("mechanisms", {"type": "work_order", "recipe": "mechanisms",
+                                                             "amount": need - free},
+                                              f"{need - free} mechanism(s) for a gate lever and its link "
+                                              f"({free} free)", 6, is_order=True))
+                break
+            what = "drawbridge" if bridge_wants else "hatch"
+            proposals.append(Proposal("gate_lever", {"type": "place_gate_lever", "entrance_id": e["id"]},
+                                      f"the {what} at the {e.get('kind')} entrance at elevation {elev} "
+                                      f"(x{e.get('x')} y{e.get('y')}) has no lever a dwarf can pull from "
+                                      "inside: a lever inside, away from the gate (then linked to it)", 6))
+            break
         return
     for e in es:
         # the first free lever away from this gate (another may suit another gate)
