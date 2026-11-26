@@ -30,6 +30,7 @@
     "distance_to_nearest_dwarf": 66,
     "flier": false,
     "great_danger": true,
+    "hostile": true,
     "id": 23,
     "invader": false,
     "kinds": {

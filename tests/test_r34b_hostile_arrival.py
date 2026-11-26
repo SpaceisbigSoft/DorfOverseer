@@ -152,12 +152,14 @@ def _():
       "own form; kill_target_ok takes a were outsider; both compile")
 def _():
     src = (ROOT / "lua" / "ai-bridge-report-world.lua").read_text(encoding="utf-8")
-    assert "function sneak_threat(u, layer, TH)" in src and "function were_curse(u, TH)" in src
+    tf = (ROOT / "lua" / "ai-threat-facts.lua").read_text(encoding="utf-8")   # (0.105.131) moved there: world's size
+    assert "function sneak_threat(u, layer, TH)" in tf and "function were_curse(u, TH)" in tf
+    assert "TF.sneak_threat(" in src and "TF.were_curse(u, TH)" in src
     assert "(not hidden or sneak)" in src and "hidden = sneak or nil" in src and "were_curse = cursed or nil" in src
-    assert "hidden_in_ambush" in src and "isOwnGroup" in src
+    assert "hidden_in_ambush" in tf and "isOwnGroup" in src
     duty = (ROOT / "lua" / "ai-military-duty.lua").read_text(encoding="utf-8")
     assert "reqscript('ai-threats').were_cursed(u)" in duty
-    for f in ("ai-bridge-report-world.lua", "ai-military-duty.lua"):
+    for f in ("ai-bridge-report-world.lua", "ai-military-duty.lua", "ai-threat-facts.lua"):
         try:
             r = subprocess.run(["texluac", "-p", str(ROOT / "lua" / f)], capture_output=True, text=True)
         except FileNotFoundError:
@@ -175,8 +177,8 @@ function U.isNightCreature(u) return u.night == true end
 
 def lua_part():
     from lupa.lua53 import LuaRuntime
-    src = (ROOT / "lua" / "ai-bridge-report-world.lua").read_text(encoding="utf-8")
-    part = src[src.index("function were_curse(u, TH)"):src.index("function get_others_on_map()")]
+    src = (ROOT / "lua" / "ai-threat-facts.lua").read_text(encoding="utf-8")
+    part = src[src.index("-- (r34b) A were by its curse"):]
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute(LUA_STUB + part)
     return lua

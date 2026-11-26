@@ -41,6 +41,7 @@ NAMES_6298B4A = (
     'hospital_stock_rule',   # (0.105.112 item4) the hospitals' standing thread/cloth cap
     '_mechanism_stock_rule',   # (0.105.119 item30) enough free mechanisms for the lever links
     'cap_full_pass',   # (0.105.119 item39) no new level the full building cap would refuse
+    '_explore_rule',   # (r34a) exploratory tunnels for idle miners with no vein to follow
     '_order_remake_rule', 'remake_due',   # (0.105.112 item8) a one-stone order with no job remade in any stone
     'ACTION_LOG_MAX', 'ADJUST_BOUNDS', 'AGENDA_THEMES', 'AI_OFFICES', 'ALERT_DANGERS', 'ALL_FOOD',
     'ASKED_TICKS', 'BASIC_STOCKPILES', 'BASIC_WORKSHOPS', 'BREW_RECIPES', 'BUILDABLE_SHOPS', 'CHARACTER_KINDS',

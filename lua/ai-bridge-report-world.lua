@@ -482,48 +482,7 @@ local function can_fly(u)
     return ok and flier or false
 end
 
--- (r34b) A were by its curse, in either form: DF's enemy.were_race set to
--- another race than its own now and its birth race (ai-killers curse_kind:
--- ordinary units carry their own race there), or the WERECURSE syndrome
--- (ai-threats were_cursed). B, 26 Nov: the Weregiraffe Child Lastta came at
--- the map's edge and walked 120 tiles to the tavern keeper unseen.
-function were_curse(u, TH)
-    local okw, were = pcall(function()
-        local w = u.enemy.were_race
-        return w ~= nil and w ~= -1 and w ~= u.race and w ~= u.enemy.normal_race
-    end)
-    if okw and were == true then return true end
-    if TH and TH.were_cursed then
-        local okc, c = pcall(TH.were_cursed, u)
-        if okc and c == true then return true end
-    end
-    return false
-end
-
--- (r34b) A unit DF hides from the player (isHidden: an ambusher, or one on
--- tiles not seen yet) that is a threat all the same: a hostile (isDanger)
--- night creature or were (beast form, or its curse known) anywhere but the
--- deep layers, or an ambusher in hiding (flags1.hidden_in_ambush: an ambush
--- party, a sneaking night creature). B, 26 Nov 15:15:57: the Weregiraffe
--- Child came hostile at the map's edge (the journal's arrival event said
--- hostile) and was no threat row for 76 s, hidden, until it killed the
--- tavern keeper and DF said "has come!". The row says hidden (and ambush).
-function sneak_threat(u, layer, TH)
-    if u.flags1.caged or u.flags1.chained then return false, false end
-    local okd, danger = pcall(dfhack.units.isDanger, u)
-    if not (okd and danger) then return false, false end
-    local oka, ambush = pcall(function() return u.flags1.hidden_in_ambush end)
-    ambush = oka and ambush == true
-    local deep = tostring(layer or ''):find('^Cavern') or layer == 'MagmaSea' or layer == 'Underworld'
-    if deep and not ambush then return false, false end
-    if ambush then return true, true end
-    local okn, night = pcall(dfhack.units.isNightCreature, u)
-    if okn and night then return true, false end
-    local okc, ch = pcall(function() return u.enemy.normal_race ~= -1 and u.enemy.normal_race ~= u.race end)
-    if okc and ch then return true, false end
-    if were_curse(u, TH) then return true, false end
-    return false, false
-end
+-- (r34b) were_curse and sneak_threat live in ai-threat-facts (this file's size limit)
 
 function get_others_on_map()
     local out = {
@@ -554,7 +513,7 @@ function get_others_on_map()
         if hidden and dfhack.units.isActive(u) and not dfhack.units.isDead(u)
                 and not dfhack.units.isCitizen(u, true) then
             local oks, v, a = pcall(function()
-                return sneak_threat(u, layer_at({x = u.pos.x, y = u.pos.y, z = u.pos.z}, layers), TH)
+                return TF.sneak_threat(u, layer_at({x = u.pos.x, y = u.pos.y, z = u.pos.z}, layers), TH)
             end)
             sneak, ambush = (oks and v) == true, (oks and a) == true
         end
@@ -572,7 +531,7 @@ function get_others_on_map()
             -- (r34b) a were outsider in its own form (its curse known: were_race or
             -- WERECURSE) is a threat though DF calls it no danger: not a merchant
             -- or a diplomat (C's weregecko representative killed 6 at the moon)
-            local cursed = were_curse(u, TH)
+            local cursed = TF ~= nil and TF.were_curse(u, TH) or false
             local cursed_threat = false
             if cursed and not dfhack.units.isDanger(u) and not turned then
                 local okm, m = pcall(dfhack.units.isMerchant, u)
