@@ -580,6 +580,10 @@ function well_shaft_keys()
             if type(h) == 'table' and math.tointeger(h.x) then out[key(h.x, h.y, h.z)] = true end
         end
     end)
+    -- (item3) the cavern way's gate (its hatch): worked by ai-cavern-way and its watcher
+    pcall(function()
+        for k in pairs(reqscript('ai-cavern-way').own_keys()) do out[k] = true end
+    end)
     return out
 end
 

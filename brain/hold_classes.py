@@ -45,6 +45,7 @@ BY_ACTION = {"strategist"}
 _EXPANSION_RULES = {
     # hunts, kill zones, lures, missions and contact
     "hunt", "killzone", "killzone_parts", "lure_build", "lure_open", "lure_archer", "invite_siege",
+    "cavern_way_build", "cavern_way_open",   # (item3) the guarded cavern way built, its gate opened for a job
     "beast_hunt",   # (0.105.54) the seal opened for a fight with the cavern beast: waits in a crisis
     "mission", "mission_pets", "mission_way", "contact", "training_squad",
     # building above ground and set pieces, landmarks, the grove, the garden court
@@ -78,6 +79,7 @@ _DEFENCE_RULES = {
     "gate_stuck", "gate_dogs", "mechanism_stock", "entrances", "cavern_openings", "cavern_scan", "seal_cavern", "destroyer_gate",
     "intruder_guard", "thief_watch", "traps", "cages", "near_gates", "near_gates_refresh", "fire_guard", "moon_cell",
     "were_cells",   # (0.105.115 item24) werebeast cells behind drawbridges: the level and its links
+    "cavern_way_shut",   # (item3) the guarded cavern way's gate shut for a danger
     "squad_make", "squad_fill", "squad_trim", "squad_attack", "squad_recall", "soldier_swap", "train",
     "uniform", "uniform_adopt", "unstick_uniforms", "assign_kit", "assign_weapons", "barracks_assign", "kit",
     "arms", "arms_forge", "anvil", "bolts", "crossbow_shop", "quivers", "quivers_order", "gear_fix", "gear_fix_order", "stray_gear",
@@ -160,6 +162,7 @@ STEP_CLASS = {
 
 _EXPANSION_ACTIONS = {
     "hunt_send", "build_killzone", "build_lure", "lure_open", "send_mission", "mission_way", "mission_pets", "invite_siege",
+    "cavern_way",   # (item3) its shut (shut: True) always goes
     "training_squad", "polish", "polish_room", "blueprint_sites", "build_blueprint", "landmark_step",
     "place_hall", "build_wings", "floor_rooms", "place_keep", "place_garden_court", "keep_grove",
     "place_siege_engine", "place_siege_shop", "fortify_post", "build_gatehouse", "cut_entrance",

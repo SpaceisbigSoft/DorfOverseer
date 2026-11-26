@@ -305,6 +305,9 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     -- pieces, its beast and its phase; the openings a pocket fits behind
     -- (planned once a game day); the great dangers and whether traps catch them (lua/ai-lure.lua)
     lures = function() return safe(function() return reqscript('ai-lure').report() end) end,
+    -- (item3) the guarded cavern way: its build state, its gate, the dangers near its door,
+    -- the citizens beyond it, the webs on the cavern side (lua/ai-cavern-way.lua)
+    cavern_way = function() return safe(function() return reqscript('ai-cavern-way').report(get_layers()) end) end,
     -- (0.105.41) traffic zones: the AI's finished levels waiting for their
     -- traffic, the one in progress, the next recheck (lua/ai-traffic.lua; the
     -- project records only, no tile read)
@@ -469,6 +472,7 @@ PULSE_SECTIONS = {
     'env_hazards',   -- (0.105.41, item 7) spilt magma spreads in minutes: read each cycle
     'shelter_plan',  -- (0.105.45) a titan inside walks to the shelter in minutes: read each cycle
     'lures',         -- (0.105.45) a lure is opened and shut on what the beast does: read each cycle
+    'cavern_way',    -- (item3) the cavern way's gate shut when a danger shows: read each cycle
     'thirst',        -- (0.105.46, I2) thirst kills in days: read each cycle
     'mood_help',     -- (0.105.47, J1) an alarm sounded while a mood gathers: read each cycle
     'tantrums',      -- (0.105.47) a tantrum is loose for hours: read each cycle

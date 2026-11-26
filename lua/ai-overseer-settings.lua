@@ -372,6 +372,7 @@ function defaults()
         prisoners = 'keep',        -- (0.105.0) caged invaders: keep | release | kill (PRISONER_CHOICES)
         moon_cells = true,         -- (0.105.0) werebeast citizens locked in a cell round the full moon
         seal_caverns = true,       -- (0.105.0) the way down locked while a beast the squads can't take is in a cavern
+        cavern_way = true,         -- (item3) one guarded way onto the first cavern's floor, its gate opened for a job
         tribute = 'small',         -- (0.105.0) tribute a civilisation asks (TRIBUTE_CHOICES)
         peace = 'ai',              -- (0.105.41, item 8) a peace proposal answered (PEACE_CHOICES)
         make_contact = true,       -- (0.105.0, 13b) a messenger appointed and sent to sites not in contact
@@ -556,6 +557,7 @@ function sanitize(s)
                         'end_tantrums',             -- (item3) a tantrum that attacks a citizen ended
                         'spare_beatings',           -- (R29 W8) DF's beatings of convicts spared
                         'moon_cells', 'seal_caverns',   -- (0.105.0) round 3's switches
+                        'cavern_way',               -- (item3) the guarded cavern way
                         'make_contact',             -- (0.105.0) the messenger and Make contact
                         'send_messenger',           -- (0.105.24) the World screen driven to send it
                         'send_missions',            -- (0.105.39) ... and a mission
@@ -683,6 +685,7 @@ function for_ai(s)
         prisoners = s.prisoners,                   -- (0.105.0) round 3
         moon_cells = s.moon_cells,
         seal_caverns = s.seal_caverns,
+        cavern_way = s.cavern_way,                 -- (item3)
         tribute = s.tribute,                       -- (0.105.0)
         peace = s.peace,                           -- (0.105.41, item 8) ai | accept | refuse
         make_contact = s.make_contact,             -- (0.105.0)

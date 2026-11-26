@@ -169,6 +169,7 @@ SECTION_DEFAULTS = {
     "necro": {},             # (item6) a necromancer siege: the dead, raisers, bodies outside, towers near (lua/ai-captives.lua)
     "env_hazards": {},       # (0.105.41, item 7) spilt magma, cave-ins, frost, heat (lua/ai-hazards.lua; in the pulse too)
     "lures": {},             # (0.105.45) lure pockets behind the AI's cavern doors, their phase; candidates, great beasts (lua/ai-lure.lua)
+    "cavern_way": {},        # (item3) the guarded way onto the cavern floor: its state, gate, dangers near its door, webs (lua/ai-cavern-way.lua)
     "herd": {},              # (0.105.47) the herd by kind, breeders, grass need, wool and milk now, tameable, trainers (lua/ai-herd.lua)
     "killers": {},           # (item3) cursed citizens and residents, the living who killed the fort's own, the AI's cells (lua/ai-killers.lua)
     "shelter_plan": {},      # (0.105.45) the shelter away from the threat: ways in, levels, walks, chokes (lua/ai-shelter-plan.lua)

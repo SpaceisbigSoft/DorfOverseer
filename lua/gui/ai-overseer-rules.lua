@@ -343,6 +343,15 @@ function RulesPage:init()
         initial_option = p.settings.spare_beatings ~= false,
         on_change = function(v) p:set_field('spare_beatings', v) end,
     })
+    -- (item3) the guarded cavern way: row 5 right of "Spare convicts" (which ends at column 96)
+    table.insert(views, widgets.ToggleHotkeyLabel{
+        view_id = 'cavern_way',
+        frame = {t = 5, l = 98, w = 20},
+        label = 'Cavern way:',
+        label_width = 12,
+        initial_option = p.settings.cavern_way ~= false,
+        on_change = function(v) p:set_field('cavern_way', v) end,
+    })
     -- (0.105.4 review) a cavern well may open a cavern nobody has found yet.
     -- (v35 fix) three-state: AI decides (the default: only when the fort is
     -- short of water and has armed soldiers for what comes out), Always, Never
@@ -778,6 +787,7 @@ function RulesPage:refresh()
     self.subviews.fight_watch:setOption(s.fight_watch ~= false, false)             -- (item1)
     self.subviews.end_tantrums:setOption(s.end_tantrums ~= false, false)           -- (item3)
     self.subviews.spare_beatings:setOption(s.spare_beatings ~= false, false)       -- (R29 W8)
+    self.subviews.cavern_way:setOption(s.cavern_way ~= false, false)               -- (item3)
     self.subviews.tribute:setOption(s.tribute or 'small', false)                   -- (0.105.0)
     self.subviews.make_contact:setOption(s.make_contact ~= false, false)           -- (0.105.0)
     self.subviews.send_messenger:setOption(s.send_messenger == true, false)        -- (0.105.24)

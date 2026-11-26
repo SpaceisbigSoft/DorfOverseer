@@ -360,6 +360,20 @@ ACTIONS = {
         if type(a.opening) ~= 'string' then return reject('lure_shut needs opening ("x,y,z")') end
         return reqscript('ai-lure').lure_shut(a.opening, a.dry_run == true)
     end,
+    -- (item3) the guarded cavern way: built a step at a time, its gate opened for a job and shut
+    -- (lua/ai-cavern-way.lua, brain/planner_cavern_way.py)
+    cavern_way = function(a)
+        local CW = reqscript('ai-cavern-way')
+        if a.step == 'build' then
+            if a.release_only then return {ok = false, rejected = true, halted = true, error = 'the AI is halted'} end
+            return CW.build_step({caution = tonumber(a.caution), unfound_ok = a.unfound_ok == true}, a.dry_run == true,
+                                 get_layers())
+        elseif a.step == 'open' or a.step == 'shut' then
+            return CW.set_gate(a.step == 'open', type(a.why) == 'string' and a.why or nil, a.dry_run == true,
+                               a.release_only == true)
+        end
+        return reject('cavern_way needs step build, open or shut')
+    end,
     -- (0.105.40 M5) hauling balanced: haulers added, key specialists relieved (lua/ai-hauling.lua)
     add_haulers = act_add_haulers,
     relieve_haulers = act_relieve_haulers,
@@ -840,6 +854,7 @@ for _, name in ipairs({
     'shelter_pick', 'squad_station',   -- (0.105.45) each dry run checks and changes nothing
     'stuck_reset',    -- (0.105.45) its dry run counts the lever's pull jobs and changes nothing
     'build_lure', 'lure_open', 'lure_shut',   -- (0.105.45) each dry run plans or checks and changes nothing
+    'cavern_way',     -- (item3) its dry run plans or checks the step and marks, places or pulls nothing
     'add_haulers', 'relieve_haulers',   -- (0.105.40 M5) each dry run names the dwarves and changes nothing
     -- (0.105.40b, M6) the food store: each dry run finds the spot (quickfort's dry run) and changes nothing
     'food_pile', 'food_barrels',
@@ -904,6 +919,7 @@ DISPLAY_ONLY = {report_status = true, set_culture = true, set_learned = true, sa
 -- (item3) the killer cells let the thirsty and hungry out, and lock nobody in.
 RELEASE_WHILE_HALTED = {insane_guard = 'release_only', killer_cell = 'release_only',
                         lure_shut = 'while_halted',   -- (0.105.45, merge) shutting a lure pocket is always safe
+                        cavern_way = 'release_only',  -- (item3) the cavern way's gate only shut (no build, no open)
                         -- (0.105.48, K3) the AI's alarm and burrows: only lowered and
                         -- emptied (the handlers refuse the raising and the moving in);
                         -- the way out's leave only opens, lowers and lets out

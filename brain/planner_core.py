@@ -256,6 +256,7 @@ class Memory:
     welfare: dict = field(default_factory=dict)          # (0.105.47, I7b) {short_since: tick the dead first outnumbered the free tombs} (planner_welfare)
     beast_hunt: dict = field(default_factory=dict)       # (0.105.54) the cavern beast's kill plan: {id, name, tactic, goal, stage, since, opened, retry, squads} (planner_threats)
     lure: dict = field(default_factory=dict)             # (0.105.45) opening "x,y,z" -> {tries, opened, next_try, caught, phase}: the lure pockets (planner_lure)
+    cavern_way: dict = field(default_factory=dict)       # (item3) {job, opened, rest: {job: tick}, danger_seen}: the guarded cavern way (planner_cavern_way)
     holdfast: dict = field(default_factory=dict)         # (0.105.47, R2 item 7) {kill, guards, named, walls}: planner_holdfast
     defence_floor: dict = field(default_factory=dict)    # (0.105.54) {peak {power, tick, why}}: the biggest threat seen (planner_defence_floor)
     ranged_need: dict = field(default_factory=dict)      # (r2h4) {tick, why}: a fire breather or a flier was met (crossbows wanted: planner_military)

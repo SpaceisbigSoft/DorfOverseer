@@ -231,6 +231,7 @@ BRIDGE_MODULES = {
     'ai-util', 'ai-water', 'ai-waterworks', 'gui/ai-overseer',
     'ai-threat-facts',          -- (0.105.45) a threat's facts for the matchup (called from the report)
     'ai-lure',   -- (0.105.45)
+    'ai-cavern-way',   -- (item3) the guarded cavern way
     'ai-thirst',   -- (0.105.46, I2) the thirst watch
     'ai-secrets',   -- (0.105.95) the secrets of life and death
     'ai-recovery',   -- (0.105.46, I4)

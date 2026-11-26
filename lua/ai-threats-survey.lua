@@ -81,6 +81,11 @@ function gather_openings(d, t, data)
             end
         end
     end)
+    -- (item3) the guarded cavern way's door on the cavern floor: the seal locks it, a lure uses it
+    pcall(function()
+        local w = reqscript('ai-cavern-way').door_opening()
+        if w then note_opening(d, w.x, w.y, w.z, 'gate', 'cavern way door', t) end
+    end)
     -- (0.105.47) each cavern well's door at its gallery's fort end (a hatch over
     -- its stair top in a hall): a way into the caverns the seal locks
     pcall(function()
