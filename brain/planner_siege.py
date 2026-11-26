@@ -628,7 +628,8 @@ def _invite_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
     is looked at once a day, switch or no switch: the bridge looks for an
     army set out for the fort and, after 7 days with none, tries the next
     civ (3 at most). One that brought an army is the fort's one; one that
-    ended with no army ('no_army') allows a new one when the switch is on."""
+    ended with no army ('no_army') allows a new one when the switch is on;
+    (0.105.127) so does one that came, once it is over (the switch is the player's yes)."""
     done = _d(field_of(s).get("invited"))
     state = done.get("state") if done.get("tick") is not None else None
     if state == "waiting":
@@ -648,12 +649,6 @@ def _invite_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
         return
     if _d(s.get("settings")).get("invite_siege") is not True:
         return
-    if done.get("tick") is not None and state != "no_army":
-        proposals.append(Proposal("invite_siege", {"type": "invite_siege"},
-                                  f"the Rules' \"Invite a siege (test)\" is on again, but this fort had its invited "
-                                  f"siege (year {done.get('year')}, {done.get('civ_name') or 'no civ named'}): the "
-                                  "bridge refuses it and turns the switch off", 6))
-        return
     from planner_core import held_off_threats
     if _besieged(s) or reachable_threats(s, _traits(s), cfg) or [t for t in held_off_threats(s) if t.get("invader")]:
         notes.append("Invite a siege (test) is on: it waits while enemies are already on the map")
@@ -662,7 +657,10 @@ def _invite_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
         notes.append("Invite a siege (test) is on: it waits until the crisis is over")
         return
     again = ""
-    if state == "no_army":
+    if done.get("tick") is not None and state != "no_army":   # (0.105.127) a test again, once the last one is over
+        again = (f" (again: the last invited siege came, year {done.get('year')}, "
+                 f"{done.get('civ_name') or 'no civ named'}; a bigger war party if no army comes)")
+    elif state == "no_army":
         tried = [str(t.get("civ_name") or t.get("civ_id")) for t in _l(done.get("tries")) if isinstance(t, dict)]
         again = f" (again: the last invitation brought no army, tried {', '.join(tried) or 'no civ'})"
     proposals.append(Proposal("invite_siege", {"type": "invite_siege"},
