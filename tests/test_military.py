@@ -565,27 +565,41 @@ return env
     assert rep[1].id == 900 and rep[1].squads[1] == 32
 
 
-@test("defence test: invaders set down 15+ tiles out with a path to the depot; never during a real threat")
-def _():
-    lua = LuaRuntime(unpack_returned_tuples=True)
-    env = lua.execute(r"""
-local src, spawn_src = ...
+DEFENCE_FAKE = r"""
+local src, spawn_src, native = ...
 local env = setmetatable({}, {__index = _G})
-local units = {}
+local units = setmetatable({}, {__index = {insert = function(self, _, v) table.insert(self, v) end}})
 env.UNITS = units
 env.df = {global = {world = {buildings = {other = {TRADE_DEPOT = {{centerx = 50, centery = 50, z = 10}}}},
                               units = {active = units},
-                              entities = {all = {{id = 7, type = 0, entity_raw = {code = 'EVIL'}}}}}},
-          historical_entity_type = {Civilization = 0}}
+                              entities = {all = {{id = 7, type = 0, entity_raw = {code = 'EVIL'}}}},
+                              raws = {creatures = {all = {{creature_id = 'GOBLIN', caste = {{caste_id = 'F'}}}}}}},
+                    unit_next_id = 300},
+          historical_entity_type = {Civilization = 0},
+          tiletype = {attrs = {FLOOR = {shape = 'FLOOR'}}}, tiletype_shape = {attrs = {FLOOR = {walkable = true}}}}
 env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
 env.dfhack = {
+    isMapLoaded = function() return true end,
     maps = {getTileFlags = function(x, y, z)
+                if type(x) == 'table' then x, y = x.x, x.y end
                 return {outside = true, hidden = false, flow_size = (x == 65 and y == 50) and 3 or 0}
             end,
-            canWalkBetween = function(a, b) return a.x ~= 50 + 15 or a.y ~= 50 end},
+            canWalkBetween = function(a, b) return a.x ~= 50 + 15 or a.y ~= 50 end,
+            isValidTilePos = function() return true end, getTileType = function() return 'FLOOR' end,
+            getWalkableGroup = function() return 1 end, getTileBlock = function() return nil end},
+    buildings = {findAtTile = function() return nil end},
     units = {isActive = function() return true end, isDead = function() return false end,
-             isDanger = function(u) return u.danger end, isHidden = function() return false end},
+             isDanger = function(u) return u.danger end, isHidden = function() return false end,
+             teleport = function(u, p) return true end},
 }
+if native then
+    env.dfhack.units.create = function(race, caste)
+        if native == 'fail' then error('no unit in this fake') end
+        local id = env.df.global.unit_next_id
+        env.df.global.unit_next_id = id + 1
+        return {id = id, race = race, caste = caste, pos = {}, flags1 = {}, flags2 = {}, flags3 = {}, civ_id = -1}
+    end
+end
 local spawn_env
 env.reqscript = function(name)
     if name == 'ai-spawn' then       -- (item1) the real module, over this fake game
@@ -595,6 +609,9 @@ env.reqscript = function(name)
         end
         return spawn_env
     end
+    if native then                   -- (item8) DFHack 53.17-r1's create-unit: stale for DF 53
+        return {createUnit = function() error('create-unit.lua:164: Cannot read field world.arena_spawn: not found') end}
+    end
     return {createUnit = function(race, caste, pos, rng, lt, age, dom, civ, grp, ern, nick, van, n, eq, sk, pr, cp, flags)
         env.MADE = {race = race, civ = civ, n = n, flags = flags, pos = pos}
         for i = 1, n do table.insert(units, {id = 100 + i}) end
@@ -602,16 +619,43 @@ env.reqscript = function(name)
 end
 assert(load(src, 'ai-military', 't', env))()
 return env
-""", module_src("ai-military.lua"), (ROOT / "lua" / "ai-spawn.lua").read_text(encoding="utf-8"))
+"""
+
+
+def _defence(native=None):
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    return lua.execute(DEFENCE_FAKE, module_src("ai-military.lua"),
+                       (ROOT / "lua" / "ai-spawn.lua").read_text(encoding="utf-8"), native)
+
+
+@test("defence test: invaders set down 15+ tiles out with a path to the depot; never during a real threat")
+def _():
+    env = _defence()
     d = env.spawn_test_threat(3, None, True)
     assert d.ok and d.dry_run and d.spot.x == 35 and d.spot.y == 50 and d.civ == 7, dict(d.spot)   # (65,50) is water
     r = env.spawn_test_threat(3, None, False)
     assert r.ok and r.count == 3 and env.MADE.race == "GOBLIN" and env.MADE.civ == 7, dict(r)
     assert r.route == "create-unit", dict(r)   # (item1) by ai-spawn, create-unit first
+    assert r.spawn_info.route == "create-unit"
     assert list(env.MADE.flags.values()) == ["marauder", "active_invader", "invader_origin"]
     env.UNITS[1].danger = True
     r = env.spawn_test_threat(3, None, False)
     assert r.ok is False and "already a threat" in r.error
+
+
+@test("defence test (item8): create-unit stale: the invaders made by dfhack.units.create; failing: both reasons, the info")
+def _():
+    env = _defence("yes")
+    r = env.spawn_test_threat(3, None, False)
+    assert r.ok and r.count == 3 and r.route == "native", dict(r)
+    assert r.spawn_info.route == "native" and "arena_spawn" in r.spawn_info.cu_error, dict(r.spawn_info)
+    us = [env.UNITS[i] for i in range(1, len(env.UNITS) + 1)]
+    assert len(us) == 3 and all(u.civ_id == 7 and u.flags1.active_invader and u.flags1.marauder and u.pos.z == 10
+                                for u in us)
+    env = _defence("fail")
+    r = env.spawn_test_threat(3, None, False)
+    assert r.ok is False and "create-unit: " in r.error and "native: no unit in this fake" in r.error, r.error
+    assert r.spawn_info.route == "none" and r.spawn_info.native_error == "no unit in this fake", dict(r.spawn_info)
 
 
 POST_FAKE = r"""

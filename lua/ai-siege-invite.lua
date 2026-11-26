@@ -24,7 +24,7 @@
 -- the top-ranked civ's war party (SPAWN_COUNT of its race, armed, invaders of that
 -- civ) at the map-edge surface tile the fort's entrance can be walked to from, the
 -- farthest from it, by ai-spawn (DFHack's modtools/create-unit, else DF 53's own
--- arena spawner), once a fort (SPAWN_KEY): the invitation then counts as one that
+-- dfhack.units.create), once a fort (SPAWN_KEY): the invitation then counts as one that
 -- brought an army. With neither or no tile, it ends 'no_army' and says why.
 --
 -- The record (site data, INVITE_KEY): {tick, year, invitation (1, 2...), state
@@ -37,7 +37,7 @@
 -- started by the switch turned on again.
 
 if not PART_LOCALS then qerror('ai-siege-invite is a part of ai-siege; run ai-siege') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-siege-invite'] = '0.105.125'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-siege-invite'] = '0.105.126'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, is, entrances_of = PART_LOCALS.U, PART_LOCALS.is, PART_LOCALS.entrances_of   -- the hub's locals
 
@@ -56,6 +56,7 @@ SPAWN_SPREAD = 3              -- tiles round the edge tile they are spread over
 SPAWN_EQUIP = {'ITEM_WEAPON_SPEAR:INORGANIC:IRON', 'ITEM_ARMOR_MAIL_SHIRT:INORGANIC:IRON',
                'ITEM_HELM_HELM:INORGANIC:IRON', 'ITEM_SHIELD_BUCKLER:INORGANIC:IRON'}
 SPAWN_FLAGS = {'active_invader', 'invader_origin'}
+SPAWN_WHY = 600               -- chars of the spawner's reason kept (200 lost the diagnosis, A 26 Nov 00:35)
 EDGE_STEP = 4                 -- every 4th tile of the map's edges looked at (A: 283 found in 16 ms)
 ARMY_SCALE = 48               -- an army's pos over this: world tiles (site.pos)
 
@@ -450,15 +451,16 @@ end
 
 -- the war party of `civ` ({id, name, race, group_id}) placed at the map edge by
 -- ai-spawn's spawn_units (DFHack's modtools/create-unit, armed by its -equip;
--- without it when that fails; create-unit stale for DF 53: DF's own arena
--- spawner, ai-spawn.lua), marked invaders of the civ. Returns the record or
--- nil and the reason.
+-- without it when that fails; create-unit stale for DF 53: dfhack.units.create,
+-- armed by dfhack.items, ai-spawn.lua), marked invaders of the civ. Returns the
+-- record, or nil, the reason (up to SPAWN_WHY chars) and the spawner's info
+-- (route, each route's error, counts: ai-spawn brief).
 function spawn_party(civ)
     if spawned() then return nil, 'a war party was placed at this fort once already' end
     if not civ or not civ.id or not civ.race or civ.race == '?' then return nil, 'no civ at war to send it' end
     local okm, SP = pcall(reqscript, 'ai-spawn')
     if not okm or type(SP) ~= 'table' or not SP.spawn_units then
-        return nil, 'no ai-spawn (create-unit or the arena): ' .. tostring(SP):sub(1, 80)
+        return nil, 'no ai-spawn (create-unit or dfhack.units.create): ' .. tostring(SP):sub(1, 200)
     end
     local at = edge_spot()
     if not at then return nil, 'no map-edge surface tile the fort can be walked to from' end
@@ -471,12 +473,14 @@ function spawn_party(civ)
                                           spread = SPAWN_SPREAD, civ_id = civ.id, group_id = group,
                                           flags = SPAWN_FLAGS, equip = SPAWN_EQUIP}
     info = type(info) == 'table' and info or {}
+    local brief = SP.brief and SP.brief(info) or {route = info.route}
     if not ids or #ids == 0 then
-        return nil, 'no war party placed: ' .. tostring(why or 'no unit'):sub(1, 200)
+        return nil, ('no war party placed: ' .. tostring(why or 'no unit')):sub(1, SPAWN_WHY), brief
     end
     local rec = {tick = now_tick(), year = df.global.cur_year, count = #ids, civ_id = civ.id, civ_name = civ.name,
                  race = civ.race, group_id = group, x = at.x, y = at.y, z = at.z, distance = at.distance,
-                 equipped = info.equipped == true, equip_error = info.equip_error, route = info.route, ids = ids}
+                 equipped = info.equipped == true, equip_error = info.equip_error, route = info.route, ids = ids,
+                 spawn_info = brief}
     pcall(dfhack.persistent.saveSiteData, SPAWN_KEY, rec)
     return rec
 end
@@ -523,18 +527,20 @@ local function step(rec, dry, came)
         local t1 = rec.tries[1]
         top = {id = t1.civ_id, name = t1.civ_name, race = t1.race}
     end
-    local sp, why = spawn_party(top)
+    local sp, why, sinfo = spawn_party(top)
     if sp then
         rec.state, rec.came = 'came', now_tick()
         rec.spawned = {count = sp.count, civ_id = sp.civ_id, civ_name = sp.civ_name, race = sp.race, x = sp.x,
-                       y = sp.y, z = sp.z, tick = sp.tick, equipped = sp.equipped, route = sp.route}
+                       y = sp.y, z = sp.z, tick = sp.tick, equipped = sp.equipped, route = sp.route,
+                       spawn_info = sp.spawn_info}
         rec.civ_id, rec.civ_name, rec.race = sp.civ_id, sp.civ_name, sp.race   -- the siege watch's civ
     else
-        rec.spawn_error = why
+        rec.spawn_error = why and tostring(why):sub(1, SPAWN_WHY) or nil
+        rec.spawn_info = sinfo
     end
     save(rec)
     return answer(rec, {gave_up = true, no_army = no_army, spawned = rec.spawned, spawn_error = rec.spawn_error,
-                        equip_error = sp and sp.equip_error or nil})
+                        spawn_info = rec.spawn_info, equip_error = sp and sp.equip_error or nil})
 end
 
 -- dry: read and rank, change nothing. Called by the switch (a new invitation)

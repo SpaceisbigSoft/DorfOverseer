@@ -324,7 +324,8 @@ def note_invite(p, r: dict, state: dict, memory, now: int) -> None:
         text = (f"DF sent no army: tried {', '.join(tried) or 'no civ'} (7 days each); the invitation ended"
                 + (f" (no war party placed: {str(r.get('spawn_error'))[:120]})" if r.get("spawn_error") else "")
                 + ". The Rules' \"Invite a siege (test)\" turned on again starts a new one")
-        _queue(h, {"what": "siege_invite_no_army", "tried": tried, "spawn_error": r.get("spawn_error"), "text": text})
+        _queue(h, {"what": "siege_invite_no_army", "tried": tried, "spawn_error": r.get("spawn_error"),
+                   "spawn_info": r.get("spawn_info"), "text": text})
     elif r.get("invited") or not r.get("waiting"):
         ranks = _ranking_words(r)
         text = (f"Siege invited (the Rules' test switch{', again' if r.get('reinvite') else ''}): DFHack's force "

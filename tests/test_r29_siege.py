@@ -185,6 +185,43 @@ local CU = {createUnit = function(race, caste, pos, range, ltype, age, dom, civ_
 end}
 W.CU = CU
 W.cu = false
+-- (item8) the native route (dfhack.units.create) over this map, when W.native
+W.native = false
+local function vec0(list)
+    local t = {_n = #list}
+    for i, v in ipairs(list) do t[i - 1] = v end
+    return setmetatable(t, {__len = function(self) return rawget(self, '_n') end})
+end
+local active = setmetatable({}, {__index = {insert = function(self, _, v) table.insert(self, v) end}})
+env.df.global.world.units.active = active
+W.active = active
+env.df.global.unit_next_id = 6000
+env.df.global.world.raws = {creatures = {all = {{creature_id = 'ELF', caste = {{caste_id = 'F'}}},
+                                                {creature_id = 'GOBLIN', caste = {{caste_id = 'F'}, {caste_id = 'M'}}}}},
+                            itemdefs = {weapons = {{id = 'ITEM_WEAPON_SPEAR', subtype = 3}}, armor = {{id = 'ITEM_ARMOR_MAIL_SHIRT', subtype = 1}},
+                                        helms = {{id = 'ITEM_HELM_HELM', subtype = 0}}, shields = {{id = 'ITEM_SHIELD_BUCKLER', subtype = 1}}}}
+env.df.item_type = {WEAPON = 24, ARMOR = 25, HELM = 28, SHIELD = 27}
+env.df.inv_item_role_type = {Weapon = 1, Worn = 2, Strapped = 10}
+env.dfhack.isMapLoaded = function() return true end
+env.dfhack.maps.isValidTilePos = function(x, y, z) return x >= 0 and y >= 0 and x < 20 and y < 20 and z >= 0 and z < 10 end
+env.dfhack.maps.getTileBlock = function() return nil end
+env.dfhack.buildings = {findAtTile = function() return nil end}
+env.dfhack.matinfo = {find = function(s) if s == 'INORGANIC:IRON' then return {type = 0, index = 8} end return nil end}
+env.dfhack.units.create = function(race, caste)
+    if not W.native then error('no unit made in this fake') end
+    local id = env.df.global.unit_next_id
+    env.df.global.unit_next_id = id + 1
+    local parts = {}
+    for _, f in ipairs({'UPPERBODY', 'LOWERBODY', 'HEAD', 'GRASP', 'GRASP'}) do table.insert(parts, {flags = {[f] = true}}) end
+    return {id = id, race = race, caste = caste, pos = {x = -30000, y = -30000, z = -30000}, civ_id = -1, flags1 = {},
+            flags2 = {}, flags3 = {}, inventory = {}, military = {uniform_drop = {resize = function() end}},
+            body = {body_plan = {body_parts = vec0(parts)}}}
+end
+env.dfhack.units.teleport = function(u, p) return true end
+env.dfhack.items = {createItem = function(u, t, st) return {{type = t, subtype = st}} end,
+                    moveToInventory = function(it, u, role, bp)
+                        table.insert(u.inventory, {item = it, mode = role, body_part_id = bp}); return true end,
+                    remove = function() end}
 local settings = {invite_siege = true}
 W.settings = settings
 local S = {load_settings = function() return settings end, save_settings = function(s) W.saved = s; settings.invite_siege = s.invite_siege end}
@@ -313,6 +350,36 @@ def _():
         _days(w, 8)
         r = env.invite_siege(False)
     assert r.gave_up and r.state == "no_army" and "create-unit" in r.spawn_error, dict(r)
+    # (item8) both routes' reasons kept (600 chars) and the spawner's info in the record
+    assert "native: " in r.spawn_error and "no unit made in this fake" in r.spawn_error, r.spawn_error
+    assert r.spawn_info.route == "none" and "no unit made in this fake" in r.spawn_info.native_error, dict(r.spawn_info)
+    rec = w.site["ai-overseer/siege-invite"]
+    assert rec.spawn_error == r.spawn_error and rec.spawn_info.route == "none"
+
+
+@test("invite_siege (Lua): create-unit stale: the war party made by dfhack.units.create, armed, invaders of the civ")
+def _():
+    need_lua()
+    env, w = _lua()
+    w.native = True
+    env.invite_siege(False)
+    for _ in range(3):
+        _days(w, 8)
+        r = env.invite_siege(False)
+    assert r.ok and r.gave_up and r.state == "came" and r.spawned.count == 16, dict(r)
+    assert r.spawned.route == "native" and r.spawned.equipped is True, dict(r.spawned)
+    sp = r.spawned.spawn_info
+    assert sp.route == "native" and sp.made == 16 and sp.armed == 16 and "create-unit" not in str(sp.native_error), dict(sp)
+    assert "Cannot" in sp.cu_error or "create-unit" in sp.cu_error, dict(sp)
+    us = [w.active[i] for i in range(1, len(w.active) + 1)]
+    assert len(us) == 16
+    for u in us:
+        assert u.civ_id == 314 and u.flags1.active_invader and u.flags1.invader_origin and u.flags1.marauder
+        assert abs(u.pos.x - 17) <= 3 and abs(u.pos.y - 19) <= 3 and u.pos.z == 5 and u.pos.x != 19, dict(u.pos)
+        kinds = sorted(i.item.type for i in u.inventory.values())
+        assert kinds == [24, 25, 27, 28], kinds
+    assert len({(u.pos.x, u.pos.y) for u in us}) == 16, "one a tile"
+    assert w.site["ai-overseer/siege-spawned"].spawn_info.route == "native"
 
 
 @test("invite_siege (Lua): after no army, one new invitation by the switch; the civs tried before go last")
