@@ -29,6 +29,7 @@ EXPLORE_FACES = 60          -- new faces weighed in one call
 EXPLORE_SCAN_MAX = 60000    -- floor tiles read at most looking for them
 EXPLORE_KEY = 'ai-overseer/explore/ends'
 EXPLORE_KEEP = 12           -- tunnel ends kept
+EXPLORE_PENDING_TICKS = 67200  -- (r35b) a tunnel still marked holds its slot two months at most
 EXPLORE_GAP = 2             -- tiles of rock between two new tunnels at least
 EXPLORE_STAIR_GAP = 4       -- never this near the main stair's column (its hub, where the halls start)
 
@@ -120,6 +121,26 @@ function explore(count, tunnels, dry_run)
         return n
     end
     local taken, continued = {}, 0
+    -- (r35b) a tunnel whose end is still marked for digging holds its slot: the miners
+    -- finish it before new faces are opened (B, D, E 26 Nov: a fresh set of stubs every
+    -- game day, continued 0, since an end is gone on from only once it is dug)
+    local pending = 0
+    local okn, nowt = pcall(now_tick)
+    nowt = okn and math.tointeger(nowt) or nil
+    for _, e in ipairs(explore_ends()) do
+        local fl = dfhack.maps.getTileFlags(e.x, e.y, e.z)
+        -- (two months on, a tunnel nobody reaches gives its slot up)
+        local fresh = not (nowt and math.tointeger(e.tick) and nowt - e.tick > EXPLORE_PENDING_TICKS)
+        if fresh and fl and fl.dig ~= df.tile_dig_designation.No and not ground(e.x, e.y, e.z) then
+            pending = pending + 1
+        end
+    end
+    if pending >= tunnels then
+        return {ok = true, tiles = 0, tunnels = 0, continued = 0, veins = 0, pending = pending,
+                waiting = ('%d exploratory tunnel(s) still being dug: no new ones until they are'):format(pending),
+                dry_run = dry_run or nil}
+    end
+    tunnels = tunnels - pending
     -- the last tunnels' ends first: once dug, straight on (or turned aside when blocked)
     for _, e in ipairs(explore_ends()) do
         if #taken >= tunnels then break end
@@ -205,7 +226,7 @@ function explore(count, tunnels, dry_run)
         return {ok = false, rejected = true, error = 'a tile of the tunnel is ' .. why .. ': left alone: it guards the underworld'}
     end
     local first = marked[1]
-    local out = {ok = true, tiles = #marked, tunnels = #taken, continued = continued, veins = veins,
+    local out = {ok = true, tiles = #marked, tunnels = #taken, continued = continued, veins = veins, pending = pending,
                  x = first.x, y = first.y, z = first.z, dry_run = dry_run or nil}
     if dry_run then return out end
     for _, t in ipairs(marked) do

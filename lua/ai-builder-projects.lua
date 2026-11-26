@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.131'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-projects'] = '0.105.132'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, ez = info, ez
 
@@ -873,6 +873,21 @@ function start_project(params, now, dry_run)
     end
 
     local stairs_cells = site.extend and stair_cells(stair, site.z) or {}
+    -- (r35a) the stairs tried too before anything is designated: a refused stair tile
+    -- (an old bottom DF won't re-dig, a tile already marked) undid the whole level every
+    -- time and the search chose the same site again (D, 26 Nov: 19 times since 11:50)
+    for _, c in ipairs(stairs_cells) do
+        local s = quickfort_apply('dig', {{x = 0, y = 0, text = c.text}}, c.z, stair.x, stair.y, 'run', true)
+        if stat(s, 'dig_designated') ~= 1 then
+            local okt, tt = pcall(function() return df.tiletype[dfhack.maps.getTileType(stair.x, stair.y, c.z)] end)
+            local okf, fl = pcall(function() return dfhack.maps.getTileFlags(stair.x, stair.y, c.z) end)
+            if not okf then fl = nil end
+            local why = ('%s at x%d y%d z%d%s'):format(okt and tostring(tt) or 'unreadable tile', stair.x, stair.y, ez(c.z),
+                (fl and fl.dig ~= df.tile_dig_designation.No) and ', already marked for digging' or '')
+            if not dry_run then pcall(mark_bad_extension, stair.x, stair.y, why) end
+            return {ok = false, error = ('the stairs down can\'t be dug (%s): that staircase isn\'t extended for a season; another site next time'):format(why)}
+        end
+    end
     local build, furniture = entry_door(L, site, params.style)
     local decor = decoration_cells(L, site, build)
     -- (group 6) the open ground over the level's middle (the scorecard's surface for it)
@@ -904,6 +919,7 @@ function start_project(params, now, dry_run)
         for _, c in ipairs(stairs_cells) do
             local s = quickfort_apply('dig', {{x = 0, y = 0, text = c.text}}, c.z, stair.x, stair.y)
             if stat(s, 'dig_designated') ~= 1 then
+                pcall(mark_bad_extension, stair.x, stair.y, ('refused on z%d'):format(ez(c.z)))   -- (r35a)
                 error(('could not designate the stairs on z%d'):format(ez(c.z)))
             end
         end

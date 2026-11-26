@@ -5,7 +5,7 @@
 -- into its own environment, so every name here is reqscript('ai-builder').name
 -- and the helpers defined there (info, quickfort_apply, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.131'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-builder-sites'] = '0.105.132'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local info, has, add, overlaps, ez = info, has, add, overlaps, ez
 
@@ -125,6 +125,32 @@ function corner_gap(dug, open, each_dug)
     end)
     if found then return false, found end
     return true
+end
+
+-- (r35a) staircases whose extension the game refused at designation time (D, 26 Nov:
+-- "could not designate the stairs on z38" 19 times in 7 hours, the same site each
+-- time, 73 bodies rotting for want of a butcher's): kept a season, skipped by the search.
+BAD_STAIRS_KEY = 'ai-overseer/bad_stairs'
+BAD_STAIRS_TICKS = 100800      -- a season
+
+function bad_extension(sx, sy)
+    local okd, d = pcall(site_get, BAD_STAIRS_KEY)
+    if not okd or type(d) ~= 'table' then return nil end
+    local e = d[('%d,%d'):format(sx, sy)]
+    if type(e) ~= 'table' or not math.tointeger(e.tick) then return nil end
+    local okt, now = pcall(now_tick)
+    if okt and math.tointeger(now) and now >= e.tick and now - e.tick < BAD_STAIRS_TICKS then
+        return e.why or 'refused before'
+    end
+    return nil
+end
+
+function mark_bad_extension(sx, sy, why)
+    local okd, d = pcall(site_get, BAD_STAIRS_KEY)
+    if not okd or type(d) ~= 'table' then d = {} end
+    local okt, now = pcall(now_tick)
+    d[('%d,%d'):format(sx, sy)] = {tick = (okt and math.tointeger(now)) or 0, why = tostring(why):sub(1, 120)}
+    pcall(site_put, BAD_STAIRS_KEY, d)
 end
 
 -- Can the staircase at (sx, sy) be extended from its bottom (zb) down to z?
@@ -773,6 +799,10 @@ function choose_site(L, stairs, reserved, plan, ceil_z)
                     -- (0.105.47) a hospital is never centred on a stair (nor dug below one)
                     if ok and L.stair_gap then ok, why = false, 'a hospital is not centred on the stairs' end
                     if lv.extend then
+                        if ok then
+                            local bad = bad_extension(stair.x, stair.y)    -- (r35a)
+                            if bad then ok, why = false, 'the game refused these stairs before: ' .. bad end
+                        end
                         if ok then
                             ok, why = check_extension(stair.x, stair.y, stair.z_bottom, z)
                         end
