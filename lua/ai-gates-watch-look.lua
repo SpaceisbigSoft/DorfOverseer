@@ -122,6 +122,8 @@ function check()
     if halted then away = true end
     GATES.away = away or nil
     GATES.halted = halted or nil
+    -- (item2) a gate bridge's queued pull looked at again (the lure's pieces left alone)
+    pcall(hold_queued_bridge_pulls, lure)
     -- (0.105.47, J16) with the brain away, an entrance shuts only for a danger within IMMINENT
     local function close_for(nearest)
         if halted then return false end
@@ -234,8 +236,12 @@ function check()
                         GATES.let_open = (GATES.let_open or 0) + 1
                     end                 -- (else: the own pull on its way, no danger near: waited for)
                 elseif ok and still and #b.jobs == 0 and (not last or now < last or now - last > 10 * CHECK_TICKS) then
-                    GATES.repulled[g.id] = now
-                    pcall(pull, g.lever_id)
+                    -- (item2) checked as the watcher's own pull is (bridge_hold)
+                    local okh, held = pcall(bridge_hold, b, true)
+                    if not (okh and held) then
+                        GATES.repulled[g.id] = now
+                        pcall(pull, g.lever_id)
+                    end
                 end
             elseif GATES.closed[e.id] and g.kind ~= 'bridge' and g.lever_driven and g.drive_lever
                     and door_shut(b) == false then

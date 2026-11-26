@@ -200,24 +200,101 @@ function bridge_occupied(b)
     return not ok or yes       -- can't tell: treat it as occupied
 end
 
--- (0.105.120, B 25 Nov 19:42: a stoneworker killed by the surface gate's bridge as
--- it closed for a weresheep) one of the fort's own on the bridge's tiles: a
--- citizen, a tame animal or a peaceful guest of the fort's civ. A raise flings
--- them, a lowering crushes them: the bridge waits for them either way.
-function own_on_bridge(b)
-    local ok, yes = pcall(function()
-        local civ = df.global.plotinfo.civ_id
-        for _, u in ipairs(df.global.world.units.active) do
-            if not dfhack.units.isDead(u) and u.pos.z == b.z and u.pos.x >= b.x1 and u.pos.x <= b.x2
-                    and u.pos.y >= b.y1 and u.pos.y <= b.y2
-                    and (dfhack.units.isCitizen(u, true) or u.civ_id == civ) then
+-- (item2, E 26 Nov: a were-cell bridge killed 3 passers-by despite an exact-tile
+-- check) u.pos changes only on arrival: a unit stepping onto the bridge, or
+-- whose next steps cross it, reads as off it. bridge_watch(b): one pass over
+-- units.active (bounding boxes first, each unit read on its own) giving
+--   on      one of the fort's own (a citizen, a tame animal, a peaceful guest of
+--           the fort's civ; not a danger) on the bridge's tiles (0.105.120's rule)
+--   near    one of them beside the footprint (its z, or the ramp levels z-1/z+1
+--           beside it, not under it), or whose path's next BRIDGE_PATH_STEPS
+--           steps or destination are on it (on counts as near)
+--   enemy   a live, loose danger or invader (not the fort's) within IMMINENT of
+--           the bridge (|dz| <= 3): true / false, nil when the units can't be read
+--   unknown a unit within NEAR_BOX (or the units list itself) couldn't be read
+BRIDGE_PATH_STEPS = 3
+local NEAR_BOX = BRIDGE_PATH_STEPS + 1     -- tiles: past this no step or ring tile can touch the bridge
+function bridge_watch(b)
+    local w = {on = false, near = false, enemy = false, unknown = false}
+    local okc, civ, units = pcall(function() return df.global.plotinfo.civ_id, df.global.world.units.active end)
+    if not okc or not units then
+        w.enemy, w.unknown = nil, true
+        return w
+    end
+    local x1, x2, y1, y2, z = b.x1, b.x2, b.y1, b.y2, b.z
+    local reach = IMMINENT or 12
+    local function on(x, y, zz)
+        return zz == z and x >= x1 and x <= x2 and y >= y1 and y <= y2
+    end
+    local okl = pcall(function()
+        for _, u in ipairs(units) do
+            local d, dz = math.huge, math.huge
+            local ok = pcall(function()
+                local p = u.pos
+                dz = math.abs(p.z - z)
+                d = math.max(x1 - p.x, p.x - x2, y1 - p.y, p.y - y2, 0)
+                if dz > 3 or d > reach or dfhack.units.isDead(u) then return end
+                local own = dfhack.units.isCitizen(u, true) or u.civ_id == civ
                 local okd, danger = pcall(function() return dfhack.units.isDanger(u) end)
-                if not (okd and danger) then return true end
-            end
+                danger = okd and danger
+                if own and not danger then
+                    if dz == 0 and d == 0 then w.on = true end
+                    if not w.near and dz <= 1 and d <= NEAR_BOX then
+                        if d <= 1 and (dz == 0 or d == 1) then
+                            w.near = true          -- on it or beside it (the ramp levels: beside only)
+                        else
+                            pcall(function()
+                                local path = u.path
+                                local dst = path.dest
+                                if dst and on(dst.x, dst.y, dst.z) then w.near = true; return end
+                                local px, py, pz = path.path.x, path.path.y, path.path.z
+                                for i = 0, math.min(#px, BRIDGE_PATH_STEPS) - 1 do
+                                    if on(px[i], py[i], pz[i]) then w.near = true; return end
+                                end
+                            end)
+                        end
+                    end
+                elseif not own and not w.enemy then
+                    if not u.flags1.caged and not u.flags1.chained and (danger or dfhack.units.isInvader(u)) then
+                        w.enemy = true
+                    end
+                end
+            end)
+            -- a unit unreadable: unknown if it may be at the bridge (or where it is can't be read)
+            if not ok and (d == math.huge or (dz <= 1 and d <= NEAR_BOX)) then w.unknown = true end
+            if w.on and w.enemy then break end
         end
-        return false
     end)
-    return ok and yes         -- can't tell: not held (a siege gate must still close)
+    if not okl then w.enemy, w.unknown = nil, true end
+    return w
+end
+
+-- (0.105.120, B 25 Nov 19:42: a stoneworker killed by the surface gate's bridge as
+-- it closed for a weresheep) one of the fort's own on the bridge's tiles. A raise
+-- flings them, a lowering crushes them: the bridge waits for them either way.
+-- true / false, nil when it can't be told.
+function own_on_bridge(b)
+    local w = bridge_watch(b)
+    if w.on then return true end
+    if w.unknown then return nil end
+    return false
+end
+
+-- (item2) Does the AI's pull of this gate bridge wait (close: a raise, else a
+-- lowering)? true and why, or false.
+--   on the bridge's tiles: always waits (0.105.120)
+--   close with an enemy within IMMINENT, or the units unreadable: the near and
+--     can't-tell rules don't hold it (a siege gate must still close)
+--   else one of the fort's own near, or a unit that can't be read: waits
+--   a lowering also waits while anyone at all is on its tiles (bridge_occupied)
+function bridge_hold(b, close)
+    local w = bridge_watch(b)
+    if w.on then return true, 'own on it' end
+    if close and w.enemy ~= false then return false end
+    if w.near then return true, 'own near' end
+    if w.unknown then return true, "can't tell" end
+    if not close and bridge_occupied(b) then return true, 'occupied' end
+    return false
 end
 
 -- (0.105.23, 14.1 step 4a) A lever pulled at once (DFHack's `lever pull
@@ -324,15 +401,28 @@ local function set_lever_door(g, b, close, pulled)
     return ok
 end
 
-local function set_bridge(g, b, close)
+-- (item2) one pull per lever per call (`pulled`, as set_lever_door): a lever
+-- working two of the entrance's bridges would otherwise be pulled twice and
+-- the second pull undo the first
+local function set_bridge(g, b, close, pulled)
+    pulled = pulled or {}
     local ok, c = pcall(function() return b.gate_flags.raised end)   -- (13c) not `closed`
     -- (0.105.33) nor while it moves (a pull now would send it back)
     local okm, moving = pcall(function() return b.gate_flags.raising or b.gate_flags.lowering end)
     -- lowering (opening) waits while anyone stands where it comes down;
     -- (0.105.120) raising waits while one of the fort's own stands on it (a
-    -- hostile on it is raised under)
-    local done = ok and c ~= close and not (okm and moving) and g.lever_id and #b.jobs == 0
-        and not own_on_bridge(b) and (close or not bridge_occupied(b)) and pull(g.lever_id) or false
+    -- hostile on it is raised under); (item2) both wait while one of the
+    -- fort's own is beside it or about to step on it, or the units can't be
+    -- read, unless it is a close with an enemy within IMMINENT (bridge_hold)
+    if not (ok and c ~= close and not (okm and moving) and g.lever_id and #b.jobs == 0) then return false end
+    if pulled[g.lever_id] then return false end
+    local held = bridge_hold(b, close)
+    if held then
+        GATES.bridge_holds = (GATES.bridge_holds or 0) + 1
+        return false
+    end
+    pulled[g.lever_id] = true
+    local done = pull(g.lever_id) or false
     -- (0.105.48, K2) a close pull is a dwarf's job: the bridge reads down until
     -- it is done, which is not "found open" (the watcher's own pull on its way)
     if done and close then
@@ -340,6 +430,43 @@ local function set_bridge(g, b, close)
         GATES.close_pulled[g.id] = now_tick_abs()
     end
     return done
+end
+
+-- (item2) A gate bridge's pull is a dwarf's PullLever job (pull(): the
+-- watcher's K2 bookkeeping, close_pulled, the repull and the cancelled
+-- opening pulls are all built on it), so the bridge moves when the dwarf gets
+-- to the lever, maybe much later than the checks above. Each look, a pull
+-- still queued at the lever of one of the AI's gate bridges is looked at
+-- again by bridge_hold and taken away while it holds (the dwarf sent off; the
+-- watcher's next look pulls again, checked again). A close pull's K2 mark is
+-- dropped with it, so the next look repulls it rather than waiting 10 looks.
+-- skip: building ids not looked at (the lure's). The count taken away.
+function hold_queued_bridge_pulls(skip)
+    local n = 0
+    skip = skip or {}
+    for _, e in ipairs(GATES.entrances or {}) do
+        for _, list in ipairs({e.equipment or {}, e.outer or {}}) do
+            for _, g in ipairs(list) do
+                local b = g.kind == 'bridge' and g.lever_id and not skip[g.id] and df.building.find(g.id)
+                if b and ai_piece(e, g) and lever_pull_pending(g.lever_id) then
+                    local ok, up, moving = pcall(function()
+                        local f = b.gate_flags
+                        return f.raised, f.raising or f.lowering
+                    end)
+                    if ok and not moving and bridge_hold(b, not up) then
+                        local k = remove_pulls(g.lever_id)
+                        if k > 0 then
+                            n = n + k
+                            if not up and GATES.close_pulled then GATES.close_pulled[g.id] = nil end
+                            if GATES.repulled then GATES.repulled[g.id] = nil end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if n > 0 then GATES.bridge_pulls_held = (GATES.bridge_pulls_held or 0) + n end
+    return n
 end
 
 -- (0.105.36 fix) Is this gate piece shut now, as the AI shuts it (a bridge
@@ -475,7 +602,7 @@ local function set_entrance(e, close, was_opening)
                 -- (0.105.36 fix) the player's: left as it is
             elseif b and held and seal_has(held, g) then
                 kept = kept + 1
-            elseif b and set_bridge(g, b, close) then done = done + 1 end
+            elseif b and set_bridge(g, b, close, pulled) then done = done + 1 end
         end
     end
     if close then outer() end
@@ -487,7 +614,7 @@ local function set_entrance(e, close, was_opening)
             kept = kept + 1
         elseif b then
             if g.kind == 'bridge' then
-                if set_bridge(g, b, close) then done = done + 1 end
+                if set_bridge(g, b, close, pulled) then done = done + 1 end
             elseif g.lever_driven then
                 if set_lever_door(g, b, close, pulled) then done = done + 1 end
             else
