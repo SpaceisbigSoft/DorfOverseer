@@ -242,6 +242,7 @@ One line per version, newest first (0.105.95 and older: the archive file, "Chang
 
 | Version | Date | What changed | Status |
 | --- | --- | --- | --- |
+| 0.105.121 | Nov 25 | `kitchen_cheap` keys fish and eggs by `getActualMaterial` (they have no `mat_type`: it still threw after 0.105.120) | delivered 25 Nov 20:47 (Lua only) |
 | 0.105.120 | Nov 25 | `kitchen_cheap` read `flags.forbidden` (threw in every fort: `forbid`); a kill order's dead targets dropped, an all-dead order cleared (E 228 refusals); a gate bridge never raised or lowered with one of the fort's own on it (B 19:42: a stoneworker killed by the closing gate during a weresheep attack). C restarted fresh 19:20 (a werellama outbreak: 24 of 91 cursed) | delivered 25 Nov 20:11 |
 | 0.105.119 | Nov 25 | Werebeasts: cells found again (a zone-read bug), rooms reserved before the moon, every squad at a were, mechanisms and quarries for the links; moods' shop searches kept going, coke with fuel, 3x3 shops, no-sand glass; D's picks forged and kept out of traps; A's squads rest by turns; cheap ingredients kept from the cooks, best cooks kept; floors past old levels; fifteen repeats stopped; six Lua files split | delivered 25 Nov 19:13 |
 | 0.105.118 | Nov 25 | A closed game started again 60 s after it went down (`DOWN_S`, was 180), at most once every 2 minutes (`LAUNCH_EVERY_S`, was 900; the player's ask); never while its own process still runs | delivered 25 Nov 14:59 |
