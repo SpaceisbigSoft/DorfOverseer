@@ -9,7 +9,7 @@
 -- helpers are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-civic is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-civic'] = '0.105.125'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-civic'] = '0.105.126'   -- bumped with BRIDGE_VERSION
 
 -- (0.91) Meetings (read only, a probe): diplomats and the outpost liaison
 -- meet the fort's leader (plotinfo.activities: the actor, the noble met, the
