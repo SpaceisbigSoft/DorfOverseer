@@ -527,33 +527,9 @@ def _ranged_squad_rule(s: dict, g: dict, squads: list, templates: list, cfg: dic
         if _crossbow_order(s, g, cfg, proposals, members, short, shop, wood):
             return
     want = members * cfg["bolts_per_soldier"]
-    bshort = want - int(g.get("bolts") or 0) - 25 * (queued(s, {"wooden_bolts"}) + queued(s, {"metal_bolts"})
-                                                     + queued(s, {"bone_bolts"}))
-    if bshort > 0:
-        jobs = min(5, max(1, -(-bshort // 25)))
-        bars = _d(g.get("bars"))
-        metal = next((m for m in GEAR_METALS if (bars.get(m) or 0) >= jobs + cfg["bolt_bars_keep"]), None)
-        # (0.105.113 item11) the forge's bars go to the soldiers' arms first:
-        # while a place waits for a weapon and the bowyer has wood, the bolts
-        # (shot away at the range) are wooden. C: ~110 orders of iron bolts in
-        # 12 hours, 19 melee places without a weapon and 3 squads unarmoured
-        wood_first = shop and wood >= jobs + cfg.get("bolt_wood_keep", 10) and (
-            int(g.get("weapon_gaps") or 0) > 0 or int(g.get("armed") or 0) < int(g.get("soldiers") or 0))
-        if metal and g.get("forges") and not wood_first:
-            proposals.append(Proposal("arms", {"type": "work_order", "recipe": "metal_bolts", "amount": jobs,
-                                               "material": f"INORGANIC:{metal}"},
-                                      f"{g.get('bolts') or 0} bolts for {members} crossbow soldiers ({want} wanted): "
-                                      f"make {jobs} lot(s) in {metal.lower()}", 4, True))
-        elif shop and wood >= jobs:
-            proposals.append(Proposal("arms", {"type": "work_order", "recipe": "wooden_bolts", "amount": jobs},
-                                      f"{g.get('bolts') or 0} bolts for {members} crossbow soldiers ({want} wanted): "
-                                      f"make {jobs} lot(s) of wooden bolts", 4, True))
-        elif (_has_shop(s["buildings"], "Craftsdwarfs")
-              and int(_d(s.get("needs")).get("bones") or 0) >= jobs + cfg.get("h4_bone_bolts_keep", 10)):
-            # (r2h4) bone bolts at the craftsdwarf's: no forge bars, no bowyer's
-            proposals.append(Proposal("arms", {"type": "work_order", "recipe": "bone_bolts", "amount": jobs},
-                                      f"{g.get('bolts') or 0} bolts for {members} crossbow soldiers ({want} wanted): "
-                                      f"make {jobs} lot(s) of bone bolts", 4, True))
+    # (item2) one open order at a time, sized to the gap; a stalled or held recipe gives way
+    from planner_bolts import bolts_order
+    bolts_order(s, g, cfg, proposals, memory, members, want, shop, wood)
     # (0.100) a crossbow soldier carries bolts in a quiver and picks a spare
     # one up himself: leather quivers until there is one for each
     sup = _d(s.get("supplies"))

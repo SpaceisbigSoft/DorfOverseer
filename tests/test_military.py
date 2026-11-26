@@ -569,7 +569,7 @@ return env
 def _():
     lua = LuaRuntime(unpack_returned_tuples=True)
     env = lua.execute(r"""
-local src = ...
+local src, spawn_src = ...
 local env = setmetatable({}, {__index = _G})
 local units = {}
 env.UNITS = units
@@ -586,7 +586,15 @@ env.dfhack = {
     units = {isActive = function() return true end, isDead = function() return false end,
              isDanger = function(u) return u.danger end, isHidden = function() return false end},
 }
+local spawn_env
 env.reqscript = function(name)
+    if name == 'ai-spawn' then       -- (item1) the real module, over this fake game
+        if not spawn_env then
+            spawn_env = setmetatable({}, {__index = env})
+            assert(load(spawn_src, 'ai-spawn', 't', spawn_env))()
+        end
+        return spawn_env
+    end
     return {createUnit = function(race, caste, pos, rng, lt, age, dom, civ, grp, ern, nick, van, n, eq, sk, pr, cp, flags)
         env.MADE = {race = race, civ = civ, n = n, flags = flags, pos = pos}
         for i = 1, n do table.insert(units, {id = 100 + i}) end
@@ -594,11 +602,12 @@ env.reqscript = function(name)
 end
 assert(load(src, 'ai-military', 't', env))()
 return env
-""", module_src("ai-military.lua"))
+""", module_src("ai-military.lua"), (ROOT / "lua" / "ai-spawn.lua").read_text(encoding="utf-8"))
     d = env.spawn_test_threat(3, None, True)
     assert d.ok and d.dry_run and d.spot.x == 35 and d.spot.y == 50 and d.civ == 7, dict(d.spot)   # (65,50) is water
     r = env.spawn_test_threat(3, None, False)
     assert r.ok and r.count == 3 and env.MADE.race == "GOBLIN" and env.MADE.civ == 7, dict(r)
+    assert r.route == "create-unit", dict(r)   # (item1) by ai-spawn, create-unit first
     assert list(env.MADE.flags.values()) == ["marauder", "active_invader", "invader_origin"]
     env.UNITS[1].danger = True
     r = env.spawn_test_threat(3, None, False)

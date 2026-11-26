@@ -361,8 +361,12 @@ def _():
     s = fort(bolts=0, bars={})
     s.setdefault("needs", {})["bones"] = 40
     p = [x for x in by_rule(plan(s, Memory())[0], "arms") if x.action.get("recipe") == "bone_bolts"]
-    assert p and p[0].action == {"type": "work_order", "recipe": "bone_bolts", "amount": 5}, p
-    s["needs"]["bones"] = CFG["h4_bone_bolts_keep"] + 2
+    # (item2) one order sized to the gap (500 wanted, 0 in stock: 20 lots, at most bolts_order_max)
+    assert p and p[0].action == {"type": "work_order", "recipe": "bone_bolts", "amount": CFG["bolts_order_max"]}, p
+    s["needs"]["bones"] = CFG["h4_bone_bolts_keep"] + 2      # (item2) the lots the reserve leaves
+    p = [x for x in by_rule(plan(s, Memory())[0], "arms") if x.action.get("recipe") == "bone_bolts"]
+    assert p and p[0].action["amount"] == 2, p
+    s["needs"]["bones"] = CFG["h4_bone_bolts_keep"]
     assert not [x for x in by_rule(plan(s, Memory())[0], "arms") if x.action.get("recipe") == "bone_bolts"]
 
 

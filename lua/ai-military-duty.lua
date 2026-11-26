@@ -8,7 +8,7 @@
 -- reqscript('ai-military').name and a name swapped there reaches this file.
 
 if not MILITARY_PART_LOCALS then qerror('ai-military-duty is a part of ai-military; run ai-military') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-duty'] = '0.105.123'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-duty'] = '0.105.124'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, report_units, gear, save_shelter_marks, order_tick, is_guard_order, is_ai_order = MILITARY_PART_LOCALS.U, MILITARY_PART_LOCALS.report_citizens, MILITARY_PART_LOCALS.report_units, MILITARY_PART_LOCALS.gear, MILITARY_PART_LOCALS.save_shelter_marks, MILITARY_PART_LOCALS.order_tick, MILITARY_PART_LOCALS.is_guard_order, MILITARY_PART_LOCALS.is_ai_order   -- (r8) the hub's locals
 
@@ -228,8 +228,9 @@ end
 --
 -- A few hostile invaders set down outside, where they can walk to the fort:
 -- on the trade depot's level, 15-30 tiles from it, on open ground outside
--- that has a path to the depot. Made by DFHack's modtools/create-unit, in an
--- enemy civilisation (a goblin one, else none) and flagged as invaders, so
+-- that has a path to the depot. Made by ai-spawn (DFHack's modtools/create-unit,
+-- else DF 53's own arena spawner), in an enemy civilisation (a goblin one,
+-- else none) and flagged as invaders, so
 -- the game and the AI treat them as an attack. Never during a real threat.
 
 local function test_spot()
@@ -280,19 +281,16 @@ function spawn_test_threat(count, race, dry_run)
     if not spot then return {ok = false, rejected = true, error = why} end
     local civ = enemy_civ()
     if dry_run then return {ok = true, dry_run = true, spot = spot, race = race, count = count, civ = civ} end
-    local okm, cu = pcall(reqscript, 'modtools/create-unit')
-    if not okm then return {ok = false, error = 'DFHack has no modtools/create-unit: ' .. tostring(cu):sub(1, 120)} end
-    local before = {}
-    for _, u in ipairs(report_units()) do before[u.id] = true end
-    local ok, err = pcall(cu.createUnit, race, nil, spot, {offset_x = 2, offset_y = 2, offset_z = 0}, 'Walkable',
-                          nil, false, civ or -1, nil, nil, nil, nil, count, nil, nil, nil, nil,
-                          {'marauder', 'active_invader', 'invader_origin'}, nil)
-    if not ok then return {ok = false, error = 'create-unit failed: ' .. tostring(err):sub(1, 200)} end
-    local made = {}
-    for _, u in ipairs(report_units()) do
-        if not before[u.id] then table.insert(made, u.id) end
+    -- (item1) by ai-spawn: DFHack's modtools/create-unit, else (stale for DF 53) DF's own arena spawner
+    local okm, SP = pcall(reqscript, 'ai-spawn')
+    if not okm or type(SP) ~= 'table' or not SP.spawn_units then
+        return {ok = false, error = 'no ai-spawn module: ' .. tostring(SP):sub(1, 120)}
     end
-    return {ok = true, spot = spot, race = race, count = #made, units = made, civ = civ}
+    local made, why, info = SP.spawn_units{race = race, count = count, pos = spot, spread = 2, civ_id = civ or -1,
+                                           flags = {'marauder', 'active_invader', 'invader_origin'}}
+    if not made or #made == 0 then return {ok = false, error = 'no invaders placed: ' .. tostring(why or 'no unit'):sub(1, 200)} end
+    return {ok = true, spot = spot, race = race, count = #made, units = made, civ = civ,
+            route = type(info) == 'table' and info.route or nil}
 end
 
 -- Pull the lever named "AI gate" (a dwarf goes and pulls it).

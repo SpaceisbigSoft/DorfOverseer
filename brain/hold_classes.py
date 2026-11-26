@@ -173,7 +173,7 @@ _DEFENCE_ACTIONS = {
     "link_lever", "place_traps", "reset_cage_traps", "place_gate_lever", "unstick_gate", "open_gates",
     "close_threatened_gates", "free_gate_jobs", "clear_gate", "pull_gate", "guard_gate", "gate_dogs",
     "setup_shelter", "refresh_shelter", "shelter_squads", "shelter_pick", "near_gates", "expel_dwarf",
-    "fix_gear_gaps", "assign_quivers", "squad_bolts", "assign_bolts", "squad_fill", "squad_swap", "squad_trim", "make_squad",
+    "fix_gear_gaps", "assign_quivers", "squad_bolts", "assign_bolts", "split_bolts", "squad_fill", "squad_swap", "squad_trim", "make_squad",
     "squad_orders", "squad_routine", "squad_station", "squad_barracks", "hunt_recall", "set_uniform",
     "set_uniform_weapon", "adopt_uniform", "assign_weapons", "assign_kit", "unstick_uniforms", "free_stray_gear",
     "fire_guard", "moon_cell", "were_cells", "seal_cavern", "prisoner_room", "killer_cell", "archer_post", "remove_crossing",

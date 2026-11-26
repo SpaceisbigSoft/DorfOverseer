@@ -1,6 +1,6 @@
 -- ai-military-gear-ammo: quivers, flasks and waterskins, the squads' ammunition and the bolts handed
 -- out (quiver_report, flask_report, assign_quivers, squad_ammo, free_bolts,
--- bolts_free_count, assign_bolts, squad_bolts).
+-- bolts_free_count, assign_bolts, squad_bolts, split_bolts).
 --
 -- (r8) A part of ai-military-gear, not a script of its own: ai-military-gear.lua
 -- loads it into its own environment, so every name here is
@@ -8,7 +8,7 @@
 -- and a name swapped there reaches this file.
 
 if not GEAR_PART_LOCALS then qerror('ai-military-gear-ammo is a part of ai-military-gear; run ai-military-gear') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear-ammo'] = '0.105.123'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-military-gear-ammo'] = '0.105.124'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, M, fort_squads, memo, eq_ids, gear_items, vec_remove, vec_add, is_ranged_spec = GEAR_PART_LOCALS.U, GEAR_PART_LOCALS.M, GEAR_PART_LOCALS.fort_squads, GEAR_PART_LOCALS.memo, GEAR_PART_LOCALS.eq_ids, GEAR_PART_LOCALS.gear_items, GEAR_PART_LOCALS.vec_remove, GEAR_PART_LOCALS.vec_add, GEAR_PART_LOCALS.is_ranged_spec   -- (r8) handed on by the files before
 
@@ -257,13 +257,20 @@ function squad_ammo(sq)
         if ranged_place(pos) then shoots = true break end
     end
     if not shoots then return nil end
-    local out = {specs = 0, wanted = 0, assigned = 0, items = 0, units = 0}
+    -- (item2) reserve / reserve_units: the combat-only entries (0: none; said so the brain knows the bridge splits)
+    local out = {specs = 0, wanted = 0, assigned = 0, items = 0, units = 0, reserve = 0, reserve_units = 0}
     pcall(function()
         for _, a in ipairs(sq.ammo.ammunition) do
             out.specs = out.specs + 1
             out.wanted = out.wanted + (a.amount or 0)
             out.assigned = out.assigned + #a.assigned
             out.units = out.units + stack_units(a.assigned)
+            -- (item2) a combat-only entry (split_bolts): the bolts kept from the range
+            local okf, co = pcall(function() return a.flags.use_combat and not a.flags.use_training end)
+            if okf and co then
+                out.reserve = out.reserve + (a.amount or 0)
+                out.reserve_units = out.reserve_units + stack_units(a.assigned)
+            end
         end
         out.items = #sq.ammo.ammo_items
     end)
@@ -411,4 +418,64 @@ function squad_bolts(squad_id, dry_run)
     local ok, err = M.set_bolts(sq, n)
     if not ok then return {ok = false, error = tostring(err)} end
     return {ok = true, bolts = n}
+end
+
+-- (item2) A war stock the range doesn't shoot away. A, the War-hold (25 Nov):
+-- 10 crossbow soldiers training at their range with live bolts, 125 -> 61 ->
+-- 19 -> 0 in an hour, the squad's one entry (combat and training) emptied
+-- while the goblins were at war with the fort. Here the squad's entry is
+-- split: a combat-only entry of `reserve` bolts first (assign_bolts fills the
+-- entries in order, so the reserve is filled before the range's), and the old
+-- entry keeps the rest of the amount for combat and training. The stacks
+-- already on the old entry move to the reserve until it is full. DF's own
+-- squad ammunition flags (df.squad_ammo_spec use_combat / use_training).
+function split_bolts(squad_id, reserve, dry_run)
+    local sq = M.fort_squad(squad_id)
+    if not sq then return {ok = false, rejected = true, error = 'no such squad in this fort'} end
+    local a = squad_ammo(sq)
+    if not a then return {ok = false, rejected = true, error = 'the squad has no crossbows'} end
+    if a.reserve > 0 then return {ok = false, rejected = true, error = 'the squad already keeps a combat-only reserve'} end
+    reserve = tonumber(reserve) or 0
+    local v = sq.ammo.ammunition
+    local src
+    for i = 0, #v - 1 do
+        local e = v[i]
+        local ok, fits = pcall(function()
+            return e.item_type == df.item_type.AMMO and e.flags.use_training and (e.amount or 0) > reserve
+        end)
+        if ok and fits then src = e break end
+    end
+    if not src then
+        return {ok = false, rejected = true, error = 'no training entry with more than ' .. reserve .. ' bolts to split'}
+    end
+    if dry_run then return {ok = true, dry_run = true, reserve = reserve, training = src.amount - reserve} end
+    local spec = df.squad_ammo_spec:new()
+    spec.item_type = src.item_type
+    spec.item_subtype = src.item_subtype
+    pcall(function() spec.material_class = src.material_class end)
+    spec.mattype, spec.matindex = src.mattype, src.matindex
+    spec.amount = reserve
+    spec.flags.use_combat = true
+    spec.flags.use_training = false
+    -- the stacks the old entry holds, onto the reserve until it is full
+    local moved, units = 0, 0
+    for i = #src.assigned - 1, 0, -1 do
+        if units >= reserve then break end
+        local id = src.assigned[i]
+        local n = stack_units({id})
+        if n > 0 then
+            src.assigned:erase(i)
+            spec.assigned:insert('#', id)
+            units, moved = units + n, moved + 1
+        end
+    end
+    src.amount = src.amount - reserve
+    v:insert(0, spec)
+    pcall(function()
+        sq.ammo.update.ammo = true
+        sq.ammo.update.quiver = true
+        df.global.plotinfo.equipment.update.ammo = true
+        df.global.plotinfo.equipment.update.quiver = true
+    end)
+    return {ok = true, reserve = reserve, training = src.amount, moved_stacks = moved, moved_bolts = units}
 end

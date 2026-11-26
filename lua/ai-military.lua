@@ -710,7 +710,7 @@ MILITARY_PART_LOCALS = {U = U, report_citizens = report_citizens, COMBAT_SKILLS 
 PARTS = {'draft', 'uniforms', 'duty'}
 -- each part marks the version it came with (started afresh at each load, so a
 -- part that failed to load shows as unmarked)
-PART_VERSIONS = {['ai-military'] = '0.105.123'}   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = {['ai-military'] = '0.105.124'}   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local function part_path(name)
     local dir = debug.getinfo(1, 'S').source:match('^@(.*[/\\])')
@@ -746,6 +746,7 @@ for _, name in ipairs({'stray_report', 'free_stray_gear', 'weapon_gaps', 'fix_we
                        'weapon_is_ranged', 'weapon_fits', 'assign_weapons', 'gear_report', 'gaps_why',
                        'quiver_report', 'assign_quivers', 'squad_ammo', 'squad_bolts', 'unforbid_spares',
                        'fix_gear_gaps', 'kit_report', 'assign_kit', 'army_gear', 'flask_report',
-                       'free_bolts', 'bolts_free_count', 'assign_bolts'}) do   -- (r2h4) the bolts handed out
+                       'free_bolts', 'bolts_free_count', 'assign_bolts',   -- (r2h4) the bolts handed out
+                       'split_bolts'}) do   -- (item2) a combat-only reserve
     _ENV[name] = function(...) return gear()[name](...) end
 end

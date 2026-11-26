@@ -94,7 +94,7 @@ def _():
 DAY = 1200
 
 FAKE = r"""
-local src, force_ok, hostile = ...
+local src, force_ok, hostile, spawn_src = ...
 local W = {site = {}, saved = nil, ran = {}, drop_entity = false}
 local env = setmetatable({}, {__index = _G})
 local events = setmetatable({}, {__index = {insert = function(self, _, v) table.insert(self, v) end}})
@@ -192,6 +192,14 @@ env.reqscript = function(n)
     if n == 'ai-overseer-settings' then return S end
     if n == 'ai-gates' then return G end
     if n == 'modtools/create-unit' and W.cu then return CU end
+    if n == 'ai-spawn' then           -- (item1) the real module, over this fake game
+        if not W.spawn_env then
+            local e = setmetatable({}, {__index = env})
+            assert(load(spawn_src, 'ai-spawn', 't', e))()
+            W.spawn_env = e
+        end
+        return W.spawn_env
+    end
     error('reqscript ' .. tostring(n))
 end
 assert(load(src, 'ai-siege', 't', env))()
@@ -202,7 +210,7 @@ return env, W
 def _lua(force_ok=True, hostile=True):
     from lupa.lua53 import LuaRuntime
     lua = LuaRuntime(unpack_returned_tuples=True)
-    env, w = lua.execute(FAKE, module_src("ai-siege.lua"), force_ok, hostile)
+    env, w = lua.execute(FAKE, module_src("ai-siege.lua"), force_ok, hostile, _src("ai-spawn.lua"))
     _lua.runtime = lua
     return env, w
 
@@ -298,6 +306,7 @@ def _():
     w.cu, w.cu_fail_equip = True, True
     sp = env.spawn_party(lua_tbl({"id": 314, "name": "The near", "race": "GOBLIN"}))
     assert sp and sp.count == 16 and sp.equipped is False and "IRON" in sp.equip_error, dict(sp)
+    assert sp.route == "create-unit", dict(sp)
     env, w = _lua()
     env.invite_siege(False)
     for _ in range(3):
