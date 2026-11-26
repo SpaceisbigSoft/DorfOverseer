@@ -80,9 +80,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # prospect_cooldown_ticks, prospect_days, prospect_dig_per_miner, prospect_gems_below, prospect_tiles,
 # deep_descent_by_character, deep_descent_character_mining) and one value (ore_cooldown_ticks 7 -> 2 days,
 # the floor under ore_days / factor(Mining)): D's idle miners, E's ore and depth, 26 Nov
-DUMP_6298B4A = "b544090c3c1072de2b00dcb0bb20bda8c765c7bb60e6315e8da9913d24f58945"
-KEYS_6298B4A = "15fa42f043e2d3fc6b637f0ac808e31cb2654b9e31e66178df62818f18923389"
-COUNT_6298B4A = 1349
+# (item7 insane water) re-pinned after four deliberate keys: insane_water, insane_water_thirst,
+# insane_water_hunger, insane_water_retry_ticks (D's 12 insane dead of thirst overnight): 26 Nov
+DUMP_6298B4A = "ea8141790422b75704fe02addc6f9b84779dd41e2f18cca4a5fa46de8e3e221b"
+KEYS_6298B4A = "0d129a8b7d19bf7ffcab0eff77e4bb6e066d83249064c4ef579b134e06660499"
+COUNT_6298B4A = 1353
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

@@ -53,6 +53,24 @@
 --   guard(o, dry)    lock and free the doors (o.units: the guarded ids; nil
 --                    = every melancholy and raving one). {ok, locked,
 --                    released, held, doors}
+--   water(o, dry)    (item7, the player's "Bring water to them", 26 Nov) the
+--                    melancholy and raving kept from dying of thirst and
+--                    hunger: see below. {ok, watered, fed, units, skipped}
+--
+-- (item7) Water and food for the insane. DF (wiki, Insane) lets no insane
+-- dwarf drink or eat by any means: they take no Drink or Eat job, drink laid
+-- on their tile or in a locked room is never touched, and DF's carriers bring
+-- water only to a patient resting in bed (which the insane never are). D lost
+-- 12 melancholy and raving dwarves to thirst in one night beside drink. So the
+-- one way left is DFHack's own, as its full-heal script does it: the unit's
+-- counters2.thirst_timer and hunger_timer set back to 0. Kept narrow: only the
+-- fort's own melancholy and raving dwarves (never a berserk one, never a sane
+-- one, never a catatonic one: that is the player's to choose), only once the
+-- thirst reaches WATER_THIRST (DF: dehydrated at 50000, dead at 75000) or the
+-- hunger WATER_HUNGER (hungry 50000, starving 75000), and only the timer that
+-- is due. It is a direct change of the game's numbers, not a DF job: the
+-- brain's reason line says so, and the brain's insane_water switch turns it off.
+-- Each try is kept (`water` in the record: {n, tick, tried}) for the report.
 --@ module = true
 
 local U = reqscript('ai-util')
@@ -76,6 +94,13 @@ MAX_ROWS = 10         -- insane dwarves listed (and scanned) at most
 RISK_LONGTERM = 25000 -- (DF wiki, Stress) long-term stress "stressed" and up: listed for the brain...
 RISK_CATEGORY = 2     -- ...while unhappy or worse (getStressCategory 0-2)
 RISK_MAX = 12
+-- (item7) water and food for the insane (water(): DFHack's full-heal way)
+WATERED = {melancholy = true, raving = true}   -- the kinds kept alive (never berserk; catatonic: the player's choice)
+WATER_THIRST = 40000  -- thirst_timer at or past this: set back to 0 (DF: dehydrated 50000, dies 75000)
+WATER_HUNGER = 65000  -- hunger_timer at or past this: set back to 0 (DF: hungry 50000, starving 75000)
+DEHYDRATED = 50000
+STARVING = 75000
+WATER_KEEP_TICKS = 403200   -- a dwarf's water record kept a year after the last try (then forgotten)
 STRESS_LABELS = {[0] = 'miserable', [1] = 'very_unhappy', [2] = 'unhappy', [3] = 'fine',
                  [4] = 'content', [5] = 'happy', [6] = 'ecstatic'}
 
@@ -97,6 +122,14 @@ local function pos_of(u)
     return nil
 end
 
+-- (item7) the unit's thirst and hunger timers (nil where unreadable)
+function needs_of(u)
+    local th, hu
+    pcall(function() th = u.counters2.thirst_timer end)
+    pcall(function() hu = u.counters2.hunger_timer end)
+    return type(th) == 'number' and th or nil, type(hu) == 'number' and hu or nil
+end
+
 -- tiles apart: the larger step across, a level counted as 3
 local function dist(ax, ay, az, bx, by, bz)
     return math.max(math.abs(ax - bx), math.abs(ay - by)) + 3 * math.abs(az - bz)
@@ -115,9 +148,11 @@ local function own(u)
     return ok and o == true
 end
 
--- the fort's insane, alive: {u, kind, mood}
-function insane_units()
+-- the fort's insane, alive: {u, kind, mood} (MAX_ROWS at most; (item7)
+-- `max` another cap, false none: water() sees to every one)
+function insane_units(max)
     local out = {}
+    if max == nil then max = MAX_ROWS end
     local okl, active = pcall(U.units_active)
     for _, u in ipairs(okl and active or {}) do
         local kind, mood = kind_of(u)
@@ -125,7 +160,7 @@ function insane_units()
             local okd, dead = pcall(dfhack.units.isDead, u)
             if not (okd and dead) and own(u) then
                 table.insert(out, {u = u, kind = kind, mood = mood})
-                if #out >= MAX_ROWS then break end
+                if max and #out >= max then break end
             end
         end
     end
@@ -498,6 +533,7 @@ function state()
     local st = U.site_get(SITE_KEY, {})
     st.locks = type(st.locks) == 'table' and st.locks or {}
     st.rest = type(st.rest) == 'table' and st.rest or {}
+    st.water = type(st.water) == 'table' and st.water or {}   -- (item7) {[id] = {n, tick, tried, thirst, hunger}}
     return st
 end
 
@@ -730,13 +766,44 @@ function report()
         local held = 0
         for _, l in pairs(st.locks) do if l.unit == u.id then held = held + 1 end end
         row.locked = held
+        -- (item7) their thirst and hunger, and the AI's water for them
+        local th, hu = needs_of(u)
+        row.thirst, row.hunger = th, hu
+        if th and th >= DEHYDRATED then row.dehydrated = true end
+        if hu and hu >= STARVING then row.starving = true end
+        if WATERED[e.kind] and ((th and th >= WATER_THIRST) or (hu and hu >= WATER_HUNGER)) then row.water_due = true end
+        local w = st.water[tostring(u.id)]
+        if type(w) == 'table' then
+            row.watered = w.n or 0
+            row.watered_at = w.tick
+            row.water_tried = w.tried
+            row.water_error = w.error
+        end
         by_hf = by_hf or citizens_by_hf()
         local kin = kin_of(u, by_hf)
         if #kin > 0 then row.kin = kin end
         table.insert(rows, row)
     end
+    -- (item7) the melancholy and raving due water past the listed rows (the list
+    -- stops at MAX_ROWS: its scans are the costly part; this reads two numbers)
+    local listed, more = {}, {}
+    for _, r in ipairs(rows) do listed[r.id] = true end
+    if #insane >= MAX_ROWS then
+        for _, e in ipairs(insane_units(false)) do
+            local u = e.u
+            if not listed[u.id] and WATERED[e.kind] then
+                local th, hu = needs_of(u)
+                if (th and th >= WATER_THIRST) or (hu and hu >= WATER_HUNGER) then
+                    local w = st.water[tostring(u.id)]
+                    table.insert(more, {id = u.id, name = name_of(u), kind = e.kind, thirst = th, hunger = hu,
+                                        water_due = true, water_tried = type(w) == 'table' and w.tried or nil})
+                end
+            end
+        end
+    end
     local risk, total = at_risk()
-    return {list = rows, locks = count(st.locks), at_risk = risk, at_risk_total = total}
+    return {list = rows, locks = count(st.locks), at_risk = risk, at_risk_total = total,
+            water_thirst = WATER_THIRST, water_hunger = WATER_HUNGER, water_more = more}
 end
 
 -- --- the guard -------------------------------------------------------------
@@ -787,4 +854,85 @@ function guard(o, dry)
     if not dry then save(st) end
     return {ok = true, locked = locked, released = released, held = count(st.locks), doors = doors,
             guarded = #guarded, dry_run = dry or nil, release_only = o.release_only or nil}
+end
+
+-- --- (item7) water and food for the insane ---------------------------------
+
+-- o.units: the ids asked for (nil: every melancholy and raving one); dry:
+-- count, change nothing. Each asked-for dwarf is watered (thirst_timer to 0)
+-- once the thirst reaches WATER_THIRST, fed (hunger_timer to 0) once the
+-- hunger reaches WATER_HUNGER; any other is skipped with why (not insane, a
+-- kind not watered, not due). Nothing else of the unit is touched.
+function water(o, dry)
+    o = o or {}
+    local now = now_tick()
+    local want
+    if type(o.units) == 'table' then
+        want = {}
+        for _, id in ipairs(o.units) do want[id] = true end
+    end
+    local st = state()
+    local seen, done, skipped = {}, {}, {}
+    local watered, fed = 0, 0
+    for _, e in ipairs(insane_units(false)) do
+        local u = e.u
+        if want == nil or want[u.id] then
+            seen[u.id] = true
+            local th, hu = needs_of(u)
+            local thirsty = th ~= nil and th >= WATER_THIRST
+            local hungry = hu ~= nil and hu >= WATER_HUNGER
+            if not WATERED[e.kind] then
+                if want then table.insert(skipped, {id = u.id, why = e.kind .. ': not watered by the AI'}) end
+            elseif not (thirsty or hungry) then
+                if want then
+                    table.insert(skipped, {id = u.id, why = 'not due (thirst ' .. tostring(th) .. ', hunger '
+                                                             .. tostring(hu) .. ')'})
+                end
+            else
+                local row = {id = u.id, name = name_of(u), kind = e.kind, thirst_before = th, hunger_before = hu}
+                local err
+                if not dry then
+                    local key = tostring(u.id)
+                    local rec = type(st.water[key]) == 'table' and st.water[key] or {n = 0}
+                    rec.tried = now
+                    if thirsty then
+                        local ok, e2 = pcall(function() u.counters2.thirst_timer = 0 end)
+                        if ok then row.watered = true else err = tostring(e2) end
+                    end
+                    if hungry then
+                        local ok, e2 = pcall(function() u.counters2.hunger_timer = 0 end)
+                        if ok then row.fed = true else err = err or tostring(e2) end
+                    end
+                    if row.watered or row.fed then
+                        rec.n = (rec.n or 0) + 1
+                        rec.tick = now
+                        rec.thirst, rec.hunger = th, hu
+                        rec.error = nil
+                    end
+                    if err then rec.error = err:sub(1, 120) end
+                    st.water[key] = rec
+                else
+                    row.watered, row.fed = thirsty or nil, hungry or nil
+                end
+                if row.watered then watered = watered + 1 end
+                if row.fed then fed = fed + 1 end
+                if err then row.error = err:sub(1, 120) end
+                table.insert(done, row)
+            end
+        end
+    end
+    if want then
+        for _, id in ipairs(o.units) do
+            if not seen[id] then table.insert(skipped, {id = id, why = 'not one of the fort\'s living insane'}) end
+        end
+    end
+    if not dry then
+        -- the records of the long gone (dead, sane again) forgotten after a year
+        for key, rec in pairs(st.water) do
+            if type(rec) ~= 'table' or now - (rec.tried or rec.tick or now) >= WATER_KEEP_TICKS then st.water[key] = nil end
+        end
+        save(st)
+    end
+    return {ok = true, watered = watered, fed = fed, units = done, skipped = skipped, dry_run = dry or nil,
+            how = 'DFHack: counters2.thirst_timer / hunger_timer set to 0 (as full-heal does)'}
 end
