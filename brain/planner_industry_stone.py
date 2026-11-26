@@ -80,6 +80,14 @@ def _kiln_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         short = paper_short[1] - paper_short[0] - (sup.get("blank_quires") or 0)
         sheets, milk, hides = int(sup.get("sheets") or 0), int(sup.get("milk_of_lime") or 0), int(sup.get("hides") or 0)
         lime, caco3 = int(sup.get("quicklime") or 0), int(sup.get("calcium_carbonate") or 0)
+        # (item5) only the sheets a quire job can reach: those left in the
+        # screw press (no pile taking sheets) stalled every make_quire order
+        from planner_paper import sheet_stall, sheets_usable
+        stall = sheet_stall(s) if sheets else None
+        sheets = sheets_usable(s) if sheets else 0
+        if stall and not sheets:
+            notes.append(f"the library's quires wait: {stall}")
+            return
         if sheets and _has_shop(b, "Craftsdwarfs"):
             step = ("make_quire", min(sheets, short, 5), f"the library has {paper_short[0]} of {paper_short[1]} "
                                                           f"writing materials: bind {min(sheets, short, 5)} sheet(s) into quires")

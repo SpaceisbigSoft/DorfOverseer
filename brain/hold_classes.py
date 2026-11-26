@@ -139,7 +139,7 @@ _SURVIVAL_RULES = {
     "cleanup_items_dry", "cleanup_units", "cleanup_units_dry", "approve_orders", "order_slots", "orphan_jobs",
     "unsuspend", "stuck_order", "order_remake", "stuck_sweep", "tools", "mechanisms", "bins", "picks", "fuel", "fuel_trim",
     "smelt", "smelting", "steel", "cloth", "crafts", "hauling", "hauling_add", "hauling_back", "hauling_relieve",
-    "hauling_shrink", "barrows", "barrow_order", "feeder", "feeder_link", "bench_caps", "excess_shops",
+    "hauling_shrink", "barrows", "barrow_order", "feeder", "paper_pile", "feeder_link", "bench_caps", "excess_shops",
     "disposal_dump", "disposal_empty", "disposal_melt", "disposal_melt_order", "redig", "disposal_orders", "disposal_outside", "disposal_outside_off",
     "disposal_place_dump", "disposal_dump_near", "disposal_move_dump",
     "disposal_unforbid", "dump", "refuse", "prune", "prune_keep_parts", "depot", "traffic_audit", "traffic_paint",

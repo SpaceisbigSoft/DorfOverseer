@@ -26,6 +26,8 @@
 --                    workshops it is made at, how many of its main input are
 --                    free), the quires, scrolls and codices (blank and
 --                    written), the scroll rollers and book bindings free.
+--   sheets_held(out) (item5) the free sheets stuck in a workshop (none
+--                    of the piles takes sheets) and the piles that do
 --   orders_open()    (fix6) a work order of a paper step still in the
 --                    manager's list: the bridge keeps no cached copy of the
 --                    section meanwhile, so the report after the order is done
@@ -364,8 +366,61 @@ function report()
             end
         end
     end)
+    pcall(function() sheets_held(out) end)
     pcall(function() out.writing = writing() end)
     return out
+end
+
+-- (item5) Where the free sheets lie. A sheet pressed at the screw press (or
+-- made at the farmer's or the tanner's) stays in that workshop, held by it,
+-- until a stockpile that takes sheets calls for it, and the craftsdwarf's
+-- quire and scroll jobs don't fetch it from there (live, fort A 26 Nov: 2
+-- sheets in the screw press, 65 piles and none taking sheets, every
+-- make_quire order stuck at "2 left" for 28 days). out.sheets_in_shops: the
+-- free sheets held by a workshop other than a craftsdwarf's (where they are
+-- used), out.sheets_shop / sheets_shop_id: the workshop holding most of
+-- them, out.sheet_piles: the stockpiles taking sheets (DF 53's own group).
+SHEET_USERS = {Craftsdwarfs = true}
+
+function shop_name(b)
+    local okn, name = pcall(function() return df.workshop_type[b.type] end)
+    name = okn and name or nil
+    if name == 'Custom' then
+        local okd, code = pcall(function() return df.building_def.find(b.custom_type).code end)
+        name = okd and code and (CUSTOM_NAMES[code] or ('Custom:' .. code)) or name
+    end
+    return name
+end
+
+function sheets_held(out)
+    out.sheets_in_shops, out.sheet_piles = 0, 0
+    local by, names = {}, {}
+    for _, it in ipairs(df.global.world.items.other.SHEET) do
+        if free(it) then
+            local okh, b = pcall(dfhack.items.getHolderBuilding, it)
+            if okh and b and b:getType() == df.building_type.Workshop then
+                local name = shop_name(b)
+                if not SHEET_USERS[name] then
+                    local oks, sz = pcall(function() return it:getStackSize() end)
+                    local n = oks and sz or 1
+                    out.sheets_in_shops = out.sheets_in_shops + n
+                    by[b.id] = (by[b.id] or 0) + n
+                    names[b.id] = name
+                end
+            end
+        end
+    end
+    local best
+    for id, n in pairs(by) do
+        if not best or n > by[best] or (n == by[best] and id < best) then best = id end
+    end
+    if best then out.sheets_shop, out.sheets_shop_id = names[best] or '?', best end
+    pcall(function()
+        for _, sp in ipairs(df.global.world.buildings.other.STOCKPILE) do
+            local okf, on = pcall(function() return sp.settings.flags.sheet end)
+            if okf and on then out.sheet_piles = out.sheet_piles + 1 end
+        end
+    end)
 end
 
 -- (R29 W5) the fort's written works, so the books can be watched: `items`
