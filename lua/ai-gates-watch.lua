@@ -215,10 +215,14 @@ end
 BRIDGE_PATH_STEPS = 3
 local NEAR_BOX = BRIDGE_PATH_STEPS + 1     -- tiles: past this no step or ring tile can touch the bridge
 function bridge_watch(b)
-    local w = {on = false, near = false, enemy = false, unknown = false}
-    local okc, civ, units = pcall(function() return df.global.plotinfo.civ_id, df.global.world.units.active end)
-    if not okc or not units then
-        w.enemy, w.unknown = nil, true
+    local w = {on = false, near = false, enemy = false, unknown = false, blind = false}
+    -- (fix2) the fort's civ unread: own by isCitizen alone; the units list
+    -- unread: blind (nothing seen: bridge_hold doesn't hold, as before item2)
+    local okc, civ = pcall(function() return df.global.plotinfo.civ_id end)
+    if not okc then civ = nil end
+    local oku, units = pcall(function() return df.global.world.units.active end)
+    if not oku or not units then
+        w.enemy, w.blind = nil, true
         return w
     end
     local x1, x2, y1, y2, z = b.x1, b.x2, b.y1, b.y2, b.z
@@ -234,7 +238,7 @@ function bridge_watch(b)
                 dz = math.abs(p.z - z)
                 d = math.max(x1 - p.x, p.x - x2, y1 - p.y, p.y - y2, 0)
                 if dz > 3 or d > reach or dfhack.units.isDead(u) then return end
-                local own = dfhack.units.isCitizen(u, true) or u.civ_id == civ
+                local own = dfhack.units.isCitizen(u, true) or (civ ~= nil and u.civ_id == civ)
                 local okd, danger = pcall(function() return dfhack.units.isDanger(u) end)
                 danger = okd and danger
                 if own and not danger then
@@ -260,12 +264,13 @@ function bridge_watch(b)
                     end
                 end
             end)
-            -- a unit unreadable: unknown if it may be at the bridge (or where it is can't be read)
-            if not ok and (d == math.huge or (dz <= 1 and d <= NEAR_BOX)) then w.unknown = true end
+            -- (fix2) a unit read standing at the bridge but not who it is: unknown
+            -- (one whose position can't be read is no evidence: not counted)
+            if not ok and d ~= math.huge and dz <= 1 and d <= NEAR_BOX then w.unknown = true end
             if w.on and w.enemy then break end
         end
     end)
-    if not okl then w.enemy, w.unknown = nil, true end
+    if not okl then w.enemy, w.blind = nil, true end
     return w
 end
 
@@ -283,16 +288,20 @@ end
 -- (item2) Does the AI's pull of this gate bridge wait (close: a raise, else a
 -- lowering)? true and why, or false.
 --   on the bridge's tiles: always waits (0.105.120)
---   close with an enemy within IMMINENT, or the units unreadable: the near and
---     can't-tell rules don't hold it (a siege gate must still close)
---   else one of the fort's own near, or a unit that can't be read: waits
+--   the units list unreadable (blind): not held, raise or lowering (fix2: as
+--     before item2; only positive evidence holds a gate)
+--   close with an enemy within IMMINENT: the near and can't-tell rules don't
+--     hold it (a siege gate must still close)
+--   else one of the fort's own near, or a unit read standing at the bridge
+--     whose other fields can't be read: waits
 --   a lowering also waits while anyone at all is on its tiles (bridge_occupied)
 function bridge_hold(b, close)
     local w = bridge_watch(b)
     if w.on then return true, 'own on it' end
-    if close and w.enemy ~= false then return false end
-    if w.near then return true, 'own near' end
-    if w.unknown then return true, "can't tell" end
+    if not w.blind and not (close and w.enemy) then
+        if w.near then return true, 'own near' end
+        if w.unknown then return true, "can't tell" end
+    end
     if not close and bridge_occupied(b) then return true, 'occupied' end
     return false
 end

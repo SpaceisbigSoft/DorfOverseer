@@ -183,48 +183,44 @@ def _():
     assert pulls(G) == [137] and not G.blds[9].gate_flags.raised
 
 
-@test("item2 (2): a unit by the bridge that can't be read: a raise and a lowering with no enemy near wait")
+@test("item2 (2): a unit read standing by the bridge but not who it is: a raise and a lowering with no "
+      "enemy near wait; one whose position can't be read is no evidence (fix2)")
 def _():
     E, G = bridge_rig()
-    u = unit(G, 107, 149, 171)
-    u.pos = None                           # unreadable: where it is can't be told
+    unit(G, 107, 149, 171)
+    E.dfhack.units.isCitizen = LUA.eval("function(u) error('gone') end")
     close(E)
     assert pulls(G) == [] and E.GATES.bridge_holds == 1
+    w = E.bridge_watch(G.blds[9])
+    assert w.unknown is True and w.near is False and w.enemy is False and w.blind is False
+    assert E.own_on_bridge(G.blds[9]) is None
     E, G = bridge_rig(raised=True)
     unit(G, 107, 149, 171)
-    E.dfhack.units.isDead = LUA.eval("function(u) error('gone') end")
+    E.dfhack.units.isCitizen = LUA.eval("function(u) error('gone') end")
     lowered(E)
     assert pulls(G) == []
-    w = E.bridge_watch(G.blds[9])
-    assert w.unknown is True and w.near is False and w.enemy is False
-    assert E.own_on_bridge(G.blds[9]) is None
-    # an unreadable unit far off (where it is still read): not a hold
-    E, G = bridge_rig()
-    E.dfhack.units.isDead = LUA.eval("function(u) if u.pos.x < 105 then error('gone') end return false end")
-    unit(G, 103, 149, 171)                 # 5 tiles off: past NEAR_BOX
-    close(E)
-    assert pulls(G) == [137]
-
-
-@test("item2 (2): can't tell, but a siege close: an enemy within IMMINENT read, or the units list "
-      "unreadable: the gate still closes; a lowering waits")
-def _():
+    # (fix2) where it is can't be read: not counted
     E, G = bridge_rig()
     u = unit(G, 107, 149, 171)
     u.pos = None
-    unit(G, 115, 149, 171, own=False, danger=True)
     close(E)
     assert pulls(G) == [137]
+    # an unreadable unit 5 tiles off (past NEAR_BOX): not a hold
     E, G = bridge_rig()
-    E.df["global"].plotinfo = None         # nothing can be read
+    E.dfhack.units.isDead = LUA.eval("function(u) if u.pos.x < 105 then error('gone') end return false end")
+    unit(G, 103, 149, 171)
     close(E)
     assert pulls(G) == [137]
-    w = E.bridge_watch(G.blds[9])
-    assert w.enemy is None and w.unknown is True
-    E, G = bridge_rig(raised=True)
-    E.df["global"].plotinfo = None
-    lowered(E)
-    assert pulls(G) == []
+
+
+@test("item2 (2): can't tell, but an enemy within IMMINENT read: the raise still goes")
+def _():
+    E, G = bridge_rig()
+    unit(G, 107, 149, 171)
+    unit(G, 115, 149, 171, own=False, danger=True)
+    E.dfhack.units.isCitizen = LUA.eval("function(u) if u.danger then return false end error('gone') end")
+    close(E)
+    assert pulls(G) == [137]
 
 
 def two_bridges(E, G):
@@ -329,6 +325,34 @@ def _():
     E.bridge_hold = LUA.eval("function() return true, 'own near' end")
     E.GATES_ORIG.check()
     assert pulls(G) == [], pulls(G)
+
+
+@test("fix2: nothing readable (no units list) or a fake world with no units and no plotinfo: raise, lowering "
+      "and a queued pull as before item2 (item2's holds don't hold, nothing taken away)")
+def _():
+    for raised in (False, True):
+        E, G = bridge_rig(raised=raised)
+        E.df["global"].world.units = None          # the units list can't be read
+        (lowered if raised else close)(E)
+        # the raise goes; the lowering waits on bridge_occupied's own "can't tell: occupied" (0.100, unchanged)
+        assert pulls(G) == ([] if raised else [137]), (raised, pulls(G))
+        w = E.bridge_watch(G.blds[9])
+        assert w.blind is True and w.enemy is None
+    for raised in (False, True):
+        E, G = bridge_rig(raised=raised)
+        E.df["global"].plotinfo = None             # the old fakes: no plotinfo, no units
+        (lowered if raised else close)(E)
+        assert pulls(G) == [137], (raised, pulls(G))
+        E, G = bridge_rig(raised=raised)
+        E.df["global"].plotinfo = None
+        queue_pull(E, G)
+        assert E.hold_queued_bridge_pulls() == 0 and len(pull_jobs(G)) == 1
+    # no plotinfo: a citizen (isCitizen) beside it still holds
+    E, G = bridge_rig()
+    E.df["global"].plotinfo = None
+    unit(G, 107, 149, 171)
+    close(E)
+    assert pulls(G) == []
 
 
 finish()
