@@ -364,6 +364,9 @@ def recently_home(s: dict, memory) -> list:
     # (0.104.164) and those released for stress or a baby (the fill drafted
     # one back once he was merely unhappy; they never counted as swaps)
     sent = dict(_d(getattr(memory, "released", None)))
+    for k, v in _d(getattr(memory, "trimmed", None)).items():     # (item8) and those the trim sent home
+        if isinstance(v, int) and v > (sent.get(k) if isinstance(sent.get(k), int) else -1):
+            sent[k] = v
     for k, v in _d(getattr(memory, "swapped", None)).items():
         if isinstance(v, int) and v > (sent.get(k) if isinstance(sent.get(k), int) else -1):
             sent[k] = v

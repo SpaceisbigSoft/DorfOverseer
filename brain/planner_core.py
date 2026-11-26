@@ -227,6 +227,7 @@ class Memory:
     swapped: dict = field(default_factory=dict)  # (0.104.78) unit id -> when the swap sent them home
     drafted: dict = field(default_factory=dict)  # (0.104.138) unit id -> when a fill or swap drafted them
     released: dict = field(default_factory=dict)  # (0.104.164) unit id -> when stress care or a baby sent them home
+    trimmed: dict = field(default_factory=dict)   # (item8) unit id -> when the trim sent them home (a squad's worth a season)
     never_draft: dict = field(default_factory=dict)  # (0.105.47) unit id -> {at, stress}: stress care sent them home for good (planner_training)
     train_mode: dict = field(default_factory=dict)  # (0.104.168) the rotation's {all: bool, tick: when it changed}
     rested_at: dict = field(default_factory=dict)     # (0.105.99) squad id -> when the AI last sent it off duty (the rotation's rest month)

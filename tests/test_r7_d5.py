@@ -167,7 +167,8 @@ ALL = {
 # (R29 item6) _sortie_on: the sortie's targets and squads kept for its result
 # (R30c item24) _military_rules: no fill when everyone draftable is in avoid
 # (item2 war bolts) _ranged_squad_rule: the bolts order in planner_bolts (one at a time, a stalled recipe gives way)
-BASE_NODES = (123, "b7658c0e758d8b343e19e6f6945519fb")
+# (item8 trim to the slider) _military_rules: the quirk's quarter on the slider's number, the trim in planner_squad_trim
+BASE_NODES = (123, "0e163930e9675f38f3685e728bfcc12c")
 
 
 def _defined(name: str) -> list[str]:
