@@ -171,7 +171,8 @@ function cistern_status()
     -- (item6, R32 e) built and full, its floodgate open: a pull already
     -- waiting for a dwarf (the brain asked for the shut every cycle meanwhile:
     -- "the cistern is 7/7 deep: shut the floodgate", B every ~25 s)
-    if d.stage == 'done' and d.lever_id and gate and gate.built and not gate.closed then
+    -- (r33b) either way (the open when low too: the brain paces both)
+    if d.stage == 'done' and d.lever_id and gate and gate.built then
         out.pull_pending = lever_pull_pending(d.lever_id) or nil
     end
     if d.stage == 'filling' or d.stage == 'plug' then

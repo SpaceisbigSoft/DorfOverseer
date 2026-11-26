@@ -395,6 +395,8 @@ def short(a: dict) -> str:
             return "retire the cistern (its floodgate shut)"
         if a.get("relink"):
             return "the cistern: ask for its lever link afresh"
+        if a.get("instant") and not a.get("shut"):     # (r33b) the refill pulled at once
+            return "open the cistern's floodgate at once"
         return "shut the cistern's floodgate" if a.get("shut") else "the cistern: next step"
     if t == "water_work":        # (0.105.0)
         what = {"moat": "the moat", "pump": "the pump stack", "irrigation": "the muddied farm level",
