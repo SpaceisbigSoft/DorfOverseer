@@ -149,12 +149,13 @@ def _():
     assert PW._cistern_pull_wait(s, cis(pull_pending=True), m, notes) is True
     assert "a dwarf is on the way" in notes[0], notes
     assert PW._cistern_pull_wait(s, cis(), m, notes) is False          # the first ask goes
-    assert PW._cistern_pull_wait(s, cis(), m, notes) is True           # and not again within the day
-    assert "asked again in a day" in notes[-1], notes
+    assert PW._cistern_pull_wait(s, cis(), m, notes) is True           # and not again within the pace
+    assert "asked again in 3 days" in notes[-1], notes
     # the other way (open when low) is not held back by the shut asked for
     assert PW._cistern_pull_wait(s, cis(gate="shut", depth=2), m, notes) is False
+    # (r33b) a day on is no longer enough (B: a game day ~1 cycle); tests/test_r33b_cistern_pull.py
     s2 = {"date": {"year": 260, "tick": 50_000 + TICKS_PER_DAY + 1}}
-    assert PW._cistern_pull_wait(s2, cis(), m, notes) is False         # a day on: asked again
+    assert PW._cistern_pull_wait(s2, cis(gate="shut", depth=2), m, notes) is True
 
 
 @test("cistern (lua): the status says a pull is pending for a built, open floodgate")

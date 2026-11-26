@@ -431,32 +431,20 @@ def _cistern_parts(s: dict, st: dict, proposals: list, notes: list | None = None
                                   4, is_order=True))
 
 
-CISTERN_PULL_KEY = "cistern_pull"       # (item6) memory.last_fired: the last top-up pull asked for (_shut, _opened)
-CISTERN_PULL_DAYS = 1                   # ...a pull that left the floodgate as it was asked again a day on
+CISTERN_PULL_KEY = "cistern_pull"       # (item6) the top-up pull's record (r33b: Memory.repeat_book, planner_cistern_pull)
+CISTERN_PULL_DAYS = 3                   # (r33b) game days between two asks (planner_cistern_pull.CISTERN_PULL_PACE_DAYS)
 
 
 def _cistern_pull_wait(s: dict, st: dict, memory, notes: list) -> bool:
     """(item6, R32 e) The built cistern's top-up pull (shut when full, open when
     low): not asked for again while a dwarf is on the way to the lever (B: "the
     cistern is 7/7 deep: shut the floodgate" every cycle, ~25 s, the bridge
-    answering "a dwarf is already on the way"), and a pull that left the
-    floodgate as it was asked again only a day on. True: wait (a note said why)."""
-    want = "shut" if st.get("gate") == "open" else "opened"
-    if st.get("pull_pending"):
-        notes.append(f"the cistern is {st.get('depth')}/7 deep: a dwarf is on the way to its lever to have the "
-                     f"floodgate {want}")
-        return True
-    if memory is None or not isinstance(getattr(memory, "last_fired", None), dict):
-        return False
-    now = abs_tick(s)
-    key = f"{CISTERN_PULL_KEY}_{want}"     # (a shut asked for doesn't hold back the open after it)
-    last = memory.last_fired.get(key)
-    if isinstance(last, int) and not isinstance(last, bool) and 0 <= now - last < CISTERN_PULL_DAYS * TICKS_PER_DAY:
-        notes.append(f"the cistern is {st.get('depth')}/7 deep and its floodgate still {st.get('gate')} after its "
-                     f"lever was pulled: asked again in a day (the lever's link may be lost)")
-        return True
-    memory.last_fired[key] = now
-    return False
+    answering "a dwarf is already on the way"). (r33b) Paced in game days, real
+    minutes and brain cycles (planner_cistern_pull: B's job came and went, a
+    soldier taking it and dropping it, and a game day was ~1 cycle). True:
+    wait (a note said why); an ask counts towards the stuck (instant) pull."""
+    from planner_cistern_pull import cistern_pull_plan
+    return cistern_pull_plan(s, st, memory, notes) == "wait"
 
 
 def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rules_: dict) -> None:
@@ -591,11 +579,24 @@ def _cistern_rule(s: dict, memory, cfg: dict, proposals: list, notes: list, rule
                                       f"the cistern: {CISTERN_WORDS.get(st.get('stage'), 'next step')}: the next step", 4))
             _cistern_parts(s, st, proposals, notes)
         elif (st.get("gate") == "shut" and (st.get("depth") or 0) < 3) or (st.get("gate") == "open" and (st.get("depth") or 0) >= 6):
-            if _cistern_pull_wait(s, st, memory, notes):
+            # (r33b) paced (planner_cistern_pull); stuck after 3 asks with the
+            # floodgate as it was: pulled at once (shut: cistern_shut, the
+            # dwarves' pulls taken away first; open: the done step's instant pull)
+            from planner_cistern_pull import cistern_pull_plan
+            how = cistern_pull_plan(s, st, memory, notes)
+            if how == "wait":
                 return
+            if how == "instant" and st.get("gate") == "open":
+                proposals.append(Proposal("cistern", {"type": "cistern_step", "shut": True},
+                                          f"the cistern is {st.get('depth')}/7 deep and no dwarf pulled its lever: "
+                                          "shut the floodgate at once", 4))
+                return
+            if how == "instant":
+                step["instant"] = True
             proposals.append(Proposal("cistern", dict(step),
                                       f"the cistern is {st.get('depth')}/7 deep: "
-                                      + ("open the floodgate to refill it" if st.get("gate") == "shut" else "shut the floodgate"), 4))
+                                      + ("open the floodgate to refill it" if st.get("gate") == "shut" else "shut the floodgate")
+                                      + (" at once (no dwarf pulled its lever)" if how == "instant" else ""), 4))
         return
     plan = _d(w.get("cistern"))
     if not plan or plan.get("none") or not rules_.get("water_works", True):
