@@ -10,7 +10,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-fort is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.119'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.120'   -- bumped with BRIDGE_VERSION
 
 -- DFHack's own work-order libraries (conditioned orders, e.g. smelting
 -- whenever bars run low). Only these ones.
@@ -993,7 +993,7 @@ local CHEAP_TYPES = {'PLANT', 'PLANT_GROWTH', 'SEEDS', 'EGG', 'FISH', 'LIQUID_MI
 local GOOD_TYPES = {'MEAT', 'CHEESE', 'POWDER_MISC'}
 
 local function cookable(it, check_mat)
-    if it.flags.forbidden or it.flags.rotten or it.flags.garbage_collect then return false end
+    if it.flags.forbid or it.flags.rotten or it.flags.garbage_collect then return false end   -- (0.105.120) forbid, not forbidden: that read threw in every fort
     if not check_mat then return true end
     local mi = dfhack.matinfo.decode(it)
     return mi ~= nil and mi.material ~= nil and mi.material.flags.EDIBLE_COOKED == true

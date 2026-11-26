@@ -6,7 +6,7 @@
 -- into its own environment, so every name here is reqscript('ai-gates').name
 -- and the helpers defined there (tile, building_at, key, ...) are in reach.
 
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-watch'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-gates-watch'] = '0.105.120'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, key, unkey, gate_name = U, key, unkey, gate_name   -- (13e) the hub's and earlier parts' locals
 
@@ -200,6 +200,26 @@ function bridge_occupied(b)
     return not ok or yes       -- can't tell: treat it as occupied
 end
 
+-- (0.105.120, B 25 Nov 19:42: a stoneworker killed by the surface gate's bridge as
+-- it closed for a weresheep) one of the fort's own on the bridge's tiles: a
+-- citizen, a tame animal or a peaceful guest of the fort's civ. A raise flings
+-- them, a lowering crushes them: the bridge waits for them either way.
+function own_on_bridge(b)
+    local ok, yes = pcall(function()
+        local civ = df.global.plotinfo.civ_id
+        for _, u in ipairs(df.global.world.units.active) do
+            if not dfhack.units.isDead(u) and u.pos.z == b.z and u.pos.x >= b.x1 and u.pos.x <= b.x2
+                    and u.pos.y >= b.y1 and u.pos.y <= b.y2
+                    and (dfhack.units.isCitizen(u, true) or u.civ_id == civ) then
+                local okd, danger = pcall(function() return dfhack.units.isDanger(u) end)
+                if not (okd and danger) then return true end
+            end
+        end
+        return false
+    end)
+    return ok and yes         -- can't tell: not held (a siege gate must still close)
+end
+
 -- (0.105.23, 14.1 step 4a) A lever pulled at once (DFHack's `lever pull
 -- --instant`: no dwarf runs to it), as ai-builder's shaft gate does. A pull
 -- a dwarf is on the way to make is called off first: arriving late it would
@@ -309,9 +329,10 @@ local function set_bridge(g, b, close)
     -- (0.105.33) nor while it moves (a pull now would send it back)
     local okm, moving = pcall(function() return b.gate_flags.raising or b.gate_flags.lowering end)
     -- lowering (opening) waits while anyone stands where it comes down;
-    -- raising goes ahead (a threat is why it's raised)
+    -- (0.105.120) raising waits while one of the fort's own stands on it (a
+    -- hostile on it is raised under)
     local done = ok and c ~= close and not (okm and moving) and g.lever_id and #b.jobs == 0
-        and (close or not bridge_occupied(b)) and pull(g.lever_id) or false
+        and not own_on_bridge(b) and (close or not bridge_occupied(b)) and pull(g.lever_id) or false
     -- (0.105.48, K2) a close pull is a dwarf's job: the bridge reads down until
     -- it is done, which is not "found open" (the watcher's own pull on its way)
     if done and close then

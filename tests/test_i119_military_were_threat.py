@@ -164,4 +164,17 @@ def _():
     assert "kill_spared = kill_spared" in m and "not kill_target_ok(u)" in m
 
 
+@test("(0.105.120) a kill order's dead targets (kill_dead) are dropped too; an order of only the dead is cleared")
+def _():
+    squads = [sq(213, ai_orders=1, kill_ids=[1, 2, 3], kill_spared=[1], kill_dead=[2]),
+              sq(214, ai_orders=1, kill_ids=[7, 8], kill_dead=[7, 8])]
+    props, _ = plan(fort(berserk=[], squads=squads), Memory())
+    again = [p for p in props if p.action.get("squad_id") == 213 and p.action.get("type") == "squad_orders"]
+    assert again and again[0].action.get("kill") == [3], again
+    off = [p for p in props if p.action.get("squad_id") == 214 and p.action.get("clear")]
+    assert off and off[0].rule == "squad_recall", [(p.rule, p.action) for p in props]
+    m = (ROOT / "lua" / "ai-military.lua").read_text(encoding="utf-8")
+    assert "kill_dead = kill_dead" in m
+
+
 finish()

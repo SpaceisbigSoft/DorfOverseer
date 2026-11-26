@@ -8,7 +8,7 @@
 -- names defined there are in reach.
 
 if not PART_LOCALS then qerror('ai-trade-unload is a part of ai-trade; run ai-trade') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-trade-unload'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-trade-unload'] = '0.105.120'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local translate, depot, caravans, is_artifact, goods = PART_LOCALS.translate, PART_LOCALS.depot, PART_LOCALS.caravans, PART_LOCALS.is_artifact, PART_LOCALS.goods   -- (0.105.119) the hub's locals (goods: only a key here, taken so the name is this file's as in the one file)
 

@@ -10,7 +10,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-report-dead is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-dead'] = '0.105.119'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-report-dead'] = '0.105.120'   -- bumped with BRIDGE_VERSION
 
 local inc = REPORT_PART_LOCALS.inc
 

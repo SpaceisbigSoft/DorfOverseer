@@ -100,21 +100,27 @@ def were_spare_rules(s: dict, cfg: dict, proposals: list, notes: list) -> None:
         if not isinstance(q, dict) or q.get("id") is None or not q.get("ai_orders"):
             continue
         spared = {x for x in _l(q.get("kill_spared")) if isinstance(x, int)}
-        if not spared:
+        # (0.105.120) the dead or gone are no target either: E asked 228 times in 40 min
+        # "none of those units is on the map and alive" for an order of dead weres
+        dead = {x for x in _l(q.get("kill_dead")) if isinstance(x, int)}
+        ids = {x for x in _l(q.get("kill_ids")) if isinstance(x, int)}
+        if not spared and not (dead and ids and ids <= dead):
             continue
-        rest = [x for x in _l(q.get("kill_ids")) if isinstance(x, int) and x not in spared]
+        rest = [x for x in _l(q.get("kill_ids")) if isinstance(x, int) and x not in spared and x not in dead]
         who = q.get("name") or f"squad {q['id']}"
         if rest:
             proposals.append(Proposal("squad_attack", {"type": "squad_orders", "squad_id": q["id"],
                                                        "kill": list(dict.fromkeys(rest))[:50]},
                                       f"{len(spared)} of {who}'s targets are the fort's own in their own form "
-                                      "now (changed back or calm): never a target, the order goes on for the "
-                                      "others", 0, guard=True))
+                                      f"now (changed back or calm){f', {len(dead)} dead' if dead else ''}: "
+                                      "never a target, the order goes on for the others", 0, guard=True))
         else:
             proposals.append(Proposal("squad_recall", {"type": "squad_orders", "squad_id": q["id"], "clear": True},
-                                      f"{who}'s target(s) are the fort's own in their own form now (a were "
-                                      "changed back, or calm): never a target, the squad is called back (a were "
-                                      "goes to their cell)", 0))
+                                      (f"{who}'s target(s) are dead or gone: the squad is called back"
+                                       if not spared else
+                                       f"{who}'s target(s) are the fort's own in their own form now (a were "
+                                       "changed back, or calm) or dead: never a target, the squad is called back "
+                                       "(a were goes to their cell)"), 0))
 
 
 def free_squads(s: dict, cfg: dict) -> list:

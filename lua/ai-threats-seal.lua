@@ -9,7 +9,7 @@
 -- reach.
 
 if not PART_LOCALS then qerror('ai-threats-seal is a part of ai-threats; run ai-threats') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-seal'] = '0.105.119'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-threats-seal'] = '0.105.120'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local U, report_citizens, now_tick, name_of, save_state, okey, watcher_held, lure_open_ids, insane_held = PART_LOCALS.U, PART_LOCALS.report_citizens, PART_LOCALS.now_tick, PART_LOCALS.name_of, PART_LOCALS.save_state, PART_LOCALS.okey, PART_LOCALS.watcher_held, PART_LOCALS.lure_open_ids, PART_LOCALS.insane_held   -- (0.105.119) the hub's and earlier parts' locals
 
