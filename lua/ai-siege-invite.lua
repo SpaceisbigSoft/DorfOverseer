@@ -466,7 +466,7 @@ function party_alive(rec)
             local u = df.unit.find(id)
             return u ~= nil and not dfhack.units.isDead(u) and dfhack.units.isActive(u)
         end)
-        if ok and alive then return true end
+        if not ok or alive then return true end   -- can't tell: counted alive (no second party on a guess)
     end
     return false
 end
