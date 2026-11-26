@@ -9,7 +9,7 @@
 -- state, its timer and its loop stay in ai-fights.lua.
 
 if not PART_LOCALS then qerror('ai-fights-scan is a part of ai-fights; run ai-fights') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-fights-scan'] = '0.105.124'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-fights-scan'] = '0.105.125'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local attack_row, attacks_of, bump, conflict_citizen, conflicts_by_unit, field, find_unit, hurt = PART_LOCALS.attack_row, PART_LOCALS.attacks_of, PART_LOCALS.bump, PART_LOCALS.conflict_citizen, PART_LOCALS.conflicts_by_unit, PART_LOCALS.field, PART_LOCALS.find_unit, PART_LOCALS.hurt   -- (0.105.119) the hub's locals
 local in_tantrum, is, job_of, living_citizen, log, makeown, unit_name = PART_LOCALS.in_tantrum, PART_LOCALS.is, PART_LOCALS.job_of, PART_LOCALS.living_citizen, PART_LOCALS.log, PART_LOCALS.makeown, PART_LOCALS.unit_name

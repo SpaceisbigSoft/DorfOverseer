@@ -9,7 +9,7 @@
 -- and the bridge's shared helpers are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-trade is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-trade'] = '0.105.124'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-trade'] = '0.105.125'   -- bumped with BRIDGE_VERSION
 
 -- Goods to the depot for a caravan (lua/ai-trade.lua); the trade is yours.
 function act_bring_goods(a)
