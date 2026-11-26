@@ -274,6 +274,10 @@ PART = {
     "ice_shore_well_cooldown_ticks": 1200,
     # (0.105.47) Verticality: the stair past the first cavern (brain/planner_descent.py, lua/ai-descent.lua)
     "deep_descent": False,                # (0.105.48) off: no crossing, no level under it; on here or by the Rules switch
+    # (item4) ...or by the fort's character: Verticality CROSS_VERTICALITY (100) and Mining this or more
+    # (the Deep mine, 120/150; no other preset): E stood at 23 levels, every fort stopped
+    # CAVERN_MARGIN over Cavern1. False: the switch alone, as before
+    "deep_descent_by_character": True, "deep_descent_character_mining": 100,
     "descent_min_citizens": 20,           # the fort this big before its stair goes past the first cavern...
     "descent_min_levels": 8,              # ...and this many levels in its plan's districts
     "descent_storage_citizens": 40,       # the storage district's new levels go under it from this many citizens

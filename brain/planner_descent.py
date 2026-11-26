@@ -26,6 +26,12 @@ G6: "deeper needs a stair past Cavern1 (open item)").
     storage once the fort has `descent_storage_citizens`, the homes too at
     Verticality `descent_homes_verticality` and `descent_homes_citizens`.
 
+(item4) On by the Rules switch `deep_descent`, planner_config's, or the
+fort's character (by_character: Verticality 100+ and Mining 100+, the Deep
+mine; planner_config `deep_descent_by_character`). Region4's Cavern1 fills
+z 123-146: every fort's levels stopped at z 149, E (the Deep mine) 23 levels
+under the surface against F's 28, with the switch off in all six.
+
 Without a `descent` section (an older bridge, the fixtures) nothing here
 proposes or changes anything.
 """
@@ -36,7 +42,7 @@ import masterplan
 from digest import _d, _l, game_text
 from planner_core import Proposal, _traits, young_fort
 
-__all__ = ["descent", "deep_kinds", "_descent_rule", "deep_pass"]
+__all__ = ["descent", "deep_kinds", "descent_on", "by_character", "_descent_rule", "deep_pass"]
 
 
 def descent(s: dict) -> dict | None:
@@ -65,7 +71,22 @@ def descent_on(s: dict, cfg: dict) -> bool:
     # (read from the settings here, not player_rules: the strategist's Rules
     # tab summary stays as it was)
     st = s.get("settings") if isinstance(s, dict) else None
-    return isinstance(st, dict) and st.get("deep_descent") is True
+    if not isinstance(st, dict):
+        return False
+    return st.get("deep_descent") is True or by_character(s, cfg)
+
+
+def by_character(s: dict, cfg: dict) -> bool:
+    """(item4) On by the fort's character: Verticality masterplan.CROSS_VERTICALITY
+    and Mining deep_descent_character_mining or more (the Deep mine alone of
+    the presets), while planner_config `deep_descent_by_character` is on."""
+    if cfg.get("deep_descent_by_character", False) is not True:
+        return False
+    st = s.get("settings") if isinstance(s, dict) else None
+    t = _d(st.get("traits")) if isinstance(st, dict) else {}
+    mining = t.get("mining", 0) or 0
+    return (masterplan.crosses_caverns(t) and isinstance(mining, (int, float))
+            and mining >= cfg.get("deep_descent_character_mining", 100))
 
 
 def _plan_levels(memory) -> int:

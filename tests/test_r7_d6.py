@@ -76,9 +76,13 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # library_scholars_max (a library's scholars writing the fort's own books): 25 Nov
 # (item2 war bolts) re-pinned after three deliberate keys: bolts_order_max, bolts_stall_days,
 # bolts_reserve_per_soldier (A's bolts orders piled up and stalled, the range shot the war stock away): 25 Nov
-DUMP_6298B4A = "3fbc101e27e647acea3d0f516f36b8ac52f576b6ab8ef5d080d13868defc75c1"
-KEYS_6298B4A = "29d58f780299292531204df7c78348f032621228b2f9f12e5925c39b41a930d2"
-COUNT_6298B4A = 1339
+# (item4 idle miners) re-pinned after ten deliberate keys (ore_days, vein_when_dig_below, vein_dig_per_miner,
+# prospect_cooldown_ticks, prospect_days, prospect_dig_per_miner, prospect_gems_below, prospect_tiles,
+# deep_descent_by_character, deep_descent_character_mining) and one value (ore_cooldown_ticks 7 -> 2 days,
+# the floor under ore_days / factor(Mining)): D's idle miners, E's ore and depth, 26 Nov
+DUMP_6298B4A = "b544090c3c1072de2b00dcb0bb20bda8c765c7bb60e6315e8da9913d24f58945"
+KEYS_6298B4A = "15fa42f043e2d3fc6b637f0ac808e31cb2654b9e31e66178df62818f18923389"
+COUNT_6298B4A = 1349
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 

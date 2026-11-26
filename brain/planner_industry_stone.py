@@ -125,8 +125,10 @@ def _industry_rules(s: dict, memory, cfg: dict, citizens: int, proposals: list, 
     lb = _d(s.get("labor"))
     stock = _d(s.get("industry")).get("ore_stock") or 0
     mp = mining_plan(_traits(s) if isinstance(s.get("settings"), dict) else {}, cfg)   # (0.96) Mining
-    if (mp["veins"] and total < mp["bars_below"] and (lb.get("dig") or 0) < 50 and (lb.get("miners") or 0) > 0
-            and stock < mp["ore_stock_max"]):
+    # (item4) the digging a vein waits for and its pace, by the miners and Mining (planner_prospect)
+    from planner_prospect import ore_paced, vein_dig_cap
+    if (mp["veins"] and total < mp["bars_below"] and (lb.get("dig") or 0) < vein_dig_cap(s, cfg)
+            and (lb.get("miners") or 0) > 0 and stock < mp["ore_stock_max"] and ore_paced(s, memory, cfg)):
         # (0.105.40 M7) a fort without iron: tin for bronze once copper is in hand
         from planner_alloys import tin_ore_first
         metal = tin_ore_first(s, cfg, ores) or next((m for m in GEAR_ORDER_METALS if m in ores), None)

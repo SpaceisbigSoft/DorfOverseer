@@ -96,7 +96,7 @@ NAMES_6298B4A = (
     '_office_held', '_offices_refill_rule', '_order_slots_rule', '_orphan_jobs_rule', '_paper_rule',
     '_pasture_hold', '_pasture_rule', '_peace_notes', '_people_rules', '_petition_rules', '_picks_order',
     '_pile_links_rule', '_planned_note', '_planned_parts_rule', '_pop_cap_rule', '_prisoner_water_rule',
-    '_project_rules', '_provisions_rules', '_quick_location_rule', '_quiver_rule', '_ranged_squad_rule',
+    '_project_rules', '_prospect_rule', '_provisions_rules', '_quick_location_rule', '_quiver_rule', '_ranged_squad_rule',
     '_real_locations', '_record_any_outcome', '_recreation_rule', '_refused_wait', '_reserve_storage_rule',
     '_residency_rule', '_restraint_order', '_room_repair_rule', '_seed_reserve_rule', '_set_adopted',
     '_shelter_due', '_shelter_pick_rule', '_shelter_possible', '_shelter_squads_rule', '_shoes_recipe',
