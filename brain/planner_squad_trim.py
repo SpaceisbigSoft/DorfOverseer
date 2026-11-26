@@ -73,7 +73,7 @@ def trim_plan(s: dict, memory, cfg: dict, have: int, want: int, floor_: dict | N
         return {"note": "a fight is under way: the extra soldiers go home once it is over"}
     if _held_keen_lift(s, memory, cfg):
         return {}     # (0.104.168) the keen lift raised the wanted number on purpose; said by the fill
-    season_max = int(cfg.get("trim_season_max", 10))
+    season_max = int(cfg.get("trim_season_max", 4))
     days = float(cfg.get("trim_season_days", 84))
     season = trimmed_since(memory, now, days)
     week = trimmed_since(memory, now, 7)
