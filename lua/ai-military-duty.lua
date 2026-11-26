@@ -229,7 +229,7 @@ end
 -- A few hostile invaders set down outside, where they can walk to the fort:
 -- on the trade depot's level, 15-30 tiles from it, on open ground outside
 -- that has a path to the depot. Made by ai-spawn (DFHack's modtools/create-unit,
--- else DF 53's own arena spawner), in an enemy civilisation (a goblin one,
+-- else dfhack.units.create), in an enemy civilisation (a goblin one,
 -- else none) and flagged as invaders, so
 -- the game and the AI treat them as an attack. Never during a real threat.
 
@@ -281,16 +281,21 @@ function spawn_test_threat(count, race, dry_run)
     if not spot then return {ok = false, rejected = true, error = why} end
     local civ = enemy_civ()
     if dry_run then return {ok = true, dry_run = true, spot = spot, race = race, count = count, civ = civ} end
-    -- (item1) by ai-spawn: DFHack's modtools/create-unit, else (stale for DF 53) DF's own arena spawner
+    -- (item1) by ai-spawn: DFHack's modtools/create-unit, else (stale for DF 53) dfhack.units.create
     local okm, SP = pcall(reqscript, 'ai-spawn')
     if not okm or type(SP) ~= 'table' or not SP.spawn_units then
         return {ok = false, error = 'no ai-spawn module: ' .. tostring(SP):sub(1, 120)}
     end
     local made, why, info = SP.spawn_units{race = race, count = count, pos = spot, spread = 2, civ_id = civ or -1,
                                            flags = {'marauder', 'active_invader', 'invader_origin'}}
-    if not made or #made == 0 then return {ok = false, error = 'no invaders placed: ' .. tostring(why or 'no unit'):sub(1, 200)} end
-    return {ok = true, spot = spot, race = race, count = #made, units = made, civ = civ,
-            route = type(info) == 'table' and info.route or nil}
+    info = type(info) == 'table' and info or {}
+    local brief = SP.brief and SP.brief(info) or {route = info.route}
+    if not made or #made == 0 then
+        -- 600 chars and the spawner's info (200 lost the diagnosis, A 26 Nov 00:35)
+        return {ok = false, error = ('no invaders placed: ' .. tostring(why or 'no unit')):sub(1, 600), spawn_info = brief}
+    end
+    return {ok = true, spot = spot, race = race, count = #made, units = made, civ = civ, route = info.route,
+            spawn_info = brief}
 end
 
 -- Pull the lever named "AI gate" (a dwarf goes and pulls it).
