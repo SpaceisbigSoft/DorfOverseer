@@ -93,6 +93,12 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
                     memory.trimmed[str(x["unit_id"])] = now
             for k in [k for k, t in memory.trimmed.items() if not isinstance(t, int) or now - t > 168 * TICKS_PER_DAY]:
                 del memory.trimmed[k]
+        if (p.action.get("type") == "explore_dig" and ok is True and r.get("tiles") == 0
+                and isinstance(r.get("pending"), int) and r["pending"] > 0):
+            # (r36c) every tunnel slot held by one still being dug: _explore_rule waits
+            # explore_pending_wait_days before asking again (no 0-tile line each day)
+            if isinstance(getattr(memory, "last_fired", None), dict):
+                memory.last_fired["explore_pending"] = now
         if p.rule == "siege_cleanup" and ok is not None:
             memory.pruned_after = int(memory.last_threat_tick or 0)        # (0.104.140) once an attack, done or not
         if (p.action.get("type") == "squad_orders" and isinstance(p.action.get("kill"), list)

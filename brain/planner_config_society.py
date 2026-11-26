@@ -433,7 +433,10 @@ PART = {
     # 0 tiles, 32-36% idle): exploratory tunnels (rule `explore`, the bridge's explore_dig),
     # explore_tiles x factor tiles (10-80), a tunnel for each explore_per_tunnel_miners miners (1-6),
     # every explore_days / factor (a day at least). planner_prospect.py
-    "explore_cooldown_ticks": 1200, "explore_days": 1, "explore_tiles": 24, "explore_per_tunnel_miners": 5,
+    "explore_cooldown_ticks": 1200, "explore_days": 1,
+    # (r36c) after an answer "all N tunnel(s) still being dug" (0 tiles), explore waits
+    # explore_pending_wait_days / factor (a day at least) before asking again
+    "explore_pending_wait_days": 3, "explore_tiles": 24, "explore_per_tunnel_miners": 5,
     "industry_cooldown_ticks": 7 * 1200,
     "gather_cooldown_ticks": 7 * 1200, # shrubs marked for gathering: at most once a week
     "train_min_citizens": 15,
