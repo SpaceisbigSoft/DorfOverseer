@@ -11,7 +11,7 @@ from digest import _d, _l
 from rests import citizen_death  # (r5 p2) a ghost laid to rest is no death
 from planner_core import *  # noqa: F401,F403
 
-__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "petition_kind", "orders_set_by_ai", "note_petition_orders", "_citizenship_rule", "residency_stance", "residency_kind", "residency_room", "residency_verdict", "note_residency", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since", "sought_artifact", "artifacts_at_risk", "note_artifact_risk", "claimed_shut"]
+__all__ = ["PETITION_KINDS", "petition_orders_wanted", "_petition_rules", "_citizenship_notes", "petition_kind", "orders_set_by_ai", "note_petition_orders", "_citizenship_rule", "residency_stance", "residency_kind", "residency_room", "residency_verdict", "note_residency", "_residency_rule", "CLOSABLE_LOCATIONS", "HEISTS_KEEP", "note_heists", "heist_lockout", "heist_lockout_days", "visitor_danger", "LIBRARY_OPEN", "mayor_meetings", "_complaint_holder", "visitor_shut", "location_stale", "note_locations", "LOCATION_WORDS", "_location_words", "_location_access_rule", "outsider_orders", "yours_since", "sought_artifact", "artifacts_at_risk", "note_artifact_risk", "claimed_shut"]
 
 
 PETITION_KINDS = ("performer", "scholar", "monster_hunter", "mercenary", "sanctuary", "citizenship")
@@ -569,6 +569,10 @@ def _residency_rule(s: dict, memory, cfg: dict, proposals: list, notes: list) ->
 
 
 CLOSABLE_LOCATIONS = ("INN_TAVERN", "TEMPLE", "LIBRARY", "GUILDHALL")
+# (item6, the player 26 Nov: "open") these stay open to visitors except in a
+# fort that keeps to itself (the player's Outsiders slider) or while a visitor's
+# killing holds (visitor_danger); one the AI shut before is opened again
+LIBRARY_OPEN = ("LIBRARY",)
 
 
 HEISTS_KEEP = 20            # (0.105.24) heists remembered (each [tick, who])
@@ -614,9 +618,31 @@ def note_heists(state: dict, memory, events: list) -> int:
             continue
         have.add((day, who))
         memory.heists.append([now, who])
+        if e.get("kind") != "report":
+            # (item6) a killing kept apart too: the library shuts only for this (visitor_danger)
+            kills = [k for k in _l(getattr(memory, "visitor_kills", None)) if isinstance(k, list) and len(k) == 2]
+            memory.visitor_kills = (kills + [[now, who]])[-HEISTS_KEEP:]
         n += 1
     memory.heists = [t for t in memory.heists if isinstance(t, list) and len(t) == 2][-HEISTS_KEEP:]
     return n
+
+
+def visitor_danger(s: dict, memory, cfg: dict):
+    """(item6) A live danger from visitors: the last visitor's killing of one
+    of the fort's own ([tick, who], note_heists) within heist_lockout_days, or
+    None. Never with the Rules switch heist_lockout off. Only this shuts a
+    library to visitors (LIBRARY_OPEN): the player (26 Nov) wants visiting
+    scholars to come and write, so a heist, a stranger's meeting, a claimed
+    artifact or the mayor's rest leave the library open."""
+    days = heist_lockout_days(s, cfg)
+    if days <= 0 or (isinstance(s.get("settings"), dict) and not player_rules(s)["heist_lockout"]):
+        return None
+    now = abs_tick(s)
+    if not isinstance(now, int):
+        return None
+    recent = [k for k in _l(getattr(memory, "visitor_kills", None)) if isinstance(k, list) and len(k) == 2
+              and isinstance(k[0], int) and 0 <= now - k[0] < days * TICKS_PER_DAY]
+    return max(recent, key=lambda k: k[0]) if recent else None
 
 
 def sought_artifact(text) -> str:
@@ -945,7 +971,10 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     lockout under way is lifted); and the same locations shut for
     `visitor_shut_days` when the mayor is swamped by visitors (visitor_shut,
     its switch shut_to_visitors). Shut while either holds, the longer
-    winning; one the player shut is never the AI's to open."""
+    winning; one the player shut is never the AI's to open.
+    (item6, the player 26 Nov) A library stays open to visitors (visiting
+    scholars write there) but in a fort that keeps to itself or while a
+    visitor's killing holds (visitor_danger); one the AI shut is reopened."""
     locs = [e for e in _l(_d(s.get("locations")).get("list"))
             if isinstance(e, dict) and isinstance(e.get("id"), int) and isinstance(e.get("flags"), list)]
     if not locs:
@@ -958,8 +987,13 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
     swamp = None if closed else visitor_shut(s, memory, cfg)
     wary = None if closed else stranger_shut(s, memory, cfg)       # (0.105.30 live fixes)
     claimed = None if closed else claimed_shut(s, memory, cfg)     # (r1 g7) artifacts heroes come for
+    danger = None if closed else visitor_danger(s, memory, cfg)    # (item6) the library's one reason
+    lib_shut = bool(closed or danger)
     now = abs_tick(s)
     mine = [i for i in (memory.locations_closed or []) if isinstance(i, int)]
+    # (item6) a library the AI shut, opened again unless the fort keeps to itself or a killer visitor holds
+    lib_open = [] if lib_shut else [e["id"] for e in locs if e["id"] in mine and e.get("type") in LIBRARY_OPEN
+                                    and "VISITORS_ALLOWED" not in e["flags"]]
     # (0.105.26) plan() changes no memory: one the AI shut and you opened again
     # (in a report built since) is yours, left alone here and forgotten by
     # note_locations; one that reads open in a report older than the AI's own
@@ -976,13 +1010,20 @@ def _location_access_rule(s: dict, memory, cfg: dict, proposals: list, notes: li
             # three tavern fights followed (~26 visitors drawn in)
             left_open -= {i for i in left_open if i not in yours and yours_since(memory, i) < lock[0]}
         shut = [e["id"] for e in locs if e.get("type") in CLOSABLE_LOCATIONS and "VISITORS_ALLOWED" in e["flags"]
-                and e["id"] not in left_open and e["id"] not in stale]
+                and e["id"] not in left_open and e["id"] not in stale
+                and (lib_shut or e.get("type") not in LIBRARY_OPEN)]
         lock_left = (heist_lockout_days(s, cfg) - (now - lock[0]) // TICKS_PER_DAY) if lock else 0
         swamp_left = -(-(int(swamp["until"]) - now) // TICKS_PER_DAY) if swamp else 0
         wary_left = -(-(int(wary["until"]) - now) // TICKS_PER_DAY) if wary else 0
         # (0.105.24) the mayor's rest said while it lasts, with what is shut
         # (0.105.26) a new one only with something to shut (it starts when the shut goes through)
-        held = [i for i in mine if i not in yours]
+        held = [i for i in mine if i not in yours and i not in lib_open]
+        if lib_open:
+            # (item6) no visitor_shut carried: the mayor's rest under way is left as it is
+            proposals.append(Proposal("location_access", {"type": "location_access", "ids": lib_open, "visitors": True},
+                                      f"libraries stay open to visitors (visiting scholars come to write; only a "
+                                      f"visitor's killing shuts them): {_location_words(locs, set(lib_open))} "
+                                      f"({len(lib_open)} location(s)) the AI closed let visitors in again", 6))
         if swamp and not closed and swamp_left >= lock_left and (shut or (held and not swamp.get("new"))):
             notes.append(f"visitors kept out of {_location_words(locs, set(shut) | set(held)) or 'the locations'} "
                          f"for {max(1, swamp_left)} more day(s) (residents still welcome): {swamp.get('visitors')} "

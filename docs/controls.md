@@ -196,15 +196,18 @@ hall, basic workshops and stockpiles are always built when missing.
   drives DF's World screen to send the messenger itself, never under a
   window of yours. Off, the AI only names the site for you to send.
 - **Shut to visitors a while after a theft** (on, 0.105.24): after an
-  artifact heist, or a visitor killing a citizen, the tavern, temples,
-  library and guildhalls are shut to visitors for 168 days. Residents are
+  artifact heist, or a visitor killing a citizen, the tavern, temples and
+  guildhalls are shut to visitors for 168 days. The library stays open
+  (item6: visiting scholars come to write) and shuts only for a visitor's
+  killing, for those 168 days. Residents are
   still welcome, and the hospital is never shut. Only the locations the AI
   shut reopen. Off: no lockout, and one under way is lifted.
 - **Shut to visitors when mayor swamped** (on; the Merchant city preset turns
-  it off; 0.105.24): the same locations shut for 56 days when 5+ citizens
+  it off; 0.105.24): the same locations (not the library) shut for 56 days when 5+ citizens
   can't complain and at least 3 of the mayor's meetings, half or more of
   them, are with visitors. Then they reopen and are looked at afresh. Never
-  at Outsiders 100+. A location you shut is never reopened.
+  at Outsiders 100+. A location you shut is never reopened. A library the
+  AI shut before item6 is opened again.
 - **Construct halls, gate wings, floors** (`construct`, on, 0.105.30): the
   AI builds above ground by its sliders: the surface hall (Garden fort,
   Merchant city), the wall arms at a gatehouse (War-hold), block floors over
@@ -454,7 +457,8 @@ window's "Now:" line shows them for your fort):
 Outsiders also answers residency petitions (0.105.9: declined in batches when
 closed, the visitors who left cleared, welcoming forts told to agree on DF's
 petitions screen) and, at -50 or lower, shuts the tavern, temples, library and
-guildhalls to visitors (0.105.12). (r10) DF's petition standing orders
+guildhalls to visitors (0.105.12; the slider is the one thing besides a
+visitor's killing that shuts the library, item6). (r10) DF's petition standing orders
 themselves are set from it too: the bridge reaches them on Windows by DF's
 own symbol names; citizenship petitions the fort won't take are declined.
 

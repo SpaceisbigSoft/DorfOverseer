@@ -212,6 +212,7 @@ class Memory:
     locations_yours: list = field(default_factory=list)      # (0.105.12) ones the AI shut and you opened: left alone
     locations_yours_at: dict = field(default_factory=dict)   # (0.105.51) location id (str) -> tick it was found yours
     heists: list = field(default_factory=list)               # (0.105.24) [tick, who] artifact heists and visitors' killings
+    visitor_kills: list = field(default_factory=list)        # (item6) [tick, who] visitors' killings of citizens alone (the library's danger)
     visitor_shut: dict = field(default_factory=dict)         # (0.105.24) {tick, until, visitors, meetings, unheard}: shut for the mayor
     locations_acted: dict = field(default_factory=dict)      # (0.105.26) location id (str) -> tick the AI last shut or opened it
     intrusion: dict = field(default_factory=dict)            # (0.105.30) {tick, civ, invaders, cleared}: DF's last invasion record

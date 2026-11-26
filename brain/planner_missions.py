@@ -34,14 +34,14 @@ from __future__ import annotations
 import math
 
 from digest import _d, _l, game_text
-from planner_core import (PLANNER_CONFIG, Proposal, TICKS_PER_DAY, abs_tick, ask_player, player_rules,
+from planner_core import (PLANNER_CONFIG, Proposal, TICKS_PER_DAY, TICKS_PER_YEAR, abs_tick, ask_player, player_rules,
                           reachable_threats, _traits)
 from planner_threats import alarm_held
 
 __all__ = ["MISSION_GOALS", "OFFENSIVE_GOALS", "MISSION_LEVELS", "allowed_goals", "mission_reserve",
            "sendable_squads", "mission_target", "_mission_rule", "note_missions", "mission_journal",
            "mission_line", "MISSION_WORDS", "last_of_goal", "MISSIONS_SWITCH", "SEND_SWITCH",
-           "unreachable_sites", "unavailable_sites", "note_unreachable", "SOFT_STOPS", "click_missed", "stuck_click", "departure_words", "note_departures",
+           "unreachable_sites", "unavailable_sites", "note_unreachable", "SOFT_STOPS", "click_missed", "stuck_click", "retry_words", "departure_words", "note_departures",
            "gate_danger", "way_out_gate", "_mission_way_rule"]
 
 # the goals in the order the AI prefers them (the contract's order)
@@ -239,6 +239,18 @@ def retry_ticks(last: dict, year_ticks: int) -> int:
         return min(year_ticks, STUCK_RETRY_DAYS * TICKS_PER_DAY)      # (R29)
     return (TICKS_PER_DAY if interrupted(last) or click_missed(last) or _d(last).get("reason") == "no_messenger"
             else year_ticks)
+
+
+def retry_words(last: dict, year_ticks: int) -> str:
+    """(item6) The true wait of a stopped run, from retry_ticks: "tried again
+    in 1 day", "tried again in 7 days" (a click DF kept missing,
+    STUCK_RETRY_DAYS), "tried again in a year". Was "tomorrow" for all but
+    the year, a week's wait too."""
+    ticks = retry_ticks(last, year_ticks)
+    if ticks >= TICKS_PER_YEAR:
+        return "tried again in a year"
+    n = max(1, -(-ticks // TICKS_PER_DAY))
+    return f"tried again in {n} day" + ("" if n == 1 else "s")
 
 
 def note_unreachable(s: dict, memory, cfg: dict = PLANNER_CONFIG) -> None:
@@ -637,7 +649,7 @@ def _stopped_needs_you(s: dict, goal: str, cfg: dict, notes: list) -> None:
     what the AI does meanwhile, a controller left behind included."""
     last = _stopped(s, goal, cfg)
     if not last or interrupted(last) or click_missed(last) or last.get("reason") in SOFT_STOPS:
-        return                       # interrupted by the player: a short note, tried again tomorrow
+        return                       # interrupted by the player: a short note (retry_words: its true wait)
     site = game_text(last.get("site") or f"site {last.get('site_id')}", 40)
     ask_player(notes, f"missions (13b): the AI's try to {MISSION_WORDS.get(goal, goal)} at \"{site}\" stopped at the "
                       f"World screen's \"{game_text(last.get('step'), 20)}\" step: "
@@ -780,12 +792,13 @@ def _mission_rule(s: dict, cfg: dict, proposals: list, notes: list, memory=None)
             g = stopped[0]
             if interrupted(_stopped(s, g, cfg)):
                 notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: the last try was interrupted by the "
-                             "player; tried again tomorrow")
+                             f"player; {retry_words(_stopped(s, g, cfg), cfg['mission_retry_ticks'])}")
             elif click_missed(_stopped(s, g, cfg)):        # (r12 v6)
                 why = ("the goal's button wasn't read on New mission"
                        if _d(_stopped(s, g, cfg)).get("reason") == "goal_unread" else
                        "DF didn't take the AI's click on the site on the World screen")
-                notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: {why}; tried again tomorrow")
+                notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: {why}; "
+                             f"{retry_words(_stopped(s, g, cfg), cfg['mission_retry_ticks'])}")
             else:
                 notes.append(f"a mission to {MISSION_WORDS.get(g, g)} waits: the last try stopped at a "
                              "World-screen step nobody has recorded; tried again in a year")

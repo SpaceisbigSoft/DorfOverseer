@@ -500,7 +500,7 @@ def _():
         send = button("rescue")
         send["last_by_goal"] = {"rescue": last}
         p, notes = rule(fort([target("rescue", 3)], send=send, send_missions=True))
-        assert not p and any("interrupted by the player; tried again tomorrow" in n for n in notes), notes
+        assert not p and any("interrupted by the player; tried again in 1 day" in n for n in notes), notes
         assert not needs(notes), needs(notes)
         last["tick"] = now - 1201                                     # a day and more ago
         p, _ = rule(fort([target("rescue", 3)], send=send, send_missions=True))
