@@ -221,10 +221,27 @@ function get_supplies()
     out.thread_brewable_plants = 0
     local okB, B = pcall(reqscript, 'ai-builder')
     local thread_of = {}
+    -- (item7) plants a quern mills: to an edible powder (flour, sugar: worth
+    -- 20 a unit, the plants 2-4) or not (dye); a kind's answer kept
+    out.millable = {edible = 0, other = 0}
+    local mill_of = {}
     each('PLANT', function(it)
         local n = it:getStackSize()
         local brews = brewable(it)
         if brews then out.brewable_plants = out.brewable_plants + n end
+        pcall(function()
+            local key = it:getActualMaterialIndex()
+            if mill_of[key] == nil then
+                mill_of[key] = false
+                local p = df.plant_raw.find(key)
+                local mt, mx = p.material_defs.type.mill, p.material_defs.idx.mill
+                if mt >= 0 then
+                    local m = dfhack.matinfo.decode(mt, mx)
+                    mill_of[key] = (m and m.material.flags.EDIBLE_COOKED) and 'edible' or 'other'
+                end
+            end
+            if mill_of[key] then out.millable[mill_of[key]] = out.millable[mill_of[key]] + n end
+        end)
         local okp, yes = pcall(function()
             local okk, key = pcall(function() return it:getActualMaterialIndex() end)
             if okk and key ~= nil and thread_of[key] ~= nil then return thread_of[key] end
@@ -602,6 +619,9 @@ function get_supplies()
     out.statues = 0
     each('STATUE', function(it) out.statues = out.statues + 1 end)
     each('TABLE', function(it) out.tables = out.tables + 1 end)
+    -- (item7) free beds, for the hospital's own (planner_hospital_beds)
+    out.beds = 0
+    each('BED', function(it) out.beds = out.beds + 1 end)
     -- (0.105.51) free doors, cabinets and chairs: the idle-hands rule's stock
     -- furniture (made while the blocks are at their cap) stops at a count
     out.doors, out.cabinets, out.chairs = 0, 0, 0
@@ -609,6 +629,11 @@ function get_supplies()
     each('CABINET', function(it) out.cabinets = out.cabinets + 1 end)
     each('CHAIR', function(it) out.chairs = out.chairs + 1 end)
     each('CHAIN', function(it) out.ropes = out.ropes + 1 end)
+    out.flour = 0     -- (item7) edible powder (flour, sugar): the kitchen's worthiest ingredient
+    each('POWDER_MISC', function(it)
+        local _, mi = mat_flags(it)
+        if mi and mi.material and mi.material.flags.EDIBLE_COOKED then out.flour = out.flour + it:getStackSize() end
+    end)
     each_any('POWDER_MISC', function(it)
         local _, mi = mat_flags(it)
         local token = mi and mi:getToken() or ''

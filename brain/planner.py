@@ -1010,6 +1010,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
         _guard(_stairwell_rule, s, memory, cfg, traits, proposals)
         _guard(_staff_rule, s, cfg, proposals)
         _guard(_traction_rule, s, cfg, proposals, notes)
+        from planner_hospital_beds import hospital_beds_rule as _hbr   # (item7) the hospitals' beds
+        _guard(_hbr, s, traits, cfg, proposals, notes, memory)
         _guard(_alerts_rule, s, memory, cfg, proposals, rules_)
         _guard(_location_petition_rules, s, cfg, proposals, notes, rules_, memory)
         _guard(_location_value_rule, s, cfg, proposals, notes, memory)

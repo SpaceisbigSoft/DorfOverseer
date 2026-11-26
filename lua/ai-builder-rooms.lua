@@ -489,7 +489,8 @@ ZONE_FURNITURE = {traction_bench = {key = 'R', what = 'a traction bench'},
                   statue = {key = 's', what = 'a statue'},    -- (0.90) a location's value
                   chest = {key = 'h', what = 'a chest'},       -- (0.104.4) a tavern's goblets, a temple's instruments
                   chain = {key = 'v', what = 'a chain'},       -- (0.104.52) a jail's restraint
-                  nest_box = {key = 'N', what = 'a nest box'}} -- (0.104.80) where the hens lay
+                  nest_box = {key = 'N', what = 'a nest box'}, -- (0.104.80) where the hens lay
+                  bed = {key = 'b', what = 'a bed'}}           -- (item7) a hospital's beds by its population
 
 -- The zone's tiles: {x1, y1, x2, y2, z, has(x, y)} or nil (swapped by the tests).
 function zone_area(id)

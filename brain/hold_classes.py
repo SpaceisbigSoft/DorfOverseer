@@ -98,7 +98,7 @@ _SURVIVAL_RULES = {
     # drink and food
     "drink", "drink_fruit", "booze_variety", "food", "food_barrels", "food_standing", "food_store",
     "food_store_level", "farms", "farm_crops", "surface_farm", "crops", "kitchen", "seed_reserve", "seed_brew", "fat_ban", "meal_drink", "meal_cheap", "meal_variety",
-    "good_cooks", "cook_staff", "train_cook", "needs_meal", "dairy", "milking", "eggs", "nest_box_order", "fishery",
+    "good_cooks", "cook_staff", "train_cook", "needs_meal", "mill_flour", "dairy", "milking", "eggs", "nest_box_order", "fishery",
     "butchery_labor", "butchery_shop", "slaughter", "hunting", "hunting_stop", "fruit_pickers", "fruit_zone",
     "fruit_pause", "fruit_resume",   # (item6)
     "gather", "gather_trim", "tree_quota", "vermin", "herd", "herd_cull", "herd_targets", "pasture",
@@ -107,7 +107,7 @@ _SURVIVAL_RULES = {
     "rooms", "homes", "homes_dig", "homes_liked", "noble_rooms", "sync_offices", "furniture", "bootstrap_chair",
     "pair_chairs", "comfort", "cups_home",
     # health and care
-    "hospital", "hospital_burrow", "hospital_guard", "doctor_patient", "doctor_post", "staff", "staff_tantrum",
+    "hospital", "hospital_beds", "hospital_burrow", "hospital_guard", "doctor_patient", "doctor_post", "staff", "staff_tantrum",
     "tantrum_soldier",
     "care_clean", "care_diagnose", "care_feed", "infected_rest", "traction", "traction_parts", "traction_rest",
     "bed_rest",   # (item5)

@@ -256,6 +256,8 @@ def _kitchen_rule(s: dict, memory, cfg: dict, proposals: list) -> None:
                                   "brewable plants again", 5))
     _meal_drink_rule(s, memory, cfg, proposals)      # (0.105.113 item10)
     _meal_cheap_rule(s, memory, cfg, proposals)      # (0.105.119 item37)
+    from planner_flour import flour_rule
+    flour_rule(s, memory, cfg, proposals)            # (item7) flour, the worthiest ingredient
 
 
 MEAL_DRINK_LIFT = 0.5     # (0.105.113 item10) meals under this share of their target: drink may be cooked again

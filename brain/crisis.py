@@ -23,6 +23,7 @@ RECOVERY_RULES |= {"infected_rest", "soap_rush", "doctor_post", "appoint"}
 RECOVERY_RULES |= {"bed_rest"}   # (item5) the wounded up and working put to bed for the doctors
 # (0.104.169) the barrels and pots the crisis's brewing waits for
 RECOVERY_RULES |= {"containers"}
+RECOVERY_RULES |= {"hospital_beds", "mill_flour"}   # (item7) the wounded's beds; flour for good meals
 # (0.104.169) calm_burrow was here. (0.105.47, R2 item 3) Dropped from the
 # recovery rules: it never held a tantrum anywhere (members seen outside 54 of
 # 60 times in E, 9 of 9 in B, 2 of 2 in F; 344 of 349 over five forts by
