@@ -880,7 +880,8 @@ function start_project(params, now, dry_run)
         local s = quickfort_apply('dig', {{x = 0, y = 0, text = c.text}}, c.z, stair.x, stair.y, 'run', true)
         if stat(s, 'dig_designated') ~= 1 then
             local okt, tt = pcall(function() return df.tiletype[dfhack.maps.getTileType(stair.x, stair.y, c.z)] end)
-            local fl = dfhack.maps.getTileFlags(stair.x, stair.y, c.z)
+            local okf, fl = pcall(function() return dfhack.maps.getTileFlags(stair.x, stair.y, c.z) end)
+            if not okf then fl = nil end
             local why = ('%s at x%d y%d z%d%s'):format(okt and tostring(tt) or 'unreadable tile', stair.x, stair.y, ez(c.z),
                 (fl and fl.dig ~= df.tile_dig_designation.No) and ', already marked for digging' or '')
             if not dry_run then pcall(mark_bad_extension, stair.x, stair.y, why) end

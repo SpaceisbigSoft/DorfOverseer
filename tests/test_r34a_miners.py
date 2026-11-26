@@ -338,7 +338,8 @@ EXPLORE_BODY = """function(env, dig, dug)
     for _, t in ipairs(marked) do dug(t.x, t.y) end
     r = env.explore(16, 2, false)
     assert(r.ok and r.continued == 2 and r.tunnels == 2, 'continued ' .. tostring(r.continued) .. ' ' .. tostring(r.error))
-    -- nowhere 4 tiles long: refused, said why
+    -- nowhere 4 tiles long: refused, said why (the last tunnels dug first: (r35b) marked ones hold their slots)
+    for x = 0, 15 do for y = 0, 15 do if dig(x, y) == 1 then dug(x, y) end end end
     env.reqscript('ai-industry-explore').EXPLORE_MIN_RUN = 40
     r = env.explore(80, 1, false)
     assert(not r.ok and r.rejected and r.error:find('no wall beside the dwarves'), r.error)
