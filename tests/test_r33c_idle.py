@@ -81,8 +81,7 @@ def _():
 @test("(r33c) bridge: the idle with an excuse counted apart; work_capable reported; waiting rows carry `free`")
 def _():
     assert re.search(r"function idle_excuse\(u, rec\)", LABOR_LUA)
-    for k in ("'recreation'", "'unfit'", "'on_break'", "Melancholy", "Traumatized", "caged", "chained",
-              "OnBreak", "isCrazed"):
+    for k in ("'recreation'", "'unfit'", "Melancholy", "Traumatized", "caged", "chained", "isCrazed"):
         assert k in LABOR_LUA, k
     assert "function is_free(u, rec)" in LABOR_LUA
     ww = LABOR_LUA[LABOR_LUA.index("function waiting_work"):LABOR_LUA.index("function skilled_off")]

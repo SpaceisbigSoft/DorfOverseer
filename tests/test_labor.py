@@ -429,7 +429,7 @@ def _():
     assert r.ok and sorted(r.assigned.values()) == ["dwarf 6", "dwarf 7"], dict(r)     # never dwarf 4
 
 
-@test("(r33c) idle_excuse: the recreation burrow, the mad and the caged, DF's break; none for the plain idle")
+@test("(r33c) idle_excuse: the recreation burrow, the mad and the caged (no break: DFHack 53.17 has no OnBreak); none for the plain idle")
 def _():
     units = [{"id": 1}, {"id": 2, "mood": 5}, {"id": 3, "mood": 7}, {"id": 4, "caged": True},
              {"id": 5, "on_break": True}, {"id": 6}, {"id": 7, "mood": 0}, {"id": 8, "activity": True}]
@@ -437,7 +437,7 @@ def _():
     env, by = g["env"], g["by_id"]
     rec = env.rec_member_ids()
     got = {i: env.idle_excuse(by[i], rec) for i in range(1, 9)}
-    assert got == {1: None, 2: "unfit", 3: "unfit", 4: "unfit", 5: "on_break", 6: "recreation", 7: None,
+    assert got == {1: None, 2: "unfit", 3: "unfit", 4: "unfit", 5: None, 6: "recreation", 7: None,
                    8: None}, got
     assert env.idle_excuse(by[6], None) is None                  # no member list: no excuse from it
     assert env.is_free(by[1], rec) is True

@@ -138,14 +138,7 @@ function idle_excuse(u, rec)
     pcall(function() if dfhack.units.isCrazed and dfhack.units.isCrazed(u) then unfit = true end end)
     pcall(function() if u.flags1.caged or u.flags1.chained then unfit = true end end)
     if unfit then return 'unfit' end
-    local brk = false
-    pcall(function()
-        local OB = df.misc_trait_type.OnBreak
-        for _, t in ipairs(u.status.misc_traits) do
-            if OB ~= nil and t.id == OB then brk = true break end
-        end
-    end)
-    if brk then return 'on_break' end
+    -- (0.105.130) no on_break: DFHack 53.17 has no misc_trait_type.OnBreak
     return nil
 end
 

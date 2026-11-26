@@ -61,7 +61,7 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "notes": "sha256:a76be1d185e69e105d3b5eb9",
-   "props": "sha256:fe139cf02654725ad2f30f71",
+   "props": "sha256:d79acc3562a331b41421d001",
    "rules": [
     "build",
     "hospital",
@@ -71,6 +71,7 @@
     "soap",
     "crossbow_shop",
     "pop_cap",
+    "labor",
     "labor",
     "recreation",
     "cistern",
@@ -97,7 +98,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:4b4604253d59b494def3104b",
-   "props": "sha256:5ee934eb1b0347e1c247534b",
+   "props": "sha256:338ced2889e0134d6c7ba810",
    "rules": [
     "build",
     "hospital",
@@ -107,6 +108,7 @@
     "soap",
     "crossbow_shop",
     "pop_cap",
+    "labor",
     "labor",
     "recreation",
     "cistern",
@@ -132,7 +134,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:4b4604253d59b494def3104b",
-   "props": "sha256:fe139cf02654725ad2f30f71",
+   "props": "sha256:d79acc3562a331b41421d001",
    "rules": [
     "build",
     "hospital",
@@ -142,6 +144,7 @@
     "soap",
     "crossbow_shop",
     "pop_cap",
+    "labor",
     "labor",
     "recreation",
     "cistern",
@@ -170,7 +173,7 @@
   {
    "cycle": "sha256:ae5998383c68df91fd7ec5c4",
    "notes": "sha256:a91dad8c20039451a725ea87",
-   "props": "sha256:af1e2bc5ffd4ce761bd43364",
+   "props": "sha256:1acd4e282946afb41e01424b",
    "rules": [
     "build",
     "hospital",
@@ -179,6 +182,7 @@
     "soap",
     "crossbow_shop",
     "pop_cap",
+    "labor",
     "labor",
     "recreation",
     "cistern",
@@ -206,7 +210,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:667cf5fa75465464ebcb3b84",
-   "props": "sha256:eec8fd2bafd60a74ef23542b",
+   "props": "sha256:fa2f2a4f0712c153e6580522",
    "rules": [
     "build",
     "hospital",
@@ -215,6 +219,7 @@
     "soap",
     "crossbow_shop",
     "pop_cap",
+    "labor",
     "labor",
     "recreation",
     "cistern",
@@ -241,7 +246,7 @@
   {
    "cycle": "sha256:4f53cda18c2baa0c0354bb5f",
    "notes": "sha256:667cf5fa75465464ebcb3b84",
-   "props": "sha256:af1e2bc5ffd4ce761bd43364",
+   "props": "sha256:1acd4e282946afb41e01424b",
    "rules": [
     "build",
     "hospital",
@@ -250,6 +255,7 @@
     "soap",
     "crossbow_shop",
     "pop_cap",
+    "labor",
     "labor",
     "recreation",
     "cistern",
