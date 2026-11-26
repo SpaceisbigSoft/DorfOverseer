@@ -451,6 +451,30 @@ def _():
     assert designated_count() == 0 and len(B.projects_report().open) == 0
 
 
+@test("(r35a) a stair tile the game won't dig is found in the dry run: nothing designated, the staircase skipped a season")
+def _():
+    for z in range(60, 66):
+        W.set(70, 60, z, LUA.table_from({"shape": "FLOOR"}))
+    qf = LUA.globals().reqscript("quickfort")
+    real = qf.apply_blueprint
+    # D 26 Nov: the old bottom's 'i' refused (dry run too), the level undone 19 times, the same site each time
+    qf.apply_blueprint = LUA.eval("""function(real) return function(p)
+        local s = real(p)
+        for z, g in pairs(p.data) do for y, r in pairs(g) do for x, t in pairs(r) do
+          if t == 'i' and z + p.pos.z == 60 and p.command ~= 'undo' then s.dig_designated.value = 0 end
+        end end end
+        return s end end""")(real)
+    try:
+        r = start(kind="bedrooms", rooms=8, room_size=3)     # needs the stairs extended
+        assert not r.ok and "stairs down can't be dug" in r.error and "x60 y60" in r.error, (r.ok, r.error)
+        assert designated_count() == 0 and len(B.projects_report().open) == 0
+        assert B.bad_extension(60, 60), "the staircase is remembered"
+        r2 = start(kind="bedrooms", rooms=8, room_size=3)
+        assert not (r2.ok and r2.extends_stairs and r2.stair and r2.stair.x == 60), (r2.ok, r2.error)
+    finally:
+        qf.apply_blueprint = real
+
+
 @test("progress and cancel use the cells saved with the project, not a regenerated layout")
 def _():
     r = start(kind="bedrooms", rooms=4, room_size=3)

@@ -351,6 +351,30 @@ def _():
     run_lua(ROOM, EXPLORE_BODY)
 
 
+EXPLORE_PENDING_BODY = """function(env, dig, dug)
+    local r = env.explore(16, 2, false)
+    assert(r.ok and r.tunnels == 2 and r.tiles == 12, 'first ' .. tostring(r.tiles))
+    -- (r35b) not dug yet: the two tunnels hold their slots, nothing new marked
+    local before = 0
+    for x = 0, 15 do for y = 0, 15 do if dig(x, y) == 1 then before = before + 1 end end end
+    r = env.explore(16, 2, false)
+    assert(r.ok and r.tiles == 0 and r.tunnels == 0 and r.pending == 2 and r.waiting:find('still being dug'),
+           'pending ' .. tostring(r.pending) .. ' tiles ' .. tostring(r.tiles))
+    local after = 0
+    for x = 0, 15 do for y = 0, 15 do if dig(x, y) == 1 then after = after + 1 end end end
+    assert(after == before, 'marked ' .. before .. ' -> ' .. after)
+    -- three wanted, two pending: one new tunnel only
+    r = env.explore(24, 3, false)
+    assert(r.ok and r.tunnels == 1 and r.pending == 2, 'one more ' .. tostring(r.tunnels) .. ' ' .. tostring(r.error))
+end"""
+
+
+@test("(lua) explore: tunnels still marked for digging hold their slots (B, D, E 26 Nov: new stubs every day)")
+def _():
+    need_lua()
+    run_lua(ROOM, EXPLORE_PENDING_BODY)
+
+
 EXPLORE_LEVELS_BODY = """function(env, dig, dug)
     env.reqscript = function(name)
         if name == 'ai-util' or name == 'ai-industry' or name == 'ai-industry-explore' then return env.REAL_REQ(name) end
