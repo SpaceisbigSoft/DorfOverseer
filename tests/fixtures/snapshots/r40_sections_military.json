@@ -171,6 +171,8 @@
    "ammo": {
     "assigned": 1,
     "items": 1,
+    "reserve": 0,
+    "reserve_units": 0,
     "specs": 1,
     "units": 0,
     "wanted": 50
