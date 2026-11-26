@@ -29,6 +29,7 @@ from planner_floors import journal_hint as floor_journal_hint
 from planner_floors import forget_sent as floor_forget_sent
 from planner_meetings import meeting_report_lines
 from planner_threats import note_intrusions
+from planner_hostile_arrivals import note_hostile_arrivals   # (r34b)
 from planner_holdfast import note_thief_targets
 import seen as seen_ledger
 import atlas
@@ -320,6 +321,8 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         cycle_step(memory, state, "note_tantrum_book", lambda: note_tantrum_book(state, memory, events))   # (0.105.47) tantrum/berserk/possession reports
         cycle_step(memory, state, "note_heists", lambda: note_heists(state, memory, events))       # (0.105.24) heists and visitors' killings
         cycle_step(memory, state, "note_intrusions", lambda: note_intrusions(state, memory, events))   # (0.105.30) DF's invasion records
+        cycle_step(memory, state, "note_hostile_arrivals",
+                   lambda: note_hostile_arrivals(state, memory, events))    # (r34b) a hostile arrival a threat at once
         cycle_step(memory, state, "note_thief_targets", lambda: note_thief_targets(state, memory, events))   # (0.105.47) a thief's artifact
         cycle_step(memory, state, "note_deaths", lambda: crisis.note_deaths(state, memory, events))   # (0.104.137) deaths for crisis mode
         cycle_step(memory, state, "shaft_beasts", lambda: remember_shaft_beasts(state, memory, events))   # (item16) the shaft guard's great beasts remembered

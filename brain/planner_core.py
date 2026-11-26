@@ -216,6 +216,7 @@ class Memory:
     visitor_shut: dict = field(default_factory=dict)         # (0.105.24) {tick, until, visitors, meetings, unheard}: shut for the mayor
     locations_acted: dict = field(default_factory=dict)      # (0.105.26) location id (str) -> tick the AI last shut or opened it
     intrusion: dict = field(default_factory=dict)            # (0.105.30) {tick, civ, invaders, cleared}: DF's last invasion record
+    hostile_arrivals: list = field(default_factory=list)     # (r34b) [{id, name, tick, x, y, z}] hostile arrivals kept until the bridge lists them (planner_hostile_arrivals)
     stranger_shut: dict = field(default_factory=dict)        # (0.105.30) {seen, who}: a stranger last seen seeking a meeting
     artifacts_sought: dict = field(default_factory=dict)     # (r1 g7) artifact name -> tick a spotted hero named it
     artifact_risk: dict = field(default_factory=dict)        # (r1 g7) {seen, n, names} claimed/sought artifacts last seen in the fort, or {clear}

@@ -220,6 +220,9 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
             early.append(f"rule {getattr(fn, '__name__', 'preamble')} failed ({type(e).__name__}: {str(e)[:120]}); "
                          "planned with neutral values")
             return fallback
+    # (r34b) a hostile arrival the bridge lists no row for stands in as one (planner_hostile_arrivals)
+    from planner_hostile_arrivals import merge_arrivals
+    _pre(merge_arrivals, [], s, memory, cfg)
     traits = _pre(_traits, {}, s)
     cfg = _pre(reserve_cfg, cfg, cfg, traits)          # (0.105.47) the reserves kept follow the Stockpile slider
     dw = s["dwarves"]
