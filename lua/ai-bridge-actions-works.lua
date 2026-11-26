@@ -186,7 +186,10 @@ function act_moon_cell(a)
     if a.move_in ~= nil and type(a.move_in) ~= 'boolean' then return reject('moon_cell: move_in is true or false') end
     -- (0.105.119 item31) reserve: a cell made ready for each now (or one dug), nobody moved or locked
     if a.reserve ~= nil and type(a.reserve) ~= 'boolean' then return reject('moon_cell: reserve is true or false') end
-    return reqscript('ai-threats').moon_cell(ids, a.release == true, a.dry_run == true, txt, {move_in = a.move_in == true, reserve = a.reserve == true})
+    -- (r33a) dead_only: a release of the dead werebeasts' cells only; all: every cell (the Rules switch off)
+    if a.dead_only ~= nil and type(a.dead_only) ~= 'boolean' then return reject('moon_cell: dead_only is true or false') end
+    if a.all ~= nil and type(a.all) ~= 'boolean' then return reject('moon_cell: all is true or false') end
+    return reqscript('ai-threats').moon_cell(ids, a.release == true, a.dry_run == true, txt, {move_in = a.move_in == true, reserve = a.reserve == true}, a)
 end
 
 -- (0.105.0) The way down to a cavern locked (its doors and hatches), or unlocked (open).

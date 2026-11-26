@@ -504,6 +504,8 @@ def short(a: dict) -> str:
     if t == "magma_guard":    # (0.105.41, item 7)
         return "paths round the spilt magma back to normal" if a.get("lift") else "keep the dwarves away from the spilt magma"
     if t == "moon_cell":
+        if a.get("release") and a.get("dead_only"):        # (r33a)
+            return "unlock and drop the cells of dead werebeasts"
         return "let the werebeasts out of their cells" if a.get("release") else "lock the werebeasts in for the full moon"
     if t == "seal_cavern":
         if a.get("openings") or a.get("layer") == "all caverns":       # (0.105.26) every cavern opening
