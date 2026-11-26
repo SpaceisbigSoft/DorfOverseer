@@ -10,7 +10,7 @@
 -- helpers are at hand. Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-orders-jobs is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-orders-jobs'] = '0.105.120'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-orders-jobs'] = '0.105.121'   -- bumped with BRIDGE_VERSION
 
 -- True if DF's own screens might be holding this order right now. Deleting an
 -- order that a screen points at would crash DF, so we refuse in that case.

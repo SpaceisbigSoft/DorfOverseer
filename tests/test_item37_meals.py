@@ -161,6 +161,8 @@ if LuaRuntime is not None:
             local it = {flags = {}, mat_type = mt, mat_index = 0, v = v, n = n}
             function it:getStackSize() return self.n end
             function it:getSubtype() return -1 end
+            function it:getActualMaterial() return self.mat_type end          -- (0.105.121)
+            function it:getActualMaterialIndex() return self.mat_index end
             for k, x in pairs(extra or {}) do it[k] = x end
             return it
           end

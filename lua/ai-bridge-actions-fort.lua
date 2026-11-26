@@ -10,7 +10,7 @@
 -- command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-actions-fort is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.120'   -- bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-actions-fort'] = '0.105.121'   -- bumped with BRIDGE_VERSION
 
 -- DFHack's own work-order libraries (conditioned orders, e.g. smelting
 -- whenever bars run low). Only these ones.
@@ -1007,10 +1007,13 @@ function cheap_cook_kinds(min_value)
             if cookable(it, tn ~= 'EGG' and tn ~= 'FISH') then
                 local n = it:getStackSize()
                 local okv, v = pcall(dfhack.items.getValue, it)
-                local k = t .. ':' .. it:getSubtype() .. ':' .. it.mat_type .. ':' .. it.mat_index
+                -- (0.105.121) fish and eggs have no mat_type field (it threw): the
+                -- virtual getActualMaterial* every item has, as the kitchen keys them
+                local mt, mi = it:getActualMaterial(), it:getActualMaterialIndex()
+                local k = t .. ':' .. it:getSubtype() .. ':' .. mt .. ':' .. mi
                 local e = kinds[k]
                 if not e then
-                    e = {t = t, s = it:getSubtype(), mt = it.mat_type, mi = it.mat_index, n = 0, v = 0}
+                    e = {t = t, s = it:getSubtype(), mt = mt, mi = mi, n = 0, v = 0}
                     kinds[k] = e
                 end
                 e.n, e.v = e.n + n, e.v + (okv and v or 0)
