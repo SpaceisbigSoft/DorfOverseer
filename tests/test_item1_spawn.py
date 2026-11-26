@@ -380,7 +380,7 @@ def _():
     assert w.removed == 4 and len(_inv(w, w.active[0])) == 3
     env, w = _lua()
     ids, why, info = env.spawn_units(_t({k: v for k, v in SPEC.items() if k != "equip"}))
-    assert info.equipped is False and info.equip_error is None and len(w.items) == 0, dict(info)
+    assert info.equipped is False and info.equip_error is None and len(w["items"]) == 0, dict(info)
 
 
 @test("native (Lua): teleport refuses: the occupancy set by hand; more units than tiles: one a tile")
