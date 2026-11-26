@@ -833,13 +833,22 @@ function moon_cell(ids, release, dry_run, txt, opts)
                         -- (R30b) raised, yet DF's walk map still joins the cell to the corridor:
                         -- not locked (said; the next call looks again)
                         local okj, open = false, nil
-                        if okr and up and not dry_run then
+                        -- (R32 a) still rising (DF moves it over the next ticks): not a wall yet,
+                        -- the walk map not yet cut; neither locked nor "not sealed" (the next call looks)
+                        local rising = okr and up and why == 'raising'
+                        if rising then
+                            table.insert(out.waiting, name_of(u, txt))
+                            out.raising = out.raising or {}
+                            table.insert(out.raising, name_of(u, txt))
+                        elseif okr and up and not dry_run then
                             okj, open = pcall(function()
                                 local wc = W().find(c.zone)
                                 return wc and W().joined(wc)
                             end)
                         end
-                        if okr and up and okj and open == true then
+                        if rising then
+                            -- said above
+                        elseif okr and up and okj and open == true then
                             table.insert(out.waiting, name_of(u, txt))
                             out.not_sealed = out.not_sealed or {}
                             table.insert(out.not_sealed, name_of(u, txt) .. ': the bridge is up, yet DF walks out of the cell')
