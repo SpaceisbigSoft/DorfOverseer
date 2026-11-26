@@ -848,7 +848,8 @@ function act_mine_ore(a)
     if type(a.metal) ~= 'string' or not a.metal:match('^[A-Z_]+$') then return reject('mine_ore needs metal') end
     local n = int_in(a.count or 40, 1, 80)       -- (0.105.9) 80: Mining's top (E asked 80, refused 30 times)
     if not n then return reject('mine_ore needs count 1-80') end
-    return reqscript('ai-industry').mine(a.metal, n, a.dry_run == true)
+    -- (item6) prospect: exploratory mining goes on past a small pocket to the next
+    return reqscript('ai-industry').mine(a.metal, n, a.dry_run == true, a.prospect == true)
 end
 
 -- Take down a gate the AI built at an entrance that wasn't one (lua/ai-gates.lua).

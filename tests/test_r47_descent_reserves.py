@@ -306,6 +306,20 @@ else:
         assert len(build) == 1 and build[0]["z"] == 80 and build[0]["n"] == 9, build
         assert "Cx@50,50" in build[0]["cells"] and "Cw@51,51" in build[0]["cells"]
 
+    @test("(item6, R32 e) a shrub or sapling on the cavern floor: the stair and the walls built over it, not refused")
+    def _():
+        lua, env, w = world()
+        w.patch(50, 50, 74, T(lua, {"shape": "SHRUB"}))           # where the stair goes (the layer's floor)
+        w.patch(51, 50, 74, T(lua, {"shape": "SHRUB"}))           # beside it
+        w.patch(49, 49, 74, T(lua, {"shape": "SAPLING"}))
+        p, why = plan_of(lua, env, w)
+        assert p is not None, why
+        got, part = cells(p, 74)
+        assert part == "cavern" and (50, 50, "Cx") in got and (51, 50, "Cw") in got and (49, 49, "Cw") in got, got
+        w.patch(51, 51, 74, T(lua, {"shape": "BOULDER"}))         # a boulder still refuses, as before
+        p, why = plan_of(lua, env, w)
+        assert p is None and "boulder" in str(why), why
+
     @test("report: none without a crossing, built once every step stands, blocked with why")
     def _():
         lua, env, w = world()

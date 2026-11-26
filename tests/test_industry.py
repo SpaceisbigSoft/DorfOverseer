@@ -396,5 +396,62 @@ def _():
     assert (st.pending, st.dropped, st.dug) == (0, 0, 0), dict(st)
 
 
+# (item6, R32 e) exploratory mining past a 1-tile pocket: E marked "VARISCITE tiles 1" of 80
+HOPS = ["################",
+        "#.....##########",
+        "#.....m###m#####",
+        "#.....##########",
+        "#.....######m###"] + ["################"] * 11
+
+
+def gem_game(rows):
+    lua = LuaRuntime(unpack_returned_tuples=True)
+    env, dig = lua.execute(FAKE, SRC, lua.table_from(rows))
+    env.METALS_OF[2] = lua.table()        # the 'm' tiles a gem's stone here
+    env.GEM_OF[2] = True
+    return env, dig
+
+
+@test("(item6) prospect: past a 1-tile gem, a tunnel through safe rock to the next pocket (and the next)")
+def _():
+    env, dig = gem_game(HOPS)
+    r = env.mine("GEM", 40, True)                         # the vein rule's way: the one tile
+    assert r.ok and r.tiles == 1 and not r.hops, dict(r)
+    r = env.mine("GEM", 40, False, True)
+    assert r.ok and r.hops == 2, dict(r)
+    assert all(dig(x, 2) == 1 for x in range(6, 11)), [dig(x, 2) for x in range(5, 12)]
+    assert dig(12, 4) == 1, "the second hop's pocket"
+    assert r.tiles == sum(1 for y in range(16) for x in range(16) if dig(x, y) == 1), dict(r)
+    # the tiles asked are the cap: no room for the tunnel and the pocket, no hop
+    env, dig = gem_game(HOPS)
+    r = env.mine("GEM", 3, False, True)
+    assert r.ok and r.tiles == 1 and r.hops == 0, dict(r)
+
+
+@test("(item6) prospect: hops never beside water, nor into the AI's levels")
+def _():
+    rows = list(HOPS)
+    rows[3] = "#.....####w#####"                      # water under the second pocket's tunnel end
+    env, dig = gem_game(rows)
+    r = env.mine("GEM", 40, False, True)
+    assert r.ok and dig(10, 2) == 0 and dig(9, 2) == 0, dict(r)
+
+
+@test("(item6) hop_on (pure): the tunnel and the pocket appended, the reach kept")
+def _():
+    L = LuaRuntime(unpack_returned_tuples=True)
+    env, _ = L.execute(FAKE, SRC, L.table_from(MAP))
+    fns = L.eval("""function(env)
+        local marked = {{x = 0, y = 0, z = 5}}
+        local function ok_rock(x, y) return y == 0 and x > 0 and x < 40 end
+        local function pocket(x, y) if x == 5 or x == 30 then return 7 end end
+        local function follow(x, y, mat, room) return {{x = x, y = y}} end
+        local hops, added = env.hop_on(marked, 80, ok_rock, pocket, follow)
+        return hops, added, #marked, marked[6].x, marked[6].z
+    end""")
+    hops, added, n, x6, z6 = fns(env)
+    assert (hops, added, n, x6, z6) == (1, 5, 6, 5, 5), (hops, added, n, x6, z6)     # x 30: past HOP_REACH (12)
+
+
 if __name__ == "__main__":
     finish()
