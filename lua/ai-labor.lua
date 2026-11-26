@@ -120,6 +120,47 @@ function rec_member_ids()
     return set
 end
 
+-- (r33c) Why a grown citizen outside the squads with no job is not one the
+-- fort could put to work (the idle count's honesty: the digest read 38% idle
+-- in B while it counted the recreation burrow's members, the mad and the
+-- caged among the "truly idle"): 'recreation' (the AI's recreation burrow:
+-- its labours are off on purpose), 'unfit' (insane: melancholy, raving,
+-- berserk, traumatized, or crazed; caged or chained), 'on_break' (DF's own
+-- break), or nil (no excuse: idle). rec: rec_member_ids() (optional).
+UNFIT_MOODS = {Melancholy = true, Raving = true, Berserk = true, Traumatized = true}
+function idle_excuse(u, rec)
+    if rec and rec[u.id] then return 'recreation' end
+    local unfit = false
+    pcall(function()
+        local m = df.mood_type[u.mood]
+        if m and UNFIT_MOODS[m] then unfit = true end
+    end)
+    pcall(function() if dfhack.units.isCrazed and dfhack.units.isCrazed(u) then unfit = true end end)
+    pcall(function() if u.flags1.caged or u.flags1.chained then unfit = true end end)
+    if unfit then return 'unfit' end
+    local brk = false
+    pcall(function()
+        local OB = df.misc_trait_type.OnBreak
+        for _, t in ipairs(u.status.misc_traits) do
+            if OB ~= nil and t.id == OB then brk = true break end
+        end
+    end)
+    if brk then return 'on_break' end
+    return nil
+end
+
+-- (r33c) In a social activity (prayer, the tavern, a performance, reading):
+-- no job, but not free for one either
+function in_activity(u)
+    local ok, busy = pcall(function() return #u.social_activities > 0 end)
+    return ok and busy == true
+end
+
+-- (r33c) Free for work now: no job, no social activity, no excuse
+function is_free(u, rec)
+    return u.job.current_job == nil and not in_activity(u) and idle_excuse(u, rec) == nil
+end
+
 local function skill(u, id)
     local soul = u.status.current_soul
     if not soul or not id then return 0 end
@@ -603,13 +644,21 @@ function waiting_work(limit)
         local l = job_labor(job)
         if l then by[l] = (by[l] or 0) + 1 end
     end)
-    local holders, idle = {}, {}
+    -- (r33c) idle: no job (as before: prayer and the tavern counted); free:
+    -- no job, no social activity, not in the recreation burrow, not mad or
+    -- caged (is_free): the ones who could take a waiting job now. B (26 Nov)
+    -- read 28 "idle" holders of every labour while 8 were free
+    local holders, idle, free = {}, {}, {}
+    local rec = rec_member_ids()
     for _, u in ipairs(report_citizens(true)) do
         if grown(u) and not in_squad(u) then
+            local none = u.job.current_job == nil
+            local f = none and is_free(u, rec)
             for l in pairs(by) do
                 if u.status.labors[l] then
                     holders[l] = (holders[l] or 0) + 1
-                    if u.job.current_job == nil then idle[l] = (idle[l] or 0) + 1 end
+                    if none then idle[l] = (idle[l] or 0) + 1 end
+                    if f then free[l] = (free[l] or 0) + 1 end
                 end
             end
         end
@@ -620,6 +669,7 @@ function waiting_work(limit)
         if tok then
             local wd, mode = detail_for(tok)
             table.insert(rows, {labor = tok, jobs = n, holders = holders[l] or 0, idle = idle[l] or 0,
+                                free = free[l] or 0,
                                 detail = wd and tostring(wd.name) or nil, mode = mode})
         end
     end

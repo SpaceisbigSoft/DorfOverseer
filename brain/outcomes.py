@@ -59,6 +59,24 @@ METRICS = {
 }
 
 
+def _int(v) -> int | None:
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def work_base(dw: dict) -> int:
+    """(r33c) The adults the truly idle share is taken of: the bridge's
+    `work_capable` (the adults outside the squads but the recreation burrow's
+    members and the unfit: insane, caged or chained; those are counted apart
+    in `idle_excused`, not in idle_free) when it reports one, else the adults
+    outside the squads, as before. 0 when neither can be read."""
+    dw = _d(dw)
+    wc = _int(dw.get("work_capable"))
+    if wc is not None and wc > 0:
+        return wc
+    squads = _int(dw.get("in_squads")) or 0
+    return max(0, int(dw.get("adults") or 0) - max(0, squads))
+
+
 def idle_free_pct(dw: dict):
     """(r5 p2, A3 item 2 / stale 13) The truly idle share, in %: the bridge's
     `idle_free` (no job, no social activity, not in a squad) over the adults
@@ -77,9 +95,7 @@ def idle_free_pct(dw: dict):
     free = dw.get("idle_free")
     if not isinstance(free, int) or isinstance(free, bool):
         return None
-    squads = dw.get("in_squads")
-    squads = squads if isinstance(squads, int) and not isinstance(squads, bool) else 0
-    base = int(dw.get("adults") or 0) - max(0, squads)
+    base = work_base(dw)        # (r33c) the work-capable when the bridge counts them
     if base <= 0:
         return None
     return round(100 * max(0, free) / base, 1)

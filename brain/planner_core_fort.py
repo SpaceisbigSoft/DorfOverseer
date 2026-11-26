@@ -473,9 +473,10 @@ def _idle_share(s: dict) -> float:
     dw = _d(s.get("dwarves"))
     free = dw.get("idle_free")
     if _idle_free_known(s):
-        squads = dw.get("in_squads")
-        squads = squads if isinstance(squads, int) and not isinstance(squads, bool) else 0
-        return max(0, free) / max(1, int(dw.get("adults") or 0) - max(0, squads))
+        # (r33c) of the work-capable (outcomes.work_base: the recreation
+        # burrow's members and the mad or caged not counted) when reported
+        from outcomes import work_base
+        return max(0, free) / max(1, work_base(dw))
     return (dw.get("idle_adults") or 0) / max(1, dw.get("adults") or 1)
 
 

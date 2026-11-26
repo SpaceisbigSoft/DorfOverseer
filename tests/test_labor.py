@@ -79,8 +79,11 @@ for _, u in ipairs(spec.units) do
     local labors = {}
     for _, l in ipairs(u.labors or {}) do labors[LAB[l]] = true end
     local unit = {id = u.id, child = u.child, military = {squad_id = u.squad or -1},
-                  status = {labors = labors, current_soul = {skills = skills}},
-                  job = {current_job = u.busy and {} or nil}, noble = u.noble}
+                  status = {labors = labors, current_soul = {skills = skills},
+                            misc_traits = vec(u.on_break and {{id = 7}} or {})},      -- (r33c) 7: OnBreak
+                  job = {current_job = u.busy and {} or nil}, noble = u.noble,
+                  mood = u.mood or -1, flags1 = {caged = u.caged == true, chained = false},   -- (r33c)
+                  social_activities = vec(u.activity and {1} or {})}
     table.insert(units, unit)
     by_id[u.id] = unit
 end
@@ -137,6 +140,9 @@ local env = setmetatable({}, {__index = _G})
 env.df = {
     unit_labor = UL, job_skill = SKL, work_detail_icon_type = ICON, work_detail_mode = MODE,
     job_type = JT,
+    mood_type = {[-1] = 'None', [0] = 'Fey', [5] = 'Melancholy', [6] = 'Raving', [7] = 'Berserk',
+                 None = -1, Fey = 0, Melancholy = 5, Raving = 6, Berserk = 7},          -- (r33c)
+    misc_trait_type = {OnBreak = 7},                                                     -- (r33c)
     tile_dig_designation = {No = 0, Default = 1},
     tiletype_shape = {FLOOR = 1, SHRUB = 2},
     tiletype = {attrs = {[1] = {shape = 1}, [2] = {shape = 2}}},
@@ -421,6 +427,34 @@ def _():
     assert s.picks == 1 and s.built_picks == 1, (s.picks, s.built_picks)
     r = g["env"].assign("PLANT", 3, True, None, 3)
     assert r.ok and sorted(r.assigned.values()) == ["dwarf 6", "dwarf 7"], dict(r)     # never dwarf 4
+
+
+@test("(r33c) idle_excuse: the recreation burrow, the mad and the caged, DF's break; none for the plain idle")
+def _():
+    units = [{"id": 1}, {"id": 2, "mood": 5}, {"id": 3, "mood": 7}, {"id": 4, "caged": True},
+             {"id": 5, "on_break": True}, {"id": 6}, {"id": 7, "mood": 0}, {"id": 8, "activity": True}]
+    g = game(units, [], DETAILS, site={"ai-overseer/recreation": {"members": {"6": 100}}})
+    env, by = g["env"], g["by_id"]
+    rec = env.rec_member_ids()
+    got = {i: env.idle_excuse(by[i], rec) for i in range(1, 9)}
+    assert got == {1: None, 2: "unfit", 3: "unfit", 4: "unfit", 5: "on_break", 6: "recreation", 7: None,
+                   8: None}, got
+    assert env.idle_excuse(by[6], None) is None                  # no member list: no excuse from it
+    assert env.is_free(by[1], rec) is True
+    assert env.is_free(by[8], rec) is False                      # at prayer, the tavern: not free
+    assert env.is_free(by[6], rec) is False and env.is_free(by[2], rec) is False
+
+
+@test("(r33c) work waiting: `free` counts the holders free now (not at prayer, not in the recreation burrow, not mad)")
+def _():
+    units = [{"id": 1, "labors": ["BREWER"]}, {"id": 2, "labors": ["BREWER"], "activity": True},
+             {"id": 3, "labors": ["BREWER"]}, {"id": 4, "labors": ["BREWER"], "mood": 6},
+             {"id": 5, "labors": ["BREWER"], "busy": True}]
+    g = game(units, [], DETAILS, jobs=[{"type": 1}, {"type": 1}],
+             site={"ai-overseer/recreation": {"members": {"3": 100}}})
+    w = [dict(x) for x in g["env"].waiting_work(12).values()]
+    row = next(x for x in w if x["labor"] == "BREWER")
+    assert row["holders"] == 5 and row["idle"] == 4 and row["free"] == 1 and row["jobs"] == 2, row
 
 
 @test("(r9, audit A7 #22) take_labors: out of the work detail, so the game's recompute doesn't give it back; give_labor: into it")
