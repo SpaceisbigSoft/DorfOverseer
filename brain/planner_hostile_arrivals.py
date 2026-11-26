@@ -41,8 +41,7 @@ BOOK_MAX = 20
 WERE_NAME = re.compile(r",\s*Were[a-z]")
 
 
-def _int(v) -> bool:
-    return isinstance(v, int) and not isinstance(v, bool)
+from util import is_int as _int  # (r34b) util's helper
 
 
 def _deep(layer) -> bool:
