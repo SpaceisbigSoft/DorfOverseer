@@ -55,13 +55,10 @@ SQUAD_WHOLE = {"hunt_send"}
 
 
 def ordered_squads(a: dict) -> list:
-    """The squad ids action `a` gives orders to (none for any other action)."""
-    key = SQUAD_ORDER_KEYS.get(a.get("type")) if isinstance(a, dict) else None
-    if key is None:
-        return []
-    v = a.get(key)
-    out = v if isinstance(v, list) else [v]
-    return [i for i in out if i is not None and not isinstance(i, bool)]
+    """The squad ids action `a` gives orders to (none for any other action).
+    (F2c) read off the general actuator table (brain/actuator_claims.py)."""
+    import actuator_claims
+    return actuator_claims.ordered_squads(a)
 
 
 def _is_kill(a: dict) -> bool:
@@ -134,9 +131,19 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
     fired_this_cycle: set[str] = set()
     squads_claimed: dict = {}            # (0.105.48 K1b) one order per squad per cycle
     proposed_sq = {i for q_ in proposals for i in ordered_squads(getattr(q_, "action", None))}
+    failed_ = False
+    # (F2c) the actuators' owners across cycles, and this cycle's users (brain/actuator_claims.py)
+    import actuator_claims as ac_
+    try:
+        claims = ac_.claims_open(memory, cfg)
+        outranked = ac_.claims_outranked(proposals, claims, cfg)
+    except Exception as e:  # noqa: BLE001  no claims this cycle (the per-cycle squad rule still holds)
+        claims, outranked = {"n": 0, "own": {}}, {}
+        failed_ = True
+        guard_fail(memory, "select", e, now)
+    used_act: dict = {}
     # (0.104.89) the strategist's word: a raised rule goes first and skips its
     # cooldown; a held one waits (never a survival or safety rule)
-    failed_ = False
 
     def _steer(p):
         try:
@@ -386,6 +393,10 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                 held.append(f"{p.rule}: the alarm was let down for the thirsty (the shelter has no drink): "
                             "not sounded again before they've drunk")
                 continue
+            why_cl = ac_.actuator_claim(p, claims, used_act, outranked, cfg)
+            if why_cl:
+                held.append(why_cl)
+                continue
             why_sq = squad_claim(p, squads_claimed)
             if why_sq:
                 held.append(why_sq)
@@ -413,6 +424,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
             allowed.append(p)
             for i_ in ordered_squads(p.action):
                 squads_claimed.setdefault(i_, p)
+            ac_.claims_commit(p, claims, used_act, now, cfg)
             fired_this_cycle.add(cooldown_key(p))
             if p.is_order:
                 orders_today += 1

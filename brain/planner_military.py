@@ -297,6 +297,10 @@ def _military_rules(s: dict, memory, cfg: dict, traits: dict, citizens: int,
         hunting = {h.get("squad_id") for h in (hr[2] if hr else [])}
         hunting |= {q.get("id") for q in (hr[1] if hr else []) if isinstance(q, dict) and q.get("hunting") is not None}
         killers_in = {r["id"] for r in killer_rows(s) if r.get("kind") == "vampire"}
+        # (F2c) these stay: each lasts while a condition in the fort report holds
+        # (a thief inside, a hunt the bridge still runs, the alarm up), which an
+        # expiring claim can't say; and the recall (priority 1) outranks most
+        # owners, so a squad claim would not stop it (brain/actuator_claims.py)
         for q in squads:
             if q.get("guarding") and invaders_near:
                 continue                     # (0.104.83) holding the gate while invaders are about
