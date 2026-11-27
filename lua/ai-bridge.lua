@@ -578,6 +578,11 @@ local function cmd_status()
         -- in-game controls: the halt switch, and your answers to the co-pilot
         halted = st.is_halted(),
         decisions = st.decisions(),
+        -- (F5a) the game's dead-man pause (ai-status): armed, the gap before this check-in, its last pause
+        deadman = (function()
+            local ok, v = pcall(function() return st.deadman_state() end)
+            return ok and type(v) == 'table' and v or nil
+        end)(),
         -- simulation and graphics frames per second, as DF measures them
         fps = df.global.enabler.calculated_fps,
         gfps = df.global.enabler.calculated_gfps,

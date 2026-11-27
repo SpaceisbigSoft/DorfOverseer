@@ -389,7 +389,9 @@ def _():
     text = keeper.LOG.read_text(encoding="utf-8")
     assert code == 0, text
     assert len(procs) == 1 and procs[0].killed, "the overseer stopped first"
-    assert rv.df.calls == [("quicksave",)], rv.df.calls
+    # (F5a) the game's dead-man pause held first, then the save
+    assert rv.df.calls == [("lua", keeper.DEADMAN_HOLD_LUA.format(s=fs.SAVE_WAIT_S + 300)), ("quicksave",)], \
+        rv.df.calls
     assert closed == [rv] and spawned == [["--revive", "--preset", "War-hold"]]
     assert "Fresh start: 2.0 h since the game loaded, calm: saving, closing and reopening." in text, text
     assert "Restarting the overseer" not in text, "a planned close is no overseer restart"

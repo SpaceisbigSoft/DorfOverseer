@@ -367,6 +367,9 @@ CLOSED_STOP_WORDS = ("the game is closed (saved for a fresh start); R in the kee
                      "which opens the game and loads that save")
 
 
+# (F5a) the keeper's planned close: the game's dead-man pause held this long (s)
+DEADMAN_HOLD_LUA = "pcall(function() reqscript('ai-status').deadman_hold({s}) end)"
+
 # (0.105.100) tests replace these
 FRESH_HOOKS: dict = {"wait_saved": None, "close": None, "respawn": None}
 
@@ -378,6 +381,12 @@ def do_fresh_start(info: dict) -> bool:
     import fresh_start
     fs, rv = EXTRAS["fresh"], EXTRAS["reviver"]
     log(f"Fresh start: {info['hours']:.1f} h since the game loaded, {info['how']}: saving, closing and reopening.")
+    # (F5a) the game's dead-man pause (lua/ai-status.lua) held while the save is
+    # written and the game closed: the overseer is stopped meanwhile. Best effort
+    try:
+        rv._dfhack().run("lua", DEADMAN_HOLD_LUA.format(s=fresh_start.SAVE_WAIT_S + 300))
+    except Exception:  # noqa: BLE001  (an old bridge, the game busy: the quicksave tells)
+        pass
     asked = time.time()
     try:
         out = rv._dfhack().run("quicksave")
