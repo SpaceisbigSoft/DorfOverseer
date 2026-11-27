@@ -143,6 +143,7 @@ def _on(cfg) -> bool:
     return bool(_c(cfg, "r5p3_refusal_backoff"))
 
 
+# (F2b) kept local: a key set to None in cfg falls back to the default (unlike util's)
 def _c(cfg, key):
     """(F2b) A r5p3 key from cfg, its default PLANNER_CONFIG's (one place:
     r5p3_refusal_keep was 60 here and 30 there)."""

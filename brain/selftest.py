@@ -197,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.port:
             df = DFHack.from_config()
             df.port = args.port
-        bridge = Bridge(df)
+        bridge = Bridge(df) if df is not None else Bridge()
         t0 = time.perf_counter()
         info = bridge.handshake()
         ms = (time.perf_counter() - t0) * 1000

@@ -60,8 +60,7 @@ def _pending(memory) -> list:
     return e[1]
 
 
-def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+from util import is_num as _num  # noqa: E402  (util's helper)
 
 
 def wall_now(s=None) -> float:

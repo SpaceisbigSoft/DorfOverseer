@@ -76,6 +76,12 @@ def world():
     return L, M
 
 
+def check(M, *a):
+    """deadman_check's first value (it returns nil plus a reason: a tuple through lupa)."""
+    r = M.deadman_check(*a)
+    return r[0] if isinstance(r, tuple) else r
+
+
 def ev(L, s):
     return L.eval(s)
 
@@ -88,32 +94,32 @@ if LuaRuntime:
         assert int(M.DEADMAN_S) == 600
         M.mark_seen()
         L.execute("NOW = NOW + 599")
-        assert M.deadman_check() is None and ev(L, "df.global.pause_state") is False
+        assert check(M) is None and ev(L, "df.global.pause_state") is False
         L.execute("NOW = NOW + 61")                           # 11 min
-        assert M.deadman_check() == "paused"
+        assert check(M) == "paused"
         assert ev(L, "df.global.pause_state") is True
         said = [ev(L, "SAID[1]"), ev(L, "ANN[1]")]
         assert said == ["AI Overseer: no check-in for 11 min, game paused"] * 2, said
         assert ev(L, "#SAID") == 1
         # the player unpauses: not paused again for the same stale check-in
         L.execute("df.global.pause_state = false; NOW = NOW + 3600")
-        assert M.deadman_check() is None and ev(L, "df.global.pause_state") is False
+        assert check(M) is None and ev(L, "df.global.pause_state") is False
         st = M.deadman_state()
         assert st.paused_at == 1000000 + 660 and st.paused_ago_s == 3600
         # a fresh check-in (its gap kept for the reply), then stale again: paused again
         M.mark_seen()
         assert M.deadman_state().last_checkin_age_s == 660 + 3600
         L.execute("NOW = NOW + 601")
-        assert M.deadman_check() == "paused" and ev(L, "#SAID") == 2
+        assert check(M) == "paused" and ev(L, "#SAID") == 2
 
     @test("dead-man: already paused when stale: nothing said, the period counted as done")
     def _():
         L, M = world()
         M.mark_seen()
         L.execute("df.global.pause_state = true; NOW = NOW + 700")
-        assert M.deadman_check() is None and ev(L, "#SAID") == 0
+        assert check(M) is None and ev(L, "#SAID") == 0
         L.execute("df.global.pause_state = false")
-        assert M.deadman_check() is None, "the player's unpause is not fought"
+        assert check(M) is None, "the player's unpause is not fought"
         assert M.deadman_state().found_paused_at == 1000700
 
     @test("dead-man: never before the first check-in, never halted, never held (a check-in ends the hold), "
@@ -121,20 +127,20 @@ if LuaRuntime:
     def _():
         L, M = world()
         L.execute("NOW = NOW + 100000")
-        assert M.deadman_check() is None and ev(L, "df.global.pause_state") is False    # never checked in
+        assert check(M) is None and ev(L, "df.global.pause_state") is False    # never checked in
         M.mark_seen()
         L.execute("NOW = NOW + 700")
         L.execute("dfhack.persistent.saveSiteData('ai-overseer/halt', {halted = true})")
-        assert M.deadman_check() is None and ev(L, "df.global.pause_state") is False
+        assert check(M) is None and ev(L, "df.global.pause_state") is False
         L.execute("dfhack.persistent.saveSiteData('ai-overseer/halt', {halted = false})")
         # the keeper's planned close
         L2, M2 = world()
         M2.mark_seen()
         assert M2.deadman_hold(1200) is True
         L2.execute("NOW = NOW + 1100")
-        assert M2.deadman_check() is None and M2.deadman_state().held_s == 100
+        assert check(M2) is None and M2.deadman_state().held_s == 100
         L2.execute("NOW = NOW + 101")
-        assert M2.deadman_check() == "paused"                       # the hold over, the game still up
+        assert check(M2) == "paused"                       # the hold over, the game still up
         M2.deadman_hold(10 ** 9)
         assert M2.deadman_state().held_s == int(M2.DEADMAN_HOLD_MAX_S)
         M2.mark_seen()
@@ -145,7 +151,7 @@ if LuaRuntime:
         assert int(M3.DEADMAN_S) == 0
         M3.mark_seen()
         L3.execute("NOW = NOW + 100000")
-        assert M3.deadman_check() is None and M3.deadman_state().armed is False
+        assert check(M3) is None and M3.deadman_state().armed is False
         M3.set_status(L3.eval("{deadman_s = 5}"))                 # out of range: kept
         assert int(M3.DEADMAN_S) == 0
         M3.set_status(L3.eval("{deadman_s = 900}"))
@@ -187,7 +193,7 @@ if LuaRuntime:
         L.execute("dfhack.onStateChange['ai-status'](SC_MAP_UNLOADED)")
         assert M.LAST_SEEN is None and M.deadman_state().held_s is None
         L.execute("NOW = NOW + 100000")
-        assert M.deadman_check() is None
+        assert check(M) is None
 
     @test("dead-man fails open in old fakes: no dfhack.timeout, no pause_state")
     def _():

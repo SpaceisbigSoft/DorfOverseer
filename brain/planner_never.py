@@ -61,8 +61,7 @@ CHEAT_ACTIONS = {
 CHEAT_WORDS = ("probe", "spawn", "lua", "create_unit", "eval")
 
 
-def _int(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # noqa: E402  (util's helper)
 
 
 def _pos(r) -> tuple | None:

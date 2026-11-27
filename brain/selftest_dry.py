@@ -96,16 +96,13 @@ def lua_error(reply) -> str | None:
 
 # --- what this fort's report offers the builders ----------------------------
 
-def _d(v) -> dict:
-    return v if isinstance(v, dict) else {}
+from util import as_dict as _d  # noqa: E402  (util's helper)
 
 
-def _l(v) -> list:
-    return v if isinstance(v, list) else []
+from util import as_list as _l  # noqa: E402  (util's helper)
 
 
-def _int(v):
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+from util import int_or_none as _int  # noqa: E402  (util's helper)
 
 
 def _first(*vals):
