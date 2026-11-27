@@ -100,6 +100,8 @@ def note_cycle(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> list[
                          "the rest ran")
             return None
 
+    from planner_switch import note_switches
+    _step(note_switches, state, memory)                         # (F2a) the Switch's cycle count
     if "dwarves" not in errors and isinstance(s.get("dwarves"), dict) and "idle_adults" in s["dwarves"]:
         _step(update_idle, s, memory, cfg)
     h = _d(s.get("health"))
