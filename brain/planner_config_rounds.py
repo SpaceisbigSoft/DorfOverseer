@@ -452,3 +452,12 @@ PART.update({
     "hospital_stock_max": 5,              # never more than this (DF's own default quota per hospital)
     "hospital_stock_cooldown_ticks": 600,  # half a day between the steps
 })
+
+# (F2c) actuator claims (brain/actuator_claims.py, planner_select): one owner per
+# lever, gate, the alarm, burrow (and squad, when listed), kept until its owner's
+# off step or the first of these
+PART.update({
+    "claim_expiry_cycles": 12,            # cycles a claim lasts without its owner using the actuator again
+    "claim_expiry_seconds": 1800,         # real seconds, the same
+    "claim_persist_kinds": ["lever", "gate", "alarm", "burrow", "zone"],   # "squad" not yet: planner_military's recall
+})

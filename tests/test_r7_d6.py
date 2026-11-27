@@ -92,9 +92,11 @@ NAMES_6298B4A = ['DISPOSAL_ACTION_MAX', 'PLANNER_CONFIG', '__all__', '__builtins
 # explore_tiles, explore_per_tunnel_miners (E's 27 miners with nothing to dig): 26 Nov
 # (r36c explore wait) re-pinned after one deliberate key: explore_pending_wait_days (B, D, E: a 0-tile
 # "done" each day while every tunnel was still being dug): 26 Nov
-DUMP_6298B4A = "063fdae7df542dc2567dbd431fcbaa68916fac836bebaa3cd535834cc127db35"
-KEYS_6298B4A = "0b341e4c1f424d16b8d0eeb6f147194325b34e0a054c4cf8a2e3d2e2187b240d"
-COUNT_6298B4A = 1367
+# (F2c actuator claims) re-pinned after three deliberate keys: claim_expiry_cycles,
+# claim_expiry_seconds, claim_persist_kinds (planner_config_rounds): 27 Nov
+DUMP_6298B4A = "b0001f5ca4aeb6f209673a6037e5e99856e4174b2904c6a65dbc8113285df2b5"
+KEYS_6298B4A = "67089ec90b653d84d613597280e6b0f9148544220c85f0d24fc6d1007a737ccd"
+COUNT_6298B4A = 1370
 LAYOUT_B = ("# (layout B) hallway-first floors (brain/floor_grammar.py, brain/masterplan_floors.py, "
             "brain/planner_floor_notes.py; lua/ai-floorplan.lua)\nPLANNER_CONFIG.update({\n")
 
