@@ -123,9 +123,9 @@ def cycle_state(s0: dict, i: int) -> dict:
     return s
 
 
-def run_cycles(s0: dict, reply, cycles: int = CYCLES):
+def run_cycles(s0: dict, reply, cycles: int = CYCLES, m=None):
     """[(proposals, allowed)] of each cycle, every allowed action answered reply(p)."""
-    m = Memory()
+    m = Memory() if m is None else m
     out = []
     for i in range(cycles):
         s = cycle_state(s0, i)
@@ -191,26 +191,25 @@ def _():
 # --- (b) the same failure ten times: no action sent more than three times ---------------
 
 def tries_over_cap() -> list[str]:
+    from planner_refusal_streak import exempt
     over = []
     for f in fixtures():
         s0 = json.loads(f.read_text(encoding="utf-8"))
         sent: collections.Counter = collections.Counter()
-        for _, allowed in run_cycles(s0, lambda p: FAIL_REPLY):
-            sent.update(action_key(p.action) for p in allowed)
+        m_ = Memory()
+        for _, allowed in run_cycles(s0, lambda p: FAIL_REPLY, m=m_):
+            # (merge 0.105.135) steps the refusal hold leaves out by design (emergencies,
+            # own pace, releases, transient and urgent water steps: planner_refusal_streak.exempt)
+            sent.update(action_key(p.action) for p in allowed if not exempt(p, m_, s0))
         over += [f"{f.name}: {n}x {k[:110]}" for k, n in sent.most_common() if n > MAX_TRIES]
     return over
 
 
-@test("(b) the same failure for every action, 10 cycles: no action sent more than 3 times (xfail: attempt ledger)")
+@test("(b) the same failure for every action, 10 cycles: no action sent more than 3 times (the attempt ledger)")
 def _():
     over = tries_over_cap()
-    if over:
-        # xfail: the planner has no attempt ledger yet (a refusal starts no cooldown
-        # of its own, gap F2 "failure memory"); the ledger is another F group's item.
-        # Do not change planner code to pass this here.
-        skip(f"xfail (expected until the attempt ledger lands): {len(over)} actions over {MAX_TRIES} "
-             f"tries, e.g. {over[0]}")
-    # XPASS: the ledger works; make this test strict (drop the skip above)
+    # (merge 0.105.135) strict now: the attempt ledger (F2b) holds a repeated refusal
+    assert not over, "\n".join(over[:20])
 
 
 @test("(b) the run itself: the failure is recorded (the rules see a refusal, nothing raises)")
