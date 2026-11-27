@@ -24,6 +24,7 @@ from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words
 from planner_thirst import thirst_journal
 from planner_recovery import recovery_journal
 from planner_shopslots import shop_level_action
+from planner_never import never_step   # (F2d) the player's "never" rules, read last before dispatch
 from planner_floors import floor_action, floor_outcome, not_on_floor_words
 from planner_floors import journal_hint as floor_journal_hint
 from planner_floors import forget_sent as floor_forget_sent
@@ -417,6 +418,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         allowed, held = cycle_step(memory, state, "select", lambda: select(proposals, state, memory, cfg)) or (
             [p for p in proposals if limit_exempt(p.rule)],
             [f"{p.rule}: the limits' check failed this cycle; it waits" for p in proposals if not limit_exempt(p.rule)])
+        allowed, held = never_step(allowed, held, state, memory, key, say, journal)   # (F2d) the last line before dispatch
         stopped = _ov.STOP_FILE.exists()
         halted = controls.get("halted") is True
         decisions = _d(controls.get("decisions"))
