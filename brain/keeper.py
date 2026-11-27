@@ -351,11 +351,37 @@ def handover(proc, clock=time.time, sleep=time.sleep, wait_s: float = HANDOVER_S
     return "slow"
 
 
+LAST_STOP_NOTE = ""     # (F5a) who asked and why, from the last stop file taken
+
+
+def stop_note() -> str:
+    """(F5a) Who asked and why, from logs/keeper-stop before it is taken: the
+    keepers' window writes JSON {"by", "why", "at"}; an empty file, the old
+    plain "stop" or anything unreadable gives "" (fail soft: the stop still
+    happens). Said as " (by ..., why: ..., at ...)" after the log line."""
+    try:
+        import json
+        text = STOP_FILE.read_text(encoding="utf-8-sig", errors="replace").strip()
+        data = json.loads(text) if text.startswith("{") else None
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    parts = []
+    for key, label in (("by", "by "), ("why", "why: "), ("at", "at ")):
+        val = data.get(key)
+        if val not in (None, ""):
+            parts.append(label + " ".join(str(val).split())[:200])
+    return f" ({', '.join(parts)})" if parts else ""
+
+
 def stop_waiting() -> bool:
     """(0.105.100, verifier) logs/keeper-stop is there (the keepers' window's S),
     taken: True. For the fresh start's own steps, where a StopAsked can't go."""
+    global LAST_STOP_NOTE
     try:
         if STOP_FILE.exists():
+            LAST_STOP_NOTE = stop_note()
             STOP_FILE.unlink(missing_ok=True)
             return True
     except OSError:
@@ -467,10 +493,11 @@ def stop_asked() -> None:
     try:
         if not STOP_FILE.exists():
             return
+        note = stop_note()
         STOP_FILE.unlink(missing_ok=True)
     except OSError:
         return
-    log("Keeper: asked to stop (logs/keeper-stop, from the keepers' window).")
+    log(f"Keeper: asked to stop (logs/keeper-stop, from the keepers' window){note}.")
     raise StopAsked()
 
 
@@ -675,12 +702,13 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
     if mark and STOP_FILE.exists():
         # (0.105.100, verifier) the keepers' window's S came while the old keeper
         # handed over: honoured, not taken away as an old ask
+        note = stop_note()
         try:
             STOP_FILE.unlink(missing_ok=True)
         except OSError:
             pass
-        log(f"Keeper: asked to stop (logs/keeper-stop, from the keepers' window) as it started after a fresh start: "
-            f"{CLOSED_STOP_WORDS}.")
+        log(f"Keeper: asked to stop (logs/keeper-stop, from the keepers' window){note} as it started after a fresh "
+            f"start: {CLOSED_STOP_WORDS}.")
         write_status(stamp(), 0, f"Keeper stopped (asked by the keepers' window): {CLOSED_STOP_WORDS}")
         release_lock(lock)
         return 0
@@ -750,7 +778,8 @@ def main(argv=None, popen=subprocess.Popen, sleep=None, max_runs: int | None = N
                     # (0.105.100, verifier) the keepers' window's S during the
                     # close: honoured here (the new keeper would have taken the
                     # file away as an old ask and run on)
-                    log(f"Keeper: asked to stop (logs/keeper-stop, from the keepers' window) during a fresh start: "
+                    log(f"Keeper: asked to stop (logs/keeper-stop, from the keepers' window){LAST_STOP_NOTE} "
+                        f"during a fresh start: "
                         f"{CLOSED_STOP_WORDS}.")
                     write_status(started, restarts, f"Keeper stopped (asked by the keepers' window): "
                                  f"{CLOSED_STOP_WORDS}")
