@@ -60,6 +60,8 @@ _W = _consts(ROOT / "tests" / "test_world.py", ("FAKE", "MEETING"))
 FAKE, MEETING = _W["FAKE"], _W["MEETING"]
 SRC = module_src("ai-diplomacy.lua")
 LUA = LuaRuntime(unpack_returned_tuples=True)
+from strict_fakes import install as strict_install  # noqa: E402
+STRICT = strict_install(LUA)      # (F1b) df fakes that raise on a field DFHack has not
 
 # the settings the module reads: the Rules' peace and the sliders (effective as the real module's)
 SETTINGS = r"""
@@ -448,16 +450,21 @@ def _():
 
 
 TRADE_BANS = r"""
-local trade_src, bans_src = ...
+local trade_src, bans_src, strict = ...
 local TYPES = {FIGURINE = 1, AMULET = 2, BIN = 3}
 TYPES[1], TYPES[2], TYPES[3] = 'FIGURINE', 'AMULET', 'BIN'
+-- (F1b) strict fakes (tests/strict_fakes.py): a field the df type has not raises, as
+-- in the game; the test's own type, material and value live in a side table
+local DF_TYPE = {'item_figurinest', 'item_amuletst', 'item_binst'}
+local side = setmetatable({}, {__mode = 'k'})
 local function item(id, t, idx, extra)
-    local it = {id = id, t = t, idx = idx, value = 10, flags = {on_ground = true, in_inventory = false}}
+    local it = strict(DF_TYPE[t], {id = id, flags = {on_ground = true, in_inventory = false}})
+    side[it] = {t = t, idx = idx, value = 10}
     for k, v in pairs(extra or {}) do it.flags[k] = v end
-    it.getType = function(self) return self.t end
+    it.getType = function(self) return side[self].t end
     it.getSubtype = function() return -1 end
     it.getMaterial = function() return 0 end
-    it.getMaterialIndex = function(self) return self.idx end
+    it.getMaterialIndex = function(self) return side[self].idx end
     return it
 end
 -- loose: a granite figurine (banned), a marble figurine, a granite amulet;
@@ -473,14 +480,14 @@ local env = setmetatable({}, {__index = _G})
 env.df = {item_type = TYPES, mandate_type = {Export = 0},
           global = {world = {items = {other = {FIGURINE = figs, AMULET = amulets}},
                              buildings = {other = {TRADE_DEPOT = {}}},
-                             mandates = {all = {{mode = 0, item_type = 1, item_subtype = -1, mat_type = 0,
-                                                 mat_index = 7, timeout_counter = 0, timeout_limit = 1000}}}},
-                    plotinfo = {caravans = {{entity = 1, trade_state = 1, time_remaining = 100,
-                                             flags = {tribute = false}}}}},
+                             mandates = {all = {strict('mandate', {mode = 0, item_type = 1, item_subtype = -1, mat_type = 0,
+                                                 mat_index = 7, timeout_counter = 0, timeout_limit = 1000})}}},
+                    plotinfo = {caravans = {strict('caravan_state', {entity = 1, trade_state = 1, time_remaining = 100,
+                                             flags = {tribute = false}})}}},
           caravan_state = {T_trade_state = {Approaching = 1, AtDepot = 2}},
           historical_entity = {find = function() return nil end}}
 env.xyz2pos = function(x, y, z) return {x = x, y = y, z = z} end
-env.dfhack = {items = {getValue = function(it) return it.value end,
+env.dfhack = {items = {getValue = function(it) return side[it].value end,
                        getPosition = function() return 1, 1, 1 end,
                        getContainer = function(it) if it == in_bin then return bin end end,
                        getContainedItems = function(c) return inside[c.id] or {} end,
@@ -495,8 +502,8 @@ end
 benv.reqscript = function(n) error('reqscript ' .. n) end
 assert(load(bans_src, 'ai-bans', 't', benv))()
 assert(load(trade_src, 'ai-trade', 't', env))()
-local depot = {centerx = 5, centery = 5, z = 1, contained_items = {},
-               getBuildStage = function() return 1 end, getMaxBuildStage = function() return 1 end}
+local depot = strict('building_tradedepotst', {centerx = 5, centery = 5, z = 1, contained_items = {},
+               getBuildStage = function() return 1 end, getMaxBuildStage = function() return 1 end})
 env.df.global.world.buildings.other.TRADE_DEPOT = {depot}
 return env, marked
 """
@@ -504,7 +511,7 @@ return env, marked
 
 @test("ai-trade: goods an export ban covers stay home (loose or a bin holding one); the survey says the bans")
 def _():
-    env, marked = LUA.execute(TRADE_BANS, module_src("ai-trade.lua"), BANS_SRC)
+    env, marked = LUA.execute(TRADE_BANS, module_src("ai-trade.lua"), BANS_SRC, STRICT)
     s = env.survey()
     assert s.goods == 2 and s.banned_kept == 2, dict(s)          # the marble figurine and the amulet
     assert lst(s.bans)[0].item == "FIGURINE" and lst(s.bans)[0].material == "granite"
