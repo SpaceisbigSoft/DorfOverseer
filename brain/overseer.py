@@ -543,6 +543,7 @@ def get_state(bridge: Bridge, tier: str = "daily") -> dict:
         if isinstance(pulse, dict) and pulse.get("tier") is None and isinstance(pulse.get("date"), dict):
             # a bridge from before 0.31 ignores --tier and sends the full report: use it
             LAST_FULL["state"] = json.loads(json.dumps({k: v for k, v in pulse.items() if k != "_errors"}))
+            LAST_FULL.pop("stale", None)    # (F3a)
             return pulse
     state = bridge.state(include_units=False)
     if state.get("tier") in (None, "daily", "survey"):
