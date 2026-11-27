@@ -639,7 +639,7 @@ def _were_cell_notes(cfg, rows, notes) -> None:
                      "outside it: moved in again now")
 
 
-def _were(s, cfg, t, rules, proposals, notes):
+def _were(s, cfg, t, rules, proposals, notes, memory=None):
     w = _d(t.get("were"))
     rows = [x for x in _l(w.get("list")) if isinstance(x, dict) and x.get("id") is not None]
     cells = [x for x in _l(w.get("cells")) if isinstance(x, dict)]
@@ -687,6 +687,18 @@ def _were(s, cfg, t, rules, proposals, notes):
             proposals.append(Proposal("moon_cell", {"type": "moon_cell", "ids": [], "release": True, "all": True},
                                       "moon cells are off on the Rules tab: let every werebeast out", 1))
         return
+    # (F2a) locked in / let out on the planner's one Switch (planner_switch):
+    # the moon near locks at once (the emergency: never delayed); the
+    # release comes at most once a hold (real seconds and cycles) after the
+    # lock, so a moon phase read flapping at its edge doesn't let them out
+    # and lock them again cycle after cycle
+    beast = [x for x in rows if x.get("changed")]
+    fighting = [x for x in rows if x.get("fighting")]
+    past = (not due and phase_due is False and moon_clearly_past(_l(w.get("changes")), w.get("moon_phase"), wcfg)
+            and not beast and not fighting)
+    from planner_switch import Switch
+    sw = Switch(memory, "moon_cell", cfg=cfg)
+    sw.decide(False if past else None, s, observed=bool(live_cells), emergency=True if due else None)
     if due:
         want = [x["id"] for x in rows if not x.get("changed")]
         locked = all(x.get("cell") and x.get("locked") for x in rows if not x.get("changed"))
@@ -699,6 +711,7 @@ def _were(s, cfg, t, rules, proposals, notes):
             # lead (F, 25 Nov: Besmar moved in the last minutes, was out at the change)
             close = moon_change_close(_l(w.get("changes")), w.get("moon_phase"), wcfg)
             act["move_in"] = True
+            sw.expect("moon_cell", {"type": "moon_cell", "move_in": True})    # record() books the lock
             proposals.append(Proposal("moon_cell", act,
                                       f"the full moon is near: {', '.join(str(x.get('name')) for x in rows[:3])} "
                                       + ("into a cell (behind a drawbridge, raised once inside, else a jail, a bedroom "
@@ -716,10 +729,10 @@ def _were(s, cfg, t, rules, proposals, notes):
         # ~2.5 days a moon) keeps them in. (0.105.114) and only when it is
         # clearly past (WERE_PAST_PHASES), no werebeast is in its beast form
         # and no cursed one is fighting
-        beast = [x for x in rows if x.get("changed")]
-        fighting = [x for x in rows if x.get("fighting")]
-        past = phase_due is False and moon_clearly_past(_l(w.get("changes")), w.get("moon_phase"), wcfg)
-        if past and not beast and not fighting:
+        if past and sw.state is not False and live_cells:
+            notes.append(f"{len(live_cells)} werebeast(s) in their cells: the full moon is past, let out once "
+                         f"the hold since they were locked in is over ({sw.held_words()})")
+        elif past:
             n = len(live_cells)
             # (r33a) only the dead's cells left: a release of those only (dead_only). B, 26 Nov
             # 14:23+: this release freed Asob's cell, reserved by the call before, and the two
@@ -727,6 +740,8 @@ def _were(s, cfg, t, rules, proposals, notes):
             act = {"type": "moon_cell", "ids": [], "release": True}
             if not n:
                 act["dead_only"] = True
+            else:
+                sw.expect("moon_cell", {"type": "moon_cell", "release": True})   # record() books the release
             proposals.append(Proposal("moon_cell", act,
                                       (f"the full moon is past (phase {w.get('moon_phase')}): let {n} werebeast(s) "
                                        "out of their cells") if n else
@@ -1556,7 +1571,7 @@ def _threat_rules(s: dict, memory, cfg: dict, proposals: list, notes: list) -> N
                            ("thieves", _thieves, (s, cfg, t, memory, proposals, notes)),
                            ("interrupters", _interrupters, (s, cfg, t, memory, proposals, notes)),
                            ("undead", _undead, (s, cfg, t, proposals, notes)),
-                           ("were", _were, (s, cfg, t, rules, proposals, notes)),
+                           ("were", _were, (s, cfg, t, rules, proposals, notes, memory)),
                            ("caverns", _cavern_beasts, (s, cfg, memory, t, rules, proposals, notes)),
                            ("rescue", _rescue, (s, cfg, t, proposals, notes))):
         try:

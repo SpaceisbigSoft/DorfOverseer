@@ -426,6 +426,7 @@ def _():
     for i in range(1, 6):
         q = fort(civ_alert=True)
         q["date"]["tick"] += 1200 * i
+        q["wall_time"] = s.get("wall_time", 0) + 600 + 30 * i     # (F2a) the Switch's real-time hold: minutes on
         a, _ = cycle(q, m)
         if any(x.action == {"type": "civ_alert", "on": False} for x in a):
             lowered_at = i
@@ -3201,10 +3202,12 @@ def _():
     assert m.gate_closed_by_ai and not by_rule(plan(s, m)[0], "gate")     # not pulled twice
     quiet = fort()
     quiet["military"]["gates"] = s["military"]["gates"]
+    quiet["wall_time"] = 10 ** 10                     # (F2a) the Switch's real-time hold: long after the pull
     note_cycle(quiet, m)
     m.quiet_cycles = 1
     assert not by_rule(plan(quiet, m)[0], "gate")                          # not yet
     m.quiet_cycles = 3
+    m.switches["_cycle"] = {"n": 3}                   # (F2a) and the Switch's cycles counted alike (note_cycle's)
     g = by_rule(plan(quiet, m)[0], "gate")
     assert g, "pulled back after 3 quiet cycles"
     record([(g[0], {"ok": True})], quiet, m)

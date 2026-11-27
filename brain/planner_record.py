@@ -55,6 +55,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
     now = abs_tick(state)
     today = game_day(state)
     from planner_outside import note_caravan_try as _caravan_try   # (0.105.97) local: planner's names stay as they were
+    from planner_switch import note_switch                          # (F2a) local, as above
     crops_set_now = any(p.action.get("type") == "set_farm_crops" and isinstance(r, dict) and r.get("ok") is True
                         for p, r in results)
     failed: set[str] = set()
@@ -436,6 +437,7 @@ def record(results: list[tuple[Proposal, dict]], state: dict, memory: Memory,
         _hook("note_zone_full", note_zone_full, memory, p, r, now)                  # (item7) a zone with no free floor for furniture
         _hook("note_design", note_design, p, r, state, memory, now)                 # (D0) sites kept, a landmark's refusals and fallback
         _hook("note_thirst", note_thirst, p, r, memory, now)                        # (R1 g2) the thirst remedies' answers
+        _hook("note_switch", note_switch, p, r, state, memory)                      # (F2a) a Switch's flip that went
         _hook("note_caravan_try", _caravan_try, p, r, memory, now)                 # (0.105.97) a stuck caravan's step and answer
         a = p.action if isinstance(p.action, dict) else {}
         _hook("squads", _squads, p, r, ok, a)

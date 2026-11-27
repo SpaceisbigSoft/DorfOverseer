@@ -35,6 +35,8 @@ def state(tick: int, fps=50, **st) -> dict:
     s = {"date": {"year": 260, "tick": tick}, "water": {"cistern_status": cs}}
     if fps is not None:
         s["perf"] = {"fps": fps}
+    # (F2a) the cycle's wall clock: the fps's real time, else a game day a real minute
+    s["wall_time"] = tick / (fps or 20)
     return s
 
 
@@ -77,7 +79,7 @@ def _():
     assert len(stuck) == 1, stuck
 
 
-@test("without an fps reading: game days and cycles only (3 days, 4 cycles)")
+@test("without an fps reading (F2a: the wall clock a minute a day): game days and cycles (3 days, 4 cycles)")
 def _():
     m = Memory()
     asks, _ = run(13, m, fps=None, pending=lambda i: False)
@@ -114,7 +116,8 @@ def _():
     ps, _ = cycle(state(T0 + 40 * TICKS_PER_DAY, gate="shut", depth=2), m)   # low: the open asked now
     assert len(ps) == 1 and "refill" in ps[0].reason and not ps[0].action.get("instant")
     now = abs_tick(state(T0 + 40 * TICKS_PER_DAY))
-    assert m.repeat_book[CP.CISTERN_PULL_BOOK] == {"want": "opened", "n": 1, "at": now, "seen": 0, "last": now}
+    assert m.repeat_book[CP.CISTERN_PULL_BOOK] == {"want": "opened", "n": 1, "at": now, "seen": 0, "last": now,
+                                                   "at_s": (T0 + 40 * TICKS_PER_DAY) / 50}
 
 
 @test("the refill stuck too: its 4th ask is the done step with instant")
