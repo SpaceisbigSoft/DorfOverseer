@@ -116,7 +116,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     missions = function() return safe(function()
         local r = reqscript('ai-missions').report()
         local oks, send = pcall(function() return reqscript('ai-mission-send').status() end)
-        if oks then r.send = send end
+        if oks then r.send = send
+        else r.send_error = tostring(send) end   -- (F4) a failed sub-read said, not dropped
         return r
     end) end,
     needs = function() return safe(get_needs) end,
@@ -136,6 +137,7 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
             if reqscript('ai-water').scanning() or WATER_PLAN then w.scanning = true end
             local okc, st = pcall(function() return reqscript('ai-builder').cistern_status() end)
             w.cistern_status = okc and st or nil
+            if not okc then w.cistern_status_error = tostring(st) end   -- (F4) a failed sub-read said, not dropped
             return w
         end)
     end,

@@ -86,6 +86,8 @@ class FakeGame:
         self.refuse = set(refuse)
         self.state = copy.deepcopy(BASE)
         self.state.setdefault("ledger", {})
+        from expected_bridge import EXPECTED_BRIDGE_VERSION    # (F4) another version is not acted on
+        self.state["bridge_version"] = EXPECTED_BRIDGE_VERSION
         self.timeouts: list = []
 
     def run_json(self, script, cmd, *rest, timeout=None):
