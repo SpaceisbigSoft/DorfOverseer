@@ -53,59 +53,53 @@
  ],
  "bridge-0.4.1-y148-winter.json:Hermit hold": [
   {
-   "notes": "sha256:25584f8d065b33a741be6097",
-   "props": "sha256:5d7c937c73823025a14da672",
+   "notes": "sha256:24847220f10df84946e38629",
+   "props": "sha256:d233287f6653c9599eea7ca7",
    "rules": [
     "hospital_burrow",
-    "calm_burrow",
-    "reserve_storage"
+    "calm_burrow"
    ]
   },
   {
-   "notes": "sha256:25584f8d065b33a741be6097",
-   "props": "sha256:5d7c937c73823025a14da672",
+   "notes": "sha256:24847220f10df84946e38629",
+   "props": "sha256:d233287f6653c9599eea7ca7",
    "rules": [
     "hospital_burrow",
-    "calm_burrow",
-    "reserve_storage"
+    "calm_burrow"
    ]
   },
   {
-   "notes": "sha256:25584f8d065b33a741be6097",
-   "props": "sha256:5d7c937c73823025a14da672",
+   "notes": "sha256:24847220f10df84946e38629",
+   "props": "sha256:d233287f6653c9599eea7ca7",
    "rules": [
     "hospital_burrow",
-    "calm_burrow",
-    "reserve_storage"
+    "calm_burrow"
    ]
   }
  ],
  "bridge-0.4.1-y148-winter.json:Merchant city": [
   {
-   "notes": "sha256:25584f8d065b33a741be6097",
-   "props": "sha256:c3622c559ce0e4f5eaf7f747",
+   "notes": "sha256:24847220f10df84946e38629",
+   "props": "sha256:d233287f6653c9599eea7ca7",
    "rules": [
     "hospital_burrow",
-    "calm_burrow",
-    "reserve_storage"
+    "calm_burrow"
    ]
   },
   {
-   "notes": "sha256:25584f8d065b33a741be6097",
-   "props": "sha256:c3622c559ce0e4f5eaf7f747",
+   "notes": "sha256:24847220f10df84946e38629",
+   "props": "sha256:d233287f6653c9599eea7ca7",
    "rules": [
     "hospital_burrow",
-    "calm_burrow",
-    "reserve_storage"
+    "calm_burrow"
    ]
   },
   {
-   "notes": "sha256:25584f8d065b33a741be6097",
-   "props": "sha256:c3622c559ce0e4f5eaf7f747",
+   "notes": "sha256:24847220f10df84946e38629",
+   "props": "sha256:d233287f6653c9599eea7ca7",
    "rules": [
     "hospital_burrow",
-    "calm_burrow",
-    "reserve_storage"
+    "calm_burrow"
    ]
   }
  ],
