@@ -9,4 +9,4 @@ with it: on a mismatch the Lua was reloaded but this Python was not (the
 keepers restart it), so nothing is acted on until the keeper is restarted.
 """
 
-EXPECTED_BRIDGE_VERSION = "0.105.134"
+EXPECTED_BRIDGE_VERSION = "0.105.135"
