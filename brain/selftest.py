@@ -2,9 +2,15 @@
 changing the fort. Safe on any save, and safe while the overseer is running.
 
     python brain/selftest.py
+    python brain/selftest.py --dry-all [--port N] [--only a,b]
 
 Run it after updating DFHack or Dwarf Fortress, or when something seems off.
 Every line says PASS, WARN (works, but worth knowing) or FAIL.
+
+(F1a) --dry-all dry-runs every action the bridge lets dry-run (its DRY_OK
+set) with the arguments the planner sends, one line each and a summary, and
+exits 1 on any Lua error (brain/selftest_dry.py). --port: the DFHack port of
+the game to check (else config.json's dfhack_port, else DFHACK_PORT).
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from bridge import EXPECTED_PROTOCOL, Bridge, BridgeError  # noqa: E402
-from dfhack import PROJECT_ROOT, DFHackError, GameNotRunning  # noqa: E402
+from dfhack import PROJECT_ROOT, DFHack, DFHackError, GameNotRunning  # noqa: E402
 from digest import REQUIRED, _d, digest, normalize  # noqa: E402
 from memstore import same_site  # noqa: E402
 
@@ -148,11 +154,50 @@ def remembered_openings(bridge, fort: dict) -> list[tuple[int, int, int]]:
     return sorted(out)
 
 
-def main() -> int:
+def parse_args(argv: list[str]):
+    """(F1a) The command line: none for the daily self-test as before."""
+    import argparse
+    ap = argparse.ArgumentParser(prog="selftest.py", description="In-game self-test of the bridge.")
+    ap.add_argument("--dry-all", action="store_true",
+                    help="dry-run every DRY_OK action with planner-shaped arguments; exit 1 on any Lua error")
+    ap.add_argument("--only", default="", help="with --dry-all: only these actions (comma-separated)")
+    ap.add_argument("--port", type=int, default=None, help="the DFHack port of the game to check")
+    return ap.parse_args(argv)
+
+
+def dry_all(bridge: Bridge, only: list[str] | None = None) -> int:
+    """(F1a) Every DRY_OK action dry-run in the loaded fort (selftest_dry)."""
+    import selftest_dry
+    try:
+        st = bridge.status()
+    except (BridgeError, DFHackError) as e:
+        print(f"[FAIL] status: {e}")
+        return 1
+    if not st.get("in_fort"):
+        print("[FAIL] no fort is loaded: load the fort, then run --dry-all again")
+        return 1
+    try:
+        state = bridge.state(include_units=True)
+    except (BridgeError, DFHackError, OSError, ValueError) as e:
+        print(f"[WARN] fort report: {e} (the dry runs use made-up ids)")
+        state = {}
+    try:
+        return selftest_dry.run_dry_all(bridge, state, only=only)
+    except GameNotRunning:
+        print("[FAIL] the game stopped answering during the dry runs")
+        return 1
+
+
+def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
+    args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        bridge = Bridge()
+        df = None
+        if args.port:
+            df = DFHack.from_config()
+            df.port = args.port
+        bridge = Bridge(df)
         t0 = time.perf_counter()
         info = bridge.handshake()
         ms = (time.perf_counter() - t0) * 1000
@@ -165,6 +210,8 @@ def main() -> int:
     except DFHackError as e:
         check("talking to DFHack", "FAIL", str(e))
         return 1
+    if args.dry_all:
+        return dry_all(bridge, [x.strip() for x in args.only.split(",") if x.strip()] or None)
 
     # 1. versions and install
     check("bridge answers", "PASS", f"protocol {info.get('protocol')} (expected {EXPECTED_PROTOCOL}), {ms:.0f} ms")
