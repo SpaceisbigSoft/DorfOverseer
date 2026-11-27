@@ -67,6 +67,7 @@ class Memory:
     cavern_alarm: dict = field(default_factory=dict)   # (v35 fix) {since}: the alarm held for citizens in the caverns, capped
     weather_alarm: dict = field(default_factory=dict)  # (0.105.40b) {since, seen, on_seen, cleared, why}: evil weather's alarm
     alarm_gov: dict = field(default_factory=dict)      # (item4) {on {tick, cause, key, why}, off {key: tick}, month {m, n}}: the alarm kept from flapping
+    claims: dict = field(default_factory=dict)         # (F2c) {n: cycle, own: {"kind:id": {rule, tier, prio, n, t, tick}}}: actuator owners (planner_select)
     hauling_surplus: dict = field(default_factory=dict)  # (0.105.40b fix) {since}: haulers to spare since then (planner_hauling)
     quiet_cycles: int = 0
     last_threat_tick: int = 0          # (0.104.100) a threat could reach the dwarves
@@ -146,6 +147,7 @@ class Memory:
     idle_hands: bool = False                             # many idle adults: every squad trains (0.83)
     idle_avg: float | None = None                        # running average of the idle share (0.84)
     refusals: dict = field(default_factory=dict)         # action key -> {"n": times refused in a row, "until": tick}
+    switches: dict = field(default_factory=dict)         # (F2a) {name[:id]: {on, at, n, tick, seen, by}}: each on/off decision's state and its last flip (planner_switch)
     repeat_book: dict = field(default_factory=dict)      # (item20) {rule: {...}}: what a rule tried, so it isn't asked again pointlessly (planner_backoff.repeat_book)
     refusal_streaks: dict = field(default_factory=dict)  # (r5 p3) action key -> {n, why, sig, at, until, days, rule, type, say}: the same no in a row (planner_refusal_streak)
     climate_freezes: bool = False                         # ice has been seen near the fort (water freezes in winter)

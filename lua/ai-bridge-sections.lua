@@ -10,7 +10,7 @@
 -- Not a command of its own.
 
 if not BRIDGE_VERSION then qerror('ai-bridge-sections is a part of ai-bridge; run ai-bridge') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.134'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-bridge-sections'] = '0.105.135'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 -- Run one section of the report; if it fails, keep the rest of the report
 -- and put the error where that section would have been.
@@ -116,7 +116,8 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
     missions = function() return safe(function()
         local r = reqscript('ai-missions').report()
         local oks, send = pcall(function() return reqscript('ai-mission-send').status() end)
-        if oks then r.send = send end
+        if oks then r.send = send
+        else r.send_error = tostring(send) end   -- (F4) a failed sub-read said, not dropped
         return r
     end) end,
     needs = function() return safe(get_needs) end,
@@ -136,6 +137,7 @@ SECTIONS = {   -- (0.100) a module field: the tests swap in their own
             if reqscript('ai-water').scanning() or WATER_PLAN then w.scanning = true end
             local okc, st = pcall(function() return reqscript('ai-builder').cistern_status() end)
             w.cistern_status = okc and st or nil
+            if not okc then w.cistern_status_error = tostring(st) end   -- (F4) a failed sub-read said, not dropped
             return w
         end)
     end,
@@ -508,6 +510,14 @@ SECTION_CACHE_DAYS.killzones = 1       -- (0.105.45) a walk in from each entranc
 -- citizen's skills for each kind; read only for the slow training-bench rule
 SECTION_CACHE_DAYS.benches = 2
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
+-- (F3a) the report's deadline (real ms, os.clock, from the report's start):
+-- past it, a section that would be rebuilt and has a cached copy sends that
+-- copy instead (perf.deferred); one with no copy is still built. A section
+-- deferred REPORT_DEFER_MAX reports in a row is built whatever the deadline,
+-- and the deferred ones go first in the next report. nil or < 0: no deadline.
+REPORT_DEADLINE_MS = 1500
+REPORT_DEFER_MAX = 3
+SECTION_DEFERRED = SECTION_DEFERRED or {}   -- name -> reports deferred in a row (kept across runs, as the cache)
 -- (0.105.48, K7c) the most game days a cached copy is ever sent: past it the
 -- section is rebuilt whatever the rotation (A1: two rebuilds a report against
 -- ~14 due a day left every cached section 11-12 days old). Set by how fast

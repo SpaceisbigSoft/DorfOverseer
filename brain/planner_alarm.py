@@ -39,6 +39,7 @@ and is held while within `hazard_near` (planner_military.hazard_alert).
 from __future__ import annotations
 
 from planner_core import PLANNER_CONFIG, TICKS_PER_DAY, abs_tick
+import planner_switch  # noqa: F401,E402  (F2a) its config keys into PLANNER_CONFIG at import
 
 __all__ = ["ALARM_CONFIG", "alarm_cause", "govern_alarm", "note_alarm_change", "GOVERNED", "REACH_CAP_WHY",
            "reach_near", "reach_never_capped", "reach_alarm_over", "reach_raise_held", "SNATCH_CAP_WHY", "snatch_alarm",
@@ -125,8 +126,38 @@ def govern_alarm(s: dict, memory, cfg: dict, proposals: list, notes: list) -> No
                          f"(it would have come down: {offs[0].reason[:80]})")
     # 2. raises for a governed cause: the cooldown and the month's cap
     ons = [p for p in proposals if p.action == ON]
-    if not ons or alert_on:
+    if ons and not alert_on:
+        _govern_raises(s, memory, cfg, proposals, notes, g, now, ons)
+    # 3. (F2a) the planner's one Switch: the alarm flips at most once a hold
+    _alarm_switch(s, memory, cfg, proposals, notes, alert_on)
+
+
+def _alarm_switch(s: dict, memory, cfg: dict, proposals: list, notes: list, alert_on: bool) -> None:
+    """(F2a) The alarm on the planner's one Switch (planner_switch), looked at
+    every cycle: up or down at most once a hold (real seconds and planner
+    cycles; the minimum time on above is game ticks, and a game day now
+    passes in about a cycle). A raise for a cause outside GOVERNED (enemies
+    in reach, a snatcher, the walking dead...) is the emergency: at once. The
+    thirst's lowering (its own action) is not governed here."""
+    from planner_switch import Switch
+    ons = [p for p in proposals if p.action == ON]
+    offs = [p for p in proposals if p.action == OFF]
+    signal = True if ons else False if offs else None
+    urgent = any(alarm_cause(p.reason)[0] not in GOVERNED for p in ons)
+    sw = Switch(memory, "alarm", cfg=cfg)
+    sw.decide(signal, s, observed=alert_on, emergency=True if urgent else None)
+    if signal is None or signal == alert_on:
         return
+    if not sw.held:
+        sw.expect(None, ON if signal else OFF)          # record() books the flip that went
+        return
+    gone = ons if signal else offs
+    proposals[:] = [p for p in proposals if p not in gone]
+    notes.append(f"the alarm stays {'down' if alert_on is False else 'up'} a while yet: it changed a moment ago "
+                 f"({sw.held_words()}); it would have gone {'up' if signal else 'down'}: {gone[0].reason[:80]}")
+
+
+def _govern_raises(s, memory, cfg, proposals, notes, g, now, ons) -> None:
     # (0.105.47) Caution sets the cooldown, the month's cap and which causes count (brain/alarm_caution.py)
     from alarm_caution import alarm_settings
     st = s.get("settings") if isinstance(s.get("settings"), dict) else {}

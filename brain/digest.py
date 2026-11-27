@@ -285,9 +285,50 @@ def normalize(s: dict) -> dict:
     ms = s.get("missions")
     if isinstance(ms, dict) and "error" not in ms and not isinstance(ms.get("targets"), list):
         ms["targets"] = []
+    # (F4) a failed sub-read inside a section (the bridge's inner pcall) comes as
+    # `<field>_error` beside it: listed as "<section>.<field>", as map.size is
+    for sec, field in SUB_READS:
+        v = s.get(sec)
+        if isinstance(v, dict) and "error" not in v and v.get(f"{field}_error") is not None:
+            errors[f"{sec}.{field}"] = str(v.get(f"{field}_error"))[:300]
     s["_errors"] = errors
     _magma_aliases(s)
     return s
+
+
+# (F4) the sections' inner reads that report `<field>_error` (lua/ai-bridge-sections.lua)
+SUB_READS = (("water", "cistern_status"), ("missions", "send"))
+
+
+def age_merged(merged: dict, full: dict, pulse: dict, ticks_per_day: int = 1200) -> dict:
+    """(F4) A pulse cycle's report: the pulse merged over the last full one.
+    The sections that came from the full report are as old as their copy
+    there plus the game time since it, written into perf.cache_age (not
+    perf.cached: the PERF line counts the bridge's own cache), so
+    perf.section_age and can_use(max_age=) see them so.
+    Changes `merged` in place and returns it."""
+    try:
+        t0 = int(_d(full.get("date")).get("tick") or 0)
+        t1 = int(_d(pulse.get("date")).get("tick") or 0)
+    except (TypeError, ValueError):
+        return merged
+    since = max(0, t1 - t0) / ticks_per_day
+    fp = _d(full.get("perf"))
+    full_ages = _d(fp.get("cache_age")) if "error" not in fp else {}
+    p = merged.get("perf")
+    if not isinstance(p, dict) or "error" in p:
+        p = {}
+    p = dict(p)
+    ages = dict(_d(p.get("cache_age")))
+    for k in full:
+        if k in pulse or k.startswith("_") or k in ("perf", "tier", "bridge_version", "protocol"):
+            continue
+        a = full_ages.get(k)
+        base = float(a) if isinstance(a, (int, float)) and not isinstance(a, bool) else 0.0
+        ages[k] = round(base + since, 1)
+    p["cache_age"] = ages
+    merged["perf"] = p
+    return merged
 
 
 WATER_DEFAULTS = {"waters": [], "waters_found": 0}      # (0.105.38) lua/ai-water.lua

@@ -10,12 +10,14 @@ the few seconds it stood, and the 1-game-day wait after a pull was ~1 cycle
 at that speed (a game day ~25 s).
 
 Now: a pull asked for is asked again only after CISTERN_PULL_PACE_DAYS game
-days AND CISTERN_PULL_REAL_MINUTES real minutes (at the bridge's fps) AND
+days AND CISTERN_PULL_REAL_MINUTES real minutes (F2a: the cycle's wall clock;
+the bridge's fps for an ask booked before) AND
 CISTERN_PULL_CYCLES brain cycles, whatever the pending flag does between.
 After CISTERN_PULL_TRIES asks with the floodgate as it was, it is stuck: said
 once, and the next pull is instant (lever pull --instant, the dwarves' queued
 pulls taken away first so none walks up and toggles it back): no soldier can
-drop it. Shutting a full cistern is always safe; an open is only asked once
+drop it. (F2a) The floodgate's wanted state (shut / open) is the planner's
+one Switch (planner_switch): flipped at most once a hold. Shutting a full cistern is always safe; an open is only asked once
 the bridge found it closed all round (the done step checks before any pull).
 """
 
@@ -39,6 +41,40 @@ def _pace_ticks(s: dict) -> int:
     return max(CISTERN_PULL_PACE_DAYS * TICKS_PER_DAY, real_ticks(s, CISTERN_PULL_REAL_MINUTES))
 
 
+def _paced(s: dict, book: dict, now: int) -> bool:
+    """(F2a) The wait after an ask is over: CISTERN_PULL_PACE_DAYS game days,
+    CISTERN_PULL_REAL_MINUTES on the cycle's wall clock (planner_switch.wall_now;
+    an ask booked before F2a, with no wall time, by the fps as before) and
+    CISTERN_PULL_CYCLES cycles, all three."""
+    from planner_switch import wall_now
+    if int(book.get("seen") or 0) < CISTERN_PULL_CYCLES:
+        return False
+    at_s = book.get("at_s")
+    if isinstance(at_s, (int, float)) and not isinstance(at_s, bool):
+        return (now - book["at"] >= CISTERN_PULL_PACE_DAYS * TICKS_PER_DAY
+                and wall_now(s) - at_s >= CISTERN_PULL_REAL_MINUTES * 60)
+    return now - book["at"] >= _pace_ticks(s)
+
+
+def _switch(s: dict, st: dict, memory, want: str, notes: list):
+    """(F2a) The floodgate's wanted state on the planner's one Switch: shut
+    from 6/7 deep, open at 2/7 or less (as _cistern_rule's band), and flipped
+    at most once a hold (real seconds and cycles), so a depth read flapping
+    at the edge doesn't pull the lever back and forth. Returns the Switch,
+    or None when held (a note said why)."""
+    from planner_switch import Switch
+    sw = Switch(memory, "cistern", on_at=6, off_at=2)
+    depth = st.get("depth")
+    if not isinstance(depth, (int, float)) or isinstance(depth, bool):
+        return sw
+    sw.decide(depth, s, observed=st.get("gate") == "shut")
+    if not sw.held:
+        return sw
+    notes.append(f"the cistern is {depth}/7 deep: its floodgate was {'opened' if want == 'shut' else 'shut'} a "
+                 f"moment ago; {want} once the hold is over ({sw.held_words()})")
+    return None
+
+
 def cistern_pull_plan(s: dict, st: dict, memory, notes: list) -> str:
     """The top-up pull this cycle: "wait" (a note says why), "ask" (a dwarf
     pull, the plain step) or "instant" (stuck: the lever pulled at once).
@@ -55,6 +91,9 @@ def cistern_pull_plan(s: dict, st: dict, memory, notes: list) -> str:
                          f"floodgate {want}")
             return "wait"
         return "ask"
+    sw = _switch(s, st, memory, want, notes)
+    if sw is None:
+        return "wait"
     from planner_backoff import repeat_book
     book = repeat_book(memory, CISTERN_PULL_BOOK)
     now = abs_tick(s)
@@ -72,7 +111,7 @@ def cistern_pull_plan(s: dict, st: dict, memory, notes: list) -> str:
                      f"asked for {n} times (a dwarf takes the pull and drops it, e.g. a soldier called to duty): "
                      "the AI pulls it at once from now on, no dwarf needed")
     if n:
-        waited = now - book["at"] >= _pace_ticks(s) and int(book.get("seen") or 0) >= CISTERN_PULL_CYCLES
+        waited = _paced(s, book, now)
         if not waited:
             if st.get("pull_pending") and not stuck:
                 notes.append(f"the cistern is {depth}/7 deep: a dwarf is on the way to its lever to have the "
@@ -87,5 +126,7 @@ def cistern_pull_plan(s: dict, st: dict, memory, notes: list) -> str:
         notes.append(f"the cistern is {depth}/7 deep: a dwarf is on the way to its lever to have the "
                      f"floodgate {want}")
         return "wait"
-    book.update({"want": want, "n": n + 1, "at": now, "seen": 0, "last": now})
+    from planner_switch import wall_now
+    book.update({"want": want, "n": n + 1, "at": now, "seen": 0, "last": now, "at_s": wall_now(s)})
+    sw.expect("cistern", {"type": "cistern_step"})       # record() books the flip of the pull that went
     return "instant" if n + 1 > CISTERN_PULL_TRIES else "ask"

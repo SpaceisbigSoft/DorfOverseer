@@ -90,6 +90,7 @@ def _():
         assert any("DF reported an intruder" in n for n in notes), notes
     # past intrusion_alert_days: the usual quiet rules again
     over = later(up, PLANNER_CONFIG["intrusion_alert_days"] * TICKS_PER_DAY)
+    over["wall_time"] = __import__("time").time() + 3600   # (F2a) the Switch's real-time hold is over too
     assert unseen_intrusion(over, m, PLANNER_CONFIG) is None
     for i in range(4):
         note_cycle(later(over, i), m)

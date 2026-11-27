@@ -77,7 +77,9 @@ from __future__ import annotations
 import re
 
 import hold_classes as _hc
+import planner_attempts as _att
 from digest import _d
+from planner_config import PLANNER_CONFIG
 from planner_core import EMERGENCY, OWN_PACE, TICKS_PER_DAY, is_release, levels_done, refusal_key
 from planner_core_threats import great_present
 from planner_backoff import care_post, real_ticks, REAL_CAP_MINUTES
@@ -138,7 +140,22 @@ CARE_POST_DAYS = 1            # r112_care_post_max_days: a hospital post while p
 
 
 def _on(cfg) -> bool:
-    return bool(_d(cfg).get("r5p3_refusal_backoff", True))
+    return bool(_c(cfg, "r5p3_refusal_backoff"))
+
+
+# (F2b) kept local: a key set to None in cfg falls back to the default (unlike util's)
+def _c(cfg, key):
+    """(F2b) A r5p3 key from cfg, its default PLANNER_CONFIG's (one place:
+    r5p3_refusal_keep was 60 here and 30 there)."""
+    v = _d(cfg).get(key)
+    return PLANNER_CONFIG[key] if v is None else v
+
+
+def _ci(cfg, key) -> int:
+    try:
+        return max(1, int(_c(cfg, key) or PLANNER_CONFIG[key]))
+    except (TypeError, ValueError):
+        return max(1, int(PLANNER_CONFIG[key]))
 
 
 _BRACKETS = re.compile(r"\s*\([^()]*\)")
@@ -251,8 +268,8 @@ def cap_ticks(p, r_or_rec: dict, cfg: dict, state=None) -> int:
     r112_defence_wait_max_days for a defence step (in peace), at most
     r112_wait_answer_max_days for an answer to wait, else r5p3_refusal_wait_max_days."""
     cfg = _d(cfg)
-    first = max(1, int(cfg.get("r5p3_refusal_first_days", 1) or 1))
-    most = float(max(first, int(cfg.get("r5p3_refusal_wait_max_days", 28) or 28)))
+    first = _ci(cfg, "r5p3_refusal_first_days")
+    most = float(max(first, _ci(cfg, "r5p3_refusal_wait_max_days")))
     days = most
     if _d(r_or_rec).get("waiting"):
         days = min(days, float(cfg.get("r112_wait_answer_max_days", WAIT_ANSWER_MAX_DAYS) or WAIT_ANSWER_MAX_DAYS))
@@ -346,8 +363,8 @@ def _count(book, key, p, a, why, sig, waiting, state, now, cfg, family=False) ->
     or (item20) its rule's family's."""
     old = _d(book.get(key))
     n = int(old.get("n") or 0) + 1 if old.get("why") == why and old.get("sig") == sig else 1
-    first = max(1, int(cfg.get("r5p3_refusal_first_days", 1) or 1))
-    streak = max(1, int(cfg.get("r5p3_refusal_streak", 3) or 3))
+    first = _ci(cfg, "r5p3_refusal_first_days")
+    streak = _ci(cfg, "r5p3_refusal_streak")
     rec = {"n": n, "why": why, "sig": sig, "at": now, "rule": p.rule, "type": a.get("type")}
     if waiting:
         rec["waiting"] = True
@@ -364,13 +381,13 @@ def _count(book, key, p, a, why, sig, waiting, state, now, cfg, family=False) ->
 
 
 def _prune(book: dict, now: int, cfg: dict) -> None:
-    forget = int(cfg.get("r5p3_refusal_forget_days", 336) or 336) * TICKS_PER_DAY
+    forget = _ci(cfg, "r5p3_refusal_forget_days") * TICKS_PER_DAY
     for k in [k for k, v in book.items()
               if not isinstance(v, dict) or not isinstance(v.get("at"), int) or not 0 <= now - v["at"] <= forget]:
         book.pop(k, None)
-    most = max(1, int(cfg.get("r5p3_refusal_keep", 60) or 60))
+    most = _ci(cfg, "r5p3_refusal_keep")
     if len(book) > most:     # the working memory stays small: the oldest go first
-        streak = max(1, int(cfg.get("r5p3_refusal_streak", 3) or 3))
+        streak = _ci(cfg, "r5p3_refusal_streak")
         # (r5 merge) one-off refusals go first, the oldest of them first: a real streak is what is kept
         for k in sorted(book, key=lambda k: (int(book[k].get("n") or 0) >= streak, book[k]["at"]))[:len(book) - most]:
             book.pop(k, None)
@@ -379,15 +396,38 @@ def _prune(book: dict, now: int, cfg: dict) -> None:
 def wait(memory, p, state: dict, now: int, cfg: dict):
     """(days left, record) while the step's streak holds it, else None. The
     streak no longer holds once what the refusal depends on has changed."""
-    if not _on(cfg) or memory is None or exempt(p, memory, state, cfg):
+    if memory is None or exempt(p, memory, state, cfg):
         return None
-    book = _d(getattr(memory, "refusal_streaks", None))
     best = None
-    for k in (refusal_key(p),) + ((family_key(p.rule),) if p.rule in FAMILIES else ()):
-        got = _wait_one(_d(book.get(k)), p, state, now, cfg)
-        if got is not None and (best is None or got[0] > best[0]):
-            best = got
+    if _on(cfg):
+        book = _d(getattr(memory, "refusal_streaks", None))
+        for k in (refusal_key(p),) + ((family_key(p.rule),) if p.rule in FAMILIES else ()):
+            got = _wait_one(_d(book.get(k)), p, state, now, cfg)
+            if got is not None and (best is None or got[0] > best[0]):
+                best = got
+    if best is None:
+        best = _ledger_wait(memory, p, state, now, cfg)
     return best
+
+
+def _ledger_wait(memory, p, state, now: int, cfg):
+    """(F2b) The attempt ledger's hold (planner_attempts), within this step's
+    short cap where it has one (a defence step in peace, a care post, a safety
+    step: cap_ticks), as the streak's own."""
+    try:
+        got = _att.ledger_wait(memory, p, state, now, cfg)
+        if got is None:
+            return None
+        rec = got[1]
+        cap = cap_ticks(p, rec, cfg, state)
+        if cap < _ci(cfg, "r5p3_refusal_wait_max_days") * TICKS_PER_DAY:
+            until = min(rec["u"], rec["at"] + cap)
+            if now >= until:
+                return None
+            return max(1, -(-(until - now) // TICKS_PER_DAY)), dict(rec, ledger=True)
+        return got[0], dict(rec, ledger=True)
+    except Exception:  # noqa: BLE001  (the ledger unreadable: not held by it)
+        return None
 
 
 def _wait_one(rec: dict, p, state, now: int, cfg: dict):
@@ -396,7 +436,7 @@ def _wait_one(rec: dict, p, state, now: int, cfg: dict):
         return None
     if rec.get("family") and not _family(p, rec.get("why")):
         return None
-    cap = max(1, int(cfg.get("r5p3_refusal_wait_max_days", 28) or 28)) * TICKS_PER_DAY
+    cap = _ci(cfg, "r5p3_refusal_wait_max_days") * TICKS_PER_DAY
     if until - now > cap or (isinstance(rec.get("at"), int) and rec["at"] > now):
         return None      # (r5 Z4) the game's time went back (an older save): the wait no longer holds
     if isinstance(rec.get("at"), int):
@@ -410,27 +450,39 @@ def _wait_one(rec: dict, p, state, now: int, cfg: dict):
 
 
 def held_line(p, days: int, rec: dict) -> str:
+    if _d(rec).get("ledger"):
+        return _att.ledger_held_line(p, days, rec)
     return (f"{p.rule}: refused {rec.get('n')} times in a row for the same reason "
             f"({str(rec.get('why') or '')[:80]}); asks again in {days} day(s), sooner if the fort changes")
 
 
 def notes(memory, cfg: dict) -> list[str]:
     """The waits begun since the last cycle, each said once (select() clears the flag)."""
-    if not _on(cfg) or memory is None:
+    if memory is None:
         return []
     out = []
+    try:
+        out += _att.ledger_notes(memory)          # (F2b) "held: <action> at <target>: <reason> x3", once
+    except Exception:  # noqa: BLE001
+        pass
+    if not _on(cfg):
+        return out
     for k, v in sorted(_d(getattr(memory, "refusal_streaks", None)).items()):
         if isinstance(v, dict) and v.get("say"):
             out.append(f"{v.get('rule')}: {str(v.get('type') or 'its step').replace('_', ' ')} refused "
                        f"{v.get('n')} times in a row for the same reason ({str(v.get('why') or '')[:80]}): "
                        f"asked again in {v.get('days')} day(s), twice as long after each refusal (at most "
-                       f"{cfg.get('r5p3_refusal_wait_max_days', 28)}), at once when the fort changes "
+                       f"{_c(cfg, 'r5p3_refusal_wait_max_days')}), at once when the fort changes "
                        "(a new level or well, another reason)")
     return out
 
 
 def said(memory) -> None:
     """The notes of this cycle's new waits were made: not again."""
+    try:
+        _att.ledger_said(memory)
+    except Exception:  # noqa: BLE001
+        pass
     for v in _d(getattr(memory, "refusal_streaks", None)).values():
         if isinstance(v, dict) and v.get("say"):
             v["say"] = False

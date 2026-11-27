@@ -6,7 +6,7 @@
 -- and the names defined there and in the parts before it are in reach.
 
 if not SOCIETY_PART_LOCALS then qerror('ai-society-animals is a part of ai-society; run ai-society') end
-PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-animals'] = '0.105.134'   -- (0.105.26) bumped with BRIDGE_VERSION
+PART_VERSIONS = PART_VERSIONS or {}; PART_VERSIONS['ai-society-animals'] = '0.105.135'   -- (0.105.26) bumped with BRIDGE_VERSION
 
 local report_citizens, report_units, utils = SOCIETY_PART_LOCALS.report_citizens, SOCIETY_PART_LOCALS.report_units, SOCIETY_PART_LOCALS.utils   -- (r8) the hub's locals
 

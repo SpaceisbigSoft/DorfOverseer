@@ -144,12 +144,16 @@ if LuaRuntime is not None:
                         (ROOT / "tests" / "test_hygiene_bridge.py").read_text(encoding="utf-8"), re.S).group(1)
     LUA = LuaRuntime(unpack_returned_tuples=True)
     H = LUA.execute(HARNESS, (LUA_DIR / "ai-bridge.lua").read_text(encoding="utf-8"), str(LUA_DIR))
+    from strict_fakes import install as strict_install
+    strict_install(LUA, H)
 
-    @test("kitchen_cheap (Lua): the cheap kinds banned while meat is left; let go (short) when it runs out")
+    @test("kitchen_cheap (Lua, strict fakes): the cheap kinds banned while meat is left; fish too; let go (short) when it runs out")
     def _():
+        # (F1b) strict fakes: the old `{flags = {}, mat_type = ...}` answered nil to
+        # it.flags.forbidden and fish.mat_type, both of which threw in every fort
         H.scripts = LUA.table()
         env = H.module()
-        r = LUA.execute("""local env, H, meat_n = ...
+        src = """local env, H, meat_n, fish_n = ...
           local added, removed = {}, 0
           H.dfhack.kitchen = {addExclusion = function(_, t, s, mt, mi) table.insert(added, t .. ':' .. mt); return true end,
                               removeExclusion = function() removed = removed + 1; return true end}
@@ -157,32 +161,45 @@ if LuaRuntime is not None:
           local store = {}
           H.dfhack.persistent.getSiteData = function(k) return store[k] end
           H.dfhack.persistent.saveSiteData = function(k, v) store[k] = v end
+          -- strict fakes (tests/strict_fakes.py): a field the df type has not raises, as in
+          -- the game; what only the test needs (value, count, edible) lives beside them
+          local side = setmetatable({}, {__mode = 'k'})
           H.dfhack.matinfo = H.dfhack.matinfo or {}
-          H.dfhack.matinfo.decode = function(it) return {material = {flags = {EDIBLE_COOKED = it.edible ~= false}}} end
+          H.dfhack.matinfo.decode = function(it) return {material = {flags = {EDIBLE_COOKED = side[it].edible}}} end
           H.dfhack.items = H.dfhack.items or {}
-          H.dfhack.items.getValue = function(it) return it.v end
-          local function item(n, v, mt, extra)
-            local it = {flags = {}, mat_type = mt, mat_index = 0, v = v, n = n}
-            function it:getStackSize() return self.n end
+          H.dfhack.items.getValue = function(it) return side[it].v end
+          local function item(tn, n, v, mt, edible)
+            local f = {flags = {}}
+            if tn ~= 'item_eggst' and tn ~= 'item_fishst' then f.mat_type, f.mat_index = mt, 0 end   -- fish and eggs have none
+            local it = H.strict(tn, f)
+            side[it] = {n = n, v = v, mt = mt, edible = edible ~= false}
+            function it:getStackSize() return side[self].n end
             function it:getSubtype() return -1 end
-            function it:getActualMaterial() return self.mat_type end          -- (0.105.121)
-            function it:getActualMaterialIndex() return self.mat_index end
-            for k, x in pairs(extra or {}) do it[k] = x end
+            function it:getActualMaterial() return side[self].mt end          -- (0.105.121)
+            function it:getActualMaterialIndex() return 0 end
             return it
           end
           H.df.item_type = {PLANT = 1, PLANT_GROWTH = 2, SEEDS = 3, EGG = 4, FISH = 5, LIQUID_MISC = 6, GLOB = 7,
                             MEAT = 8, CHEESE = 9, POWDER_MISC = 10}
+          local fish = {}
+          if fish_n > 0 then fish = {item('item_fishst', fish_n, fish_n, 500)} end
           H.df.global.world.items = {other = {
-            PLANT = {item(10, 20, 100), item(5, 50, 101), item(5, 5, 102, {edible = false})},
-            PLANT_GROWTH = {item(30, 60, 200)}, SEEDS = {}, EGG = {item(4, 8, 300)}, FISH = {},
-            LIQUID_MISC = {}, GLOB = {}, MEAT = {item(meat_n, meat_n * 4, 400)}, CHEESE = {}, POWDER_MISC = {}}}
+            PLANT = {item('item_plantst', 10, 20, 100), item('item_plantst', 5, 50, 101),
+                     item('item_plantst', 5, 5, 102, false)},
+            PLANT_GROWTH = {item('item_plant_growthst', 30, 60, 200)}, SEEDS = {},
+            EGG = {item('item_eggst', 4, 8, 300)}, FISH = fish,
+            LIQUID_MISC = {}, GLOB = {}, MEAT = {item('item_meatst', meat_n, meat_n * 4, 400)}, CHEESE = {}, POWDER_MISC = {}}}
           local b = env.act_kitchen_cheap({ban = true, min_value = 3, keep = 20})
           local n_added = #added
           local l = env.act_kitchen_cheap({ban = false})
-          return b.ok, b.banned, b.short, n_added, l.lifted
-        """, env, H, 30)
+          return b.ok, b.banned, b.short, n_added, l.lifted, b.error
+        """
+        r = LUA.execute(src, env, H, 30, 0)
         # plant 100 (2 a unit), growth 200 (2), egg 300 (2) banned; plant 101 (10) and meat kept; the inedible not seen
-        assert tuple(r) == (True, 3, None, 3, 3), tuple(r)
+        assert tuple(r)[:5] == (True, 3, None, 3, 3), tuple(r)
+        env = H.module()
+        r = LUA.execute(src, env, H, 30, 6)       # a fish (1 a unit, no mat_type field): banned as well
+        assert tuple(r)[:5] == (True, 4, None, 4, 4), tuple(r)
         env = H.module()
         r = LUA.execute("""local env, H = ...
           H.df.global.world.items.other.MEAT = {}
@@ -190,6 +207,19 @@ if LuaRuntime is not None:
           return b.ok, b.short, b.kept
         """, env, H)
         assert tuple(r) == (True, True, 5), tuple(r)
+
+    @test("strict fakes (Lua): an item fake raises on a field its df type has not, as DFHack does")
+    def _():
+        r = LUA.execute("""local H = ...
+          local egg = H.strict('item_eggst', {flags = {}})
+          local a = {pcall(function() return egg.mat_type end)}
+          local b = {pcall(function() return egg.flags.forbidden end)}
+          return a[1], tostring(a[2]), b[1], tostring(b[2]), egg.flags.forbid
+        """, H)
+        r = tuple(r)
+        assert r[0] is False and "Cannot read field item_eggst.mat_type: not found." in r[1], r
+        assert r[2] is False and "Cannot read field item_flags.forbidden: not found." in r[3], r
+        assert r[4] is False, r
 
 
 if __name__ == "__main__":

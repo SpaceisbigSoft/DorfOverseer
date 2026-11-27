@@ -35,6 +35,7 @@ from planner_military import *  # noqa: E402,F401,F403  (0.104.83: the planner i
 from planner_industry import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 from planner_society import *  # noqa: E402,F401,F403  (0.104.83: the planner in parts)
 import crisis  # noqa: E402  (0.104.137)
+import read_guard  # noqa: E402  (F4)
 import steer_guard  # noqa: E402  (r4 k1) the strategist's holds and raises judged by class and action kind
 from planner_moods import mood_blocked  # noqa: E402  (0.105.26) a waiting mood's materials held from other orders
 from planner_moods import reserve_room, note_reserve_swap, _mood_reserve_rule  # noqa: E402  (0.105.31) the mood reserves
@@ -209,6 +210,8 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     if missing:
         return [], [f"the report has no {' or '.join(missing)} this cycle ({errors[missing[0]]}): "
                     "nothing planned; next cycle tries again"]
+    if isinstance(s.get("_bridge_stale"), str):     # (F4) bridge.py
+        return [], [s["_bridge_stale"]]
     early: list[str] = []
 
     def _pre(fn, fallback, *args):
@@ -233,23 +236,19 @@ def plan(state: dict, memory: Memory, cfg: dict = PLANNER_CONFIG) -> tuple[list[
     notes: list[str] = early
     reported: set[str] = set()
 
-    def can_use(*sections: str) -> bool:
+    def can_use(*sections: str, max_age=None) -> bool:
         bad = [x for x in sections if x in errors]
         new = [x for x in bad if x not in reported]
         if new:
             reported.update(new)
             notes.append(f"skipped rules that need report section(s) {', '.join(new)} (failed)")
-        return not bad
+        return not bad and read_guard.fresh(s, sections, max_age, reported, notes)   # (F4)
 
     def _guard(fn, *args, **kw):
         """(13c) One rule failing on an odd report value no longer stops the
         whole cycle (five failed cycles in a row stopped the overseer, gates
         and alerts with it): the error becomes a note and the others run."""
-        try:
-            return fn(*args, **kw)
-        except Exception as e:  # noqa: BLE001
-            notes.append(f"rule {fn.__name__} failed ({type(e).__name__}: {str(e)[:120]}); the others ran")
-            return None
+        return read_guard.call(fn, args, kw, s, proposals, notes, cfg, reported)
 
     rules_ = _pre(player_rules, None, s) or player_rules({"settings": {}})   # the Rules tab, read once a plan
     # (0.105.47) the training squad out of the fort's squads and soldiers before any rule

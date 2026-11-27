@@ -24,6 +24,7 @@ from planner_cleanup import CLEANUP_ACTIONS, cleanup_journal, cleanup_words
 from planner_thirst import thirst_journal
 from planner_recovery import recovery_journal
 from planner_shopslots import shop_level_action
+from planner_never import never_step   # (F2d) the player's "never" rules, read last before dispatch
 from planner_floors import floor_action, floor_outcome, not_on_floor_words
 from planner_floors import journal_hint as floor_journal_hint
 from planner_floors import forget_sent as floor_forget_sent
@@ -31,6 +32,7 @@ from planner_meetings import meeting_report_lines
 from planner_threats import note_intrusions
 from planner_hostile_arrivals import note_hostile_arrivals   # (r34b)
 from planner_holdfast import note_thief_targets
+from planner_attempts import refusal_target   # (F2b) a refusal's site, for the attempt ledger
 import seen as seen_ledger
 import atlas
 import backup
@@ -47,6 +49,7 @@ import masterplan
 import memstore
 import outcomes
 import report
+import report_keep   # (F3a)
 from digest import _d, normalize, project_text
 from review import hold_review_proposals, maybe_review, note_events, shadow_on
 from storyteller import maybe_tell
@@ -417,6 +420,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
         allowed, held = cycle_step(memory, state, "select", lambda: select(proposals, state, memory, cfg)) or (
             [p for p in proposals if limit_exempt(p.rule)],
             [f"{p.rule}: the limits' check failed this cycle; it waits" for p in proposals if not limit_exempt(p.rule)])
+        allowed, held = never_step(allowed, held, state, memory, key, say, journal)   # (F2d) the last line before dispatch
         stopped = _ov.STOP_FILE.exists()
         halted = controls.get("halted") is True
         decisions = _d(controls.get("decisions"))
@@ -511,6 +515,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                         r = bridge.act(floor_action(shop_level_action(p.action, state), state, memory))
                     except BridgeError as e:
                         r = {"ok": False, "error": str(e)}
+                        r.update(refusal_target(getattr(e, "reply", None)))   # (F2b) its site: the attempt ledger
                     except DFHackError as e:
                         # The command may or may not have happened in the game.
                         r = {"ok": None, "error": f"no reply from the game ({e})"}
@@ -587,7 +592,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                          "mode": "autopilot" if acting else "dry-run", "result": r})
         finally:
             if results:
-                _ov.LAST_FULL.clear()                 # the fort changed: the next cycle reads the full report
+                # the fort changed: (F3a) the sections the actions changed are read again next
+                # cycle, beside the pulse; an action that doesn't say which: the full report
+                report_keep.after_actions(_ov.LAST_FULL, results)
                 # (0.105.48, K6) each on its own: record() first (the cooldowns, the
                 # alarm's and gate's ownership), then the rest whatever it did
                 cycle_step(memory, state, "record", lambda: record(results, state, memory, cfg))

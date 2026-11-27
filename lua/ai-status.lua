@@ -22,6 +22,8 @@ dfhack.onStateChange['ai-status'] = function(sc)
     if sc == SC_MAP_UNLOADED then
         STATUS, DECISIONS, LAST_SEEN = nil, {}, nil
         SEEN_TICK, AWAY = nil, {}
+        local D = rawget(_G, 'ai_status_deadman_state')
+        if type(D) == 'table' then D.hold_until, D.fired_for, D.last_gap_s = nil, nil, nil end
     end
 end
 
@@ -33,9 +35,12 @@ local function game_tick()
 end
 
 function mark_seen()
-    LAST_SEEN = os.time()
+    local now = os.time()
+    pcall(deadman_seen, now, LAST_SEEN)
+    LAST_SEEN = now
     SEEN_TICK = game_tick() or SEEN_TICK
     pcall(away_watch_start)
+    pcall(deadman_start)
 end
 
 -- Plain printable text only, capped (it comes from outside the game).
@@ -163,6 +168,152 @@ function away_watch_start()
     return true
 end
 
+---------------------------------------------------------------------------
+-- (F5a) The dead-man pause. The keeper stopped or dead, the game ran on
+-- unpaused with nobody at the wheel (DF's own announcement pauses are off).
+-- Every DEADMAN_LOOK_TICKS (a 'ticks' timer: it only runs while the game
+-- runs) the watcher looks at the overseer's last check-in (LAST_SEEN, real
+-- time): older than DEADMAN_S real seconds, the game is paused, ONCE for that
+-- check-in (a player who unpauses is not fought: it pauses again only after
+-- a fresh check-in has gone stale too). Never before the first check-in on
+-- this map (a fort loaded by hand, or by the keeper's revive before its
+-- overseer is up: LAST_SEEN is forgotten when the map unloads), never while
+-- the AI is halted (the game is the player's), never while the keeper holds
+-- it (deadman_hold: its planned close, the save being written).
+-- The loop keeps ai-fights' token + CODE pattern: a reloaded file takes the
+-- loop over and the old load's pending beat ends there.
+---------------------------------------------------------------------------
+DEADMAN_S = 600                 -- the check-in this old (real seconds): the game paused (0: off)
+DEADMAN_LOOK_TICKS = 100
+DEADMAN_HOLD_MAX_S = 7200       -- a keeper's hold at most this long
+local DEADMAN_KEY = 'ai_status_deadman_state'
+local CODE = {}                 -- this load of the file (a newer load takes the loop over)
+
+function deadman()
+    local S = rawget(_G, DEADMAN_KEY)
+    if type(S) ~= 'table' then
+        S = {}
+        rawset(_G, DEADMAN_KEY, S)
+    end
+    return S
+end
+
+local function real_now()
+    local ok, t = pcall(os.time)
+    return ok and type(t) == 'number' and t or nil
+end
+
+-- a check-in: the gap since the one before kept (the status reply's age is
+-- otherwise always 0, the reply being itself a check-in); any hold ends (the
+-- overseer is back: the planned close was put off)
+function deadman_seen(now, before)
+    local S = deadman()
+    S.last_gap_s = (type(now) == 'number' and type(before) == 'number') and math.max(0, now - before) or nil
+    S.hold_until = nil
+end
+
+-- the keeper's planned close: no pause for `seconds` (capped) from now; 0 ends it
+function deadman_hold(seconds)
+    local S = deadman()
+    local s = tonumber(seconds)
+    local now = real_now()
+    if not s or s <= 0 or not now then
+        S.hold_until = nil
+        return false
+    end
+    S.hold_until = now + math.floor(math.min(s, DEADMAN_HOLD_MAX_S))
+    return true
+end
+
+-- One look. now: the real time (os.time(); tests). Returns 'paused' when it
+-- paused the game, else nil and why not.
+function deadman_check(now)
+    local S = deadman()
+    if not dfhack.isMapLoaded() then return nil, 'no map' end
+    if type(DEADMAN_S) ~= 'number' or DEADMAN_S <= 0 then return nil, 'off' end
+    if type(LAST_SEEN) ~= 'number' then return nil, 'no check-in yet' end
+    now = now or real_now()
+    if type(now) ~= 'number' then return nil, 'no clock' end
+    if S.hold_until and now < S.hold_until then return nil, 'held' end
+    local age = now - LAST_SEEN
+    if age < DEADMAN_S then return nil, 'fresh' end
+    if S.fired_for == LAST_SEEN then return nil, 'done' end
+    if is_halted() then return nil, 'halted' end
+    S.fired_for = LAST_SEEN
+    local okp, already = pcall(function() return df.global.pause_state end)
+    if okp and already == true then
+        S.found_paused_at = now
+        return nil, 'already paused'
+    end
+    local ok, err = pcall(function() df.global.pause_state = true end)
+    if not ok then
+        S.error = tostring(err):sub(1, 160)
+        return nil, 'error'
+    end
+    S.paused_at, S.paused_age_s = now, age
+    local msg = ('AI Overseer: no check-in for %d min, game paused'):format(math.floor(age / 60))
+    pcall(print, msg)
+    pcall(dfhack.gui.showAnnouncement, msg, COLOR_LIGHTRED, true)
+    return 'paused'
+end
+
+function deadman_alive()
+    local S = deadman()
+    if not S.timer then return false end
+    if type(dfhack.timeout_active) ~= 'function' then return true end
+    local ok, active = pcall(dfhack.timeout_active, S.timer)
+    return (ok and active) and true or false
+end
+
+-- each arming makes its own beat, keyed by a fresh token: a beat whose token
+-- is no longer the state's (armed again, a newer load) ends there
+local function make_beat(token)
+    local beat
+    beat = function()
+        local S = deadman()
+        if S.token ~= token then return end
+        S.timer = nil
+        local ok, err = pcall(deadman_check)
+        if not ok then S.error = tostring(err):sub(1, 160) end
+        if dfhack.isMapLoaded() then
+            local okt, id = pcall(dfhack.timeout, DEADMAN_LOOK_TICKS, 'ticks', beat)
+            S.timer = okt and id or nil
+        end
+    end
+    return beat
+end
+
+-- The watcher's timer started (by each check-in; DFHack drops 'ticks' timers
+-- at unload, and a reloaded file takes the loop over). True when armed now.
+function deadman_start()
+    if not dfhack.isMapLoaded() or type(dfhack.timeout) ~= 'function' then return false end
+    local S = deadman()
+    if deadman_alive() and S.code == CODE then return false end
+    S.code, S.token = CODE, {}
+    local okt, id = pcall(dfhack.timeout, DEADMAN_LOOK_TICKS, 'ticks', make_beat(S.token))
+    S.timer = okt and id or nil
+    if not okt then S.error = 'dfhack.timeout: ' .. tostring(id):sub(1, 120) end
+    return S.timer ~= nil
+end
+
+-- For the status reply (the brain sees it): armed (a check-in seen, the
+-- watcher's timer live), the gap before this check-in, the last pause.
+function deadman_state(now)
+    local S = deadman()
+    now = now or real_now()
+    local function ago(t) return (type(t) == 'number' and type(now) == 'number') and now - t or nil end
+    return {
+        armed = type(DEADMAN_S) == 'number' and DEADMAN_S > 0 and type(LAST_SEEN) == 'number' and deadman_alive(),
+        after_s = DEADMAN_S,
+        last_checkin_age_s = S.last_gap_s,
+        paused_at = S.paused_at,
+        paused_ago_s = ago(S.paused_at),
+        found_paused_at = S.found_paused_at,
+        held_s = (S.hold_until and type(now) == 'number' and S.hold_until > now) and S.hold_until - now or nil,
+        error = S.error,
+    }
+end
+
 -- The overseer's report. Returns the decisions it hasn't seen yet and
 -- forgets the ones it says it has acted on.
 function set_status(t)
@@ -179,6 +330,9 @@ function set_status(t)
     for _, id in ipairs(type(t.ack) == 'table' and t.ack or {}) do
         if type(id) == 'string' then DECISIONS[id] = nil end
     end
+    -- (F5a) the dead-man pause's limit, when the overseer sends one (0: off)
+    local dm = tonumber(t.deadman_s)
+    if dm and dm == math.floor(dm) and (dm == 0 or (dm >= 60 and dm <= 86400)) then DEADMAN_S = dm end
     STATUS = {
         mode = clean(t.mode, 20) or '?',
         acting = clean(t.acting, 40) or '?',

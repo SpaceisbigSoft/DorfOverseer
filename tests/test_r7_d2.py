@@ -37,6 +37,7 @@ LATE = {planner_select: ("mood_blocked", "order_gate", "reserve_room"),
 # (item2) + mood_hospital_rule; (0.105.112 item4) + hospital_stock_rule
 NAMES_6298B4A = (
     'meal_glut_filter',
+    'read_guard',   # (F4, 0.105.135) the rule-call guard's module
     'mood_hospital_rule',   # (item2) a mood's cloth or thread out of the hospital's stock
     'hospital_stock_rule',   # (0.105.112 item4) the hospitals' standing thread/cloth cap
     '_mechanism_stock_rule',   # (0.105.119 item30) enough free mechanisms for the lever links

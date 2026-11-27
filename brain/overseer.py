@@ -518,30 +518,42 @@ def get_state(bridge: Bridge, tier: str = "daily") -> dict:
     orders, projects, gates, moods, military, settings) merged over the last
     full one when that is under a day old; otherwise, or if the bridge can't,
     the full report."""
+    import report_keep                      # (F3a) here: overseer's names are counted (tests/test_r7_d1.py)
     if tier == "pulse" and LAST_FULL.get("state"):
+        stale = report_keep.stale(LAST_FULL)    # (F3a) the sections the last actions changed
         try:
-            pulse = bridge.state(include_units=False, tier="pulse")
+            pulse = (bridge.state(include_units=False, tier="pulse", sections=stale) if stale
+                     else bridge.state(include_units=False, tier="pulse"))
         except (TypeError, BridgeError):
             pulse = None                    # an older bridge (or a fake one): the full report
         full = LAST_FULL["state"]
         if (isinstance(pulse, dict) and pulse.get("tier") == "pulse" and pulse.get("fort") == full.get("fort")
+                and report_keep.has_sections(pulse, stale)
                 and isinstance(pulse.get("date"), dict) and isinstance(full.get("date"), dict)):
             d0, d1 = full["date"], pulse["date"]
             t0, t1 = d0.get("tick") or 0, d1.get("tick") or 0
             # under a day old (a new year always gets a full report)
             fresh = d1.get("year") == d0.get("year") and 0 <= t1 - t0 < PLAN_EVERY_TICKS
             if fresh:
+                report_keep.absorb(LAST_FULL, pulse, stale)   # (F3a) kept for the next pulses
                 merged = json.loads(json.dumps(full))
                 merged.update(pulse)
                 merged.pop("_errors", None)     # worked out again from this report
+                try:
+                    from digest import age_merged     # (F4) the full report's sections aged since
+                    age_merged(merged, full, pulse)
+                except Exception:  # noqa: BLE001  (an age mark never stops the cycle)
+                    pass
                 return merged
         if isinstance(pulse, dict) and pulse.get("tier") is None and isinstance(pulse.get("date"), dict):
             # a bridge from before 0.31 ignores --tier and sends the full report: use it
             LAST_FULL["state"] = json.loads(json.dumps({k: v for k, v in pulse.items() if k != "_errors"}))
+            LAST_FULL.pop("stale", None)    # (F3a)
             return pulse
     state = bridge.state(include_units=False)
     if state.get("tier") in (None, "daily", "survey"):
         LAST_FULL["state"] = json.loads(json.dumps({k: v for k, v in state.items() if k != "_errors"}))
+        LAST_FULL.pop("stale", None)        # (F3a) all read afresh
     return state
 
 

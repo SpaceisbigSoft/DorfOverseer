@@ -60,6 +60,28 @@ BATCH_MAX_CHARS = 24000
 BATCH_MAX_CMDLINE = 30000
 
 
+WARNED_STALE: set = set()      # (F4) each mismatch logged once a process
+
+
+def version_mismatch(state: dict, expected: str | None = None) -> str | None:
+    """(F4) Why a full report must not be acted on, or None: its
+    bridge_version isn't brain/expected_bridge.py's EXPECTED_BRIDGE_VERSION,
+    or it lists parts whose version mark isn't (`stale_parts`, when the
+    report carries it). A report without bridge_version (an old fake) passes."""
+    if expected is None:
+        from expected_bridge import EXPECTED_BRIDGE_VERSION as expected
+    have = state.get("bridge_version") if isinstance(state, dict) else None
+    if isinstance(have, str) and have != expected:
+        return (f"the game runs ai-bridge {have} but this Python expects {expected}: nothing is acted on "
+                "until the keeper is restarted (S then R) so both sides are the same version")
+    stale = state.get("stale_parts") if isinstance(state, dict) else None
+    if isinstance(stale, list) and stale:
+        return (f"{len(stale)} ai-bridge part(s) are not version {expected} ("
+                + "; ".join(str(x) for x in stale[:4]) + "): nothing is acted on until the keeper "
+                "is restarted (S then R) after the parts are copied and touched")
+    return None
+
+
 def batch_text(payloads: list) -> str:
     """The batch command's argument: the actions' JSON as a list."""
     return "[" + ",".join(payloads) + "]"
@@ -85,7 +107,16 @@ BATCH_NEVER = frozenset({
 
 
 class BridgeError(DFHackError):
-    """The bridge script answered, but with an error."""
+    """The bridge script answered, but with an error. (F2b) reply: that answer
+    (its target: a site, a building), when there was one."""
+    reply: dict | None = None
+
+
+def _refused(reply: dict) -> "BridgeError":
+    """(F2b) The error act() raises for a refusal, carrying the bridge's answer."""
+    e = BridgeError(reply.get("error", "action failed"))
+    e.reply = reply
+    return e
 
 
 class Bridge:
@@ -130,13 +161,18 @@ class Bridge:
         self.version = info
         return info
 
-    def state(self, include_units: bool = True, tier: str | None = None) -> dict:
+    def state(self, include_units: bool = True, tier: str | None = None,
+              sections: list[str] | None = None) -> dict:
         """Ask the game for a fort report and return it as a dict. tier="pulse"
         asks for the small one (date, threats, stocks, orders, projects, gates,
-        moods, military, settings: no units); the default is the full daily report."""
+        moods, military, settings: no units); the default is the full daily report.
+        (F3a) sections: more section names built with the pulse (a bridge that
+        doesn't know --sections leaves them out: the caller checks)."""
         args = ["state"] if include_units else ["state", "--no-units"]
         if tier:
             args += ["--tier", tier]
+        if sections:
+            args += ["--sections", ",".join(sections)]
         # (0.100.1, review) the full report may take longer than a command at
         # a low frame rate (23 timeouts in one night's log): a day was skipped
         reply = self._call(*args, timeout=REPORT_TIMEOUT_S if tier != "pulse" else None)
@@ -144,6 +180,17 @@ class Bridge:
         self.out_dir = path.parent          # where the game reads and writes our files
         state = json.loads(path.read_text(encoding="utf-8", errors="replace"))
         state["_meta"] = {"build_ms": reply.get("build_ms"), "file": str(path)}
+        if tier != "pulse":
+            # (F4) Lua reloads at once, Python at the keeper's restart: a full
+            # report from another bridge version (or with stale parts) is not acted on
+            why = version_mismatch(state)
+            if why:
+                state["_bridge_stale"] = why
+                if why not in WARNED_STALE:
+                    WARNED_STALE.add(why)
+                    self.log.warning("%s", why)
+            else:
+                state.pop("_bridge_stale", None)
         return state
 
     def load_memory(self) -> dict | None:
@@ -298,7 +345,7 @@ class Bridge:
         note_call_ms(ms)
         self._log_act(payload, reply, ms)
         if not reply.get("ok") and not reply.get("rejected"):
-            raise BridgeError(reply.get("error", "action failed"))
+            raise _refused(reply)
         return reply
 
     def _log_act(self, payload: str, reply: dict, ms: float) -> None:
@@ -404,7 +451,7 @@ class Bridge:
             for (a, cb, is_host), reply in zip(chunk, replies):
                 err = None
                 if not reply.get("ok") and not reply.get("rejected"):
-                    err = BridgeError(reply.get("error", "action failed"))
+                    err = _refused(reply)
                 if is_host:
                     if err is not None:
                         raise err
