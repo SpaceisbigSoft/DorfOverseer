@@ -85,7 +85,16 @@ BATCH_NEVER = frozenset({
 
 
 class BridgeError(DFHackError):
-    """The bridge script answered, but with an error."""
+    """The bridge script answered, but with an error. (F2b) reply: that answer
+    (its target: a site, a building), when there was one."""
+    reply: dict | None = None
+
+
+def _refused(reply: dict) -> "BridgeError":
+    """(F2b) The error act() raises for a refusal, carrying the bridge's answer."""
+    e = BridgeError(reply.get("error", "action failed"))
+    e.reply = reply
+    return e
 
 
 class Bridge:
@@ -298,7 +307,7 @@ class Bridge:
         note_call_ms(ms)
         self._log_act(payload, reply, ms)
         if not reply.get("ok") and not reply.get("rejected"):
-            raise BridgeError(reply.get("error", "action failed"))
+            raise _refused(reply)
         return reply
 
     def _log_act(self, payload: str, reply: dict, ms: float) -> None:
@@ -404,7 +413,7 @@ class Bridge:
             for (a, cb, is_host), reply in zip(chunk, replies):
                 err = None
                 if not reply.get("ok") and not reply.get("rejected"):
-                    err = BridgeError(reply.get("error", "action failed"))
+                    err = _refused(reply)
                 if is_host:
                     if err is not None:
                         raise err

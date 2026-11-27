@@ -222,6 +222,11 @@ def note_refusal(memory: Memory, p: Proposal, r: dict, now: int, bridge: str | N
     key = refusal_key(p)
     if r.get("ok") is True and p.action.get("type") == "polish" and r.get("designated") == 0:
         r = {"ok": False, "error": r.get("note") or "nothing to smooth or engrave"}   # nothing done: back off
+    try:                           # (F2b) every answer into the one attempt ledger (planner_attempts)
+        from planner_attempts import record_attempt
+        record_attempt(memory, p, r, now, state)
+    except Exception:  # noqa: BLE001  (the ledger never stops the back-offs here)
+        pass
     if r.get("ok") is True:
         # (0.104.138) a success halves the count rather than wiping it: one
         # success among many refusals began the back-off again at a day
@@ -360,6 +365,12 @@ def note_no_effect(memory: Memory, p: Proposal, ok, now: int) -> None:
     same = _no_effect_same(p, old)
     n = int(old.get("n") or 0) + 1 if same else 1
     memory.no_effect[k] = {"reason": p.reason, "n": n, "tick": now}
+    if same:                       # (F2b) the last one done changed nothing: the ledger's "none"
+        try:
+            from planner_attempts import record_no_effect
+            record_no_effect(memory, p, now)
+        except Exception:  # noqa: BLE001
+            pass
     if p.rule in NO_EFFECT_COUNT:     # (item4) the count the streak began with
         c = NO_EFFECT_COUNT[p.rule](p)
         memory.no_effect[k]["count"] = old.get("count") if same else c

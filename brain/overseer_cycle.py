@@ -31,6 +31,7 @@ from planner_meetings import meeting_report_lines
 from planner_threats import note_intrusions
 from planner_hostile_arrivals import note_hostile_arrivals   # (r34b)
 from planner_holdfast import note_thief_targets
+from planner_attempts import refusal_target   # (F2b) a refusal's site, for the attempt ledger
 import seen as seen_ledger
 import atlas
 import backup
@@ -511,6 +512,7 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                         r = bridge.act(floor_action(shop_level_action(p.action, state), state, memory))
                     except BridgeError as e:
                         r = {"ok": False, "error": str(e)}
+                        r.update(refusal_target(getattr(e, "reply", None)))   # (F2b) its site: the attempt ledger
                     except DFHackError as e:
                         # The command may or may not have happened in the game.
                         r = {"ok": None, "error": f"no reply from the game ({e})"}
