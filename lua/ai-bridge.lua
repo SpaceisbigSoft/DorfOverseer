@@ -9,6 +9,8 @@
 --                                orders, projects...; never the units list)
 --   ai-bridge state --tier daily the full report (the default); survey is
 --                                the same for now
+--   ai-bridge state --tier pulse --sections a,b  (F3a) the pulse and these
+--                                sections (named in the report's sections_extra)
 --   ai-bridge pause              pause the game (resume only via run, so
 --                                the game can never be left running unattended)
 --   ai-bridge run <ticks>        unpause, then pause again after <ticks>
@@ -397,26 +399,60 @@ run_hub_part('ai-bridge-sections')   -- (r8) safe, fort_key, SECTIONS, the tiers
 
 -- tier: 'pulse' (PULSE_SECTIONS only), or 'daily' / 'survey' (everything;
 -- survey is the same as daily for now). Default daily.
+-- (F3a) extra: a list of section names built besides the tier's (the brain
+-- asks a pulse plus the sections its last actions changed); unknown names
+-- are left out, and the ones added are named in the report's sections_extra
 local build_state_body
-function build_state(include_units, tier)
+function build_state(include_units, tier, extra)
     -- (0.105.40 E3) the report's shared walks (REPORT_CTX, lua/ai-util.lua),
     -- cleared however the report ends: an action after it walks afresh
     report_ctx_begin()
-    local ok, state = pcall(build_state_body, include_units, tier)
+    local ok, state = pcall(build_state_body, include_units, tier, extra)
     report_ctx_end()
     REPORT_MEMO = nil
     if not ok then error(state, 0) end
     return state
 end
 
-build_state_body = function(include_units, tier)
+build_state_body = function(include_units, tier, extra)
     tier = tier or 'daily'
     local names
+    local added    -- (F3a) the extra sections this report builds
     if tier == 'pulse' then
         names = PULSE_SECTIONS
         include_units = false
+        if type(extra) == 'table' and #extra > 0 then
+            local seen = {}
+            names = {}
+            for _, n in ipairs(PULSE_SECTIONS) do seen[n] = true; table.insert(names, n) end
+            added = {}
+            for _, n in ipairs(extra) do
+                if type(n) == 'string' and SECTIONS[n] and not seen[n] then
+                    seen[n] = true
+                    table.insert(names, n)
+                    table.insert(added, n)
+                end
+            end
+        end
     else
         names = sorted_keys(SECTIONS)
+    end
+    -- (F3a) the sections the last report's deadline deferred go first (most
+    -- deferred first), so they are built before the deadline comes again
+    local deferred_before = type(SECTION_DEFERRED) == 'table' and SECTION_DEFERRED or {}
+    if next(deferred_before) then
+        local front, rest = {}, {}
+        for i, n in ipairs(names) do
+            local k = tonumber(deferred_before[n])
+            if k and k > 0 then table.insert(front, {n = n, k = k, i = i}) else table.insert(rest, n) end
+        end
+        if #front > 0 then
+            table.sort(front, function(a, b) if a.k ~= b.k then return a.k > b.k end return a.i < b.i end)
+            local ordered = {}
+            for _, f in ipairs(front) do table.insert(ordered, f.n) end
+            for _, n in ipairs(rest) do table.insert(ordered, n) end
+            names = ordered
+        end
     end
     local ctx = {tier = tier}       -- (0.105.48, A1) a section may budget its walk by the tier
     local clock = os.clock
@@ -465,18 +501,34 @@ build_state_body = function(include_units, tier)
     -- (0.105.40, 13e) every section's time (os.clock, ms) and the ones sent
     -- from the cache, for the perf section built last
     local perf_ms, perf_cached = {}, {}
+    -- (F3a) the deadline: past it, a section that would be rebuilt sends its
+    -- cached copy when it has one (deferred), unless deferred too often
+    local deadline = tonumber(REPORT_DEADLINE_MS)
+    if deadline and deadline < 0 then deadline = nil end
+    local defer_max = tonumber(REPORT_DEFER_MAX) or 3
+    if type(SECTION_DEFERRED) ~= 'table' then SECTION_DEFERRED = {} end
+    local deferred, deadline_at = {}, nil
     for _, name in ipairs(names) do
         local t = clock()
         -- slow sections that change slowly are rebuilt only every few game
         -- days (SECTION_CACHE_DAYS); between, the last copy is sent
         local days, c = SECTION_CACHE_DAYS[name], SECTION_CACHE[name]
         local fresh = c and c.site == site and now >= c.tick
-        if days and fresh and (now - c.tick < days * 1200 or not rebuild[name]) then
+        local defer = false
+        if days and fresh and not (now - c.tick < days * 1200 or not rebuild[name]) and deadline
+                and (t - t0) * 1000 >= deadline and (tonumber(SECTION_DEFERRED[name]) or 0) < defer_max then
+            defer = true
+            deadline_at = deadline_at or math.floor((t - t0) * 1000 + 0.5)
+            SECTION_DEFERRED[name] = (tonumber(SECTION_DEFERRED[name]) or 0) + 1
+            table.insert(deferred, name)
+        end
+        if days and fresh and (defer or now - c.tick < days * 1200 or not rebuild[name]) then
             state[name] = c.value
             perf_cached[name] = true
             cache_age[name] = math.floor((now - c.tick) / 120 + 0.5) / 10
             if now - c.tick >= days * 1200 then cache_due[name] = true end
         else
+            SECTION_DEFERRED[name] = nil     -- (F3a) built: the streak ends
             -- a section may return a second value, true: don't keep this copy
             -- (logistics with a part that failed)
             local v, nocache = SECTIONS[name](ctx)
@@ -499,9 +551,17 @@ build_state_body = function(include_units, tier)
     state.perf = perf_section(perf_ms, perf_cached, (clock() - t0) * 1000, now)
     if type(state.perf) == 'table' and not state.perf.error then
         state.perf.cache_age, state.perf.cache_due = cache_age, cache_due   -- (0.105.48, K7c)
+        -- (F3a) the deadline and what it deferred (the copies sent instead), and
+        -- the report's ms when it first deferred one
+        state.perf.deadline_ms = deadline
+        if #deferred > 0 then
+            state.perf.deferred = deferred
+            state.perf.deadline_hit_ms = deadline_at
+        end
     end
     REPORT_MEMO = nil
     state.tier = tier
+    if added and #added > 0 then state.sections_extra = added end   -- (F3a)
     state._timing = timing
     return state
 end
@@ -617,8 +677,14 @@ local function cmd_state(args)
         tier = args[flags['--tier'] + 1]
         if not TIERS[tier] then return reject('--tier must be pulse, daily or survey') end
     end
+    -- (F3a) --sections a,b,c: these built too (with --tier pulse)
+    local extra
+    if flags['--sections'] then
+        extra = {}
+        for n in tostring(args[flags['--sections'] + 1] or ''):gmatch('[%w_]+') do table.insert(extra, n) end
+    end
     local start = os.clock()
-    local state = build_state(include_units, tier)
+    local state = build_state(include_units, tier, extra)
     local built = os.clock()
     dfhack.filesystem.mkdir_recursive(OUT_DIR)
     json.encode_file(state, STATE_FILE, {pretty = false})
@@ -717,6 +783,21 @@ function run_action(action)
     -- has a pile") clears the sections it names too
     if type(result.stale) == 'table' and not action.dry_run then
         for _, name in ipairs(result.stale) do SECTION_CACHE[name] = nil end
+    end
+    -- (F3a) the sections to read again, for the brain's kept report: only for
+    -- an action CACHE_INVALIDATES knows (a dry run or a refusal: none, or
+    -- the ones it called stale); left out, the brain reads the full report
+    local known = CACHE_INVALIDATES[action.type]
+    if type(known) == 'table' or action.dry_run or result.ok == false then
+        local inv, seen = {}, {}
+        local function add(n) if type(n) == 'string' and not seen[n] then seen[n] = true; table.insert(inv, n) end end
+        if result.ok == true and not action.dry_run then
+            for _, n in ipairs(known or {}) do add(n) end
+        end
+        if type(result.stale) == 'table' and not action.dry_run then
+            for _, n in ipairs(result.stale) do add(n) end
+        end
+        if result.invalidates == nil then result.invalidates = inv end
     end
     return result
 end

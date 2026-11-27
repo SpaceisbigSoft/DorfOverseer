@@ -508,6 +508,14 @@ SECTION_CACHE_DAYS.killzones = 1       -- (0.105.45) a walk in from each entranc
 -- citizen's skills for each kind; read only for the slow training-bench rule
 SECTION_CACHE_DAYS.benches = 2
 SECTION_REBUILDS = 2       -- expired cached sections rebuilt in one report (a missing one always is)
+-- (F3a) the report's deadline (real ms, os.clock, from the report's start):
+-- past it, a section that would be rebuilt and has a cached copy sends that
+-- copy instead (perf.deferred); one with no copy is still built. A section
+-- deferred REPORT_DEFER_MAX reports in a row is built whatever the deadline,
+-- and the deferred ones go first in the next report. nil or < 0: no deadline.
+REPORT_DEADLINE_MS = 1500
+REPORT_DEFER_MAX = 3
+SECTION_DEFERRED = SECTION_DEFERRED or {}   -- name -> reports deferred in a row (kept across runs, as the cache)
 -- (0.105.48, K7c) the most game days a cached copy is ever sent: past it the
 -- section is rebuilt whatever the rotation (A1: two rebuilds a report against
 -- ~14 due a day left every cached section 11-12 days old). Set by how fast

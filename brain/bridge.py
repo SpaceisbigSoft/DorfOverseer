@@ -130,13 +130,18 @@ class Bridge:
         self.version = info
         return info
 
-    def state(self, include_units: bool = True, tier: str | None = None) -> dict:
+    def state(self, include_units: bool = True, tier: str | None = None,
+              sections: list[str] | None = None) -> dict:
         """Ask the game for a fort report and return it as a dict. tier="pulse"
         asks for the small one (date, threats, stocks, orders, projects, gates,
-        moods, military, settings: no units); the default is the full daily report."""
+        moods, military, settings: no units); the default is the full daily report.
+        (F3a) sections: more section names built with the pulse (a bridge that
+        doesn't know --sections leaves them out: the caller checks)."""
         args = ["state"] if include_units else ["state", "--no-units"]
         if tier:
             args += ["--tier", tier]
+        if sections:
+            args += ["--sections", ",".join(sections)]
         # (0.100.1, review) the full report may take longer than a command at
         # a low frame rate (23 timeouts in one night's log): a day was skipped
         reply = self._call(*args, timeout=REPORT_TIMEOUT_S if tier != "pulse" else None)

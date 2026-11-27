@@ -47,6 +47,7 @@ import masterplan
 import memstore
 import outcomes
 import report
+import report_keep   # (F3a)
 from digest import _d, normalize, project_text
 from review import hold_review_proposals, maybe_review, note_events, shadow_on
 from storyteller import maybe_tell
@@ -587,7 +588,9 @@ def one_cycle(bridge: Bridge, autopilot: bool, backend=None, controls: dict | No
                          "mode": "autopilot" if acting else "dry-run", "result": r})
         finally:
             if results:
-                _ov.LAST_FULL.clear()                 # the fort changed: the next cycle reads the full report
+                # the fort changed: (F3a) the sections the actions changed are read again next
+                # cycle, beside the pulse; an action that doesn't say which: the full report
+                report_keep.after_actions(_ov.LAST_FULL, results)
                 # (0.105.48, K6) each on its own: record() first (the cooldowns, the
                 # alarm's and gate's ownership), then the rest whatever it did
                 cycle_step(memory, state, "record", lambda: record(results, state, memory, cfg))
