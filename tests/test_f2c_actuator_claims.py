@@ -191,4 +191,22 @@ def _():
     assert rules(select([pull("gates")], fort(), m3)[0]) == ["gates"]
 
 
+
+@test("danger within 12 tiles: a gate close or alarm raise skips an earlier cycle's claim (merge 0.105.135)")
+def _():
+    s, m = fort(), Memory()
+    first = Proposal("siege_watch", {"type": "close_threatened_gates"}, "shut", 0)
+    closer = Proposal("gates", {"type": "close_threatened_gates"}, "shut", 3)
+    assert rules(select([first], s, m)[0]) == ["siege_watch"]
+    assert not select([closer], s, m)[0]                     # far danger: the claim holds
+    near = copy.deepcopy(s)
+    near.setdefault("others_on_map", {})["threats"] = [
+        {"can_reach_dwarves": True, "distance_to_nearest_dwarf": 8}]
+    assert rules(select([closer], near, m)[0]) == ["gates"]  # near: the close goes
+    off = Proposal("strangers", {"type": "civ_alert", "on": False}, "down", 3)
+    m2 = Memory()
+    select([Proposal("threat_alert", {"type": "civ_alert", "on": True}, "up", 0)], near, m2)
+    assert not select([off], near, m2)[0]                    # an off is no safety step
+
+
 finish()

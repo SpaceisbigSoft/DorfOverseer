@@ -178,9 +178,24 @@ def claims_outranked(proposals: list, claims: dict, cfg) -> dict:
     return out
 
 
-def actuator_claim(p, claims: dict, used: dict, outranked: dict, cfg) -> str | None:
+# (F2c, merge 0.105.135) the safety directions a claim from an earlier cycle
+# never holds while an enemy is within the emergency distance ("gates close
+# late": danger within 12 tiles shuts them, whoever opened them)
+SAFETY_STEPS = {"close_threatened_gates": lambda a: True,
+                "civ_alert": lambda a: bool(a.get("on", True))}
+
+
+def safety_step(p) -> bool:
+    a = getattr(p, "action", None)
+    f = SAFETY_STEPS.get(a.get("type")) if isinstance(a, dict) else None
+    return bool(f and f(a))
+
+
+def actuator_claim(p, claims: dict, used: dict, outranked: dict, cfg, danger: bool = False) -> str | None:
     """(F2c) p against the actuator owners: why it is held, or None (it may
-    go). `used`: key -> the proposal that went this cycle."""
+    go). `used`: key -> the proposal that went this cycle. `danger`: an enemy
+    within the emergency distance: a safety step skips the earlier cycles'
+    claims (this cycle's users and outranking still apply)."""
     if id(p) in outranked:
         return outranked[id(p)]
     own, n = claims.get("own") or {}, claims.get("n") or 0
@@ -189,7 +204,7 @@ def actuator_claim(p, claims: dict, used: dict, outranked: dict, cfg) -> str | N
         q = used.get(ck)
         if q is not None and q.rule != p.rule and k[0] != SQUAD:
             return f"{p.rule}: {_say(k)} is used by {q.rule} this cycle; this one waits"
-        if not _persisted(k[0], cfg):
+        if not _persisted(k[0], cfg) or (danger and safety_step(p)):
             continue
         r = own.get(ck)
         if r and r.get("rule") != p.rule and claim_live(r, n, cfg) and not _beats(p, r):

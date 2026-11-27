@@ -137,8 +137,10 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
     try:
         claims = ac_.claims_open(memory, cfg)
         outranked = ac_.claims_outranked(proposals, claims, cfg)
+        from planner_switch import enemy_within
+        danger_ = enemy_within(state, cfg.get("switch_emergency_tiles", 12))
     except Exception as e:  # noqa: BLE001  no claims this cycle (the per-cycle squad rule still holds)
-        claims, outranked = {"n": 0, "own": {}}, {}
+        claims, outranked, danger_ = {"n": 0, "own": {}}, {}, False
         failed_ = True
         guard_fail(memory, "select", e, now)
     used_act: dict = {}
@@ -393,7 +395,7 @@ def select(proposals: list[Proposal], state: dict, memory: Memory,
                 held.append(f"{p.rule}: the alarm was let down for the thirsty (the shelter has no drink): "
                             "not sounded again before they've drunk")
                 continue
-            why_cl = ac_.actuator_claim(p, claims, used_act, outranked, cfg)
+            why_cl = ac_.actuator_claim(p, claims, used_act, outranked, cfg, danger_)
             if why_cl:
                 held.append(why_cl)
                 continue
