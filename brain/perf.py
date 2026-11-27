@@ -16,6 +16,9 @@
   seconds the day took and the AI's share of them (`ai_share`: the game
   stands still while a bridge call runs), and the day's costliest
   sections summed over all its reports (`sections`, built ones only).
+- (F3a) and the game ticks a real second over the row (`tps`, from the
+  reports' perf.game_tick over the real seconds between rows, every stall
+  included: the measure of what the AI costs the game).
 - (R29 W7) the soak comparison (Phase 13e's exit): `python brain/perf.py
   compare <fort folder or perf.jsonl>` sets each later game year beside
   year one at the same population (bins of `--bin` dwarves; a row without
@@ -118,6 +121,22 @@ def ms_per_day(ms: float, ticks: int) -> float | None:
     return round(ms * TICKS_PER_DAY / ticks, 1)
 
 
+def tps(game_tick, base_game_tick, tick, base_tick, wall) -> float | None:
+    """(F3a) Game ticks per real second over a perf row: the reports'
+    perf.game_tick at both ends when both are there (else the date's absolute
+    tick), over the real seconds between; the bridge calls, the quicksave and
+    any pause count as time the game stood still. None under a real second."""
+    if not _num(wall) or wall < 1:
+        return None
+    if _num(game_tick) and _num(base_game_tick) and game_tick >= base_game_tick:
+        ticks = game_tick - base_game_tick
+    elif _num(tick) and _num(base_tick) and tick >= base_tick:
+        ticks = tick - base_tick
+    else:
+        return None
+    return round(ticks / wall, 1)
+
+
 def threat_active(s: dict) -> bool:
     """A threat or a siege the safety rules answer: a threat that can reach
     the dwarves, an invader or a great danger on the map, a siege now, or the
@@ -167,8 +186,9 @@ class Meter:
         except Exception:  # noqa: BLE001  (a measure never stops the fort)
             return None
 
-    def _reset(self, key, tick, call_ms, calls) -> None:
-        self.base[key] = {"tick": tick, "ms": call_ms, "calls": calls, "wall": self.clock()}
+    def _reset(self, key, tick, call_ms, calls, game_tick=None) -> None:
+        self.base[key] = {"tick": tick, "ms": call_ms, "calls": calls, "wall": self.clock(),
+                          "game_tick": game_tick if _num(game_tick) else None}   # (F3a) perf.game_tick
         self.reports[key] = []
         self.tiers[key] = {"full": [], "pulse": []}
         self.secs[key] = {}
@@ -186,9 +206,10 @@ class Meter:
             for k, v in _d(p.get("sections")).items():
                 if _num(v) and not cached.get(k):
                     acc[k] = acc.get(k, 0.0) + v
+        gt = p.get("game_tick") if "error" not in p else None
         b = self.base.get(key)
         if b is None or tick < b["tick"]:            # a new fort, or an older save loaded
-            self._reset(key, tick, call_ms, calls)
+            self._reset(key, tick, call_ms, calls, gt)
             return None
         ticks = tick - b["tick"]
         if ticks < TICKS_PER_DAY:
@@ -211,8 +232,10 @@ class Meter:
                "wall_s": round(wall, 1) if _num(wall) and wall > 0 else None,
                # (a share only over a real second or more: a test's or a replay's instant row has none)
                "ai_share": round(ms / (wall * 1000), 3) if _num(wall) and wall >= 1 else None,
-               "sections": [[k, round(v, 1)] for k, v in top]}
-        self._reset(key, tick, call_ms, calls)
+               "sections": [[k, round(v, 1)] for k, v in top],
+               # (F3a) game ticks a real second over the row, every stall included
+               "tps": tps(gt, b.get("game_tick"), tick, b["tick"], wall)}
+        self._reset(key, tick, call_ms, calls, gt)
         self.recent.setdefault(key, deque(maxlen=RECENT_ROWS)).append(row)
         if self.write and folder is not None:
             import memstore
