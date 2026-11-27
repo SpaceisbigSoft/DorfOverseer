@@ -539,6 +539,11 @@ def get_state(bridge: Bridge, tier: str = "daily") -> dict:
                 merged = json.loads(json.dumps(full))
                 merged.update(pulse)
                 merged.pop("_errors", None)     # worked out again from this report
+                try:
+                    from digest import age_merged     # (F4) the full report's sections aged since
+                    age_merged(merged, full, pulse)
+                except Exception:  # noqa: BLE001  (an age mark never stops the cycle)
+                    pass
                 return merged
         if isinstance(pulse, dict) and pulse.get("tier") is None and isinstance(pulse.get("date"), dict):
             # a bridge from before 0.31 ignores --tier and sends the full report: use it
